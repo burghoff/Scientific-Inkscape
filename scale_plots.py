@@ -27,7 +27,7 @@ from inkex import (
 
 import simplepath
 import dhelpers as dh
-import applytransformfcns as atf
+from applytransform import ApplyTransform
 import copy
 
 
@@ -80,7 +80,7 @@ class ScalePlots(inkex.EffectExtension):
         if not(el.typename in ['TextElement','Image','Rectangle','Group']):
 #                sty=str(el.composed_style());
 #                sw=dh.Get_Style_Comp(sty,'stroke-width');
-            self.a.recursiveFuseTransform(el);
+            ApplyTransform().recursiveFuseTransform(el);
             if sw is not None:
                 nw = float(dh.Get_Style_Comp(el.get('style'),'stroke-width'))
                 sw = nw*sw/dh.Get_Composed_Width(el,'stroke-width');
@@ -164,6 +164,12 @@ class ScalePlots(inkex.EffectExtension):
                     vl[el.get_id()]=bb[3];
                 if (max(ys)-min(ys))<.001*bb[2]: # horizontal line
                     hl[el.get_id()]=bb[2];
+        if len(vl)==0:
+            inkex.utils.errormsg('No vertical lines detected! Make a vertical line to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
+        if len(hl)==0:
+            inkex.utils.errormsg('No horizontal lines detected! Make a horizontal line to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
+        if len(vl)==0 or len(hl)==0:
+            return;
         lvl = max(vl, key=vl.get); # largest vertical
         lhl = max(hl, key=hl.get); # largest horizontal
             
@@ -211,7 +217,6 @@ class ScalePlots(inkex.EffectExtension):
         trbr = gtr.apply_to_point([maxxp,maxyp]) # transformed bottom-right
         
         # Apply the global transform to all selected regular elements
-        self.a=atf.ApplyTransform();
         cdict=dict();
         for el in list(reversed(sels)):
             self.addtransform(el,gtr)

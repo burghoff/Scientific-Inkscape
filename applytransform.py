@@ -47,7 +47,7 @@ class ApplyTransform(inkex.EffectExtension):
             if 'stroke-width' in style:
                 try:
                     stroke_width = float(style.get('stroke-width').strip().replace("px", ""))
-                    # David: corrected to use determinant
+                    # Modification by David Burghoff: corrected to use determinant
 #                    stroke_width *= math.sqrt(abs(transf.a * transf.d))
                     stroke_width *= math.sqrt(abs(transf.a * transf.d - transf.b * transf.c))
                     style['stroke-width'] = str(stroke_width)
@@ -60,8 +60,9 @@ class ApplyTransform(inkex.EffectExtension):
     
 
     def recursiveFuseTransform(self, node, transf=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]):
-
-        # David: Duplicate the clip path and transform it so it is unaffected by removing the transform
+        # Modification by David Burghoff:
+        # Since transforms apply to an object's clips, before applying the transform
+        # we will need to duplicate the clip path and transform it
         clippathurl = node.get('clip-path')
         if clippathurl is not None and node.get("transform") is not None:
             myn = node
@@ -69,15 +70,16 @@ class ApplyTransform(inkex.EffectExtension):
                 myn = myn.getparent();
             svg = myn;
             clippath = svg.getElementById(clippathurl[5:-1]);
-            d = clippath.duplicate();
-            clippathurl = "url(#" + d.get("id") + ")"
-            node.set("clip-path", clippathurl);
-            for k in d.getchildren():
-                if k.get('transform') is not None:
-                    tr = Transform(node.get("transform"))*Transform(k.get('transform'));
-                else:
-                    tr = Transform(node.get("transform"));
-                k.set('transform',tr);
+            if clippath is not None:
+                d = clippath.duplicate();
+                clippathurl = "url(#" + d.get("id") + ")"
+                node.set("clip-path", clippathurl);
+                for k in d.getchildren():
+                    if k.get('transform') is not None:
+                        tr = Transform(node.get("transform"))*Transform(k.get('transform'));
+                    else:
+                        tr = Transform(node.get("transform"));
+                    k.set('transform',tr);
         
         transf = Transform(transf) * Transform(node.get("transform", None))
 
@@ -160,6 +162,8 @@ class ApplyTransform(inkex.EffectExtension):
                 node.set("ry", edgey / 2)
             else:
                 node.set("r", edgex / 2)
+                
+        # Modficiation by David Burghoff: Added support for lines
         elif node.tag in inkex.addNS('line', 'svg'):
             x1=node.get('x1')
             x2=node.get('x2')
