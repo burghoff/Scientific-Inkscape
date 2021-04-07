@@ -151,8 +151,8 @@
      inkscape:document-rotation="0"
      inkscape:current-layer="layer1"
      inkscape:document-units="mm"
-     inkscape:cy="222.13"
-     inkscape:cx="365.06607"
+     inkscape:cy="194.90577"
+     inkscape:cx="341.17873"
      inkscape:zoom="0.98994949"
      inkscape:pageshadow="2"
      inkscape:pageopacity="0.0"
@@ -162,7 +162,7 @@
      id="base"
      inkscape:window-width="1920"
      inkscape:window-height="1017"
-     inkscape:window-x="1912"
+     inkscape:window-x="-8"
      inkscape:window-y="-8"
      inkscape:window-maximized="1" />
   <metadata
@@ -478,7 +478,12 @@
          y="119.40992"
          style="font-size:3.52778px;text-align:start;text-anchor:start;stroke-width:0.264583"
          id="tspan24743"
-         sodipodi:role="line">4. Groups are repositioned but not scaled</tspan></text>
+         sodipodi:role="line">4. Groups are repositioned but not scaled—handy</tspan><tspan
+         x="199.05318"
+         y="123.81965"
+         style="font-size:3.52778px;text-align:start;text-anchor:start;stroke-width:0.264583"
+         sodipodi:role="line"
+         id="tspan1066">    for annotations like arrows</tspan></text>
     <g
        id="g28556">
       <text
