@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+    <name>Flatten plots</name>
+    <id>burghoff.flatten_plots1</id>
+    <param name="tab" type="notebook">
+        <page name="Options" gui-text="Options">
+            <param name="poptext"  type="bool" gui-text="Split distant text">true</param>
+            <param name="poprest" type="bool"  gui-text="Deep ungroup">true</param>
+            <param name="removerectw" type="bool" gui-text="Remove white-filled rectangles">true</param>
+            <param name="removerectb" type="bool" gui-text="Remove black-filled rectangles">true</param><spacer/>
+            <label>By David Burghoff, University of Notre Dame</label>
+        </page>
+        <page name="Help" gui-text="Help">
+            <label  xml:space="preserve">A series of tools designed for manipulating plots. Select the plot you want to modify.
+"Split distant text" separates text by line, as well as any text separated by more than two spaces. 
+"Deep ungroup" removes any groupings. (This can take a while for large graphics.)
+"Remove white-filled rectangles" removes any white rectangles.
+"Remove black-filled rectangles" removes any black rectangles.
+            </label>
+        </page>
+    </param>
+    <effect>
+        <object-type>text</object-type>
+        <effects-menu>
+            <submenu name="Academic"/>
+        </effects-menu>
+    </effect>
+    <script>
+        <command location="inx" interpreter="python">flatten_plots.py</command>
+    </script>
+</inkscape-extension>
