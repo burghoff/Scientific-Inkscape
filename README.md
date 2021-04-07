@@ -20,5 +20,5 @@ To use:
 Scale Plots has two modes. In Scaling Mode, the plot is scaled by a constant factor. In Matching Mode (shown above), the plot area is made to match the size of the first object you select. This can be convenient when assembling subfigures, as it allows you to match the size of one plot to another plot or to a template rectangle.
             
 # Other features
-1. If "Auto tick correct" is enabled, the extension assumes that any small horizontal or vertical lines near the edges of the plot area are ticks, and automatically unscales them.
-2. If a layer name is put into the "Scale-free layer" option, any elements on that layer will be unscaled as well. This is most useful for markers, which should not be scaled.
+1. If "Auto tick correct" is enabled, the extension assumes that any small horizontal or vertical lines near the edges of the plot area are ticks, and automatically leaves them unscaled.
+2. If a layer name is put into the "Scale-free layer" option, any elements on that layer will remain unscaled. This is basically the same thing as putting an object in a group, but can be easier if there are many such objects. (For example, if your plot has markers.)
