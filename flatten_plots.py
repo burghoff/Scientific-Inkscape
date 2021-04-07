@@ -78,24 +78,18 @@ class FlattenPlots(inkex.EffectExtension):
                     isrect = True;
                 elif el.typename=='PathElement':
                     pth=Path(el.get_path());
-                    pts = pth.control_points;
-#                    inkex.utils.debug(len(list(pts)))
-                    if len(list(pts))==5:
-                        xs=[]; ys=[]; 
-                        pts = pth.control_points; # get deleted upon read?
-                        for p in pts:
-                            xs.append(p.x)
-                            ys.append(p.y)
-#                        inkex.utils.debug(xs)
-#                        inkex.utils.debug(ys)
-                        if len(set(xs))==2 and len(set(ys))==2:
-                            isrect = True; # if path has 2 unique x, 2 unique y, and exactly 5 pts
+                    pts = list(pth.control_points);
+                    xs = [p.x for p in pts]
+                    ys = [p.y for p in pts]
+                    if len(pts)==5 and len(set(xs))==2 and len(set(ys))==2:
+                        isrect = True; # if path has 2 unique x, 2 unique y, and exactly 5 pts
 #                inkex.utils.debug(el.get_id()+el.typename+str(isrect))
                 if isrect:
                     sty=el.composed_style();
-                    clr = sty.get('fill');
-                    if removerectw and (clr=='#ffffff' or clr=='white') \
-                        or removerectb and (clr=='#000000' or clr=='black'):
+                    fill = sty.get('fill');
+                    strk = sty.get('stroke');
+                    if (removerectw and fill in ['#ffffff','white'] and strk in [None,'none'])\
+                        or (removerectb and fill in ['#000000','black'] and strk in [None,'none']):
                         el.delete()
         
         # selected = self.svg

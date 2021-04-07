@@ -147,8 +147,10 @@ class ScalePlots(inkex.EffectExtension):
             
             
         # Find horizontal and vertical lines (to within .001 rad)
-        vl = dict(); hl = dict();
+        vl = dict(); hl = dict(); boxes = dict(); solids = dict();
+        vl2 = dict(); hl2 = dict();
         for el in list(reversed(sels)):
+            isrect = False;
             if el.typename in ['PathElement','Line']:
                 bb=bbs[el.get_id()];
                 if el.typename=='Line':
@@ -162,16 +164,34 @@ class ScalePlots(inkex.EffectExtension):
                 ys = [p.y for p in pts]
                 if (max(xs)-min(xs))<.001*bb[3]: # vertical line
                     vl[el.get_id()]=bb[3];
+                    vl2[el.get_id()]=bb[3];
                 if (max(ys)-min(ys))<.001*bb[2]: # horizontal line
                     hl[el.get_id()]=bb[2];
-        if len(vl)==0:
-            inkex.utils.errormsg('No vertical lines detected! Make a vertical line to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
-        if len(hl)==0:
-            inkex.utils.errormsg('No horizontal lines detected! Make a horizontal line to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
-        if len(vl)==0 or len(hl)==0:
+                    hl2[el.get_id()]=bb[2];
+                
+                if len(pts)==5 and len(set(xs))==2 and len(set(ys))==2:
+                    isrect = True;
+            if isrect or el.typename=='Rectangle':
+                strk = el.composed_style().get('stroke');
+                fill = el.composed_style().get('fill');
+                nones = [None,'none','white','#ffffff'];
+                if not(fill in nones) and (strk in nones or strk==fill): # solid rectangle
+                    solids[el.get_id()]=[bb[2],bb[3]];
+                elif not(strk in nones):                                 # framed box
+                    boxes[el.get_id()]=[bb[2],bb[3]];
+                    vl2[el.get_id()]=bb[3];
+                    hl2[el.get_id()]=bb[2];
+                    
+        if len(vl2)==0:
+            inkex.utils.errormsg('No vertical lines detected! Make a vertical line or box to define the plot area. \
+(If you think there is one, it may actually be a line-like rectangle.)\n');
+        if len(hl2)==0:
+            inkex.utils.errormsg('No horizontal lines detected! Make a horizontal line or box to define the plot area. \
+(If you think there is one, it may actually be a line-like rectangle.)\n');
+        if len(vl2)==0 or len(hl2)==0:
             return;
-        lvl = max(vl, key=vl.get); # largest vertical
-        lhl = max(hl, key=hl.get); # largest horizontal
+        lvl = max(vl2, key=vl2.get); # largest vertical
+        lhl = max(hl2, key=hl2.get); # largest horizontal
             
         # Determine the bounding box of the whole selection and the plot area
         minx = miny = minxp = minyp = float('inf');
@@ -182,12 +202,11 @@ class ScalePlots(inkex.EffectExtension):
             miny = min(miny,bb[1]);
             maxx = max(maxx,bb[0]+bb[2]);
             maxy = max(maxy,bb[1]+bb[3]);
-            if el.get_id()==lvl:
-                minyp = bb[1];
-                maxyp = bb[1]+bb[3];
-            if el.get_id()==lhl:
-                minxp = bb[0];
-                maxxp = bb[0]+bb[2];
+            if el.get_id() in [lvl,lhl]:
+                minyp = min(minyp,bb[1]);
+                maxyp = max(maxyp,bb[1]+bb[3]);
+                minxp = min(minxp,bb[0]);
+                maxxp = max(maxxp,bb[0]+bb[2]);
                 
         if self.options.tab=='matching':
             bbfirst = bbs[firstsel.get_id()];
@@ -291,6 +310,7 @@ class ScalePlots(inkex.EffectExtension):
                                 trl = Transform('translate('+str(cx)+', '+str(bb1[1])+')');
                             else: # outer tick
                                 trl = Transform('translate('+str(cx)+', '+str(bb2[1])+')');
+                                dh.debug(el.get_id())
                         elif vtickb: 
                             if cy<trbr[1]: # inner tick
                                 trl = Transform('translate('+str(cx)+', '+str(bb2[1])+')');
@@ -308,7 +328,8 @@ class ScalePlots(inkex.EffectExtension):
                                 trl = Transform('translate('+str(bb1[0])+', '+str(cy)+')');
                         
                         tr1 = trl*iscl*(-trl);
-                        self.addtransform(el,tr1);
+                        if not(cdict[el.get_id()]):
+                            self.addtransform(el,tr1);
                         cdict[el.get_id()]=True;
         
         # Correct anything in scale-free layer                    
@@ -327,7 +348,8 @@ class ScalePlots(inkex.EffectExtension):
                         trl = Transform('translate('+str(cx)+', '+str(cy)+')');
                         tr1 = trl*iscl*(-trl);
                         
-                        self.addtransform(el,tr1);
+                        if not(cdict[el.get_id()]):
+                            self.addtransform(el,tr1);
                         cdict[el.get_id()]=True;
                         
                         
