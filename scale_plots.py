@@ -132,9 +132,11 @@ class ScalePlots(inkex.EffectExtension):
         for el in sels:
             fbbs[el.get_id()] = copy.copy(bbs[el.get_id()]);
             cs = el.composed_style();
-            cap = dh.Get_Style_Comp(cs,'stroke-linecap');
-            if not(cap==None) and cap.lower() in ['square','round']:
-                # ignore any caps for bounding boxes
+            # cap = dh.Get_Style_Comp(cs,'stroke-linecap');
+            # if not(cap==None) and cap.lower() in ['square','round']:
+            strk = cs.get('stroke');
+            if not(strk in [None,'none']):
+                # ignore stroke
                 sw = dh.Get_Composed_Width(el,'stroke-width');
                 bb = bbs[el.get_id()];
                 bb[0]+=sw/2
@@ -194,8 +196,8 @@ class ScalePlots(inkex.EffectExtension):
         lhl = max(hl2, key=hl2.get); # largest horizontal
             
         # Determine the bounding box of the whole selection and the plot area
-        minx = miny = minxp = minyp = float('inf');
-        maxx = maxy = maxxp = maxyp = float('-inf');
+        minx = miny = minxp = minyp = fminxp = fminyp = float('inf');
+        maxx = maxy = maxxp = maxyp = fmaxxp = fmaxyp = float('-inf');
         for el in sels:
             bb=bbs[el.get_id()];
             minx = min(minx,bb[0]);
@@ -207,6 +209,11 @@ class ScalePlots(inkex.EffectExtension):
                 maxyp = max(maxyp,bb[1]+bb[3]);
                 minxp = min(minxp,bb[0]);
                 maxxp = max(maxxp,bb[0]+bb[2]);
+                fbb=fbbs[el.get_id()];
+                fminyp = min(minyp,fbb[1]);
+                fmaxyp = max(maxyp,fbb[1]+fbb[3]);
+                fminxp = min(minxp,fbb[0]);
+                fmaxxp = max(maxxp,fbb[0]+fbb[2]);
                 
         if self.options.tab=='matching':
             bbfirst = bbs[firstsel.get_id()];
@@ -246,8 +253,8 @@ class ScalePlots(inkex.EffectExtension):
         for el in list(reversed(sels)):
             bb=bbs[el.get_id()];
             fbb=fbbs[el.get_id()];
-            outsideplot = fbb[0]>maxxp or fbb[0]+fbb[2]<minxp \
-                    or fbb[1]>maxyp or fbb[1]+fbb[3]<minyp;
+            outsideplot = fbb[0]>fmaxxp or fbb[0]+fbb[2]<fminxp \
+                    or fbb[1]>fmaxyp or fbb[1]+fbb[3]<fminyp;
             if el.typename in ['TextElement','Group'] or outsideplot:
                 # Invert the transformation for any text/groups  or anything outside the plot
                 bb1 = gtr.apply_to_point([bb[0],bb[1]]);
@@ -310,7 +317,6 @@ class ScalePlots(inkex.EffectExtension):
                                 trl = Transform('translate('+str(cx)+', '+str(bb1[1])+')');
                             else: # outer tick
                                 trl = Transform('translate('+str(cx)+', '+str(bb2[1])+')');
-                                dh.debug(el.get_id())
                         elif vtickb: 
                             if cy<trbr[1]: # inner tick
                                 trl = Transform('translate('+str(cx)+', '+str(bb2[1])+')');
