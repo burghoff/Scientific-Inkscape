@@ -70,7 +70,7 @@ class FlattenPlots(inkex.EffectExtension):
             if el.typename=='TextElement' and poptext:
                 dh.split_distant(el)
                 dh.pop_tspans(el)
-                
+                 
         if removerectb or removerectw:
             for el in os:
                 isrect = False;

@@ -26,7 +26,7 @@
             <param name="tickcorrect" type="bool" gui-text="Auto tick correct?">true</param>
             <param name="layerfix" type="string" gui-text="Scale-free layer">None</param>
             <spacer/><label>By David Burghoff, University of Notre Dame</label>
-        </page>
+        </page> 
         
         <page name="matching" gui-text="Matching mode">
             <label>Instead of scaling by a fixed amount, the selection will be scaled by matching the plot area to the size of the first selected object. Useful if you want to arrange subfigures using a template.

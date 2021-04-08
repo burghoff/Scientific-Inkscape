@@ -86,7 +86,7 @@ def pop_tspans(el):
     if (el.getchildren()==None or len(el.getchildren())==0) and (el.text==None or len(el.text)==0):
         # original now empty, safe to delete
         el.delete();
-    
+     
 # sets a style property     
 def Set_Style_Comp(el,comp,val):
     sty = el.get('style');
@@ -187,7 +187,7 @@ def ungroup(groupnode):
             # node_parent.getparent().insert(node_index,node);   # places below
     if len(groupnode.getchildren())==0:
         groupnode.delete();
-        
+         
 
 def _merge_transform(node, transform):
     """Propagate style and transform to remove inheritance

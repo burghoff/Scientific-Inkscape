@@ -24,7 +24,7 @@ class ApplyTransform(inkex.EffectExtension):
                 self.recursiveFuseTransform(shape)
         else:
             self.recursiveFuseTransform(self.document.getroot())
-
+ 
     @staticmethod
     def objectToPath(node):
         if node.tag == inkex.addNS('g', 'svg'):

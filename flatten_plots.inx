@@ -29,3 +29,4 @@
         <command location="inx" interpreter="python">flatten_plots.py</command>
     </script>
 </inkscape-extension>
+ 

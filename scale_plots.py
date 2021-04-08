@@ -99,7 +99,7 @@ class ScalePlots(inkex.EffectExtension):
         sels=[sel[k] for k in sel.id_dict().keys()];
         sels=[k for k in sels if not(isinstance(k, (Tspan,\
                 NamedView, Defs, Metadata, ForeignObject, Use)))]; # regular selectable objects only
-        
+         
         
         if self.options.tab=='scaling' or self.options.tab=='Help':
             hscale = self.options.hscale
@@ -123,7 +123,7 @@ class ScalePlots(inkex.EffectExtension):
 #        # gs = [el for el in els if el.typename=='Group']
 #        regels = [el for el in els if not(isinstance(el, (Group, \
 #                  Tspan, NamedView, Defs, Metadata, ForeignObject, Use)))]; # regular selectable objects
-
+ 
                 
         # Calculate bounding boxes of selected items
         bbs=dh.Get_Bounding_Boxes(self);
