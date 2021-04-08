@@ -237,9 +237,6 @@ class ScalePlots(inkex.EffectExtension):
             fbb=fbbs[el.get_id()];
             outsideplot = fbb[0]>fmaxxp or fbb[0]+fbb[2]<fminxp \
                     or fbb[1]>fmaxyp or fbb[1]+fbb[3]<fminyp;
-            # dh.debug(el.get_id())
-            # dh.debug(fbb[0]+fbb[2]);
-            # dh.debug(fminxp)
             if el.typename in ['TextElement','Group'] or outsideplot:
                 # Invert the transformation for any text/groups  or anything outside the plot
                 bb1 = gtr.apply_to_point([bb[0],bb[1]]);
@@ -347,7 +344,4 @@ class ScalePlots(inkex.EffectExtension):
         
 
 if __name__ == '__main__':
-    import time
-    global timestart
-    timestart = time.time();
     ScalePlots().run()
