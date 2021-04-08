@@ -176,9 +176,26 @@ class ApplyTransform(inkex.EffectExtension):
             node.set('x2',str(p2[0]))
             node.set('y2',str(p2[1]))
             self.scaleStrokeWidth(node, transf)
+            
+        elif node.typename in ['Rectangle']:
+            x = float(node.get('x'));
+            y = float(node.get('y'));
+            w = float(node.get('width'));
+            h = float(node.get('height'));
+            pts = [[x,y],[x+w,y],[x+w,y+h],[x,y+h],[x,y]];
+            xs = []; ys = [];
+            for p in pts:
+                p = transf.apply_to_point(p);
+                xs.append(p.x)
+                ys.append(p.y)
+            
+            node.set('x',str(min(xs)))
+            node.set('y',str(min(ys)))
+            node.set('width',str(max(xs)-min(xs)))
+            node.set('height',str(max(ys)-min(ys)))
+            self.scaleStrokeWidth(node, transf)
 
-        elif node.tag in [inkex.addNS('rect', 'svg'),
-                          inkex.addNS('text', 'svg'),
+        elif node.tag in [inkex.addNS('text', 'svg'),
                           inkex.addNS('image', 'svg'),
                           inkex.addNS('use', 'svg')]:
             inkex.utils.errormsg(

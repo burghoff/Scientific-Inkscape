@@ -77,7 +77,7 @@ class ScalePlots(inkex.EffectExtension):
         sw = dh.Get_Composed_Width(el,'stroke-width');
         sd = dh.Get_Composed_List(el,'stroke-dasharray');
         el.set('transform',newtr); # Add the new transform
-        if not(el.typename in ['TextElement','Image','Rectangle','Group']):
+        if not(el.typename in ['TextElement','Image','Group']):
 #                sty=str(el.composed_style());
 #                sw=dh.Get_Style_Comp(sty,'stroke-width');
             ApplyTransform().recursiveFuseTransform(el);
@@ -131,18 +131,10 @@ class ScalePlots(inkex.EffectExtension):
         fbbs=dict(); # full bbs, including caps
         for el in sels:
             fbbs[el.get_id()] = copy.copy(bbs[el.get_id()]);
-            cs = el.composed_style();
-            # cap = dh.Get_Style_Comp(cs,'stroke-linecap');
-            # if not(cap==None) and cap.lower() in ['square','round']:
-            strk = cs.get('stroke');
-            if not(strk in [None,'none']):
-                # ignore stroke
-                sw = dh.Get_Composed_Width(el,'stroke-width');
-                bb = bbs[el.get_id()];
-                bb[0]+=sw/2
-                bb[1]+=sw/2
-                bb[2]-=sw
-                bb[3]-=sw
+            if el.typename in ['PathElement','Rectangle','Line']:
+                # if path-like, use nodes instead
+                xs, ys = dh.get_points(el);
+                bbs[el.get_id()] = [min(xs),min(ys),max(xs)-min(xs),max(ys)-min(ys)]
         if self.options.tab=='matching':
             firstsel = sels[0];
             sels=sels[1:];
@@ -150,28 +142,20 @@ class ScalePlots(inkex.EffectExtension):
             
         # Find horizontal and vertical lines (to within .001 rad)
         vl = dict(); hl = dict(); boxes = dict(); solids = dict();
-        vl2 = dict(); hl2 = dict();
+        vels = dict(); hels = dict();
         for el in list(reversed(sels)):
             isrect = False;
-            if el.typename in ['PathElement','Line']:
+            if el.typename in ['PathElement','Rectangle','Line']:
                 bb=bbs[el.get_id()];
-                if el.typename=='Line':
-                    pts = [Vector2d(el.get('x1'),el.get('y1')),\
-                           Vector2d(el.get('x2'),el.get('y2'))];
-                elif el.typename=='PathElement':
-                    pth=Path(el.get_path());
-                    pts = list(pth.control_points);
-                
-                xs = [p.x for p in pts]
-                ys = [p.y for p in pts]
+                xs, ys = dh.get_points(el);
                 if (max(xs)-min(xs))<.001*bb[3]: # vertical line
                     vl[el.get_id()]=bb[3];
-                    vl2[el.get_id()]=bb[3];
+                    vels[el.get_id()]=bb[3];
                 if (max(ys)-min(ys))<.001*bb[2]: # horizontal line
                     hl[el.get_id()]=bb[2];
-                    hl2[el.get_id()]=bb[2];
+                    hels[el.get_id()]=bb[2];
                 
-                if len(pts)==5 and len(set(xs))==2 and len(set(ys))==2:
+                if len(xs)==5 and len(set(xs))==2 and len(set(ys))==2:
                     isrect = True;
             if isrect or el.typename=='Rectangle':
                 strk = el.composed_style().get('stroke');
@@ -181,19 +165,17 @@ class ScalePlots(inkex.EffectExtension):
                     solids[el.get_id()]=[bb[2],bb[3]];
                 elif not(strk in nones):                                 # framed box
                     boxes[el.get_id()]=[bb[2],bb[3]];
-                    vl2[el.get_id()]=bb[3];
-                    hl2[el.get_id()]=bb[2];
+                    vels[el.get_id()]=bb[3];
+                    hels[el.get_id()]=bb[2];
                     
-        if len(vl2)==0:
-            inkex.utils.errormsg('No vertical lines detected! Make a vertical line or box to define the plot area. \
-(If you think there is one, it may actually be a line-like rectangle.)\n');
-        if len(hl2)==0:
-            inkex.utils.errormsg('No horizontal lines detected! Make a horizontal line or box to define the plot area. \
-(If you think there is one, it may actually be a line-like rectangle.)\n');
-        if len(vl2)==0 or len(hl2)==0:
+        if len(vels)==0:
+            inkex.utils.errormsg('No vertical lines detected! Make a vertical line or box to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
+        if len(hels)==0:
+            inkex.utils.errormsg('No horizontal lines detected! Make a horizontal line or box to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
+        if len(vels)==0 or len(hels)==0:
             return;
-        lvl = max(vl2, key=vl2.get); # largest vertical
-        lhl = max(hl2, key=hl2.get); # largest horizontal
+        lvl = max(vels, key=vels.get); # largest vertical
+        lhl = max(hels, key=hels.get); # largest horizontal
             
         # Determine the bounding box of the whole selection and the plot area
         minx = miny = minxp = minyp = fminxp = fminyp = float('inf');
@@ -210,10 +192,10 @@ class ScalePlots(inkex.EffectExtension):
                 minxp = min(minxp,bb[0]);
                 maxxp = max(maxxp,bb[0]+bb[2]);
                 fbb=fbbs[el.get_id()];
-                fminyp = min(minyp,fbb[1]);
-                fmaxyp = max(maxyp,fbb[1]+fbb[3]);
-                fminxp = min(minxp,fbb[0]);
-                fmaxxp = max(maxxp,fbb[0]+fbb[2]);
+                fminyp = min(fminyp,fbb[1]);
+                fmaxyp = max(fmaxyp,fbb[1]+fbb[3]);
+                fminxp = min(fminxp,fbb[0]);
+                fmaxxp = max(fmaxxp,fbb[0]+fbb[2]);
                 
         if self.options.tab=='matching':
             bbfirst = bbs[firstsel.get_id()];
@@ -255,6 +237,9 @@ class ScalePlots(inkex.EffectExtension):
             fbb=fbbs[el.get_id()];
             outsideplot = fbb[0]>fmaxxp or fbb[0]+fbb[2]<fminxp \
                     or fbb[1]>fmaxyp or fbb[1]+fbb[3]<fminyp;
+            # dh.debug(el.get_id())
+            # dh.debug(fbb[0]+fbb[2]);
+            # dh.debug(fminxp)
             if el.typename in ['TextElement','Group'] or outsideplot:
                 # Invert the transformation for any text/groups  or anything outside the plot
                 bb1 = gtr.apply_to_point([bb[0],bb[1]]);

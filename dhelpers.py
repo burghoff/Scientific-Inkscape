@@ -21,7 +21,7 @@
 import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, \
-        addNS, Transform, Style, ClipPath, Use, NamedView, Defs, Metadata, ForeignObject
+        addNS, Transform, Style, ClipPath, Use, NamedView, Defs, Metadata, ForeignObject, Vector2d, Path
 )
 import simplestyle
 import simpletransform
@@ -141,7 +141,28 @@ def Get_Composed_List(el,comp):
         return sw
     else:
         return None
-        
+
+def get_points(el):
+    if el.typename=='Line':
+        pts = [Vector2d(el.get('x1'),el.get('y1')),\
+               Vector2d(el.get('x2'),el.get('y2'))];
+    elif el.typename=='PathElement':
+        pth=Path(el.get_path());
+        pts = list(pth.control_points);
+    elif el.typename=='Rectangle':
+        x = float(el.get('x'));
+        y = float(el.get('y'));
+        w = float(el.get('width'));
+        h = float(el.get('height'));
+        pts = [Vector2d(x,y),Vector2d(x+w,y),Vector2d(x+w,y+h),Vector2d(x,y+h),Vector2d(x,y)];
+    
+    ct = el.composed_transform();
+    xs = []; ys = [];
+    for p in pts:
+        p = ct.apply_to_point(p);
+        xs.append(p.x)
+        ys.append(p.y)
+    return xs, ys
         
 def ungroup(groupnode):
     # Pops a node out of its group, unless it's already in a layer or the base
