@@ -21,4 +21,4 @@ Scale Plots has two modes. In Scaling Mode, the plot is scaled by a constant fac
             
 # Other features
 1. If "Auto tick correct" is enabled, the extension assumes that any small horizontal or vertical lines near the edges of the plot area are ticks, and automatically leaves them unscaled.
-2. If a layer name is put into the "Scale-free layer" option, any elements on that layer will remain unscaled. This is basically the same thing as putting an object in a group, but can be easier if there are many such objects. (For example, if your plot has markers.)
+2. If a layer name is put into the "Scale-free layer" option, any elements on that layer will remain unscaled. This is basically the same thing as putting an object in a group, but can be easier if there are many such objects (e.g, if your plot has markers).
