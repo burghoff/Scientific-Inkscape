@@ -57,18 +57,17 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument("--layerfix2", type=str, default='None',help="Layer whose elements should not be scaled")
         pars.add_argument("--hdrag2", type=int, default=1, help="Horizontal scaling");
         pars.add_argument("--vdrag2", type=int, default=1, help="Vertical scaling");
-    
-    def getparenttransform(self,el):
-        myp = el.getparent();
-        if myp.typename=='SvgDocumentElement':
-            return Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
-        else:
-            return myp.composed_transform(); # if parent layer is transformed, need to rotate out of its coordinate system
-    
+
     def addtransform(self,el,trnsfrm):
         # Adds a transform and fuses it to any paths, preserving stroke
+                
+        # If parent layer is transformed, need to rotate out of its coordinate system
+        myp = el.getparent();
+        if myp.typename=='SvgDocumentElement':
+            prt=Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+        else:
+            prt=myp.composed_transform(); 
         myt = el.get('transform');
-        prt = self.getparenttransform(el); # if parent is transformed, use transformed coordinate system
         if myt==None:
             newtr=(-prt)*trnsfrm*prt;
         else:
@@ -118,17 +117,11 @@ class ScalePlots(inkex.EffectExtension):
             hmatch = self.options.hmatch;
             vmatch = self.options.vmatch;
         
-#        gpe= sel.get()
-#        els =[gpe[k] for k in gpe.id_dict().keys()];
-#        # gs = [el for el in els if el.typename=='Group']
-#        regels = [el for el in els if not(isinstance(el, (Group, \
-#                  Tspan, NamedView, Defs, Metadata, ForeignObject, Use)))]; # regular selectable objects
- 
                 
         # Calculate bounding boxes of selected items
         bbs=dh.Get_Bounding_Boxes(self);
         sels = [k for k in sels if k.get_id() in list(bbs.keys())]; # only work on objects with a BB
-        fbbs=dict(); # full bbs, including caps
+        fbbs=dict(); # full bbs
         for el in sels:
             fbbs[el.get_id()] = copy.copy(bbs[el.get_id()]);
             if el.typename in ['PathElement','Rectangle','Line']:
@@ -140,7 +133,7 @@ class ScalePlots(inkex.EffectExtension):
             sels=sels[1:];
             
             
-        # Find horizontal and vertical lines (to within .001 rad)
+        # Find horizontal and vertical lines (to within .001 rad), elements to be used in plot area calculations
         vl = dict(); hl = dict(); boxes = dict(); solids = dict();
         vels = dict(); hels = dict();
         for el in list(reversed(sels)):
@@ -167,7 +160,8 @@ class ScalePlots(inkex.EffectExtension):
                     boxes[el.get_id()]=[bb[2],bb[3]];
                     vels[el.get_id()]=bb[3];
                     hels[el.get_id()]=bb[2];
-                    
+        
+        # Display error message            
         if len(vels)==0:
             inkex.utils.errormsg('No vertical lines detected! Make a vertical line or box to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
         if len(hels)==0:
@@ -339,8 +333,6 @@ class ScalePlots(inkex.EffectExtension):
                         if not(cdict[el.get_id()]):
                             self.addtransform(el,tr1);
                         cdict[el.get_id()]=True;
-                        
-                        
         
 
 if __name__ == '__main__':

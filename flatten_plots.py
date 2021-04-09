@@ -17,11 +17,9 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
-
 import inkex
-from inkex import (
-    TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, addNS, Transform, Style, PathElement, Line, Rectangle, Path
-)
+from inkex import (TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle,\
+                   addNS, Transform, Style, PathElement, Line, Rectangle, Path)
 
 import simplepath
 import dhelpers as dh
@@ -54,7 +52,6 @@ class FlattenPlots(inkex.EffectExtension):
         removerectw = self.options.removerectw
         removerectb = self.options.removerectb
         
-        
         gpe= sel.get()
         els =[gpe[k] for k in gpe.id_dict().keys()];
         gs = [el for el in els if el.typename=='Group']
@@ -73,25 +70,28 @@ class FlattenPlots(inkex.EffectExtension):
                  
         if removerectb or removerectw:
             for el in os:
-                isrect = False;
-                if el.typename=='Rectangle':
-                    isrect = True;
-                elif el.typename=='PathElement':
-                    pth=Path(el.get_path());
-                    pts = list(pth.control_points);
-                    xs = [p.x for p in pts]
-                    ys = [p.y for p in pts]
-                    if len(pts)==5 and len(set(xs))==2 and len(set(ys))==2:
-                        isrect = True; # if path has 2 unique x, 2 unique y, and exactly 5 pts
-#                inkex.utils.debug(el.get_id()+el.typename+str(isrect))
-                if isrect:
-                    sty=el.composed_style();
-                    fill = sty.get('fill');
-                    strk = sty.get('stroke');
-                    if (removerectw and fill in ['#ffffff','white'] and strk in [None,'none'])\
-                        or (removerectb and fill in ['#000000','black'] and strk in [None,'none']):
-                        el.delete()
+                if isinstance(el, (PathElement, Rectangle, Line)):
+                    xs,ys = dh.get_points(el);
+                    if len(xs)==5 and len(set(xs))==2 and len(set(ys))==2: # is a rectangle
+                        sty=el.composed_style();
+                        fill = sty.get('fill');
+                        strk = sty.get('stroke');
+                        if (removerectw and fill in ['#ffffff','white'] and strk in [None,'none'])\
+                            or (removerectb and fill in ['#000000','black'] and strk in [None,'none']):
+                            el.delete()
         
+        # linestotop = True
+        # if linestotop:
+        #     for el in os:
+        #         if isinstance(el, (PathElement, Rectangle, Line)):
+        #             xs,ys = dh.get_points(el);
+        #             if (len(xs)==5 and len(set(xs))==2 and len(set(ys))==2) \
+        #                 or len(set(xs))==1 or len(set(ys))==1:        # horizontal or vertical line
+        #                 strk = el.composed_style().get('stroke');
+        #                 sdsh = el.composed_style().get('stroke-dasharray');
+        #                 if not(strk in [None,'none']) and sdsh in [None,'none']:
+        #                     el.getparent().insert(len(el.getparent()),el); # pop me to the top
+                    
         # selected = self.svg
         # if scope == "selection_only":
         #     selected = self.svg.selected.values()

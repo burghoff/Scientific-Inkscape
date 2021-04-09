@@ -25,10 +25,6 @@ from inkex import (
 )
 import simplestyle
 import simpletransform
-#import str
-
-global ncall
-ncall=0
 
 def split_distant(el):
     # Fix distant words that have been spread out in a PDF
@@ -114,7 +110,7 @@ def Get_Style_Comp(sty,comp):
                 val=a[1];
     return val
 
-# For elements that represent a size (stroke-width, font-size, etc), calculate
+# For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms
 import math
 def Get_Composed_Width(el,comp):
@@ -128,7 +124,8 @@ def Get_Composed_Width(el,comp):
     else:
         return None
     
-
+# For style components that are a list (stroke-dasharray), calculate
+# the true size reported by Inkscape, inheriting any styles/transforms
 def Get_Composed_List(el,comp):
     cs = el.composed_style();
     ct = el.composed_transform();
@@ -142,6 +139,7 @@ def Get_Composed_List(el,comp):
     else:
         return None
 
+# Get points of a path, element, or rectangle in the global coordinate system
 def get_points(el):
     if el.typename=='Line':
         pts = [Vector2d(el.get('x1'),el.get('y1')),\
@@ -167,9 +165,7 @@ def get_points(el):
 def ungroup(groupnode):
     # Pops a node out of its group, unless it's already in a layer or the base
     # Preserves style and clipping
-#    inkex.utils.debug(groupnode.typename)
-    global ncall
-    ncall+=1;
+
     node_index = list(groupnode.getparent()).index(groupnode)   # parent's location in grandparent
 #        node_style = simplestyle.parseStyle(node_parent.get("style")) # deprecated
     node_style = dict(Style.parse_str(groupnode.get("style")))
@@ -190,10 +186,8 @@ def ungroup(groupnode):
          
 
 def _merge_transform(node, transform):
-    """Propagate style and transform to remove inheritance
-    Originally from
-    https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
-    """
+    # From Deep Ungroup
+    # Originally from https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
     def _get_dimension(s="1024"):
         """Convert an SVG length string from arbitrary units to pixels"""
         if s == "":
@@ -244,10 +238,8 @@ def _merge_transform(node, transform):
     node.set("transform",str(this_transform))
     
 def _merge_style(node, style):
-    """Propagate style and transform to remove inheritance
-    Originally from
-    https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
-    """
+    # From Deep Ungroup
+    # Originally from https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
 
     # Compose the style attribs
 #    this_style = simplestyle.parseStyle(node.get("style", ""))
@@ -296,11 +288,10 @@ def _merge_style(node, style):
 
 from lxml import etree
 def _merge_clippath(node, clippathurl):
+    # From Deep Ungroup
     if clippathurl:
-#        inkex.utils.debug(clippathurl)
-        # node_transform = node.transformmyn = node
         myn = node
-        while myn.getparent() is not None:#not(myn.getparent()==None):  # get svg handle
+        while myn.getparent() is not None:  # get svg handle
             myn = myn.getparent();
         svg = myn;
         if node.get('transform') is not None:
