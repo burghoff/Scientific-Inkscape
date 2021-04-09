@@ -333,7 +333,7 @@ def Get_Bounding_Boxes(s):
     sys.path.append('/usr/share/inkscape/extensions')
     import subprocess
     
-    tProc = subprocess.run( 'inkscape --query-all "%s"' % s.options.input_file, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    tProc = subprocess.run( 'inkscape --query-all "%s"' % s.options.input_file, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     tFStR = tProc.stdout  # List of all SVG objects in tFile
     tErrM = tProc.stderr
     # inkex.utils.debug(tFStR)
