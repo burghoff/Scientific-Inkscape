@@ -27,7 +27,7 @@ from inkex import (
 
 import simplepath
 import dhelpers as dh
-from applytransform import ApplyTransform
+from applytransform_mod import ApplyTransform
 import copy
 
 
@@ -85,7 +85,7 @@ class ScalePlots(inkex.EffectExtension):
                 nw = float(dh.Get_Style_Comp(el.get('style'),'stroke-width'))
                 sw = nw*sw/dh.Get_Composed_Width(el,'stroke-width');
                 dh.Set_Style_Comp(el,'stroke-width',str(sw)); # fix width
-            if not(sd==None) and not(sd=='none'):
+            if not(sd in [None,'none']): #not(sd==None) and not(sd=='none'):
                 nd = dh.Get_Style_Comp(el.get('style'),'stroke-dasharray').split(',');
                 cd = dh.Get_Composed_List(el,'stroke-dasharray');
                 for ii in range(len(sd)):

@@ -40,7 +40,7 @@ def split_distant(el):
         if k.typename=='Tspan' or k.typename=='TextElement':
             split_distant(k);
     myx = el.get('x');
-    if not(myx==None):
+    if myx is not None:#not(myx==None):
         myx = myx.split();
         myx =[float(x) for x in myx];
         if len(myx)>1:
@@ -90,7 +90,7 @@ def pop_tspans(el):
 # sets a style property     
 def Set_Style_Comp(el,comp,val):
     sty = el.get('style');
-    if not(sty==None):
+    if sty is not None:#not(sty==None):
         sty = sty.split(';');
         fillfound=False;
         for ii in range(len(sty)):
@@ -106,7 +106,7 @@ def Set_Style_Comp(el,comp,val):
 def Get_Style_Comp(sty,comp):
     sty=str(sty);
     val=None;
-    if not(sty==None):
+    if sty is not None:#not(sty==None):
         sty = sty.split(';');
         for ii in range(len(sty)):
             if comp in sty[ii]:
@@ -300,7 +300,7 @@ def _merge_clippath(node, clippathurl):
 #        inkex.utils.debug(clippathurl)
         # node_transform = node.transformmyn = node
         myn = node
-        while not(myn.getparent()==None):  # get svg handle
+        while myn.getparent() is not None:#not(myn.getparent()==None):  # get svg handle
             myn = myn.getparent();
         svg = myn;
         if node.get('transform') is not None:
@@ -365,7 +365,7 @@ import math
 def fontsize(el):
     # Get true font size in pt
     myn = el
-    while not(myn.getparent()==None):  # get svg handle
+    while myn.getparent() is not None:#not(myn.getparent()==None):  # get svg handle
         myn = myn.getparent();
     svg = myn;
     ptsize = svg.unittouu('1pt');
