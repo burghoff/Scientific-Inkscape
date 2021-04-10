@@ -17,7 +17,7 @@ To use:
 2. Place any objects that you wish to remain unscaled in a group.
 3. Select the elements of your plot and run Scale Plots.
 
-Scale Plots has two modes. In Scaling Mode, the plot is scaled by a constant factor. In Matching Mode (shown above), the plot area is made to match the size of the first object you select. This can be convenient when assembling subfigures, as it allows you to match the size of one plot to another plot or to a template rectangle.
+Scale Plots has two modes. In Scaling Mode, the plot is scaled by a constant factor. In Matching Mode, the plot area is made to match the size of the first object you select. This can be convenient when assembling subfigures, as it allows you to match the size of one plot to another plot or to a template rectangle.
             
 # Other features
 1. If "Auto tick correct" is enabled, the extension assumes that any small horizontal or vertical lines near the edges of the plot area are ticks, and automatically leaves them unscaled.
