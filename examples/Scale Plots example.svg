@@ -177,11 +177,11 @@
      units="in"
      showgrid="false"
      inkscape:document-rotation="0"
-     inkscape:current-layer="layer1"
+     inkscape:current-layer="g2580-8"
      inkscape:document-units="mm"
-     inkscape:cy="141.07121"
-     inkscape:cx="533.26038"
-     inkscape:zoom="0.98994949"
+     inkscape:cy="-94.804178"
+     inkscape:cx="53.510468"
+     inkscape:zoom="0.49497475"
      inkscape:pageshadow="2"
      inkscape:pageopacity="0.0"
      borderopacity="1.0"
@@ -201,7 +201,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -1362,18 +1362,18 @@
       <text
          xml:space="preserve"
          style="font-size:4.93889px;line-height:1.25;font-family:Tahoma;-inkscape-font-specification:'Tahoma, Normal';text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#ffffff;stroke-width:0.264583"
-         x="70.354668"
+         x="70.408928"
          y="117.46591"
          id="text24469-4"><tspan
            sodipodi:role="line"
            id="tspan24467-6"
-           x="70.354668"
+           x="70.408928"
            y="117.46591"
-           style="font-weight:bold;font-size:4.93889px;text-align:center;text-anchor:middle;fill:#ffffff;stroke-width:0.264583">Template</tspan><tspan
+           style="font-weight:normal;font-size:4.93889px;text-align:center;text-anchor:middle;fill:#ffffff;stroke-width:0.264583">Template</tspan><tspan
            sodipodi:role="line"
-           x="70.354668"
+           x="70.408928"
            y="123.63953"
-           style="font-weight:bold;font-size:4.93889px;text-align:center;text-anchor:middle;fill:#ffffff;stroke-width:0.264583"
+           style="font-weight:normal;font-size:4.93889px;text-align:center;text-anchor:middle;fill:#ffffff;stroke-width:0.264583"
            id="tspan2574-9">rectangle</tspan></text>
     </g>
     <path
