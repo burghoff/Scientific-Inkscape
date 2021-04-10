@@ -22,9 +22,6 @@
                        <option value="1">Bottom</option>
                        <option value="2">Top</option>
                     </param>
-            <label appearance="header">Additional options</label>
-            <param name="tickcorrect" type="bool" gui-text="Auto tick correct?">true</param>
-            <param name="layerfix" type="string" gui-text="Scale-free layer">None</param>
             <spacer/><label>By David Burghoff, University of Notre Dame</label>
         </page> 
         
@@ -44,10 +41,17 @@
                        <option value="1">Bottom</option>
                        <option value="2">Top</option>
                     </param>
-            <label appearance="header">Additional options</label>
-            <param name="tickcorrect2" type="bool" gui-text="Auto tick correct?">true</param>
-            <param name="layerfix2" type="string" gui-text="Scale-free layer">None</param>
             <spacer/><label>By David Burghoff, University of Notre Dame</label>
+        </page>
+        
+        <page name="options" gui-text="Advanced options">
+            <label appearance="header">Tick correction</label>
+            <label>If tick correction is enabled, any horizontal or vertical lines smaller than the threshold will be corrected for size and position.</label>
+            <param name="tickcorrect" type="bool" gui-text="Auto tick correct?">true</param>
+            <param name="tickthreshold" type="float" precision="0" min="0" max="100" gui-text="Tick threshold (% plot area)">10</param>
+            <label appearance="header">Scale-free layer</label>
+            <label>A layer whose objects will be left unscaled. Useful for markers.</label>
+            <param name="layerfix" type="string" gui-text="Scale-free layer">None</param>
         </page>
         
         <page name="Help" gui-text="Help">
@@ -59,12 +63,8 @@
             <label>For most plots, this extension generates acceptable scalings with little effort. The plot should be flattened first,
             as objects in groups will be left alone by the scaling. The entire selection is scaled, and then text and groups are unscaled.
             The extension attempts to maintain the distance between axes and labels/tick labels by assigning a plot area—a bounding box
-            is calculated that contains the largest horizontal and vertical lines, and anything outside is assumed to be a label. If your
-            plot's axes do not have lines, temporarily add them to define a plot area.</label>
-            
-            <label>If "Auto tick correct" is enabled, the extension assumes that any small horizontal or vertical lines near the 
-            edges of the plot area are ticks, and unscales them. If a layer name is put into the "Scale-free layer" option,
-            any elements on that layer will be unscaled as well. This is most useful for markers, which should not be scaled.</label>
+            is calculated that contains the largest horizontal and vertical lines or boxes, and anything outside is assumed to be a label. If your
+            plot's axes do not have lines, temporarily add a box to define a plot area.</label>
         </page>
     </param>
     <effect>

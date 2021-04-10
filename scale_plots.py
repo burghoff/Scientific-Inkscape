@@ -36,16 +36,6 @@ import copy
 
 class ScalePlots(inkex.EffectExtension):
     def add_arguments(self, pars):
-        pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
-        # pars.add_argument("-s", "--splittype", default="word", help="type of split")
-        # pars.add_argument("-p", "--poptext", type=inkex.Boolean, default=True,\
-        #     help="Pop out text to layer")
-        # pars.add_argument("-f", "--poprest", type=inkex.Boolean, default=True,\
-        #     help="Pop out lines to layer")
-        # pars.add_argument("-w", "--removerectw", type=inkex.Boolean, default=True,\
-        #     help="Remove white rectangles")
-        pars.add_argument("--tickcorrect", type=inkex.Boolean, default=True,help="Auto tick correct?")
-        pars.add_argument("--layerfix", type=str, default='None',help="Layer whose elements should not be scaled")
         pars.add_argument("--hscale", type=float, default=100, help="Horizontal scaling");
         pars.add_argument("--vscale", type=float, default=100, help="Vertical scaling");
         pars.add_argument("--hdrag", type=int, default=1, help="Horizontal scaling");
@@ -53,10 +43,13 @@ class ScalePlots(inkex.EffectExtension):
         
         pars.add_argument("--hmatch", type=inkex.Boolean, default=100, help="Match width of first selected object?");
         pars.add_argument("--vmatch", type=inkex.Boolean, default=100, help="Match height of first selected object?");
-        pars.add_argument("--tickcorrect2", type=inkex.Boolean, default=True,help="Auto tick correct?")
-        pars.add_argument("--layerfix2", type=str, default='None',help="Layer whose elements should not be scaled")
         pars.add_argument("--hdrag2", type=int, default=1, help="Horizontal scaling");
         pars.add_argument("--vdrag2", type=int, default=1, help="Vertical scaling");
+        
+        pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
+        pars.add_argument("--tickcorrect", type=inkex.Boolean, default=True,help="Auto tick correct?")
+        pars.add_argument("--tickthreshold", type=int, default=10, help="Tick threshold");
+        pars.add_argument("--layerfix", type=str, default='None',help="Layer whose elements should not be scaled")
 
     def addtransform(self,el,trnsfrm):
         # Adds a transform and fuses it to any paths, preserving stroke
@@ -100,22 +93,23 @@ class ScalePlots(inkex.EffectExtension):
                 NamedView, Defs, Metadata, ForeignObject, Use)))]; # regular selectable objects only
          
         
-        if self.options.tab=='scaling' or self.options.tab=='Help':
+        tickcorrect = self.options.tickcorrect
+        tickthreshold = self.options.tickthreshold
+        layerfix = self.options.layerfix
+        if self.options.tab=='scaling':
             hscale = self.options.hscale
             vscale = self.options.vscale
             hdrag = self.options.hdrag
             vdrag = self.options.vdrag
-            tickcorrect = self.options.tickcorrect
-            layerfix = self.options.layerfix
             scalex = hscale/100;
             scaley = vscale/100;
-        else:
+        elif self.options.tab=='matching':
             hdrag = self.options.hdrag2
             vdrag = self.options.vdrag2
-            tickcorrect = self.options.tickcorrect2
-            layerfix = self.options.layerfix2
             hmatch = self.options.hmatch;
             vmatch = self.options.vmatch;
+        else:
+            inkex.utils.errormsg('Select Scaling or Matching mode'); return;
         
                 
         # Calculate bounding boxes of selected items
@@ -261,7 +255,7 @@ class ScalePlots(inkex.EffectExtension):
                 cdict[el.get_id()]=True;
                 
         
-        tickthr = .1;
+        tickthr = tickthreshold/100;
         # Tick detection and correction
         if tickcorrect:
             for el in list(reversed(sels)):

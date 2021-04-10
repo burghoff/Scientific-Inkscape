@@ -19,7 +19,8 @@
 #
 import inkex
 from inkex import (TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle,\
-                   addNS, Transform, Style, PathElement, Line, Rectangle, Path)
+                   addNS, Transform, Style, PathElement, Line, Rectangle, Path,\
+                   NamedView, Defs, Metadata, ForeignObject,Group)
 
 import simplepath
 import dhelpers as dh
@@ -37,8 +38,8 @@ class FlattenPlots(inkex.EffectExtension):
             help="Pop out lines to layer")
         pars.add_argument("-w", "--removerectw", type=inkex.Boolean, default=True,\
             help="Remove white rectangles")
-        pars.add_argument("-b", "--removerectb", type=inkex.Boolean, default=False,\
-            help="Remove black rectangles")
+        # pars.add_argument("-b", "--removerectb", type=inkex.Boolean, default=False,\
+        #     help="Remove black rectangles")
     
 
     def effect(self):   
@@ -50,12 +51,12 @@ class FlattenPlots(inkex.EffectExtension):
         poptext = self.options.poptext
         poprest = self.options.poprest
         removerectw = self.options.removerectw
-        removerectb = self.options.removerectb
+        # removerectb = self.options.removerectb
         
         gpe= sel.get()
         els =[gpe[k] for k in gpe.id_dict().keys()];
-        gs = [el for el in els if el.typename=='Group']
-        os = [el for el in els if not(el.typename=='Group')]
+        gs = [el for el in els if isinstance(el,Group)]
+        os = [el for el in els if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group)))]
         
         # inkex.utils.debug(self.svg.get_selected_bbox().width)
 #        dh.ungroup(gs[0]); 
@@ -64,11 +65,11 @@ class FlattenPlots(inkex.EffectExtension):
                 dh.ungroup(g);    
         
         for el in list(reversed(os)):
-            if el.typename=='TextElement' and poptext:
+            if isinstance(el,TextElement) and poptext:
                 dh.split_distant(el)
                 dh.pop_tspans(el)
                  
-        if removerectb or removerectw:
+        if removerectw:
             for el in os:
                 if isinstance(el, (PathElement, Rectangle, Line)):
                     xs,ys = dh.get_points(el);
@@ -76,10 +77,37 @@ class FlattenPlots(inkex.EffectExtension):
                         sty=el.composed_style();
                         fill = sty.get('fill');
                         strk = sty.get('stroke');
-                        if (removerectw and fill in ['#ffffff','white'] and strk in [None,'none'])\
-                            or (removerectb and fill in ['#000000','black'] and strk in [None,'none']):
+                        # if (removerectw and fill in ['#ffffff','white'] and strk in [None,'none'])\
+                        #     or (removerectb and fill in ['#000000','black'] and strk in [None,'none']):
+                        #     el.delete()
+                        if (removerectw and fill in ['#ffffff','white'] and strk in [None,'none']):
                             el.delete()
         
+        # removedupes = True
+        # if removedupes:
+        #     dels=dict();
+        #     for ii in range(len(os)):
+        #         el = os[ii];
+        #         dels[el.get_id()]=False
+        #         elsty = el.composed_style()
+        #         for jj in range(ii+1,len(os)):
+        #             cel = os[jj];
+        #             if el.typename==cel.typename:
+        #                 if elsty==cel.composed_style():
+        #                     if isinstance(el, (PathElement, Rectangle, Line)):
+        #                         xs,ys   = dh.get_points(el);
+        #                         cxs,cys = dh.get_points(cel);
+        #                         dh.debug(xs)
+        #                         dh.debug(cxs)
+        #                         dh.debug(ys)
+        #                         dh.debug(cys)
+        #                         if max([abs(d[0]-d[1]) for d in zip(xs,cxs)])<.01 and\
+        #                             max([abs(d[0]-d[1]) for d in zip(ys,cys)])<.01:
+        #                             dels[el.get_id()]=True;
+        #     for el in os:
+        #         if dels[el.get_id()]:
+        #             el.delete();
+                             
         # linestotop = True
         # if linestotop:
         #     for el in os:
