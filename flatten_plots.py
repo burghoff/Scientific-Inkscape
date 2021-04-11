@@ -43,7 +43,6 @@ class FlattenPlots(inkex.EffectExtension):
     
 
     def effect(self):   
-        starttime = time.time();
         sel = self.svg.selection;                     # an ElementList
         # inkex.utils.debug(sel)
         els=[sel[k] for k in sel.id_dict().keys()];
@@ -58,8 +57,6 @@ class FlattenPlots(inkex.EffectExtension):
         gs = [el for el in els if isinstance(el,Group)]
         os = [el for el in els if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group)))]
         
-        # inkex.utils.debug(self.svg.get_selected_bbox().width)
-#        dh.ungroup(gs[0]); 
         if poprest:        
             for g in list(reversed(gs)):
                 dh.ungroup(g);    
@@ -129,7 +126,4 @@ class FlattenPlots(inkex.EffectExtension):
                 
 
 if __name__ == '__main__':
-    import time
-    global timestart
-    timestart = time.time();
     FlattenPlots().run()

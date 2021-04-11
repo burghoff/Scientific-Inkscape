@@ -21,19 +21,20 @@
 import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, \
-        addNS, Transform, Style, ClipPath, Use, NamedView, Defs, Metadata, ForeignObject, Vector2d, Path
-)
+        addNS, Transform, Style, ClipPath, Use, NamedView, Defs, \
+        Metadata, ForeignObject, Vector2d, Path, Line, PathElement)
 import simplestyle
 import simpletransform
 
 def split_distant(el):
-    # Fix distant words that have been spread out in a PDF
+    # In PDFs, distant text is often merged together into a single word whose letters are positioned.
+    # This makes it hard to modify / adjust it. This fixes that.
     # Recursively run on children first
     oldsodipodi = el.get('sodipodi:role');
     el.set('sodipodi:role',None)
     ks=el.getchildren();
     for k in ks:
-        if k.typename=='Tspan' or k.typename=='TextElement':
+        if isinstance(k, (Tspan,TextElement)):    # k.typename=='Tspan' or k.typename=='TextElement':
             split_distant(k);
     myx = el.get('x');
     if myx is not None:#not(myx==None):
@@ -68,7 +69,7 @@ def pop_tspans(el):
     el.set('sodipodi:role',None);
     
     ks=el.getchildren();
-    ks=[t for t in ks if t.typename=='Tspan'];
+    ks=[t for t in ks if isinstance(t, Tspan)]; # ks=[t for t in ks if t.typename=='Tspan'];
     node_index = list(el.getparent()).index(el);
     for k in ks:
         k.style = k.composed_style();
@@ -141,13 +142,13 @@ def Get_Composed_List(el,comp):
 
 # Get points of a path, element, or rectangle in the global coordinate system
 def get_points(el):
-    if el.typename=='Line':
+    if isinstance(el,Line): #el.typename=='Line':
         pts = [Vector2d(el.get('x1'),el.get('y1')),\
                Vector2d(el.get('x2'),el.get('y2'))];
-    elif el.typename=='PathElement':
+    elif isinstance(el,PathElement): # el.typename=='PathElement':
         pth=Path(el.get_path());
         pts = list(pth.control_points);
-    elif el.typename=='Rectangle':
+    elif isinstance(el,Rectangle):  # el.typename=='Rectangle':
         x = float(el.get('x'));
         y = float(el.get('y'));
         w = float(el.get('width'));

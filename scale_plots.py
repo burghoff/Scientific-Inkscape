@@ -22,7 +22,7 @@ import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, addNS, \
     Transform, Style, PathElement, Line, Rectangle, Path,Vector2d, \
-    Use, NamedView, Defs, Metadata, ForeignObject, Group
+    Use, NamedView, Defs, Metadata, ForeignObject, Group, SvgDocumentElement, Image
 )
 
 import simplepath
@@ -53,10 +53,9 @@ class ScalePlots(inkex.EffectExtension):
 
     def addtransform(self,el,trnsfrm):
         # Adds a transform and fuses it to any paths, preserving stroke
-                
         # If parent layer is transformed, need to rotate out of its coordinate system
         myp = el.getparent();
-        if myp.typename=='SvgDocumentElement':
+        if isinstance(myp,SvgDocumentElement):                  # myp.typename=='SvgDocumentElement':
             prt=Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
         else:
             prt=myp.composed_transform(); 
@@ -69,9 +68,7 @@ class ScalePlots(inkex.EffectExtension):
         sw = dh.Get_Composed_Width(el,'stroke-width');
         sd = dh.Get_Composed_List(el,'stroke-dasharray');
         el.set('transform',newtr); # Add the new transform
-        if not(el.typename in ['TextElement','Image','Group']):
-#                sty=str(el.composed_style());
-#                sw=dh.Get_Style_Comp(sty,'stroke-width');
+        if not(isinstance(el, (TextElement,Image,Group))): # not(el.typename in ['TextElement','Image','Group']):
             ApplyTransform().recursiveFuseTransform(el);
             if sw is not None:
                 nw = float(dh.Get_Style_Comp(el.get('style'),'stroke-width'))
@@ -118,7 +115,7 @@ class ScalePlots(inkex.EffectExtension):
         fbbs=dict(); # full bbs
         for el in sels:
             fbbs[el.get_id()] = copy.copy(bbs[el.get_id()]);
-            if el.typename in ['PathElement','Rectangle','Line']:
+            if isinstance(el,(PathElement,Rectangle,Line)):   #el.typename in ['PathElement','Rectangle','Line']:
                 # if path-like, use nodes instead
                 xs, ys = dh.get_points(el);
                 bbs[el.get_id()] = [min(xs),min(ys),max(xs)-min(xs),max(ys)-min(ys)]
@@ -132,7 +129,7 @@ class ScalePlots(inkex.EffectExtension):
         vels = dict(); hels = dict();
         for el in list(reversed(sels)):
             isrect = False;
-            if el.typename in ['PathElement','Rectangle','Line']:
+            if isinstance(el,(PathElement,Rectangle,Line)): #el.typename in ['PathElement','Rectangle','Line']:
                 bb=bbs[el.get_id()];
                 xs, ys = dh.get_points(el);
                 if (max(xs)-min(xs))<.001*bb[3]: # vertical line
@@ -144,7 +141,7 @@ class ScalePlots(inkex.EffectExtension):
                 
                 if len(xs)==5 and len(set(xs))==2 and len(set(ys))==2:
                     isrect = True;
-            if isrect or el.typename=='Rectangle':
+            if isrect or isinstance(el,(Rectangle)): #el.typename=='Rectangle':
                 strk = el.composed_style().get('stroke');
                 fill = el.composed_style().get('fill');
                 nones = [None,'none','white','#ffffff'];
@@ -157,9 +154,9 @@ class ScalePlots(inkex.EffectExtension):
         
         # Display error message            
         if len(vels)==0:
-            inkex.utils.errormsg('No vertical lines detected! Make a vertical line or box to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
+            inkex.utils.errormsg('No vertical lines detected in selection! Make a vertical line or box to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
         if len(hels)==0:
-            inkex.utils.errormsg('No horizontal lines detected! Make a horizontal line or box to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
+            inkex.utils.errormsg('No horizontal lines detected in selection! Make a horizontal line or box to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
         if len(vels)==0 or len(hels)==0:
             return;
         lvl = max(vels, key=vels.get); # largest vertical
@@ -225,7 +222,7 @@ class ScalePlots(inkex.EffectExtension):
             fbb=fbbs[el.get_id()];
             outsideplot = fbb[0]>fmaxxp or fbb[0]+fbb[2]<fminxp \
                     or fbb[1]>fmaxyp or fbb[1]+fbb[3]<fminyp;
-            if el.typename in ['TextElement','Group'] or outsideplot:
+            if isinstance(el, (TextElement,Group)) or outsideplot: #el.typename in ['TextElement','Group'] or outsideplot:
                 # Invert the transformation for any text/groups  or anything outside the plot
                 bb1 = gtr.apply_to_point([bb[0],bb[1]]);
                 bb2 = gtr.apply_to_point([bb[0]+bb[2],bb[1]+bb[3]]);

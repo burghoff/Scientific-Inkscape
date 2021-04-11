@@ -10,6 +10,7 @@ import math
 from inkex.paths import CubicSuperPath, Path
 from inkex.transforms import Transform
 from inkex.styles import Style
+from inkex import (Line, Rectangle)
 
 NULL_TRANSFORM = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 from lxml import etree
@@ -163,8 +164,8 @@ class ApplyTransform(inkex.EffectExtension):
             else:
                 node.set("r", edgex / 2)
                 
-        # Modficiation by David Burghoff: Added support for lines
-        elif node.tag in inkex.addNS('line', 'svg'):
+        # Modficiations by David Burghoff: Added support for lines and rectangles
+        elif isinstance(node, Line):  #node.tag in inkex.addNS('line', 'svg'):
             x1=node.get('x1')
             x2=node.get('x2')
             y1=node.get('y1')
@@ -176,8 +177,8 @@ class ApplyTransform(inkex.EffectExtension):
             node.set('x2',str(p2[0]))
             node.set('y2',str(p2[1]))
             self.scaleStrokeWidth(node, transf)
-            
-        elif node.typename in ['Rectangle']:
+
+        elif isinstance(node,Rectangle):  #node.typename in ['Rectangle']:
             x = float(node.get('x'));
             y = float(node.get('y'));
             w = float(node.get('width'));
@@ -188,7 +189,6 @@ class ApplyTransform(inkex.EffectExtension):
                 p = transf.apply_to_point(p);
                 xs.append(p.x)
                 ys.append(p.y)
-            
             node.set('x',str(min(xs)))
             node.set('y',str(min(ys)))
             node.set('width',str(max(xs)-min(xs)))
