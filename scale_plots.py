@@ -25,7 +25,7 @@ from inkex import (
     Use, NamedView, Defs, Metadata, ForeignObject, Group, SvgDocumentElement, Image
 )
 
-import simplepath
+import lxml
 import dhelpers as dh
 from applytransform_mod import ApplyTransform
 import copy
@@ -137,12 +137,13 @@ class ScalePlots(inkex.EffectExtension):
         for sels in asels:
             # Calculate bounding boxes of selected items
             sels = [k for k in sels if k.get_id() in list(fbbs.keys())]; # only work on objects with a BB
-            bbs=dict();
+            bbs=dict();  # geometric (tight) bounding boxes
             for el in [firstsel]+sels+sfels:
-                bbs[el.get_id()] = copy.copy(fbbs[el.get_id()]);
-                if isinstance(el,(PathElement,Rectangle,Line)):   # if path-like, use nodes instead
-                    xs, ys = dh.get_points(el);
-                    bbs[el.get_id()] = [min(xs),min(ys),max(xs)-min(xs),max(ys)-min(ys)]
+                if el.get_id() in list(fbbs.keys()):
+                    bbs[el.get_id()] = copy.copy(fbbs[el.get_id()]);
+                    if isinstance(el,(PathElement,Rectangle,Line)):   # if path-like, use nodes instead
+                        xs, ys = dh.get_points(el);
+                        bbs[el.get_id()] = [min(xs),min(ys),max(xs)-min(xs),max(ys)-min(ys)]
                 
                 
             # Find horizontal and vertical lines (to within .001 rad), elements to be used in plot area calculations
@@ -343,7 +344,10 @@ class ScalePlots(inkex.EffectExtension):
                             trl = Transform('translate('+str(cx)+', '+str(cy)+')');
                             tr1 = trl*iscl*(-trl);
                             self.addtransform(el,tr1);
-        
+                            cdict[el.get_id()]=True
 
 if __name__ == '__main__':
-    ScalePlots().run()
+    try:
+        ScalePlots().run()
+    except lxml.etree.XMLSyntaxError:
+        inkex.utils.errormsg('Error parsing XML! Extensions can only run on SVG files. If this is a file imported from another format, try saving as an SVG or pasting the contents into a new SVG.');

@@ -22,7 +22,7 @@ from inkex import (TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle,\
                    addNS, Transform, Style, PathElement, Line, Rectangle, Path,\
                    NamedView, Defs, Metadata, ForeignObject,Group)
 
-import simplepath
+import lxml
 import dhelpers as dh
 
 #import warnings
@@ -126,4 +126,7 @@ class FlattenPlots(inkex.EffectExtension):
                 
 
 if __name__ == '__main__':
-    FlattenPlots().run()
+    try:
+        FlattenPlots().run()
+    except lxml.etree.XMLSyntaxError:
+        inkex.utils.errormsg('Error parsing XML! Extensions can only run on SVG files. If this is a file imported from another format, try saving as an SVG or pasting the contents into a new SVG.');

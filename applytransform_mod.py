@@ -148,15 +148,15 @@ class ApplyTransform(inkex.EffectExtension):
                 abs(newxy2[0] - newxy3[0]) ** 2 + abs(newxy2[1] - newxy3[1]) ** 2
             )
 
-            if not isequal(edgex, edgey) and (
-                node.TAG == "circle"
-                or not isequal(newxy2[0], newxy3[0])
-                or not isequal(newxy1[1], newxy2[1])
-            ):
-                inkex.utils.errormsg(
-                    "Warning: Shape %s (%s) is approximate only, try Object to path first for better results"
-                    % (node.TAG, node.get("id"))
-                )
+#            if not isequal(edgex, edgey) and (
+#                node.TAG == "circle"
+#                or not isequal(newxy2[0], newxy3[0])
+#                or not isequal(newxy1[1], newxy2[1])
+#            ):
+#                inkex.utils.errormsg(
+#                    "Warning: Shape %s (%s) is approximate only, try Object to path first for better results"
+#                    % (node.TAG, node.get("id"))
+#                )
 
             if node.TAG == "ellipse":
                 node.set("rx", edgex / 2)
