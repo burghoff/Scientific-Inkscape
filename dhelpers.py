@@ -177,9 +177,9 @@ def ungroup(groupnode):
     els = groupnode.getchildren();
     for el in list(reversed(els)):
         if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject))):
+            recursive_merge_clip(el, node_clippathurl) # transform applies to clip, so do clip first
             _merge_transform(el, node_transform)  
             _merge_style(el, node_style)    
-            _merge_clippath(el, node_clippathurl)
             groupnode.getparent().insert(node_index+1,el); # places above
             # node_parent.getparent().insert(node_index,node);   # places below
     if len(groupnode.getchildren())==0:
@@ -287,44 +287,44 @@ def _merge_style(node, style):
         node.set("style", str(inkex.Style(this_style)));
 
 
-from lxml import etree
-def _merge_clippath(node, clippathurl):
-    # From Deep Ungroup
-    if clippathurl:
-        myn = node
-        while myn.getparent() is not None:  # get svg handle
-            myn = myn.getparent();
-        svg = myn;
-        if node.get('transform') is not None:
-            node_transform = Transform(node.get('transform'));
-            # Clip-paths on nodes with a transform have the transform
-            # applied to the clipPath as well, which we don't want.  So, we
-            # create new clipPath element with references to all existing
-            # clippath subelements, but with the inverse transform applied
-            
-            new_clippath = etree.SubElement(
-                svg.getElement('//svg:defs'), 'clipPath',
-                {'clipPathUnits': 'userSpaceOnUse',
-                 'id': svg.get_unique_id("clipPath")})
-            clippath = svg.getElementById(clippathurl[5:-1])
-            for c in clippath.iterchildren():
-                etree.SubElement(
-                        new_clippath, 'use',
-                        {inkex.addNS('href', 'xlink'): '#' + c.get("id"),
-                         'transform': str(-node_transform),
-                         'id': svg.get_unique_id("use")})
-    
-            # Set the clippathurl to be the one with the inverse transform
-            clippathurl = "url(#" + new_clippath.get("id") + ")"
-    
-        # Reference the parent clip-path to keep clipping intersection
-        # Find end of clip-path chain and add reference there        
-        node_clippathurl = node.get("clip-path")
-        while node_clippathurl:
-            node = svg.getElementById(node_clippathurl[5:-1])
-            node_clippathurl = node.get("clip-path")
-        node.set("clip-path", clippathurl)
-
+from lxml import etree        
+def recursive_merge_clip(node,clippathurl):
+    # Modified from Deep Ungroup
+    if clippathurl is not None:
+        if node.transform is not None:
+                # Clip-paths on nodes with a transform have the transform
+                # applied to the clipPath as well, which we don't want.  So, we
+                # create new clipPath element with references to all existing
+                # clippath subelements, but with the inverse transform applied   
+                myn = node
+                while myn.getparent() is not None:  # get svg handle
+                    myn = myn.getparent();
+                svg = myn;
+                new_clippath = etree.SubElement(
+                    svg.getElement('//svg:defs'), 'clipPath',
+                    {'clipPathUnits': 'userSpaceOnUse',
+                      'id': svg.get_unique_id("clipPath")})
+                clippath = svg.getElementById(clippathurl[5:-1])
+                for c in clippath.iterchildren():
+                    etree.SubElement(
+                            new_clippath, 'use',
+                            {inkex.addNS('href', 'xlink'): '#' + c.get("id"),
+                              'transform': str(-node.transform),
+                              'id': svg.get_unique_id("use")})
+                # Set the clippathurl to be the one with the inverse transform
+                clippathurl = "url(#" + new_clippath.get("id") + ")"  
+        
+        myclip = node.get('clip-path');
+        if myclip is not None:
+            # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
+            clipnode = svg.getElementById(myclip[5:-1]);
+            d = clipnode.duplicate();
+            node.set('clip-path',"url(#" + d.get("id") + ")")
+            ks = d.getchildren();
+            for k in ks:
+                recursive_merge_clip(k,clippathurl);
+        else:
+            node.set('clip-path',clippathurl)
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
 def Get_Bounding_Boxes(s):
