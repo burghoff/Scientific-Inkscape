@@ -22,7 +22,7 @@ import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, \
         addNS, Transform, Style, ClipPath, Use, NamedView, Defs, \
-        Metadata, ForeignObject, Vector2d, Path, Line, PathElement)
+        Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command)
 import simplestyle
 import simpletransform
 
@@ -330,17 +330,17 @@ def recursive_merge_clip(node,clippathurl):
 def Get_Bounding_Boxes(s):
 # Gets all of a document's bounding boxes (by ID)
 # Note that this uses the command line, so it will only get the values before the extension is called
-    import sys, copy     
-    sys.path.append('/usr/share/inkscape/extensions')
-    import subprocess
+    # import sys, copy     
+    # sys.path.append('/usr/share/inkscape/extensions')
+    # import subprocess
     
-    tProc = subprocess.run( 'inkscape --query-all "%s"' % s.options.input_file, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    tFStR = tProc.stdout  # List of all SVG objects in tFile
-    tErrM = tProc.stderr
-    # inkex.utils.debug(tFStR)
+    # tProc = subprocess.run( 'inkscape --query-all "%s"' % s.options.input_file, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    # tFStR = tProc.stdout  # List of all SVG objects in tFile
+    # tErrM = tProc.stderr
+    # # inkex.utils.debug(tFStR)
+    tFStR = command.inkscape(s.options.input_file,'--query-all')
     tBBLi = tFStR.splitlines()
     x=[[float(x.strip('\'')) for x in str(d).split(',')[1:]] for d in tBBLi]
-#    debug(tBBLi)
     bbs=dict();
     for d in tBBLi:
         key = str(d).split(',')[0][2:];
