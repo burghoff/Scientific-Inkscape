@@ -19,6 +19,12 @@ To use:
 
 Scale Plots has two modes. In Scaling Mode, the plot is scaled by a constant factor. In Matching Mode, the plot area is made to match the size of the first object you select. This can be convenient when assembling subfigures, as it allows you to match the size of one plot to another plot or to a template rectangle.
             
-# Other features
+## Advanced options
 1. If "Auto tick correct" is enabled, the extension assumes that any small horizontal or vertical lines near the edges of the plot area are ticks, and automatically leaves them unscaled.
 2. If a layer name is put into the "Scale-free layer" option, any elements on that layer will remain unscaled. This is basically the same thing as putting an object in a group, but can be easier if there are many such objects (e.g, if your plot has markers).
+
+# Flatten Plots
+Flatten Plots is a useful utility for eliminating many of the annoyances that arise when dealing with imported plots.
+1. *Split Distant Text*: Depending on the renderer, it is often the case that the PDF/EPS printing process generates text implemented as a single text object. For example, all of the x-axis ticks might be one object, all of the y-axis ticks might be another, and the title and labels may be another. Internally, each letter is positioned independently. This looks fine, but causes issues when trying to scale or do anything nontrivial.
+2. *Deep ungroup*: The Scale Plots utility uses grouping to determine when objects are to be kept together, so a Deep Ungroup is typically needed to remove any groupings initially. While there is a standalone extension built in to Inkscape, it is somewhat buggy and does not always handle clippings well.
+3. *Remove white rectangles*: Removes any rectangles that have white fill and no stroke. Mostly for removing a plot's background.
