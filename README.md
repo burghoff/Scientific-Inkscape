@@ -25,6 +25,11 @@ Scale Plots has two modes. In Scaling Mode, the plot is scaled by a constant fac
 
 # Flatten Plots
 Flatten Plots is a useful utility for eliminating many of the annoyances that arise when dealing with imported plots.
-1. *Split distant text*: Depending on the renderer, it is often the case that the PDF/EPS printing process generates text implemented as a single text object. For example, all of the x-axis ticks might be one object, all of the y-axis ticks might be another, and the title and labels may be another. Internally, each letter is positioned independently. This looks fine, but causes issues when trying to scale or do anything nontrivial.
-2. *Deep ungroup*: The Scale Plots utility uses grouping to determine when objects are to be kept together, so a deep ungroup is typically needed to remove any existing groupings initially. While there is a standalone Deep Ungroup extension built in to Inkscape, it is somewhat buggy—the version in Inkscape 1.0.2 cannot ungroup *any* of the plots in the provided test file.
+1. *Deep ungroup*: The Scale Plots utility uses grouping to determine when objects are to be kept together, so a deep ungroup is typically needed to remove any existing groupings initially. While there is a standalone Deep Ungroup extension built in to Inkscape, it is somewhat buggy—the version in Inkscape 1.0.2 cannot ungroup *any* of the plots in the provided test file.
+2. *Apply text fixes*: Applies a series of fixes to text described below.
 3. *Remove white rectangles*: Removes any rectangles that have white fill and no stroke. Mostly for removing a plot's background.
+
+### Text fixes
+1. *Split distant text*: Depending on the renderer, it is often the case that the PDF/EPS printing process generates text implemented as a single text object. For example, all of the x-axis ticks might be one object, all of the y-axis ticks might be another, and the title and labels may be another. Internally, each letter is positioned independently. This looks fine, but causes issues when trying to scale or do anything nontrivial.
+2. *Repair shattered text*: Similarly, text in PDFs is often 'shattered'—its letters are positioned individually, so if you try to edit it you will get strange results. This option reverses that, although the tradeoff is that text may be slightly repositioned.
+3. *Replace missing fonts*: Useful for imported documents whose original fonts are not installed on the current machine.
