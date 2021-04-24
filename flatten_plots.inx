@@ -3,18 +3,30 @@
     <name>Flatten plots</name>
     <id>burghoff.flatten_plots1</id>
     <param name="tab" type="notebook">
-        <page name="Options" gui-text="Options">
-            <param name="poptext"  type="bool" gui-text="Split distant text">true</param>
-            <param name="poprest" type="bool"  gui-text="Deep ungroup">true</param>
-            <param name="removerectw" type="bool" gui-text="Remove white-filled rectangles">true</param>
+        <page name="Options" gui-text="Main options">
+            <param name="deepungroup" type="bool"  gui-text="Deep ungroup?">true</param>
+            <param name="fixtext"  type="bool" gui-text="Apply text fixes?">true</param>
+            <param name="removerectw" type="bool" gui-text="Remove white-filled rectangles?">true</param>
+            <spacer/><label>By David Burghoff, University of Notre Dame</label>
+        </page>
+        <page name="Options2" gui-text="Text fix options">
+            <param name="splitdistant"  type="bool" gui-text="Split distant text?">true</param>
+            <param name="fixshattering" type="bool"  gui-text="Repair shattered text?">true</param>
+            <param name="setreplacement" type="bool" gui-text="Replace missing fonts?">true</param>
+            <param name="replacement" type="string" gui-text="Missing font replacement">Arial</param>
             <spacer/><label>By David Burghoff, University of Notre Dame</label>
         </page>
         <page name="Help" gui-text="Help">
+        <label appearance="header">Main options</label>
             <label  xml:space="preserve">A set of tools for plot modification and cleanup. Select the plot you want to modify.
-"Split distant text" separates text by line, as well as any text separated by more than two spaces.
-"Deep ungroup" removes any groupings. (This can take a while for large graphics.)
-"Remove white-filled rectangles" removes any white rectangles.
+Deep ungroup: Removes all groupings.
+Apply text fixes: Apply the fixes specified in the options.
+Remove white-filled rectangles: Removes background rectangles.
             </label>
+            <label appearance="header">Text fix options</label>
+            <label  xml:space="preserve">Split distant text: Splits text within a single object that is far apart (common in PDFs).
+Repair shattered text: Letters in a word that have been individually positioned (common in PDFs) will be reflowed, allowing for editing. May cause text repositioning.
+Replace missing fonts: If a font is not on your machine, replace it with this font.</label>
         </page>
     </param>
     <effect>

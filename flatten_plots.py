@@ -31,41 +31,66 @@ import dhelpers as dh
 class FlattenPlots(inkex.EffectExtension):
     def add_arguments(self, pars):
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
-        pars.add_argument("-s", "--splittype", default="word", help="type of split")
-        pars.add_argument("-p", "--poptext", type=inkex.Boolean, default=True,\
-            help="Pop out text to layer")
-        pars.add_argument("-f", "--poprest", type=inkex.Boolean, default=True,\
-            help="Pop out lines to layer")
-        pars.add_argument("-w", "--removerectw", type=inkex.Boolean, default=True,\
-            help="Remove white rectangles")
-        # pars.add_argument("-b", "--removerectb", type=inkex.Boolean, default=False,\
-        #     help="Remove black rectangles")
-    
+        pars.add_argument("--deepungroup", type=inkex.Boolean, default=True,help="Deep ungroup")
+        pars.add_argument("--fixtext", type=inkex.Boolean, default=True, help="Text fixes")
+        pars.add_argument("--removerectw", type=inkex.Boolean, default=True, help="Remove white rectangles")
+        pars.add_argument("--splitdistant", type=inkex.Boolean, default=True, help="Split distant text")
+        pars.add_argument("--fixshattering", type=inkex.Boolean, default=True, help="Fix text shattering")
+        pars.add_argument("--setreplacement", type=inkex.Boolean, default=True, help="Replace missing fonts")
+        pars.add_argument("--replacement", type=str, default='Arial', help="Missing font replacement");
 
     def effect(self):   
         sel = self.svg.selection;                     # an ElementList
         # inkex.utils.debug(sel)
         els=[sel[k] for k in sel.id_dict().keys()];
         
-        poptext = self.options.poptext
-        poprest = self.options.poprest
+        poprest = self.options.deepungroup
         removerectw = self.options.removerectw
-        # removerectb = self.options.removerectb
+        poptext = self.options.splitdistant and self.options.fixtext
+        fixshattering = self.options.fixshattering and self.options.fixtext
+        setreplacement = self.options.setreplacement and self.options.fixtext
+        replacement = self.options.replacement
         
         gpe= sel.get()
         els =[gpe[k] for k in gpe.id_dict().keys()];
         gs = [el for el in els if isinstance(el,Group)]
         os = [el for el in els if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group)))]
         
+        if len(gs)==0 and len(os)==0:
+            inkex.utils.errormsg('No objects selected!'); return;
+        
         if poprest:        
             for g in list(reversed(gs)):
                 dh.ungroup(g);    
         
+        newtxt = [];
         for el in list(reversed(os)):
             if isinstance(el,TextElement) and poptext:
-                dh.split_distant(el)
-                dh.pop_tspans(el)
-                 
+                newtxt += dh.split_distant(el)
+                newtxt += dh.pop_tspans(el)
+        allos = list(set(list(reversed(os))+list(newtxt)));
+           
+        if fixshattering:
+            ctable, bbs = dh.measure_character_widths(allos,self)            
+            for el in allos:
+                if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
+                    dh.reverse_shattering(el,ctable)
+        
+        if setreplacement:
+            for el in allos:
+                if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
+                    ff = dh.Get_Style_Comp(el.get('style'),'font-family');
+                    if ff==None or ff=='none' or ff=='':
+                        dh.Set_Style_Comp(el,'font-family',replacement)
+                    elif ff==replacement:
+                        pass
+                    else:
+                        ff = ff.split(',');
+                        ff = [x.strip('\'') for x in ff]
+                        ff.append(replacement)
+                        ff = ['\''+x+'\'' for x in ff]
+                        dh.Set_Style_Comp(el,'font-family',','.join(ff))
+         
         if removerectw:
             for el in os:
                 if isinstance(el, (PathElement, Rectangle, Line)):

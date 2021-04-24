@@ -25,17 +25,19 @@ from inkex import (
         Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command)
 import simplestyle
 import simpletransform
+import math
 
 def split_distant(el):
     # In PDFs, distant text is often merged together into a single word whose letters are positioned.
     # This makes it hard to modify / adjust it. This fixes that.
     # Recursively run on children first
     oldsodipodi = el.get('sodipodi:role');
-    el.set('sodipodi:role',None)
+    el.set('sodipodi:role',None);
     ks=el.getchildren();
+    newtxt = [];
     for k in ks:
-        if isinstance(k, (Tspan,TextElement)):    # k.typename=='Tspan' or k.typename=='TextElement':
-            split_distant(k);
+        if isinstance(k, (Tspan,TextElement)):
+            newtxt += split_distant(k);
     myx = el.get('x');
     if myx is not None:#not(myx==None):
         myx = myx.split();
@@ -50,18 +52,23 @@ def split_distant(el):
                     ts = el.duplicate();
                     ts.text = word;
                     ts.set('x',' '.join(str(x) for x in myx[starti:ii]));
+#                    ts.set('x',str(myx[starti]));
                     ts.set('y',el.get('y'));
                     el.getparent().append(ts);
                     starti = ii;
+                    newtxt.append(ts);
             word = el.text[starti:]
             ts = el.duplicate();
             ts.text = word;
             ts.set('x',' '.join(str(x) for x in myx[starti:]));
+#            ts.set('x',str(myx[starti]));
             ts.set('y',el.get('y'));
+            newtxt.append(ts);
             
             el.getparent().append(ts);
             el.delete();
-    el.set('sodipodi:role',oldsodipodi)
+    # el.set('sodipodi:role',oldsodipodi)
+    return newtxt
 
 def pop_tspans(el):
     # Pop out text from different tspans
@@ -71,6 +78,7 @@ def pop_tspans(el):
     ks=el.getchildren();
     ks=[t for t in ks if isinstance(t, Tspan)]; # ks=[t for t in ks if t.typename=='Tspan'];
     node_index = list(el.getparent()).index(el);
+    newtxt = [];
     for k in ks:
         k.style = k.composed_style();
         k.set('sodipodi:role',None)
@@ -78,13 +86,118 @@ def pop_tspans(el):
     for k in ks:
         dp = el.duplicate();             # make dupes of the empty
         dp.insert(0,k)                   # fill with individual tspans
-        dp.set('sodipodi:role',oldsodipodi)
-    el.set('sodipodi:role',oldsodipodi)
+        # dp.set('sodipodi:role',oldsodipodi)
+        newtxt.append(dp)
+    # el.set('sodipodi:role',oldsodipodi)
     if (el.getchildren()==None or len(el.getchildren())==0) and (el.text==None or len(el.text)==0):
         # original now empty, safe to delete
         el.delete();
-     
-# sets a style property     
+    return newtxt
+
+def generate_character_table(els,ctable):
+    if isinstance(els,list):
+        for el in els:
+            ctable = generate_character_table(el,ctable);
+    else:
+        el=els;
+        ks=el.getchildren();
+        for k in ks:
+            ctable = generate_character_table(k,ctable);
+                
+        if ctable is None:
+            ctable = dict();
+        if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
+            if el.text is not None:
+                sty = str(el.composed_style());
+                sty = Set_Style_Comp2(sty,'font-size','1px') # so we don't have to check too many styles, set sizes and color to be identical
+                sty = Set_Style_Comp2(sty,'fill','#000000')    
+                if sty in list(ctable.keys()):
+                    ctable[sty] = list(set(ctable[sty]+list(el.text)));
+                else:
+                    ctable[sty] = list(set(list(el.text)));
+    return ctable
+
+def measure_character_widths(els,slf):
+    # Recursively get all selected characters by style
+    # Generate each character with two NBSPs and three NBSPs (rendered with one and two spaces, respectively)
+    # We take the difference to get the space width...should all be the same for a given style
+    # Then we subtract it off to get the character width
+    ct = generate_character_table(els,None);
+                        
+    for s in list(ct.keys()):
+        for ii in range(len(ct[s])):
+            t = TextElement();
+            t.text = ct[s][ii]+'\u00A0\u00A0'; # adding a nbsp on the right causes the bounding box to extend to the next character (on the right, but not the left)
+            t.set('style',s)
+            slf.svg.append(t);
+            ct[s][ii] = [ct[s][ii],t,t.get_id()]; # need to get id now to assign one
+        for ii in range(len(ct[s])):
+            t = TextElement();
+            t.text = ct[s][ii][0]+'\u00A0\u00A0\u00A0'; # add a space
+            t.set('style',s)
+            slf.svg.append(t);
+            ct[s].append([ct[s][ii],t,t.get_id()]); # need to get id now to assign one
+        
+    nbb = Get_Bounding_Boxes(slf,True);  
+    for s in list(ct.keys()):
+        for ii in range(len(ct[s])):
+            bb=nbb[ct[s][ii][2]]
+            wdth = bb[0]+bb[2]
+            ct[s][ii][1].delete();
+            ct[s][ii] = [ct[s][ii][0],wdth]
+    for s in list(ct.keys()):
+        Nl = int(len(ct[s])/2);
+        for ii in range(Nl):
+            sw = ct[s][ii+Nl][1] - ct[s][ii][1]
+            cw = ct[s][ii][1] - sw;
+            if ct[s][ii][0]==' ':
+                cw = sw;
+            ct[s][ii] = [ct[s][ii][0],cw,sw];
+        ct[s] = ct[s][0:Nl]
+    return ct, nbb
+
+def reverse_shattering(el,ctable):
+    # In PDFs, text is often positioned by letter.
+    # This makes it hard to modify / adjust it. This fixes that.
+    # Recursively run on children first
+    oldsodipodi = el.get('sodipodi:role');
+    el.set('sodipodi:role',None);
+    ks=el.getchildren();
+    for k in ks:
+        if isinstance(k, (Tspan,TextElement)):    # k.typename=='Tspan' or k.typename=='TextElement':
+            reverse_shattering(k,ctable);
+    myx = el.get('x');
+    if myx is not None:#not(myx==None):
+        myx = myx.split();
+        myx =[float(x) for x in myx];
+        if len(myx)>1:
+            sty = el.composed_style();
+            fs = float(sty.get('font-size').strip('px'));
+            sty = Set_Style_Comp2(str(sty),'font-size','1px');
+            sty = Set_Style_Comp2(sty,'fill','#000000')    
+            
+            # We sometimes need to add non-breaking spaces to keep letter positioning similar
+            stxt = [x for _, x in sorted(zip(myx, el.text), key=lambda pair: pair[0])] # text sorted in ascending x
+            sx   = [x for _, x in sorted(zip(myx, myx)    , key=lambda pair: pair[0])] # x sorted in ascending x
+            stxt = "".join(stxt) # back to string
+            spaces_before = []; cpos=sx[0];
+            for ii in range(len(stxt)): # advance the cursor to figure out how many spaces are needed
+                myi = [jj for jj in range(len(ctable[sty])) if ctable[sty][jj][0]==stxt[ii]][0]
+                myw  = ctable[sty][myi][1]*fs
+                mysw = ctable[sty][myi][2]*fs
+                spaces_needed = round((sx[ii]-cpos)/mysw)
+                spaces_before.append(max(0,spaces_needed - sum(spaces_before)))
+                cpos += myw # advance the cursor
+                # debug(mysw)
+            # debug(spaces_before)
+            for ii in reversed(range(len(stxt)-1)): 
+                if spaces_before[ii+1]>0:
+                    stxt = stxt[0:ii+1]+('\u00A0'*spaces_before[ii+1])+stxt[ii+1:]; # NBSPs don't collapse
+            el.text = stxt
+            el.set('x',str(sx[0]));
+    # el.set('sodipodi:role',oldsodipodi)
+
+# sets a style property (of an element)  
 def Set_Style_Comp(el,comp,val):
     sty = el.get('style');
     if sty is not None:#not(sty==None):
@@ -98,6 +211,25 @@ def Set_Style_Comp(el,comp,val):
             sty.append(comp+':'+val);
         sty = ';'.join(sty);
         el.set('style',sty);
+    else:
+        sty = comp+':'+val
+    el.set('style',sty);
+    
+# sets a style property (of a style string) 
+def Set_Style_Comp2(sty,comp,val):
+    if sty is not None:#not(sty==None):
+        sty = sty.split(';');
+        fillfound=False;
+        for ii in range(len(sty)):
+            if comp in sty[ii]:
+                sty[ii] = comp+':'+val;
+                fillfound=True;
+        if not(fillfound):
+            sty.append(comp+':'+val);
+        sty = ';'.join(sty);
+    else:
+        sty = comp+':'+val
+    return sty
 
 # gets a style property (return None if none)
 def Get_Style_Comp(sty,comp):
@@ -113,7 +245,6 @@ def Get_Style_Comp(sty,comp):
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms
-import math
 def Get_Composed_Width(el,comp):
     cs = el.composed_style();
     ct = el.composed_transform();
@@ -327,9 +458,11 @@ def recursive_merge_clip(node,clippathurl):
             node.set('clip-path',clippathurl)
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
-def Get_Bounding_Boxes(s):
+def Get_Bounding_Boxes(s,getnew):
 # Gets all of a document's bounding boxes (by ID)
-# Note that this uses the command line, so it will only get the values before the extension is called
+# Note that this uses a command line call, so by default it will only get the values from BEFORE the extension is called
+# Set getnew to True to make a temporary copy of the file that is then read. This gets the new boxes but is slower
+    
     # import sys, copy     
     # sys.path.append('/usr/share/inkscape/extensions')
     # import subprocess
@@ -338,22 +471,26 @@ def Get_Bounding_Boxes(s):
     # tFStR = tProc.stdout  # List of all SVG objects in tFile
     # tErrM = tProc.stderr
     # # inkex.utils.debug(tFStR)
-    tFStR = command.inkscape(s.options.input_file,'--query-all')
+    if not(getnew):
+        tFStR = command.inkscape(s.options.input_file,'--query-all');
+    else:
+        tmpname = s.options.input_file+'_tmp';
+        command.write_svg(s.svg,tmpname);
+        tFStR = command.inkscape(tmpname,'--query-all');
+
     tBBLi = tFStR.splitlines()
-    x=[[float(x.strip('\'')) for x in str(d).split(',')[1:]] for d in tBBLi]
+#    x=[[float(x.strip('\'')) for x in str(d).split(',')[1:]] for d in tBBLi]
     bbs=dict();
     for d in tBBLi:
         key = str(d).split(',')[0][2:];
         data = [float(x.strip('\''))*s.svg.unittouu('1px') for x in str(d).split(',')[1:]]
         bbs[key] = data;
     return bbs
-    # inkex.utils.debug(bbs['tspan2524'])
 
 def debug(x):
     inkex.utils.debug(x);
 
 
-import math    
 def fontsize(el):
     # Get true font size in pt
     myn = el

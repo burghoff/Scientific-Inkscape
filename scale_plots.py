@@ -124,7 +124,7 @@ class ScalePlots(inkex.EffectExtension):
             
         
         
-        fbbs=dh.Get_Bounding_Boxes(self); # full visual bbs
+        fbbs=dh.Get_Bounding_Boxes(self,False); # full visual bbs
         firstsel = sels[0];
         if matchingmode:
             sels=sels[1:];    
