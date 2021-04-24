@@ -31,5 +31,7 @@ Flatten Plots is a useful utility for eliminating many of the annoyances that ar
 
 ### Text fixes
 1. *Split distant text*: Depending on the renderer, it is often the case that the PDF/EPS printing process generates text implemented as a single text object. For example, all of the x-axis ticks might be one object, all of the y-axis ticks might be another, and the title and labels may be another. Internally, each letter is positioned independently. This looks fine, but causes issues when trying to scale or do anything nontrivial.
+<br><span align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Repair_shattered.png" alt="drawing" width="400"></img></span>
 2. *Repair shattered text*: Similarly, text in PDFs is often 'shattered'—its letters are positioned individually, so if you try to edit it you will get strange results. This option reverses that, although the tradeoff is that text may be slightly repositioned.
+<br><span align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Split_distant.png" alt="drawing" width="400"></img></span>
 3. *Replace missing fonts*: Useful for imported documents whose original fonts are not installed on the current machine.
