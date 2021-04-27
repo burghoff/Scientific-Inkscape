@@ -20,13 +20,15 @@
 import inkex
 from inkex import (TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle,\
                    addNS, Transform, Style, PathElement, Line, Rectangle, Path,\
-                   NamedView, Defs, Metadata, ForeignObject,Group)
+                   NamedView, Defs, Metadata, ForeignObject,Group,Use)
 
 import lxml
 import dhelpers as dh
 
 #import warnings
-#warnings.filterwarnings("ignore", category=DeprecationWarning) 
+#warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+    
 
 class FlattenPlots(inkex.EffectExtension):
     def add_arguments(self, pars):
@@ -41,8 +43,15 @@ class FlattenPlots(inkex.EffectExtension):
 
     def effect(self):   
         sel = self.svg.selection;                     # an ElementList
+        # dh.debug(get_mod(sel))
+        # dh.debug(sel)
+        # for k in sel.id_dict().keys():
+        #     myk = sel.id_dict()[k].getchildren()
+        #     for k2 in myk:
+        #         if not(isinstance(k2,lxml.etree._Comment)):
+        #             dh.debug(k2.get_id())
         # inkex.utils.debug(sel)
-        els=[sel[k] for k in sel.id_dict().keys()];
+        # els=[sel[k] for k in sel.id_dict().keys()];
         
         poprest = self.options.deepungroup
         removerectw = self.options.removerectw
@@ -51,17 +60,32 @@ class FlattenPlots(inkex.EffectExtension):
         setreplacement = self.options.setreplacement and self.options.fixtext
         replacement = self.options.replacement
         
-        gpe= sel.get()
+        gpe= dh.get_mod(sel)
         els =[gpe[k] for k in gpe.id_dict().keys()];
+        # for el in els:
+        #     dh.debug(isinstance(el,lxml.etree._Comment))
         gs = [el for el in els if isinstance(el,Group)]
         os = [el for el in els if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group)))]
         
         if len(gs)==0 and len(os)==0:
             inkex.utils.errormsg('No objects selected!'); return;
         
+#        dh.debug(gs[-1].descendants())
+        
+#        dh.debug(dir(gs[-1]))
+        
         if poprest:        
             for g in list(reversed(gs)):
-                dh.ungroup(g);    
+                ks = g.getchildren()
+                if any([isinstance(k,lxml.etree._Comment) for k in ks]) and \
+                   all([isinstance(k,(lxml.etree._Comment,Defs)) or k.get('unlinked_clone')=='True' for k in ks]):
+                    # Leave Matplotlib text glyphs grouped together 
+                    cmnt = ';'.join([str(k).strip('<!-- ').strip(' -->') for k in ks if isinstance(k,lxml.etree._Comment)]);
+                    g.set('mpl_comment',cmnt)
+                    [g.remove(k) for k in ks if isinstance(k,lxml.etree._Comment)]; # remove comment, but leave grouped
+                elif g.get('mpl_comment') is not None: pass
+                else:
+                    dh.ungroup(g);    
         
         newtxt = [];
         for el in list(reversed(os)):
@@ -104,6 +128,7 @@ class FlattenPlots(inkex.EffectExtension):
                         #     el.delete()
                         if (removerectw and fill in ['#ffffff','white'] and strk in [None,'none']):
                             el.delete()
+    
         
         # removedupes = True
         # if removedupes:

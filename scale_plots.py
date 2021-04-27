@@ -51,35 +51,6 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument("--tickthreshold", type=int, default=10, help="Tick threshold");
         pars.add_argument("--layerfix", type=str, default='None',help="Layer whose elements should not be scaled")
 
-    def addtransform(self,el,trnsfrm):
-        # Adds a transform and fuses it to any paths, preserving stroke
-        # If parent layer is transformed, need to rotate out of its coordinate system
-        myp = el.getparent();
-        if isinstance(myp,SvgDocumentElement):                  # myp.typename=='SvgDocumentElement':
-            prt=Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
-        else:
-            prt=myp.composed_transform(); 
-        myt = el.get('transform');
-        if myt==None:
-            newtr=(-prt)*trnsfrm*prt;
-        else:
-            newtr=(-prt)*trnsfrm*prt*Transform(myt)
-        
-        sw = dh.Get_Composed_Width(el,'stroke-width');
-        sd = dh.Get_Composed_List(el,'stroke-dasharray');
-        el.set('transform',newtr); # Add the new transform
-        if not(isinstance(el, (TextElement,Image,Group))): # not(el.typename in ['TextElement','Image','Group']):
-            ApplyTransform().recursiveFuseTransform(el);
-            if sw is not None:
-                nw = float(dh.Get_Style_Comp(el.get('style'),'stroke-width'))
-                sw = nw*sw/dh.Get_Composed_Width(el,'stroke-width');
-                dh.Set_Style_Comp(el,'stroke-width',str(sw)); # fix width
-            if not(sd in [None,'none']): #not(sd==None) and not(sd=='none'):
-                nd = dh.Get_Style_Comp(el.get('style'),'stroke-dasharray').split(',');
-                cd = dh.Get_Composed_List(el,'stroke-dasharray');
-                for ii in range(len(sd)):
-                    sd[ii] = float(nd[ii])*sd[ii]/cd[ii];
-                dh.Set_Style_Comp(el,'stroke-dasharray',str(sd).strip('[').strip(']')); # fix width
 
     def effect(self):   
         # starttime = time.time();
@@ -87,7 +58,7 @@ class ScalePlots(inkex.EffectExtension):
         # inkex.utils.debug(sel)
         sels=[sel[k] for k in sel.id_dict().keys()];
         sels=[k for k in sels if not(isinstance(k, (Tspan,\
-                NamedView, Defs, Metadata, ForeignObject, Use)))]; # regular selectable objects only
+                NamedView, Defs, Metadata, ForeignObject)))]; # regular selectable objects only
          
         
         tickcorrect = self.options.tickcorrect
@@ -121,8 +92,6 @@ class ScalePlots(inkex.EffectExtension):
                 if lyr is not None:
                     sfgs.append(lyr)
                     sfels=sfels+lyr.getchildren()
-            
-        
         
         fbbs=dh.Get_Bounding_Boxes(self,False); # full visual bbs
         firstsel = sels[0];
@@ -139,12 +108,16 @@ class ScalePlots(inkex.EffectExtension):
             sels = [k for k in sels if k.get_id() in list(fbbs.keys())]; # only work on objects with a BB
             bbs=dict();  # geometric (tight) bounding boxes
             for el in [firstsel]+sels+sfels:
+#                if isinstance(el,TextElement):
+##                    for k in el.getchildren():
+##                        if isinstance(k,Tspan):
+##                            dh.debug(dh.fontsize(k))
                 if el.get_id() in list(fbbs.keys()):
                     bbs[el.get_id()] = copy.copy(fbbs[el.get_id()]);
                     if isinstance(el,(PathElement,Rectangle,Line)):   # if path-like, use nodes instead
                         xs, ys = dh.get_points(el);
                         bbs[el.get_id()] = [min(xs),min(ys),max(xs)-min(xs),max(ys)-min(ys)]
-                
+#                    dh.debug(str(bbs[el.get_id()][2]/fbbs[el.get_id()][2])+'   '+str(bbs[el.get_id()][3]/fbbs[el.get_id()][3]))
                 
             # Find horizontal and vertical lines (to within .001 rad), elements to be used in plot area calculations
             vl = dict(); hl = dict(); boxes = dict(); solids = dict();
@@ -234,7 +207,7 @@ class ScalePlots(inkex.EffectExtension):
             # Apply the global transform to all selected regular elements
             cdict=dict();
             for el in list(reversed(sels)):
-                self.addtransform(el,gtr)
+                dh.addtransform(el,gtr)
                 cdict[el.get_id()]=False;
                 for k in el.getchildren():
                     cdict[k.get_id()]=False;
@@ -243,9 +216,13 @@ class ScalePlots(inkex.EffectExtension):
             iscl = Transform('scale('+str(1/scalex)+', '+str(1/scaley)+')');
             for el in list(reversed(sels)):
                 bb=bbs[el.get_id()];
-                fbb=fbbs[el.get_id()];
+                fbb=fbbs[el.get_id()];   
                 outsideplot = fbb[0]>fmaxxp or fbb[0]+fbb[2]<fminxp \
                         or fbb[1]>fmaxyp or fbb[1]+fbb[3]<fminyp;
+                
+                # if el.get_id()=='text2811':
+                #     dh.debug(bbs['text2811'])  
+                #     dh.debug(fbbs['text2811']) 
                 if (isinstance(el, (TextElement,Group)) or outsideplot) and not(el in sfgs): #el.typename in ['TextElement','Group'] or outsideplot:
                     # Invert the transformation for any text/groups  or anything outside the plot
                     bb1 = gtr.apply_to_point([bb[0],bb[1]]);
@@ -272,7 +249,7 @@ class ScalePlots(inkex.EffectExtension):
                         dy = oy - (cy-trbr[1]);
                     tr2 = Transform('translate('+str(dx)+', '+str(dy)+')');
                     
-                    self.addtransform(el,tr2*tr1);
+                    dh.addtransform(el,tr2*tr1);
                     cdict[el.get_id()]=True;
                     
             
@@ -326,7 +303,7 @@ class ScalePlots(inkex.EffectExtension):
                             
                             tr1 = trl*iscl*(-trl);
                             if not(cdict[el.get_id()]):
-                                self.addtransform(el,tr1);
+                                dh.addtransform(el,tr1);
                             cdict[el.get_id()]=True;
             
             # Correct anything in scale-free groups                    
@@ -343,7 +320,7 @@ class ScalePlots(inkex.EffectExtension):
             
                             trl = Transform('translate('+str(cx)+', '+str(cy)+')');
                             tr1 = trl*iscl*(-trl);
-                            self.addtransform(el,tr1);
+                            dh.addtransform(el,tr1);
                             cdict[el.get_id()]=True
 
 if __name__ == '__main__':

@@ -22,16 +22,19 @@ import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, \
         addNS, Transform, Style, ClipPath, Use, NamedView, Defs, \
-        Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command)
+        Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command,SvgDocumentElement,Image,Group)
 import simplestyle
 import simpletransform
 import math
+from applytransform_mod import ApplyTransform
+
+It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
 
 def split_distant(el):
     # In PDFs, distant text is often merged together into a single word whose letters are positioned.
     # This makes it hard to modify / adjust it. This fixes that.
     # Recursively run on children first
-    oldsodipodi = el.get('sodipodi:role');
+#    oldsodipodi = el.get('sodipodi:role');
     el.set('sodipodi:role',None);
     ks=el.getchildren();
     newtxt = [];
@@ -72,7 +75,7 @@ def split_distant(el):
 
 def pop_tspans(el):
     # Pop out text from different tspans
-    oldsodipodi = el.get('sodipodi:role');
+#    oldsodipodi = el.get('sodipodi:role');
     el.set('sodipodi:role',None);
     
     ks=el.getchildren();
@@ -118,25 +121,27 @@ def generate_character_table(els,ctable):
     return ctable
 
 def measure_character_widths(els,slf):
-    # Recursively get all selected characters by style
-    # Generate each character with two NBSPs and three NBSPs (rendered with one and two spaces, respectively)
-    # We take the difference to get the space width...should all be the same for a given style
-    # Then we subtract it off to get the character width
+    # Measure the width of all characters of a given style by generating copies with two and three extra spaces
+    # We take the difference to get the width of a space, then subtract that to get the character's full width
+    # This includes any spaces between characters as well
     ct = generate_character_table(els,None);
+    
+    def Make_Character(c,sty):
+        nt = TextElement();
+        nt.text = c;
+        nt.set('style',sty)
+        slf.svg.append(nt);
+        nt.get_id(); # assign id now
+        return nt
                         
     for s in list(ct.keys()):
         for ii in range(len(ct[s])):
-            t = TextElement();
-            t.text = ct[s][ii]+'\u00A0\u00A0'; # adding a nbsp on the right causes the bounding box to extend to the next character (on the right, but not the left)
-            t.set('style',s)
-            slf.svg.append(t);
-            ct[s][ii] = [ct[s][ii],t,t.get_id()]; # need to get id now to assign one
-        for ii in range(len(ct[s])):
-            t = TextElement();
-            t.text = ct[s][ii][0]+'\u00A0\u00A0\u00A0'; # add a space
-            t.set('style',s)
-            slf.svg.append(t);
-            ct[s].append([ct[s][ii],t,t.get_id()]); # need to get id now to assign one
+            t = Make_Character(ct[s][ii]+'\u00A0\u00A0',s); # character with 2 nb spaces (last space not rendered)
+            ct[s][ii] = [ct[s][ii],t,t.get_id()]; 
+        t = Make_Character('A\u00A0\u00A0',s);              # A with 2 nb spaces
+        ct[s].append([ct[s][ii],t,t.get_id()]);             
+        t = Make_Character('A\u00A0\u00A0\u00A0',s);        # A with 3 nb spaces
+        ct[s].append([ct[s][ii],t,t.get_id()]); 
         
     nbb = Get_Bounding_Boxes(slf,True);  
     for s in list(ct.keys()):
@@ -146,21 +151,22 @@ def measure_character_widths(els,slf):
             ct[s][ii][1].delete();
             ct[s][ii] = [ct[s][ii][0],wdth]
     for s in list(ct.keys()):
-        Nl = int(len(ct[s])/2);
+        Nl = len(ct[s])-2;
+        sw = ct[s][-1][1] - ct[s][-2][1] # space width is the difference in widths of the last two
         for ii in range(Nl):
-            sw = ct[s][ii+Nl][1] - ct[s][ii][1]
             cw = ct[s][ii][1] - sw;
             if ct[s][ii][0]==' ':
                 cw = sw;
             ct[s][ii] = [ct[s][ii][0],cw,sw];
         ct[s] = ct[s][0:Nl]
+#    debug(sum([len(ct[x]) for x in list(ct.keys())]))
     return ct, nbb
 
 def reverse_shattering(el,ctable):
     # In PDFs, text is often positioned by letter.
     # This makes it hard to modify / adjust it. This fixes that.
     # Recursively run on children first
-    oldsodipodi = el.get('sodipodi:role');
+#    oldsodipodi = el.get('sodipodi:role');
     el.set('sodipodi:role',None);
     ks=el.getchildren();
     for k in ks:
@@ -172,9 +178,9 @@ def reverse_shattering(el,ctable):
         myx =[float(x) for x in myx];
         if len(myx)>1:
             sty = el.composed_style();
-            fs = float(sty.get('font-size').strip('px'));
+            fs = float(sty.get('font-size').strip('px'))/get_parent_svg(el).scale;
             sty = Set_Style_Comp2(str(sty),'font-size','1px');
-            sty = Set_Style_Comp2(sty,'fill','#000000')    
+            sty = Set_Style_Comp2(sty,'fill','#000000')                              
             
             # We sometimes need to add non-breaking spaces to keep letter positioning similar
             stxt = [x for _, x in sorted(zip(myx, el.text), key=lambda pair: pair[0])] # text sorted in ascending x
@@ -244,15 +250,16 @@ def Get_Style_Comp(sty,comp):
     return val
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate
-# the true size reported by Inkscape, inheriting any styles/transforms
+# the true size reported by Inkscape, inheriting any styles/transforms/document scaling
 def Get_Composed_Width(el,comp):
     cs = el.composed_style();
     ct = el.composed_transform();
+    docscale = get_parent_svg(el).scale;
     sc = Get_Style_Comp(cs,comp);
     if sc is not None:
         sw = float(sc.strip().replace("px", ""))
         sw *= math.sqrt(abs(ct.a*ct.d - ct.b*ct.c))
-        return sw
+        return sw*docscale
     else:
         return None
     
@@ -262,14 +269,22 @@ def Get_Composed_List(el,comp):
     cs = el.composed_style();
     ct = el.composed_transform();
     sc = Get_Style_Comp(cs,comp);
+    docscale = get_parent_svg(el).scale;
     if sc=='none':
         return 'none'
     elif sc is not None:
         sw = sc.strip().replace("px", "").split(',')
-        sw = [float(x)*math.sqrt(abs(ct.a*ct.d - ct.b*ct.c)) for x in sw];
+        sw = [float(x)*math.sqrt(abs(ct.a*ct.d - ct.b*ct.c))*docscale for x in sw];
         return sw
     else:
         return None
+    
+
+# Get true font size in pt
+def fontsize(el):
+    svg = get_parent_svg(el);
+    ptsize = svg.unittouu('1pt');
+    return Get_Composed_Width(el,'font-size')/ptsize
 
 # Get points of a path, element, or rectangle in the global coordinate system
 def get_points(el):
@@ -287,32 +302,42 @@ def get_points(el):
         pts = [Vector2d(x,y),Vector2d(x+w,y),Vector2d(x+w,y+h),Vector2d(x,y+h),Vector2d(x,y)];
     
     ct = el.composed_transform();
+    docscale = get_parent_svg(el).scale;
     xs = []; ys = [];
     for p in pts:
         p = ct.apply_to_point(p);
-        xs.append(p.x)
-        ys.append(p.y)
+        xs.append(p.x*docscale)
+        ys.append(p.y*docscale)
     return xs, ys
-        
+
+import lxml
 def ungroup(groupnode):
     # Pops a node out of its group, unless it's already in a layer or the base
+    # Unlink any clones
+    # Remove any comments
     # Preserves style and clipping
 
     node_index = list(groupnode.getparent()).index(groupnode)   # parent's location in grandparent
-#        node_style = simplestyle.parseStyle(node_parent.get("style")) # deprecated
     node_style = dict(Style.parse_str(groupnode.get("style")))
-#        node_transform = simpletransform.parseTransform(node_parent.get("transform"))  # deprecated
     node_transform = Transform(groupnode.get("transform")).matrix;
     node_clippathurl = groupnode.get('clip-path')
         
     els = groupnode.getchildren();
     for el in list(reversed(els)):
-        if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject))):
+        if isinstance(el,Use):                   # unlink clones
+            p=el.unlink();
+            tx = el.get('x'); ty=el.get('y')
+            if tx is None: tx = 0;
+            if ty is None: ty = 0;
+            p.set('transform',Transform('translate('+str(tx)+','+str(ty)+')')*Transform(p.get('transform')))
+            el.delete(); el=p; el.set('unlinked_clone',True);
+        elif isinstance(el,lxml.etree._Comment): # remove comments
+            groupnode.remove(el)
+        if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment))):
             recursive_merge_clip(el, node_clippathurl) # transform applies to clip, so do clip first
             _merge_transform(el, node_transform)  
             _merge_style(el, node_style)    
             groupnode.getparent().insert(node_index+1,el); # places above
-            # node_parent.getparent().insert(node_index,node);   # places below
     if len(groupnode.getchildren())==0:
         groupnode.delete();
          
@@ -485,22 +510,64 @@ def Get_Bounding_Boxes(s,getnew):
         key = str(d).split(',')[0][2:];
         data = [float(x.strip('\''))*s.svg.unittouu('1px') for x in str(d).split(',')[1:]]
         bbs[key] = data;
+       
+#    docscale = s.svg.scale
+#    if not(docscale==1):
+#        for ii in list(bbs.keys()):
+#            for jj in range(len(bbs[ii])):
+#                bbs[ii][jj] *= 1/docscale;
     return bbs
 
 def debug(x):
     inkex.utils.debug(x);
 
-
-def fontsize(el):
-    # Get true font size in pt
+def get_parent_svg(el):
     myn = el
-    while myn.getparent() is not None:#not(myn.getparent()==None):  # get svg handle
+    while myn.getparent() is not None:
         myn = myn.getparent();
-    svg = myn;
-    ptsize = svg.unittouu('1pt');
-    ct=el.composed_transform();
-    tnorm = math.sqrt(abs(ct.a*ct.d-ct.b*ct.c));
-    # if it's text it is (hopefully) only rotated and scaled, so its transform is the sqrt of the det
-    cs=el.composed_style(); 
-    fs=float(Get_Style_Comp(cs,'font-size').strip('px'));
-    return fs*tnorm/ptsize
+    return myn;
+
+def get_mod(slf, *types):
+    """Originally from _selected.py in inkex, doesn't fail on comments"""
+    def _recurse(elem):
+        if (not types or isinstance(elem, types)):
+            yield elem
+        for child in elem:
+            for item in _recurse(child):
+                yield item
+    return inkex.elements._selected.ElementList(slf.svg, [r for e in slf.values() for r in _recurse(e) \
+                                              if not(isinstance(r,lxml.etree._Comment))])
+ 
+            
+def addtransform(el,trnsfrm):
+    # Transforms an object and fuses it to any paths, preserving stroke
+   
+    # If parent layer is transformed, need to rotate out of its coordinate system
+    myp = el.getparent();
+    if isinstance(myp,SvgDocumentElement):
+        prt=Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+    else:
+        prt=myp.composed_transform(); 
+    prt = Transform('scale('+str(get_parent_svg(el).scale)+')')*prt;  # also include document scaling
+    
+    myt = el.get('transform');
+    if myt==None:
+        newtr=(-prt)*trnsfrm*prt;
+    else:
+        newtr=(-prt)*trnsfrm*prt*Transform(myt)
+    
+    sw = Get_Composed_Width(el,'stroke-width');
+    sd = Get_Composed_List(el, 'stroke-dasharray');
+    el.set('transform',newtr); # Add the new transform
+    if not(isinstance(el, (TextElement,Image,Group))): # not(el.typename in ['TextElement','Image','Group']):
+        ApplyTransform().recursiveFuseTransform(el);
+        if sw is not None:
+            nw = float(Get_Style_Comp(el.get('style'),'stroke-width'))
+            sw = nw*sw/Get_Composed_Width(el,'stroke-width');
+            Set_Style_Comp(el,'stroke-width',str(sw)); # fix width
+        if not(sd in [None,'none']): #not(sd==None) and not(sd=='none'):
+            nd = Get_Style_Comp(el.get('style'),'stroke-dasharray').split(',');
+            cd = Get_Composed_List(el,'stroke-dasharray');
+            for ii in range(len(sd)):
+                sd[ii] = float(nd[ii])*sd[ii]/cd[ii];
+            Set_Style_Comp(el,'stroke-dasharray',str(sd).strip('[').strip(']')); # fix width
