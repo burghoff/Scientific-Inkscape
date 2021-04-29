@@ -22,12 +22,12 @@ import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, addNS, \
     Transform, Style, PathElement, Line, Rectangle, Path,Vector2d, \
-    Use, NamedView, Defs, Metadata, ForeignObject, Group, SvgDocumentElement, Image
+    Use, NamedView, Defs, Metadata, ForeignObject, Group, SvgDocumentElement, \
+    Image,Polyline
 )
 
 import lxml
 import dhelpers as dh
-from applytransform_mod import ApplyTransform
 import copy
 
 
@@ -114,7 +114,7 @@ class ScalePlots(inkex.EffectExtension):
 ##                            dh.debug(dh.fontsize(k))
                 if el.get_id() in list(fbbs.keys()):
                     bbs[el.get_id()] = copy.copy(fbbs[el.get_id()]);
-                    if isinstance(el,(PathElement,Rectangle,Line)):   # if path-like, use nodes instead
+                    if isinstance(el,(PathElement,Rectangle,Line,Polyline)):   # if path-like, use nodes instead
                         xs, ys = dh.get_points(el);
                         bbs[el.get_id()] = [min(xs),min(ys),max(xs)-min(xs),max(ys)-min(ys)]
 #                    dh.debug(str(bbs[el.get_id()][2]/fbbs[el.get_id()][2])+'   '+str(bbs[el.get_id()][3]/fbbs[el.get_id()][3]))
@@ -124,7 +124,7 @@ class ScalePlots(inkex.EffectExtension):
             vels = dict(); hels = dict();
             for el in list(reversed(sels)):
                 isrect = False;
-                if isinstance(el,(PathElement,Rectangle,Line)): #el.typename in ['PathElement','Rectangle','Line']:
+                if isinstance(el,(PathElement,Rectangle,Line,Polyline)): 
                     bb=bbs[el.get_id()];
                     xs, ys = dh.get_points(el);
                     if (max(xs)-min(xs))<.001*bb[3]: # vertical line
@@ -207,7 +207,7 @@ class ScalePlots(inkex.EffectExtension):
             # Apply the global transform to all selected regular elements
             cdict=dict();
             for el in list(reversed(sels)):
-                dh.addtransform(el,gtr)
+                dh.global_transform(el,gtr)
                 cdict[el.get_id()]=False;
                 for k in el.getchildren():
                     cdict[k.get_id()]=False;
@@ -249,7 +249,7 @@ class ScalePlots(inkex.EffectExtension):
                         dy = oy - (cy-trbr[1]);
                     tr2 = Transform('translate('+str(dx)+', '+str(dy)+')');
                     
-                    dh.addtransform(el,tr2*tr1);
+                    dh.global_transform(el,tr2*tr1);
                     cdict[el.get_id()]=True;
                     
             
@@ -303,7 +303,7 @@ class ScalePlots(inkex.EffectExtension):
                             
                             tr1 = trl*iscl*(-trl);
                             if not(cdict[el.get_id()]):
-                                dh.addtransform(el,tr1);
+                                dh.global_transform(el,tr1);
                             cdict[el.get_id()]=True;
             
             # Correct anything in scale-free groups                    
@@ -320,7 +320,7 @@ class ScalePlots(inkex.EffectExtension):
             
                             trl = Transform('translate('+str(cx)+', '+str(cy)+')');
                             tr1 = trl*iscl*(-trl);
-                            dh.addtransform(el,tr1);
+                            dh.global_transform(el,tr1);
                             cdict[el.get_id()]=True
 
 if __name__ == '__main__':

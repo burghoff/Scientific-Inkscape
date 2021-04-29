@@ -22,13 +22,26 @@ import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, \
         addNS, Transform, Style, ClipPath, Use, NamedView, Defs, \
-        Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command,SvgDocumentElement,Image,Group)
+        Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command,\
+        SvgDocumentElement,Image,Group,Polyline,Anchor,Switch)
 import simplestyle
 import simpletransform
 import math
 from applytransform_mod import ApplyTransform
 
 It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+
+def inkscape_editable(el):
+    ks=el.getchildren();
+    for k in ks:
+        if isinstance(k, (Tspan,TextElement)):
+            inkscape_editable(k)
+    if isinstance(el,TextElement):
+        el.set('xml:space','preserve') # needed so we still have spaces
+    # elif isinstance(el,Tspan):
+    #     el.set('sodipodi:role','line')
+        
+    
 
 def split_distant(el):
     # In PDFs, distant text is often merged together into a single word whose letters are positioned.
@@ -70,14 +83,11 @@ def split_distant(el):
             
             el.getparent().append(ts);
             el.delete();
-    # el.set('sodipodi:role',oldsodipodi)
     return newtxt
 
 def pop_tspans(el):
     # Pop out text from different tspans
-#    oldsodipodi = el.get('sodipodi:role');
     el.set('sodipodi:role',None);
-    
     ks=el.getchildren();
     ks=[t for t in ks if isinstance(t, Tspan)]; # ks=[t for t in ks if t.typename=='Tspan'];
     node_index = list(el.getparent()).index(el);
@@ -89,9 +99,7 @@ def pop_tspans(el):
     for k in ks:
         dp = el.duplicate();             # make dupes of the empty
         dp.insert(0,k)                   # fill with individual tspans
-        # dp.set('sodipodi:role',oldsodipodi)
         newtxt.append(dp)
-    # el.set('sodipodi:role',oldsodipodi)
     if (el.getchildren()==None or len(el.getchildren())==0) and (el.text==None or len(el.text)==0):
         # original now empty, safe to delete
         el.delete();
@@ -159,14 +167,12 @@ def measure_character_widths(els,slf):
                 cw = sw;
             ct[s][ii] = [ct[s][ii][0],cw,sw];
         ct[s] = ct[s][0:Nl]
-#    debug(sum([len(ct[x]) for x in list(ct.keys())]))
     return ct, nbb
 
 def reverse_shattering(el,ctable):
     # In PDFs, text is often positioned by letter.
     # This makes it hard to modify / adjust it. This fixes that.
     # Recursively run on children first
-#    oldsodipodi = el.get('sodipodi:role');
     el.set('sodipodi:role',None);
     ks=el.getchildren();
     for k in ks:
@@ -194,14 +200,11 @@ def reverse_shattering(el,ctable):
                 spaces_needed = round((sx[ii]-cpos)/mysw)
                 spaces_before.append(max(0,spaces_needed - sum(spaces_before)))
                 cpos += myw # advance the cursor
-                # debug(mysw)
-            # debug(spaces_before)
             for ii in reversed(range(len(stxt)-1)): 
                 if spaces_before[ii+1]>0:
                     stxt = stxt[0:ii+1]+('\u00A0'*spaces_before[ii+1])+stxt[ii+1:]; # NBSPs don't collapse
             el.text = stxt
             el.set('x',str(sx[0]));
-    # el.set('sodipodi:role',oldsodipodi)
 
 # sets a style property (of an element)  
 def Set_Style_Comp(el,comp,val):
@@ -291,8 +294,8 @@ def get_points(el):
     if isinstance(el,Line): #el.typename=='Line':
         pts = [Vector2d(el.get('x1'),el.get('y1')),\
                Vector2d(el.get('x2'),el.get('y2'))];
-    elif isinstance(el,PathElement): # el.typename=='PathElement':
-        pth=Path(el.get_path());
+    elif isinstance(el,(PathElement,Polyline)): # el.typename=='PathElement':
+        pth=Path(el.get_path()).to_absolute();
         pts = list(pth.control_points);
     elif isinstance(el,Rectangle):  # el.typename=='Rectangle':
         x = float(el.get('x'));
@@ -316,7 +319,6 @@ def ungroup(groupnode):
     # Unlink any clones
     # Remove any comments
     # Preserves style and clipping
-
     node_index = list(groupnode.getparent()).index(groupnode)   # parent's location in grandparent
     node_style = dict(Style.parse_str(groupnode.get("style")))
     node_transform = Transform(groupnode.get("transform")).matrix;
@@ -393,14 +395,15 @@ def _merge_transform(node, transform):
     # Set the node's transform attrib
 #            node.set("transform", simpletransform.formatTransform(this_transform)) # deprecated
     node.set("transform",str(this_transform))
-    
-def _merge_style(node, style):
-    # From Deep Ungroup
-    # Originally from https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
 
+
+def _merge_style(node, style):
+    """Propagate style and transform to remove inheritance
+    # From Deep Ungroup
+    https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
+    """
     # Compose the style attribs
-#    this_style = simplestyle.parseStyle(node.get("style", ""))
-    this_style = dict(inkex.Style.parse_str(node.get("style", "")));
+    this_style = node.style
     remaining_style = {}  # Style attributes that are not propagated
 
     # Filters should remain on the top ancestor
@@ -422,25 +425,68 @@ def _merge_style(node, style):
             this_style[attrib] = node.get(attrib)
             del node.attrib[attrib]
 
-    if (node.tag == addNS("svg", "svg")
-        or node.tag == addNS("g", "svg")
-        or node.tag == addNS("a", "svg")
-        or node.tag == addNS("switch", "svg")):
+    if isinstance(node, (SvgDocumentElement, Anchor, Group, Switch)):
         # Leave only non-propagating style attributes
-        if len(remaining_style) == 0:
+        if not remaining_style:
             if "style" in node.keys():
                 del node.attrib["style"]
         else:
-            node.set("style", simplestyle.formatStyle(remaining_style))
+            node.style = remaining_style
 
     else:
         # This element is not a container
         # Merge remaining_style into this_style
         this_style.update(remaining_style)
-
         # Set the element's style attribs
-#        node.set("style", simplestyle.formatStyle(this_style))  # deprecated
-        node.set("style", str(inkex.Style(this_style)));
+        node.style = this_style
+    
+# def _merge_style(node, style):
+#     # From Deep Ungroup
+#     # Originally from https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
+
+#     # Compose the style attribs
+# #    this_style = simplestyle.parseStyle(node.get("style", ""))
+#     this_style = dict(inkex.Style.parse_str(node.get("style", "")));
+#     remaining_style = {}  # Style attributes that are not propagated
+
+#     # Filters should remain on the top ancestor
+#     non_propagated = ["filter"]
+#     for key in non_propagated:
+#         if key in this_style.keys():
+#             remaining_style[key] = this_style[key]
+#             del this_style[key]
+
+#     # Create a copy of the parent style, and merge this style into it
+#     parent_style_copy = style.copy()
+#     parent_style_copy.update(this_style)
+#     this_style = parent_style_copy
+
+#     # Merge in any attributes outside of the style
+#     style_attribs = ["fill", "stroke"]
+#     for attrib in style_attribs:
+#         if node.get(attrib):
+#             this_style[attrib] = node.get(attrib)
+#             del node.attrib[attrib]
+
+#     if (node.tag == addNS("svg", "svg")
+#         or node.tag == addNS("g", "svg")
+#         or node.tag == addNS("a", "svg")
+#         or node.tag == addNS("switch", "svg")):
+#         # Leave only non-propagating style attributes
+#         if len(remaining_style) == 0:
+#             if "style" in node.keys():
+#                 del node.attrib["style"]
+#         else:
+#             node.set("style", simplestyle.formatStyle(remaining_style))
+
+#     else:
+#         # This element is not a container
+#         # Merge remaining_style into this_style
+#         this_style.update(remaining_style)
+
+#         # Set the element's style attribs
+# #        node.set("style", simplestyle.formatStyle(this_style))  # deprecated
+#         node.set("style", str(inkex.Style(this_style)));
 
 
 from lxml import etree        
@@ -487,15 +533,7 @@ def Get_Bounding_Boxes(s,getnew):
 # Gets all of a document's bounding boxes (by ID)
 # Note that this uses a command line call, so by default it will only get the values from BEFORE the extension is called
 # Set getnew to True to make a temporary copy of the file that is then read. This gets the new boxes but is slower
-    
-    # import sys, copy     
-    # sys.path.append('/usr/share/inkscape/extensions')
-    # import subprocess
-    
-    # tProc = subprocess.run( 'inkscape --query-all "%s"' % s.options.input_file, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    # tFStR = tProc.stdout  # List of all SVG objects in tFile
-    # tErrM = tProc.stderr
-    # # inkex.utils.debug(tFStR)
+
     if not(getnew):
         tFStR = command.inkscape(s.options.input_file,'--query-all');
     else:
@@ -539,7 +577,7 @@ def get_mod(slf, *types):
                                               if not(isinstance(r,lxml.etree._Comment))])
  
             
-def addtransform(el,trnsfrm):
+def global_transform(el,trnsfrm):
     # Transforms an object and fuses it to any paths, preserving stroke
    
     # If parent layer is transformed, need to rotate out of its coordinate system

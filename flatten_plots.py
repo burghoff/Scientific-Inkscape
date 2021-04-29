@@ -55,24 +55,18 @@ class FlattenPlots(inkex.EffectExtension):
         
         poprest = self.options.deepungroup
         removerectw = self.options.removerectw
-        poptext = self.options.splitdistant and self.options.fixtext
+        splitdistant = self.options.splitdistant and self.options.fixtext
         fixshattering = self.options.fixshattering and self.options.fixtext
         setreplacement = self.options.setreplacement and self.options.fixtext
         replacement = self.options.replacement
         
         gpe= dh.get_mod(sel)
         els =[gpe[k] for k in gpe.id_dict().keys()];
-        # for el in els:
-        #     dh.debug(isinstance(el,lxml.etree._Comment))
         gs = [el for el in els if isinstance(el,Group)]
         os = [el for el in els if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group)))]
         
         if len(gs)==0 and len(os)==0:
             inkex.utils.errormsg('No objects selected!'); return;
-        
-#        dh.debug(gs[-1].descendants())
-        
-#        dh.debug(dir(gs[-1]))
         
         if poprest:        
             for g in list(reversed(gs)):
@@ -87,33 +81,38 @@ class FlattenPlots(inkex.EffectExtension):
                 else:
                     dh.ungroup(g);    
         
-        newtxt = [];
-        for el in list(reversed(os)):
-            if isinstance(el,TextElement) and poptext:
-                newtxt += dh.split_distant(el)
-                newtxt += dh.pop_tspans(el)
-        allos = list(set(list(reversed(os))+list(newtxt)));
-           
-        if fixshattering:
-            ctable, bbs = dh.measure_character_widths(allos,self)            
+        newos = [];
+        if self.options.fixtext:
+            if splitdistant:
+                for el in list(reversed(os)):
+                    if isinstance(el,TextElement):
+                        newos += dh.split_distant(el)
+                        newos += dh.pop_tspans(el)
+            allos = list(set(list(reversed(os))+list(newos)));
+               
+            if fixshattering:
+                ctable, bbs = dh.measure_character_widths(allos,self)            
+                for el in allos:
+                    if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
+                        dh.reverse_shattering(el,ctable)
+            if setreplacement:
+                for el in allos:
+                    if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
+                        ff = dh.Get_Style_Comp(el.get('style'),'font-family');
+                        if ff==None or ff=='none' or ff=='':
+                            dh.Set_Style_Comp(el,'font-family',replacement)
+                        elif ff==replacement:
+                            pass
+                        else:
+                            ff = ff.split(',');
+                            ff = [x.strip('\'') for x in ff]
+                            ff.append(replacement)
+                            ff = ['\''+x+'\'' for x in ff]
+                            dh.Set_Style_Comp(el,'font-family',','.join(ff))         
             for el in allos:
                 if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
-                    dh.reverse_shattering(el,ctable)
-        
-        if setreplacement:
-            for el in allos:
-                if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
-                    ff = dh.Get_Style_Comp(el.get('style'),'font-family');
-                    if ff==None or ff=='none' or ff=='':
-                        dh.Set_Style_Comp(el,'font-family',replacement)
-                    elif ff==replacement:
-                        pass
-                    else:
-                        ff = ff.split(',');
-                        ff = [x.strip('\'') for x in ff]
-                        ff.append(replacement)
-                        ff = ['\''+x+'\'' for x in ff]
-                        dh.Set_Style_Comp(el,'font-family',','.join(ff))
+                    dh.inkscape_editable(el)
+
          
         if removerectw:
             for el in os:
@@ -129,7 +128,9 @@ class FlattenPlots(inkex.EffectExtension):
                         if (removerectw and fill in ['#ffffff','white'] and strk in [None,'none']):
                             el.delete()
     
-        
+    
+#        self.svg.selection = inkex.elements._selected.ElementList([el for el in gs + os + newos \
+#                                if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Tspan)))])
         # removedupes = True
         # if removedupes:
         #     dels=dict();
@@ -173,6 +174,7 @@ class FlattenPlots(inkex.EffectExtension):
 
         # for item in selected:
         #     inkex.utils.debug(item) 
+                      
                 
 
 if __name__ == '__main__':

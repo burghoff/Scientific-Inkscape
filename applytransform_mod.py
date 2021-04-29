@@ -164,7 +164,7 @@ class ApplyTransform(inkex.EffectExtension):
             else:
                 node.set("r", edgex / 2)
                 
-        # Modficiations by David Burghoff: Added support for lines and rectangles
+        # Modficiations by David Burghoff: Added support for lines, rectangles, polylines
         elif isinstance(node, Line):  #node.tag in inkex.addNS('line', 'svg'):
             x1=node.get('x1')
             x2=node.get('x2')
@@ -194,6 +194,10 @@ class ApplyTransform(inkex.EffectExtension):
             node.set('width',str(max(xs)-min(xs)))
             node.set('height',str(max(ys)-min(ys)))
             self.scaleStrokeWidth(node, transf)
+            
+        elif isinstance(node,Polyline):
+            p = node.get_path().to_absolute().transform(transf, True)
+            node.set_path(p);
 
         elif node.tag in [inkex.addNS('text', 'svg'),
                           inkex.addNS('image', 'svg'),
