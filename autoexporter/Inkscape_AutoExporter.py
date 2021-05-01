@@ -125,6 +125,7 @@ class myThread(threading.Thread):
         self.stopped = False
         self.ui = None
         self.nf = True;
+        self.ea = False;
     def run(self):
         if self.threadID==1:
         # Main thread
@@ -147,7 +148,7 @@ class myThread(threading.Thread):
                             newlastmod[ii] = os.path.getmtime(newfiles[ii])
                         except FileNotFoundError:     
                             newlastmod[ii] = lastmod[ii]
-                                     
+                    
                     updatefiles = [];
                     if any([not(f in newfiles) for f in files]):
                         pass; # deleted files; 
@@ -158,6 +159,10 @@ class myThread(threading.Thread):
                     files = newfiles
                     lastmod = newlastmod
                     
+                    if self.ea:  # export all
+                        self.ea = False;
+                        updatefiles = files
+                    
                     for f in updatefiles:
                         # while not(self.stopped):
                         print('\nExporting '+f+'')
@@ -167,7 +172,7 @@ class myThread(threading.Thread):
                                 finished = export_file(self.bfn,f,joinmod(self.writedir,os.path.split(f)[1]),fmt);
 
         if self.threadID==2:
-            self.ui = input('Enter D to change watch/write directories, B to change Inkscape binary, Q to quit: ')
+            self.ui = input('Enter D to change watch/write directories, B to change Inkscape binary, A to export all, and Q to quit: ')
     def stop(self):
          self.stopped = True;
 
@@ -193,6 +198,9 @@ while keeprunning:
         elif t2.ui in ['B','b']:
             t1.bfn = Validate_Binary(0)
             t1.nf = True
+            t2 = myThread(2); t2.start();
+        elif t2.ui in ['A','a']:
+            t1.ea = True;
             t2 = myThread(2); t2.start();
         else:
             print('Invalid input!')
