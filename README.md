@@ -35,7 +35,7 @@ Flatten Plots is a useful utility for eliminating many of the annoyances that ar
 <br><p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Split_distant_draw.png" alt="drawing" ></img></p></li>
 <li><i>Repair shattered text</i>: Similarly, text in PDFs is often 'shattered'—its letters are positioned individually, so if you try to edit it you will get strange results. This option reverses that, although the tradeoff is that text may be slightly repositioned.
 <br><p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Repair_shattered_draw.png" alt="drawing" ></img></p></li>
-<li><i>Replace missing fonts</i>: Useful for imported documents whose original fonts are not installed on the current machine.</li>
+<li><i>Replace missing fonts</i>: Useful for imported documents whose original fonts are not installed on the current machine.</li></ol>
 
 # Auto-Exporter
 The Auto-Exporter is not an extension, it is a Python script meant to be run in the background (as a daemon). If you frequently export SVGs to other formats, this program does it automatically for you. It will do so for all files in a directory and in multiple formats. Just select (a) the location where the Inkscape binary is installed, (b) what directory you would like it to watch, and (c) where you would like it to put the exports.
