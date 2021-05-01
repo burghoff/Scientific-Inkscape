@@ -3,7 +3,6 @@
 # automatically to another folder in multiple formats
 
 EXPORT_FORMATS = ['pdf','emf','png']            # list of formats to use
-TIMEOUT = 30                                    # export occasionally fails, so wait this long before retrying 
 PNG_DPI = 600;                                  # resolution for PNG export
 
 # Any more options, and you will need to modify the call string (see export_file function below) 
@@ -16,7 +15,7 @@ import threading
 import platform
 
 # Use the Inkscape binary to export the file
-def export_file(bfn,fin,fout,fformat):
+def export_file(bfn,fin,fout,fformat,timeoutv):
     myoutput = fout[0:-4] + '.' + fformat
     if fformat=='png':
         callstr = '"'+bfn+'"'+' --export-background=#ffffff --export-background-opacity=1.0 --export-dpi='\
@@ -25,10 +24,10 @@ def export_file(bfn,fin,fout,fformat):
         callstr = '"'+bfn+'"'+' --export-filename=' + '"'+myoutput+'"' + ' "'+fin+'"'
     print('    To '+fformat+'...',end='')
     try:
-        subprocess.run(callstr, shell=True,timeout=TIMEOUT,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(callstr, shell=True,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print('done!'); return True
     except subprocess.TimeoutExpired:
-        print('timed out after TIMEOUT='+str(TIMEOUT)+' seconds'); return False
+        print('timed out after '+str(timeoutv)+' seconds'); return False
         
 
 # Read and write to config file
@@ -168,8 +167,10 @@ class myThread(threading.Thread):
                         print('\nExporting '+f+'')
                         for fmt in EXPORT_FORMATS:
                             finished = False;
-                            while not(finished) and not(self.stopped):
-                                finished = export_file(self.bfn,f,joinmod(self.writedir,os.path.split(f)[1]),fmt);
+                            natt = 0;
+                            while not(finished) and not(self.stopped) and natt<4:
+                                BASE_TIMEOUT = 15; natt+=1;
+                                finished = export_file(self.bfn,f,joinmod(self.writedir,os.path.split(f)[1]),fmt,BASE_TIMEOUT*natt);
 
         if self.threadID==2:
             self.ui = input('Enter D to change watch/write directories, B to change Inkscape binary, A to export all, and Q to quit: ')
