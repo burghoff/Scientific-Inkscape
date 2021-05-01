@@ -184,6 +184,8 @@ if t1.watchdir is None or t1.writedir is None:
     t1.watchdir, t1.writedir = Get_Directories()
            
 t1.start();
+while t1.nf:  # wait until it's done initializing
+    pass
 t2 = myThread(2); t2.start();
 keeprunning = True;
 while keeprunning:
