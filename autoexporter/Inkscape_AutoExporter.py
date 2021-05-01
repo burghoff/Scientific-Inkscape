@@ -3,7 +3,7 @@
 # automatically to another folder in multiple formats
 
 EXPORT_FORMATS = ['pdf','emf','png']            # list of formats to use
-TIMEOUT = 15                                    # export occasionally fails, so wait this long before retrying 
+TIMEOUT = 30                                    # export occasionally fails, so wait this long before retrying 
 PNG_DPI = 600;                                  # resolution for PNG export
 
 # Any more options, and you will need to modify the call string (see export_file function below) 
