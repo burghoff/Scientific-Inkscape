@@ -23,11 +23,13 @@ from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, \
         addNS, Transform, Style, ClipPath, Use, NamedView, Defs, \
         Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command,\
-        SvgDocumentElement,Image,Group,Polyline,Anchor,Switch)
+        SvgDocumentElement,Image,Group,Polyline,Anchor,Switch,ShapeElement)
 import simplestyle
 import simpletransform
 import math
 from applytransform_mod import ApplyTransform
+import lxml
+from lxml import etree  
 
 It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
 
@@ -313,7 +315,6 @@ def get_points(el):
         ys.append(p.y*docscale)
     return xs, ys
 
-import lxml
 def ungroup(groupnode):
     # Pops a node out of its group, unless it's already in a layer or the base
     # Unlink any clones
@@ -326,23 +327,33 @@ def ungroup(groupnode):
         
     els = groupnode.getchildren();
     for el in list(reversed(els)):
+        wasuse = False;
         if isinstance(el,Use):                   # unlink clones
             p=el.unlink();
             tx = el.get('x'); ty=el.get('y')
             if tx is None: tx = 0;
             if ty is None: ty = 0;
             p.set('transform',Transform('translate('+str(tx)+','+str(ty)+')')*Transform(p.get('transform')))
-            el.delete(); el=p; el.set('unlinked_clone',True);
+            el.delete(); el=p; el.set('unlinked_clone',True); wasuse=True;
         elif isinstance(el,lxml.etree._Comment): # remove comments
             groupnode.remove(el)
         if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment))):
             recursive_merge_clip(el, node_clippathurl) # transform applies to clip, so do clip first
-            _merge_transform(el, node_transform)  
-            _merge_style(el, node_style)    
+            _merge_transform(el, node_transform)
+            el.style = shallow_composed_style(el)
+            # _merge_style(el, node_style)    
             groupnode.getparent().insert(node_index+1,el); # places above
+        if isinstance(el, Group) and wasuse: # if Use was a group, ungroup it
+            ungroup(el)
     if len(groupnode.getchildren())==0:
         groupnode.delete();
          
+# Same as composed_style(), but no recursion
+def shallow_composed_style(el):
+    parent = el.getparent();
+    if parent is not None and isinstance(parent, ShapeElement):
+        return parent.style + el.style
+    return el.style
 
 def _merge_transform(node, transform):
     # From Deep Ungroup
@@ -439,57 +450,7 @@ def _merge_style(node, style):
         this_style.update(remaining_style)
         # Set the element's style attribs
         node.style = this_style
-    
-# def _merge_style(node, style):
-#     # From Deep Ungroup
-#     # Originally from https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
-
-#     # Compose the style attribs
-# #    this_style = simplestyle.parseStyle(node.get("style", ""))
-#     this_style = dict(inkex.Style.parse_str(node.get("style", "")));
-#     remaining_style = {}  # Style attributes that are not propagated
-
-#     # Filters should remain on the top ancestor
-#     non_propagated = ["filter"]
-#     for key in non_propagated:
-#         if key in this_style.keys():
-#             remaining_style[key] = this_style[key]
-#             del this_style[key]
-
-#     # Create a copy of the parent style, and merge this style into it
-#     parent_style_copy = style.copy()
-#     parent_style_copy.update(this_style)
-#     this_style = parent_style_copy
-
-#     # Merge in any attributes outside of the style
-#     style_attribs = ["fill", "stroke"]
-#     for attrib in style_attribs:
-#         if node.get(attrib):
-#             this_style[attrib] = node.get(attrib)
-#             del node.attrib[attrib]
-
-#     if (node.tag == addNS("svg", "svg")
-#         or node.tag == addNS("g", "svg")
-#         or node.tag == addNS("a", "svg")
-#         or node.tag == addNS("switch", "svg")):
-#         # Leave only non-propagating style attributes
-#         if len(remaining_style) == 0:
-#             if "style" in node.keys():
-#                 del node.attrib["style"]
-#         else:
-#             node.set("style", simplestyle.formatStyle(remaining_style))
-
-#     else:
-#         # This element is not a container
-#         # Merge remaining_style into this_style
-#         this_style.update(remaining_style)
-
-#         # Set the element's style attribs
-# #        node.set("style", simplestyle.formatStyle(this_style))  # deprecated
-#         node.set("style", str(inkex.Style(this_style)));
-
-
-from lxml import etree        
+      
 def recursive_merge_clip(node,clippathurl):
     # Modified from Deep Ungroup
     if clippathurl is not None:
