@@ -7,6 +7,7 @@
 
 import inkex
 import math
+from inkex import Polyline
 from inkex.paths import CubicSuperPath, Path
 from inkex.transforms import Transform
 from inkex.styles import Style

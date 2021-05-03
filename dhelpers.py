@@ -24,7 +24,6 @@ from inkex import (
         addNS, Transform, Style, ClipPath, Use, NamedView, Defs, \
         Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command,\
         SvgDocumentElement,Image,Group,Polyline,Anchor,Switch,ShapeElement)
-import simplestyle
 import simpletransform
 import math
 from applytransform_mod import ApplyTransform
@@ -40,14 +39,15 @@ def inkscape_editable(el):
             inkscape_editable(k)
     if isinstance(el,TextElement):
         el.set('xml:space','preserve') # needed so we still have spaces
+#        Set_Style_Comp(el,'text-anchor','middle')
     # elif isinstance(el,Tspan):
     #     el.set('sodipodi:role','line')
         
     
 
-def split_distant(el):
+def split_distant(el,ctable):
     # In PDFs, distant text is often merged together into a single word whose letters are positioned.
-    # This makes it hard to modify / adjust it. This fixes that.
+    # This makes it hard to modify / adjust it. This splits text separated by more than 1.5 spaces.
     # Recursively run on children first
 #    oldsodipodi = el.get('sodipodi:role');
     el.set('sodipodi:role',None);
@@ -55,31 +55,39 @@ def split_distant(el):
     newtxt = [];
     for k in ks:
         if isinstance(k, (Tspan,TextElement)):
-            newtxt += split_distant(k);
+            newtxt += split_distant(k,ctable);
     myx = el.get('x');
     if myx is not None:#not(myx==None):
         myx = myx.split();
         myx =[float(x) for x in myx];
         if len(myx)>1:
+            docscale = get_parent_svg(el).scale;
             sty = el.composed_style();
             fs = float(sty.get('font-size').strip('px'));
+            sty = Set_Style_Comp2(str(sty),'font-size','1px');
+            sty = Set_Style_Comp2(sty,'fill','#000000')      
+            stxt = [x for _, x in sorted(zip(myx, el.text), key=lambda pair: pair[0])] # text sorted in ascending x
+            sx   = [x for _, x in sorted(zip(myx, myx)    , key=lambda pair: pair[0])] # x sorted in ascending x
+            stxt = "".join(stxt) # back to string
+            
             starti = 0;
-            for ii in range(1,len(myx)):
-                if abs(myx[ii]-myx[ii-1])>3.0*fs*0.5:
-                    word = el.text[starti:ii]
+            for ii in range(1,min(len(sx),len(stxt))):
+                myi = [jj for jj in range(len(ctable[sty])) if ctable[sty][jj][0]==stxt[ii-1]][0]
+                sw = ctable[sty][myi][2]/docscale*fs
+                cw = ctable[sty][myi][1]/docscale*fs
+                if abs(sx[ii]-sx[ii-1])>=1.5*sw+cw:
+                    word = stxt[starti:ii]
                     ts = el.duplicate();
                     ts.text = word;
-                    ts.set('x',' '.join(str(x) for x in myx[starti:ii]));
-#                    ts.set('x',str(myx[starti]));
+                    ts.set('x',' '.join(str(x) for x in sx[starti:ii]));
                     ts.set('y',el.get('y'));
                     el.getparent().append(ts);
                     starti = ii;
                     newtxt.append(ts);
-            word = el.text[starti:]
+            word = stxt[starti:]
             ts = el.duplicate();
             ts.text = word;
-            ts.set('x',' '.join(str(x) for x in myx[starti:]));
-#            ts.set('x',str(myx[starti]));
+            ts.set('x',' '.join(str(x) for x in sx[starti:]));
             ts.set('y',el.get('y'));
             newtxt.append(ts);
             
@@ -185,8 +193,9 @@ def reverse_shattering(el,ctable):
         myx = myx.split();
         myx =[float(x) for x in myx];
         if len(myx)>1:
+            docscale = get_parent_svg(el).scale;
             sty = el.composed_style();
-            fs = float(sty.get('font-size').strip('px'))/get_parent_svg(el).scale;
+            fs = float(sty.get('font-size').strip('px'));
             sty = Set_Style_Comp2(str(sty),'font-size','1px');
             sty = Set_Style_Comp2(sty,'fill','#000000')                              
             
@@ -197,8 +206,8 @@ def reverse_shattering(el,ctable):
             spaces_before = []; cpos=sx[0];
             for ii in range(len(stxt)): # advance the cursor to figure out how many spaces are needed
                 myi = [jj for jj in range(len(ctable[sty])) if ctable[sty][jj][0]==stxt[ii]][0]
-                myw  = ctable[sty][myi][1]*fs
-                mysw = ctable[sty][myi][2]*fs
+                myw  = ctable[sty][myi][1]/docscale*fs
+                mysw = ctable[sty][myi][2]/docscale*fs
                 spaces_needed = round((sx[ii]-cpos)/mysw)
                 spaces_before.append(max(0,spaces_needed - sum(spaces_before)))
                 cpos += myw # advance the cursor
@@ -216,10 +225,15 @@ def Set_Style_Comp(el,comp,val):
         fillfound=False;
         for ii in range(len(sty)):
             if comp in sty[ii]:
-                sty[ii] = comp+':'+val;
+                if val is not None:
+                    sty[ii] = comp+':'+val;
+                else:
+                    sty[ii] = ''
                 fillfound=True;
         if not(fillfound):
-            sty.append(comp+':'+val);
+            if val is not None:
+                sty.append(comp+':'+val);
+            else: pass
         sty = ';'.join(sty);
         el.set('style',sty);
     else:
@@ -233,10 +247,15 @@ def Set_Style_Comp2(sty,comp,val):
         fillfound=False;
         for ii in range(len(sty)):
             if comp in sty[ii]:
-                sty[ii] = comp+':'+val;
+                if val is not None:
+                    sty[ii] = comp+':'+val;
+                else:
+                    sty[ii] = ''
                 fillfound=True;
         if not(fillfound):
-            sty.append(comp+':'+val);
+            if val is not None:
+                sty.append(comp+':'+val);
+            else: pass
         sty = ';'.join(sty);
     else:
         sty = comp+':'+val
@@ -321,7 +340,7 @@ def ungroup(groupnode):
     # Remove any comments
     # Preserves style and clipping
     node_index = list(groupnode.getparent()).index(groupnode)   # parent's location in grandparent
-    node_style = dict(Style.parse_str(groupnode.get("style")))
+#    node_style = dict(Style.parse_str(groupnode.get("style")))
     node_transform = Transform(groupnode.get("transform")).matrix;
     node_clippathurl = groupnode.get('clip-path')
         
@@ -341,7 +360,7 @@ def ungroup(groupnode):
             recursive_merge_clip(el, node_clippathurl) # transform applies to clip, so do clip first
             _merge_transform(el, node_transform)
             el.style = shallow_composed_style(el)
-            # _merge_style(el, node_style)    
+#            _merge_style(el, node_style)    
             groupnode.getparent().insert(node_index+1,el); # places above
         if isinstance(el, Group) and wasuse: # if Use was a group, ungroup it
             ungroup(el)
@@ -501,6 +520,7 @@ def Get_Bounding_Boxes(s,getnew):
         tmpname = s.options.input_file+'_tmp';
         command.write_svg(s.svg,tmpname);
         tFStR = command.inkscape(tmpname,'--query-all');
+        import os; os.remove(tmpname)
 
     tBBLi = tFStR.splitlines()
 #    x=[[float(x.strip('\'')) for x in str(d).split(',')[1:]] for d in tBBLi]

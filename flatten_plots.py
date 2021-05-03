@@ -83,15 +83,17 @@ class FlattenPlots(inkex.EffectExtension):
         
         newos = [];
         if self.options.fixtext:
+            if splitdistant or fixshattering:
+                ctable, bbs = dh.measure_character_widths(list(set(list(reversed(os)))),self)
+                
             if splitdistant:
                 for el in list(reversed(os)):
                     if isinstance(el,TextElement):
-                        newos += dh.split_distant(el)
+                        newos += dh.split_distant(el,ctable)
                         newos += dh.pop_tspans(el)
             allos = list(set(list(reversed(os))+list(newos)));
                
-            if fixshattering:
-                ctable, bbs = dh.measure_character_widths(allos,self)            
+            if fixshattering:            
                 for el in allos:
                     if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
                         dh.reverse_shattering(el,ctable)
@@ -99,6 +101,7 @@ class FlattenPlots(inkex.EffectExtension):
                 for el in allos:
                     if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
                         ff = dh.Get_Style_Comp(el.get('style'),'font-family');
+#                        dh.Set_Style_Comp(el,'-inkscape-font-specification',None)
                         if ff==None or ff=='none' or ff=='':
                             dh.Set_Style_Comp(el,'font-family',replacement)
                         elif ff==replacement:
