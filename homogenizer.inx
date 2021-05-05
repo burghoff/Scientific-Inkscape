@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+    <name>Homogenizer</name>
+    <id>burghoff.homogenizer</id>
+    <param name="tab" type="notebook">
+        
+        <page name="scaling" gui-text="Options">
+            <label>Sets the properties of all selected objects without changing objects' position.
+            </label>
+            <label appearance="header">Text options</label>
+            
+            <param name="setfontsize" type="bool" gui-text="Set font size?">true</param>            
+            <param name="fontsize" type="float" precision="1" min="0" max="100" gui-text="New font size (pt)">8</param>
+            
+            <param name="setfontfamily" type="bool" gui-text="Set font family?">true</param>
+            <param name="fontfamily" type="string" gui-text="Font family"></param>
+                 
+            <label appearance="header">Stroke options</label>
+            <param name="setstroke"  type="bool" gui-text="Set stroke width?">true</param>            
+            <param name="setstrokew" type="float" precision="1" min="0" max="100" gui-text="New stroke width (px)">1</param>
+            <label>By David Burghoff, University of Notre Dame</label>   
+        </page>
+    </param>
+    <effect>
+        <object-type>text</object-type>
+        <effects-menu>
+            <submenu name="Academic"/>
+        </effects-menu>
+    </effect>
+    <script>
+        <command location="inx" interpreter="python">homogenizer.py</command>
+    </script>
+</inkscape-extension>

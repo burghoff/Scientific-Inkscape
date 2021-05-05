@@ -18,7 +18,7 @@
         </page>
         <page name="Help" gui-text="Help">
         <label appearance="header">Main options</label>
-            <label  xml:space="preserve">A set of tools for plot modification and cleanup. Select the plot you want to modify.
+            <label  xml:space="preserve">A set of tools for plot cleanup. It will make the selected plots easier to edit, but should not change the actual graphic very much (if at all).
 Deep ungroup: Removes all groupings.
 Apply text fixes: Apply the fixes specified in the options.
 Remove white-filled rectangles: Removes background rectangles.

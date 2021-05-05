@@ -38,10 +38,18 @@ def inkscape_editable(el):
         if isinstance(k, (Tspan,TextElement)):
             inkscape_editable(k)
     if isinstance(el,TextElement):
-        el.set('xml:space','preserve') # needed so we still have spaces
-#        Set_Style_Comp(el,'text-anchor','middle')
-    # elif isinstance(el,Tspan):
-    #     el.set('sodipodi:role','line')
+        el.set('xml:space','preserve')      # enable so we can add spaces
+    elif isinstance(el,Tspan):
+        if len(el.getparent().getchildren())==1: # only child
+            tx = el.get('x'); ty=el.get('y');
+            myp = el.getparent();
+            myp.set('x',tx)      # enabling sodipodi causes it to move to the parent's x and y
+            myp.set('y',ty)
+            el.set('sodipodi:role','line'); # reenable sodipodi so we can insert returns
+#            Set_Style_Comp(el,'text-anchor','middle');
+#            Set_Style_Comp(el,'text-align','center') # one day...
+#            Set_Style_Comp(myp,'text-anchor','middle');
+#            Set_Style_Comp(myp,'text-align','center') # one day...
         
     
 
@@ -278,9 +286,15 @@ def Get_Style_Comp(sty,comp):
 def Get_Composed_Width(el,comp):
     cs = el.composed_style();
     ct = el.composed_transform();
-    docscale = get_parent_svg(el).scale;
+    svg = get_parent_svg(el)
+    docscale = svg.scale;
     sc = Get_Style_Comp(cs,comp);
     if sc is not None:
+        if '%' in sc: # relative width, get parent width
+            sc = float(sc.strip('%'))/100;
+            sc = sc*Get_Composed_Width(el.getparent(),comp)
+            sc = str(sc)+'px'
+#        sw = svg.unittouu(sc);
         sw = float(sc.strip().replace("px", ""))
         sw *= math.sqrt(abs(ct.a*ct.d - ct.b*ct.c))
         return sw*docscale
@@ -302,13 +316,22 @@ def Get_Composed_List(el,comp):
         return sw
     else:
         return None
-    
 
-# Get true font size in pt
-def fontsize(el):
-    svg = get_parent_svg(el);
-    ptsize = svg.unittouu('1pt');
-    return Get_Composed_Width(el,'font-size')/ptsize
+# Unit parser and renderer
+def uparse(str):
+    if str is not None:
+        uv = inkex.units.parse_unit(str,default_unit=None);
+        return uv[0],uv[1]
+    else:
+        return None, None
+def urender(v,u):
+    if v is not None:
+        if u is not None:
+            return inkex.units.render_unit(v,u);
+        else:
+            return str(v)
+    else:
+        return None
 
 # Get points of a path, element, or rectangle in the global coordinate system
 def get_points(el):
@@ -578,7 +601,7 @@ def global_transform(el,trnsfrm):
     sw = Get_Composed_Width(el,'stroke-width');
     sd = Get_Composed_List(el, 'stroke-dasharray');
     el.set('transform',newtr); # Add the new transform
-    if not(isinstance(el, (TextElement,Image,Group))): # not(el.typename in ['TextElement','Image','Group']):
+    if not(isinstance(el, (TextElement,Image,Group,FlowRoot))): # not(el.typename in ['TextElement','Image','Group']):
         ApplyTransform().recursiveFuseTransform(el);
         if sw is not None:
             nw = float(Get_Style_Comp(el.get('style'),'stroke-width'))

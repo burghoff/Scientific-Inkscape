@@ -42,17 +42,6 @@ class FlattenPlots(inkex.EffectExtension):
         pars.add_argument("--replacement", type=str, default='Arial', help="Missing font replacement");
 
     def effect(self):   
-        sel = self.svg.selection;                     # an ElementList
-        # dh.debug(get_mod(sel))
-        # dh.debug(sel)
-        # for k in sel.id_dict().keys():
-        #     myk = sel.id_dict()[k].getchildren()
-        #     for k2 in myk:
-        #         if not(isinstance(k2,lxml.etree._Comment)):
-        #             dh.debug(k2.get_id())
-        # inkex.utils.debug(sel)
-        # els=[sel[k] for k in sel.id_dict().keys()];
-        
         poprest = self.options.deepungroup
         removerectw = self.options.removerectw
         splitdistant = self.options.splitdistant and self.options.fixtext
@@ -60,6 +49,7 @@ class FlattenPlots(inkex.EffectExtension):
         setreplacement = self.options.setreplacement and self.options.fixtext
         replacement = self.options.replacement
         
+        sel = self.svg.selection;                     # an ElementList
         gpe= dh.get_mod(sel)
         els =[gpe[k] for k in gpe.id_dict().keys()];
         gs = [el for el in els if isinstance(el,Group)]

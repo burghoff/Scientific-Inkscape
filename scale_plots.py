@@ -223,7 +223,7 @@ class ScalePlots(inkex.EffectExtension):
                 # if el.get_id()=='text2811':
                 #     dh.debug(bbs['text2811'])  
                 #     dh.debug(fbbs['text2811']) 
-                if (isinstance(el, (TextElement,Group)) or outsideplot) and not(el in sfgs): #el.typename in ['TextElement','Group'] or outsideplot:
+                if (isinstance(el, (TextElement,Group,FlowRoot)) or outsideplot) and not(el in sfgs): #el.typename in ['TextElement','Group'] or outsideplot:
                     # Invert the transformation for any text/groups  or anything outside the plot
                     bb1 = gtr.apply_to_point([bb[0],bb[1]]);
                     bb2 = gtr.apply_to_point([bb[0]+bb[2],bb[1]+bb[3]]);
