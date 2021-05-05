@@ -1,4 +1,4 @@
-# Academic-Inkscape: Extensions for figure resizing and manipulation
+# Academic-Inkscape: Extensions for figure resizing and editing
 This repository contains several Inkscape extensions for plot modification.
 
 1. **Scale Plots**: Changes the size or aspect ratio of a plot without modifying its text and ticks. It is especially useful for assembling multi-panel figures.
