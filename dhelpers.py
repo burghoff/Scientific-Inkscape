@@ -37,10 +37,11 @@ def inkscape_editable(el):
     for k in ks:
         if isinstance(k, (Tspan,TextElement)):
             inkscape_editable(k)
-    if isinstance(el,TextElement):
-        el.set('xml:space','preserve')      # enable so we can add spaces
+    if isinstance(el,TextElement):  # enable xml preserve so we can add spaces
+        el.set('xml:space','preserve')      
     elif isinstance(el,Tspan):
-        if len(el.getparent().getchildren())==1: # only child
+        myp = el.getparent();
+        if len(myp.getchildren())==1 and isinstance(myp,TextElement):  # only child, no nesting
             tx = el.get('x'); ty=el.get('y');
             myp = el.getparent();
             myp.set('x',tx)      # enabling sodipodi causes it to move to the parent's x and y
@@ -58,7 +59,7 @@ def split_distant(el,ctable):
     # This makes it hard to modify / adjust it. This splits text separated by more than 1.5 spaces.
     # Recursively run on children first
 #    oldsodipodi = el.get('sodipodi:role');
-    el.set('sodipodi:role',None);
+    # el.set('sodipodi:role',None);
     ks=el.getchildren();
     newtxt = [];
     for k in ks:
@@ -105,14 +106,14 @@ def split_distant(el,ctable):
 
 def pop_tspans(el):
     # Pop out text from different tspans
-    el.set('sodipodi:role',None);
+    # el.set('sodipodi:role',None);
     ks=el.getchildren();
     ks=[t for t in ks if isinstance(t, Tspan)]; # ks=[t for t in ks if t.typename=='Tspan'];
     node_index = list(el.getparent()).index(el);
     newtxt = [];
     for k in ks:
         k.style = k.composed_style();
-        k.set('sodipodi:role',None)
+        # k.set('sodipodi:role',None)
         el.getparent().insert(node_index,k); # pop everything out   
     for k in ks:
         dp = el.duplicate();             # make dupes of the empty
@@ -191,7 +192,7 @@ def reverse_shattering(el,ctable):
     # In PDFs, text is often positioned by letter.
     # This makes it hard to modify / adjust it. This fixes that.
     # Recursively run on children first
-    el.set('sodipodi:role',None);
+    # el.set('sodipodi:role',None);
     ks=el.getchildren();
     for k in ks:
         if isinstance(k, (Tspan,TextElement)):    # k.typename=='Tspan' or k.typename=='TextElement':

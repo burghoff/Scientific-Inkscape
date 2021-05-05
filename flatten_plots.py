@@ -73,6 +73,13 @@ class FlattenPlots(inkex.EffectExtension):
         
         newos = [];
         if self.options.fixtext:
+            spd = dict()
+            for el in list(reversed(os)):
+                if isinstance(el,(TextElement,Tspan)):
+                    spd[el.get_id()] = el.get('sodipodi:role');
+                    el.set('sodipodi:role',None);
+                    
+                    
             if splitdistant or fixshattering:
                 ctable, bbs = dh.measure_character_widths(list(set(list(reversed(os)))),self)
                 
