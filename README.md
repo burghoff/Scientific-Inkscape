@@ -32,8 +32,8 @@ Scale Plots has two modes. In Scaling Mode, the plot is scaled by a constant fac
 
 # Flatten Plots
 Flatten Plots is a useful utility that eliminates many of the difficulties that arise when plots are exported from common plotting programs.
-1. *Deep ungroup*: The Scale Plots utility uses grouping to determine when objects are to be kept together, so a deep ungroup is typically needed to remove any existing groupings initially. While there is a standalone Deep Ungroup extension built in to Inkscape, it is somewhat buggy—the version in Inkscape 1.0.2 cannot ungroup *any* of the plots in the provided test file.
-2. *Apply text fixes*: Applies a series of fixes to text described below.
+1. *Deep ungroup*: The Scale Plots utility uses grouping to determine when objects are to be kept together, so a deep ungroup is typically needed to remove any existing groupings initially. It also unlinks any clones.
+2. *Apply text fixes*: Applies a series of fixes to text described below (particularly useful for PDF/EPS text).
 3. *Remove white rectangles*: Removes any rectangles that have white fill and no stroke. Mostly for removing a plot's background.
 
 ### Text fixes
