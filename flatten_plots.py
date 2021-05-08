@@ -42,6 +42,9 @@ class FlattenPlots(inkex.EffectExtension):
         pars.add_argument("--replacement", type=str, default='Arial', help="Missing font replacement");
 
     def effect(self):   
+        # import random
+        # random.seed(a=1)
+        
         poprest = self.options.deepungroup
         removerectw = self.options.removerectw
         splitdistant = self.options.splitdistant and self.options.fixtext
@@ -70,6 +73,10 @@ class FlattenPlots(inkex.EffectExtension):
                 elif g.get('mpl_comment') is not None: pass
                 else:
                     dh.ungroup(g);    
+                    
+            # dh.debug(self.svg.get_ids())
+            # dh.debug(len(self.svg.get_ids()))
+            # x=asdf
         
         newos = [];
         if self.options.fixtext:

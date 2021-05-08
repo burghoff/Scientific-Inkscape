@@ -7,11 +7,11 @@
 
 import inkex
 import math
-from inkex import Polyline
 from inkex.paths import CubicSuperPath, Path
 from inkex.transforms import Transform
 from inkex.styles import Style
-from inkex import (Line, Rectangle)
+from inkex import (Line, Rectangle,Polygon,Polyline,Ellipse,Circle)
+import dhelpers as dh
 
 NULL_TRANSFORM = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 from lxml import etree
@@ -102,8 +102,8 @@ class ApplyTransform(inkex.EffectExtension):
 
             self.scaleStrokeWidth(node, transf)
 
-        elif node.tag in [inkex.addNS('polygon', 'svg'),
-                          inkex.addNS('polyline', 'svg')]:
+        elif isinstance(node,(Polygon,Polyline)): # node.tag in [inkex.addNS('polygon', 'svg'),
+                                                  # inkex.addNS('polyline', 'svg')]:
             points = node.get('points')
             points = points.strip().split(' ')
             for k, p in enumerate(points):
@@ -119,8 +119,7 @@ class ApplyTransform(inkex.EffectExtension):
 
             self.scaleStrokeWidth(node, transf)
 
-        elif node.tag in [inkex.addNS("ellipse", "svg"), inkex.addNS("circle", "svg")]:
-
+        elif isinstance(node,(Ellipse,Circle)): #node.tag in [inkex.addNS("ellipse", "svg"), inkex.addNS("circle", "svg")]:
             def isequal(a, b):
                 return abs(a - b) <= transf.absolute_tolerance
 
@@ -148,16 +147,6 @@ class ApplyTransform(inkex.EffectExtension):
             edgey = math.sqrt(
                 abs(newxy2[0] - newxy3[0]) ** 2 + abs(newxy2[1] - newxy3[1]) ** 2
             )
-
-#            if not isequal(edgex, edgey) and (
-#                node.TAG == "circle"
-#                or not isequal(newxy2[0], newxy3[0])
-#                or not isequal(newxy1[1], newxy2[1])
-#            ):
-#                inkex.utils.errormsg(
-#                    "Warning: Shape %s (%s) is approximate only, try Object to path first for better results"
-#                    % (node.TAG, node.get("id"))
-#                )
 
             if node.TAG == "ellipse":
                 node.set("rx", edgex / 2)

@@ -30,6 +30,7 @@ from applytransform_mod import ApplyTransform
 import lxml
 from lxml import etree  
 
+
 It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
 
 def inkscape_editable(el):
@@ -86,7 +87,8 @@ def split_distant(el,ctable):
                 cw = ctable[sty][myi][1]/docscale*fs
                 if abs(sx[ii]-sx[ii-1])>=1.5*sw+cw:
                     word = stxt[starti:ii]
-                    ts = el.duplicate();
+                    # ts = el.duplicate();
+                    ts = duplicate2(el);
                     ts.text = word;
                     ts.set('x',' '.join(str(x) for x in sx[starti:ii]));
                     ts.set('y',el.get('y'));
@@ -94,7 +96,8 @@ def split_distant(el,ctable):
                     starti = ii;
                     newtxt.append(ts);
             word = stxt[starti:]
-            ts = el.duplicate();
+            # ts = el.duplicate();
+            ts = duplicate2(el);
             ts.text = word;
             ts.set('x',' '.join(str(x) for x in sx[starti:]));
             ts.set('y',el.get('y'));
@@ -116,7 +119,8 @@ def pop_tspans(el):
         # k.set('sodipodi:role',None)
         el.getparent().insert(node_index,k); # pop everything out   
     for k in ks:
-        dp = el.duplicate();             # make dupes of the empty
+        # dp = el.duplicate();             # make dupes of the empty
+        dp = duplicate2(el);             # make dupes of the empty
         dp.insert(0,k)                   # fill with individual tspans
         newtxt.append(dp)
     if (el.getchildren()==None or len(el.getchildren())==0) and (el.text==None or len(el.text)==0):
@@ -448,7 +452,8 @@ def _merge_transform(node, transform):
 
     # Set the node's transform attrib
 #            node.set("transform", simpletransform.formatTransform(this_transform)) # deprecated
-    node.set("transform",str(this_transform))
+    # node.set("transform",str(this_transform))
+    node.transform = this_transform
 
 
 def _merge_style(node, style):
@@ -493,38 +498,48 @@ def _merge_style(node, style):
         this_style.update(remaining_style)
         # Set the element's style attribs
         node.style = this_style
-      
+
+# Like duplicate, but randomly sets the id of all descendants also
+# Normal duplicate does not
+# Second argument disables duplication
+def duplicate2(el,*args):
+    if not(len(args)>0 and args[0]):
+        d = el.duplicate();
+    else:
+        d = el;
+    for k in d.getchildren():
+        k.set_random_id();
+        duplicate2(k,True)
+    return d
+
 def recursive_merge_clip(node,clippathurl):
     # Modified from Deep Ungroup
     if clippathurl is not None:
+        svg = get_parent_svg(node);
         if node.transform is not None:
-                # Clip-paths on nodes with a transform have the transform
-                # applied to the clipPath as well, which we don't want.  So, we
-                # create new clipPath element with references to all existing
-                # clippath subelements, but with the inverse transform applied   
-                myn = node
-                while myn.getparent() is not None:  # get svg handle
-                    myn = myn.getparent();
-                svg = myn;
-                new_clippath = etree.SubElement(
-                    svg.getElement('//svg:defs'), 'clipPath',
-                    {'clipPathUnits': 'userSpaceOnUse',
-                      'id': svg.get_unique_id("clipPath")})
-                clippath = svg.getElementById(clippathurl[5:-1])
-                for c in clippath.iterchildren():
-                    etree.SubElement(
-                            new_clippath, 'use',
-                            {inkex.addNS('href', 'xlink'): '#' + c.get("id"),
-                              'transform': str(-node.transform),
-                              'id': svg.get_unique_id("use")})
-                # Set the clippathurl to be the one with the inverse transform
-                clippathurl = "url(#" + new_clippath.get("id") + ")"  
+            # Clip-paths on nodes with a transform have the transform
+            # applied to the clipPath as well, which we don't want.  So, we
+            # create new clipPath element with references to all existing
+            # clippath subelements, but with the inverse transform applied 
+            new_clippath = etree.SubElement(
+                svg.getElement('//svg:defs'), 'clipPath',
+                {'clipPathUnits': 'userSpaceOnUse',
+                  'id': svg.get_unique_id("clipPath")})
+
+            clippath = svg.getElementById(clippathurl[5:-1])
+            for c in clippath.iterchildren():
+                etree.SubElement(
+                        new_clippath, 'use',
+                        {inkex.addNS('href', 'xlink'): '#' + c.get("id"),
+                          'transform': str(-node.transform),
+                          'id': svg.get_unique_id("use")})
+            clippathurl = "url(#" + new_clippath.get("id") + ")"  
         
         myclip = node.get('clip-path');
         if myclip is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
             clipnode = svg.getElementById(myclip[5:-1]);
-            d = clipnode.duplicate();
+            d = duplicate2(clipnode); # very important to use dup2 here
             node.set('clip-path',"url(#" + d.get("id") + ")")
             ks = d.getchildren();
             for k in ks:

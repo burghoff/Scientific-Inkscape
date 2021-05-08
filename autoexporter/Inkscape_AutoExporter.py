@@ -1,10 +1,10 @@
 # Inkscape Auto-Exporter, by David Burghoff
 # Daemon that checks a folder for changes in svg files, and then exports them 
-# automatically to another folder in multiple formats
+# automatically to another folder in multiple formats.
+# It has only been tested in Python 3.7 and above.
 
 EXPORT_FORMATS = ['pdf','emf','png']            # list of formats to use
 PNG_DPI = 600;                                  # resolution for PNG export
-
 # Any more options, and you will need to modify the call string (see export_file function below) 
 
 import tkinter
