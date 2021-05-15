@@ -70,8 +70,8 @@ class ScalePlots(inkex.EffectExtension):
         sela= [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject)))];
         sel = [el for el in sel if isinstance(el,(TextElement,Tspan,FlowRoot,FlowPara,FlowSpan))];
         
-        bbs=dh.Get_Bounding_Boxes(self,False);
-        # sel = [k for k in sel if k.get_id() in list(bbs.keys())]; # only work on objects with a BB
+        if setfontfamily or setfontsize:
+            bbs=dh.Get_Bounding_Boxes(self,False);
         
         if setfontsize:
             for el in sel:
@@ -88,8 +88,10 @@ class ScalePlots(inkex.EffectExtension):
                     dh.Set_Style_Comp(el,'font-size',str(newsize))
                 
         if setfontfamily:
-            for el in sel:
+            for el in reversed(sel):
                 dh.Set_Style_Comp(el,'font-family',fontfamily)
+                if fontfamily=='Avenir' and isinstance(el,(TextElement,FlowRoot)):
+                    dh.Replace_Non_Ascii_Font(el,'Avenir Next, Arial')
         
 #        if setreplacement:
 #            for el in sel:

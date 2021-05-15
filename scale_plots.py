@@ -104,20 +104,21 @@ class ScalePlots(inkex.EffectExtension):
             asels = [list(s.getchildren()) for s in sels];
         
         for sels in asels:
-            # Calculate bounding boxes of selected items
+            # Calculate geometric (tight) bounding boxes of selected items
             sels = [k for k in sels if k.get_id() in list(fbbs.keys())]; # only work on objects with a BB
-            bbs=dict();  # geometric (tight) bounding boxes
+            bbs=dict();  
             for el in [firstsel]+sels+sfels:
-#                if isinstance(el,TextElement):
-##                    for k in el.getchildren():
-##                        if isinstance(k,Tspan):
-##                            dh.debug(dh.fontsize(k))
                 if el.get_id() in list(fbbs.keys()):
                     bbs[el.get_id()] = copy.copy(fbbs[el.get_id()]);
                     if isinstance(el,(PathElement,Rectangle,Line,Polyline)):   # if path-like, use nodes instead
                         xs, ys = dh.get_points(el);
-                        bbs[el.get_id()] = [min(xs),min(ys),max(xs)-min(xs),max(ys)-min(ys)]
-#                    dh.debug(str(bbs[el.get_id()][2]/fbbs[el.get_id()][2])+'   '+str(bbs[el.get_id()][3]/fbbs[el.get_id()][3]))
+                        # For clipped objects the list of points is a bad description of the geometric bounding box.
+                        # As a rough workaround, use the visual bbox if its limits are smaller than the geometric bbox.
+                        minx = max(min(xs),fbbs[el.get_id()][0])
+                        maxx = min(max(xs),fbbs[el.get_id()][0]+fbbs[el.get_id()][2])
+                        miny = max(min(ys),fbbs[el.get_id()][1])
+                        maxy = min(max(ys),fbbs[el.get_id()][1]+fbbs[el.get_id()][3])
+                        bbs[el.get_id()] = [minx,miny,maxx-minx,maxy-miny] # geometric bounding box
                 
             # Find horizontal and vertical lines (to within .001 rad), elements to be used in plot area calculations
             vl = dict(); hl = dict(); boxes = dict(); solids = dict();
@@ -128,11 +129,11 @@ class ScalePlots(inkex.EffectExtension):
                     bb=bbs[el.get_id()];
                     xs, ys = dh.get_points(el);
                     if (max(xs)-min(xs))<.001*bb[3]: # vertical line
-                        vl[el.get_id()]=bb[3];
-                        vels[el.get_id()]=bb[3];
+                        vl[el.get_id()]=bb[3];       # lines only
+                        vels[el.get_id()]=bb[3];     # lines and rectangles
                     if (max(ys)-min(ys))<.001*bb[2]: # horizontal line
-                        hl[el.get_id()]=bb[2];
-                        hels[el.get_id()]=bb[2];
+                        hl[el.get_id()]=bb[2];       # lines only
+                        hels[el.get_id()]=bb[2];     # lines and rectangles
                     
                     if len(xs)==5 and len(set(xs))==2 and len(set(ys))==2:
                         isrect = True;
@@ -177,6 +178,7 @@ class ScalePlots(inkex.EffectExtension):
                     fminxp = min(fminxp,fbb[0]);
                     fmaxxp = max(fmaxxp,fbb[0]+fbb[2]);
                     
+                    
             if self.options.tab=='matching':
                 bbfirst = bbs[firstsel.get_id()];
                 if hmatch:
@@ -211,6 +213,20 @@ class ScalePlots(inkex.EffectExtension):
                 cdict[el.get_id()]=False;
                 for k in el.getchildren():
                     cdict[k.get_id()]=False;
+                    
+            # Diagnostic mode                    
+            diagmode = False
+            if diagmode:
+                r = Rectangle();
+                r.set('x',minxp)
+                r.set('y',minyp)
+                r.set('width',abs(maxxp-minxp))
+                r.set('height', abs(maxyp-minyp))
+                r.set('style','fill-opacity:0.5')
+                self.svg.append(r)
+                dh.global_transform(r,gtr)
+                dh.debug('Largest vertical line: '+lvl)
+                dh.debug('Largest horizontal line: '+lhl)
             
             # Correct text and group scaling
             iscl = Transform('scale('+str(1/scalex)+', '+str(1/scaley)+')');
@@ -220,9 +236,6 @@ class ScalePlots(inkex.EffectExtension):
                 outsideplot = fbb[0]>fmaxxp or fbb[0]+fbb[2]<fminxp \
                         or fbb[1]>fmaxyp or fbb[1]+fbb[3]<fminyp;
                 
-                # if el.get_id()=='text2811':
-                #     dh.debug(bbs['text2811'])  
-                #     dh.debug(fbbs['text2811']) 
                 if (isinstance(el, (TextElement,Group,FlowRoot)) or outsideplot) and not(el in sfgs): #el.typename in ['TextElement','Group'] or outsideplot:
                     # Invert the transformation for any text/groups  or anything outside the plot
                     bb1 = gtr.apply_to_point([bb[0],bb[1]]);
@@ -232,6 +245,7 @@ class ScalePlots(inkex.EffectExtension):
     
                     trl = Transform('translate('+str(cx)+', '+str(cy)+')');
                     tr1 = trl*iscl*(-trl);
+                    
                     
                     # For elements outside the plot area, adjust position to maintain the distance to the plot
                     dx = 0; dy = 0;

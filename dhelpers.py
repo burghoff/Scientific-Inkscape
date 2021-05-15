@@ -20,7 +20,7 @@
 
 import inkex
 from inkex import (
-    TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, \
+    TextElement, FlowRoot, FlowPara, FlowSpan, Tspan, TextPath, Rectangle, \
         addNS, Transform, Style, ClipPath, Use, NamedView, Defs, \
         Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command,\
         SvgDocumentElement,Image,Group,Polyline,Anchor,Switch,ShapeElement)
@@ -74,8 +74,7 @@ def split_distant(el,ctable):
             docscale = get_parent_svg(el).scale;
             sty = el.composed_style();
             fs = float(sty.get('font-size').strip('px'));
-            sty = Set_Style_Comp2(str(sty),'font-size','1px');
-            sty = Set_Style_Comp2(sty,'fill','#000000')      
+            sty = normalize_style(sty)  
             stxt = [x for _, x in sorted(zip(myx, el.text), key=lambda pair: pair[0])] # text sorted in ascending x
             sx   = [x for _, x in sorted(zip(myx, myx)    , key=lambda pair: pair[0])] # x sorted in ascending x
             stxt = "".join(stxt) # back to string
@@ -83,8 +82,8 @@ def split_distant(el,ctable):
             starti = 0;
             for ii in range(1,min(len(sx),len(stxt))):
                 myi = [jj for jj in range(len(ctable[sty])) if ctable[sty][jj][0]==stxt[ii-1]][0]
-                sw = ctable[sty][myi][2]/docscale*fs
-                cw = ctable[sty][myi][1]/docscale*fs
+                sw = ctable[sty][myi][2]*fs
+                cw = ctable[sty][myi][1]*fs
                 if abs(sx[ii]-sx[ii-1])>=1.5*sw+cw:
                     word = stxt[starti:ii]
                     # ts = el.duplicate();
@@ -143,19 +142,28 @@ def generate_character_table(els,ctable):
         if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
             if el.text is not None:
                 sty = str(el.composed_style());
-                sty = Set_Style_Comp2(sty,'font-size','1px') # so we don't have to check too many styles, set sizes and color to be identical
-                sty = Set_Style_Comp2(sty,'fill','#000000')    
+                sty = normalize_style(sty)    
                 if sty in list(ctable.keys()):
                     ctable[sty] = list(set(ctable[sty]+list(el.text)));
                 else:
                     ctable[sty] = list(set(list(el.text)));
+            if isinstance(el,Tspan) and el.tail is not None and el.tail!='':
+                sty = str(el.getparent().composed_style());
+                sty = normalize_style(sty)    
+                if sty in list(ctable.keys()):
+                    ctable[sty] = list(set(ctable[sty]+list(el.tail)));
+                else:
+                    ctable[sty] = list(set(list(el.tail)));
+                
     return ctable
 
 def measure_character_widths(els,slf):
-    # Measure the width of all characters of a given style by generating copies with two and three extra spaces
-    # We take the difference to get the width of a space, then subtract that to get the character's full width
-    # This includes any spaces between characters as well
+    # Measure the width of all characters of a given style by generating copies with two and three extra spaces.
+    # We take the difference to get the width of a space, then subtract that to get the character's full width.
+    # This includes any spaces between characters as well.
+    # The width will be the width of a character whose composed font size is 1 uu.
     ct = generate_character_table(els,None);
+    docscale = slf.svg.scale;
     
     def Make_Character(c,sty):
         nt = TextElement();
@@ -169,9 +177,9 @@ def measure_character_widths(els,slf):
         for ii in range(len(ct[s])):
             t = Make_Character(ct[s][ii]+'\u00A0\u00A0',s); # character with 2 nb spaces (last space not rendered)
             ct[s][ii] = [ct[s][ii],t,t.get_id()]; 
-        t = Make_Character('A\u00A0\u00A0',s);              # A with 2 nb spaces
+        t = Make_Character('pI\u00A0\u00A0',s);              # pI with 2 nb spaces
         ct[s].append([ct[s][ii],t,t.get_id()]);             
-        t = Make_Character('A\u00A0\u00A0\u00A0',s);        # A with 3 nb spaces
+        t = Make_Character('pI\u00A0\u00A0\u00A0',s);        # pI with 3 nb spaces
         ct[s].append([ct[s][ii],t,t.get_id()]); 
         
     nbb = Get_Bounding_Boxes(slf,True);  
@@ -179,19 +187,33 @@ def measure_character_widths(els,slf):
         for ii in range(len(ct[s])):
             bb=nbb[ct[s][ii][2]]
             wdth = bb[0]+bb[2]
+            caphgt = -bb[1]
+            bbstrt = bb[0]
+            dscnd = bb[1]+bb[3]
             ct[s][ii][1].delete();
-            ct[s][ii] = [ct[s][ii][0],wdth]
+            ct[s][ii] = [ct[s][ii][0],wdth,bbstrt,caphgt,dscnd]
     for s in list(ct.keys()):
         Nl = len(ct[s])-2;
         sw = ct[s][-1][1] - ct[s][-2][1] # space width is the difference in widths of the last two
+        ch = ct[s][-1][3]                # cap height
+        dr = ct[s][-1][4]                # descender
         for ii in range(Nl):
-            cw = ct[s][ii][1] - sw;
+            cw = ct[s][ii][1] - sw;  # character width (full, including extra space on each side)
+            xo = ct[s][ii][2]        # x offset: how far it starts from the left anchor
             if ct[s][ii][0]==' ':
                 cw = sw;
-            ct[s][ii] = [ct[s][ii][0],cw,sw];
+                xo = 0;
+            ct[s][ii] = [ct[s][ii][0],cw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale];
+            # Because a nominal 1 px font is docscale px tall, we need to divide by the docscale to get the true width
         ct[s] = ct[s][0:Nl]
     return ct, nbb
 
+def normalize_style(sty):
+    sty = Set_Style_Comp2(str(sty),'font-size','1px');
+    sty = Set_Style_Comp2(sty,'fill',None)         
+    sty = Set_Style_Comp2(sty,'text-anchor',None)
+    sty = Set_Style_Comp2(sty,'baseline-shift',None)
+    return sty
 def reverse_shattering(el,ctable):
     # In PDFs, text is often positioned by letter.
     # This makes it hard to modify / adjust it. This fixes that.
@@ -209,8 +231,7 @@ def reverse_shattering(el,ctable):
             docscale = get_parent_svg(el).scale;
             sty = el.composed_style();
             fs = float(sty.get('font-size').strip('px'));
-            sty = Set_Style_Comp2(str(sty),'font-size','1px');
-            sty = Set_Style_Comp2(sty,'fill','#000000')                              
+            sty = normalize_style(sty)                       
             
             # We sometimes need to add non-breaking spaces to keep letter positioning similar
             stxt = [x for _, x in sorted(zip(myx, el.text), key=lambda pair: pair[0])] # text sorted in ascending x
@@ -219,8 +240,8 @@ def reverse_shattering(el,ctable):
             spaces_before = []; cpos=sx[0];
             for ii in range(len(stxt)): # advance the cursor to figure out how many spaces are needed
                 myi = [jj for jj in range(len(ctable[sty])) if ctable[sty][jj][0]==stxt[ii]][0]
-                myw  = ctable[sty][myi][1]/docscale*fs
-                mysw = ctable[sty][myi][2]/docscale*fs
+                myw  = ctable[sty][myi][1]*fs
+                mysw = ctable[sty][myi][2]*fs
                 spaces_needed = round((sx[ii]-cpos)/mysw)
                 spaces_before.append(max(0,spaces_needed - sum(spaces_before)))
                 cpos += myw # advance the cursor
@@ -288,7 +309,7 @@ def Get_Style_Comp(sty,comp):
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms/document scaling
-def Get_Composed_Width(el,comp):
+def Get_Composed_Width(el,comp,nargout=1):
     cs = el.composed_style();
     ct = el.composed_transform();
     svg = get_parent_svg(el)
@@ -297,14 +318,27 @@ def Get_Composed_Width(el,comp):
     if sc is not None:
         if '%' in sc: # relative width, get parent width
             sc = float(sc.strip('%'))/100;
-            sc = sc*Get_Composed_Width(el.getparent(),comp)
-            sc = str(sc)+'px'
-#        sw = svg.unittouu(sc);
-        sw = float(sc.strip().replace("px", ""))
-        sw *= math.sqrt(abs(ct.a*ct.d - ct.b*ct.c))
-        return sw*docscale
+            fs, sf, ct, ang = Get_Composed_Width(el.getparent(),comp,4)
+            if nargout==4:
+                ang = math.atan2(ct.c,ct.d)*180/math.pi;
+                return fs*sc,sf,ct, ang
+            else:
+                return fs*sc
+            # sc = sc*Get_Composed_Width(el.getparent(),comp)
+            # sc = str(sc)+'px'
+        else:
+            sw = float(sc.strip().replace("px", ""))
+            sf = math.sqrt(abs(ct.a*ct.d - ct.b*ct.c))*docscale # scale factor
+            if nargout==4:
+                ang = math.atan2(ct.c,ct.d)*180/math.pi;
+                return sw*sf, sf, ct, ang
+            else:
+                return sw*sf
     else:
-        return None
+        if nargout==2:
+            return None,None
+        else:
+            return None
     
 # For style components that are a list (stroke-dasharray), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms
@@ -595,7 +629,63 @@ def get_mod(slf, *types):
                 yield item
     return inkex.elements._selected.ElementList(slf.svg, [r for e in slf.values() for r in _recurse(e) \
                                               if not(isinstance(r,lxml.etree._Comment))])
- 
+
+
+
+
+# When non-ascii characters are detected, replace all non-letter characters with the specified font
+# Mainly for fonts like Avenir
+def Replace_Non_Ascii_Font(el,newfont,*args):
+    def nonletter(c):
+        return not((ord(c)>=65 and ord(c)<=90) or (ord(c)>=97 and ord(c)<=122))
+    def nonascii(c):
+        return ord(c)>=128
+    def alltext(el):
+        astr = el.text;
+        if astr is None: astr='';
+        for k in el.getchildren():
+            if isinstance(k,(Tspan,FlowPara,FlowSpan)):
+                astr+=alltext(k)
+                tl=k.tail;
+                if tl is None: tl=''
+                astr+=tl
+        return astr
+    
+    forcereplace = (len(args)>0 and args[0]);
+    if forcereplace or any([nonascii(c) for c in alltext(el)]):
+        alltxt = [el.text]; el.text=''
+        for k in el.getchildren():
+            if isinstance(k,(Tspan,FlowPara,FlowSpan)):
+                alltxt.append(k)
+                alltxt.append(k.tail); k.tail=''
+                el.remove(k)
+        lstspan = None;
+        for t in alltxt:
+            if t is None:
+                pass
+            elif isinstance(t,str):
+                ws = []; si=0;
+                for ii in range(1,len(t)): # split into words based on whether unicode or not
+                    if nonletter(t[ii-1])!=nonletter(t[ii]):
+                        ws.append(t[si:ii]);
+                        si=ii
+                ws.append(t[si:]);
+                sty = 'baseline-shift:0%;';
+                for w in ws:
+                    if any([nonletter(c) for c in w]):
+                        ts = Tspan(w,style=sty+'font-family:'+newfont)
+                        el.append(ts);
+                        lstspan = ts;
+                    else:
+                        if lstspan is None: el.text = w
+                        else:               lstspan.tail = w;
+            elif isinstance(t,(Tspan,FlowPara,FlowSpan)):
+                Replace_Non_Ascii_Font(t,newfont,True)
+                el.append(t);
+                lstspan = t;
+            
+            
+                
             
 def global_transform(el,trnsfrm):
     # Transforms an object and fuses it to any paths, preserving stroke
