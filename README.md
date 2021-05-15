@@ -6,7 +6,7 @@ This repository contains several Inkscape extensions designed for editing plots.
 3. **The Homogenizer**: Quickly sets uniform fonts, font sizes, and stroke widths in a selection.
 4. **The Auto-Exporter**: A program that will automatically export your SVG files to various formats and keep them updated.
 
-All were written by [David Burghoff](https://dburghoff.com) at the University of Notre Dame.  
+All were written by [David Burghoff](https://dburghoff.com) at the University of Notre Dame. If you find it useful, tell your collegaues!
 
 # Installation
 You must have the latest release version of Inkscape (1.0.2), and the extensions should be installed using the instructions provided [here](https://inkscape.org/gallery/=extension/). Download all of these files, then copy them into the directory listed at Edit > Preferences > System: User extensions. After a restart of Inkscape, the group extensions will be available under Extensions > Academic.
