@@ -24,6 +24,7 @@ from inkex import (TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle,\
 
 import lxml
 import dhelpers as dh
+import TextParser as tp
 
 #import warnings
 #warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -38,6 +39,7 @@ class FlattenPlots(inkex.EffectExtension):
         pars.add_argument("--removerectw", type=inkex.Boolean, default=True, help="Remove white rectangles")
         pars.add_argument("--splitdistant", type=inkex.Boolean, default=True, help="Split distant text")
         pars.add_argument("--fixshattering", type=inkex.Boolean, default=True, help="Fix text shattering")
+        pars.add_argument("--mergesubsuper", type=inkex.Boolean, default=True, help="Import superscripts and subscripts")
         pars.add_argument("--setreplacement", type=inkex.Boolean, default=True, help="Replace missing fonts")
         pars.add_argument("--replacement", type=str, default='Arial', help="Missing font replacement");
 
@@ -49,6 +51,7 @@ class FlattenPlots(inkex.EffectExtension):
         removerectw = self.options.removerectw
         splitdistant = self.options.splitdistant and self.options.fixtext
         fixshattering = self.options.fixshattering and self.options.fixtext
+        mergesubsuper = self.options.mergesubsuper and self.options.fixtext
         setreplacement = self.options.setreplacement and self.options.fixtext
         replacement = self.options.replacement
         
@@ -88,19 +91,21 @@ class FlattenPlots(inkex.EffectExtension):
                     
                     
             if splitdistant or fixshattering:
-                ctable, bbs = dh.measure_character_widths(list(set(list(reversed(os)))),self)
+                ct = tp.Character_Table(list(set(list(reversed(os)))),self)
                 
             if splitdistant:
                 for el in list(reversed(os)):
                     if isinstance(el,TextElement):
-                        newos += dh.split_distant(el,ctable)
+                        newos += dh.split_distant(el,ct.ctable)
                         newos += dh.pop_tspans(el)
             allos = list(set(list(reversed(os))+list(newos)));
                
-            if fixshattering:            
-                for el in allos:
-                    if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
-                        dh.reverse_shattering(el,ctable)
+            if fixshattering or mergesubsuper:            
+#                for el in allos:
+#                    if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
+#                        dh.reverse_shattering(el,ct.ctable)
+                dh.reverse_shattering2(allos,ct,fixshattering,mergesubsuper)
+                
             if setreplacement:
                 for el in allos:
                     if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted

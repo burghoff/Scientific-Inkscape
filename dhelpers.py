@@ -24,10 +24,9 @@ from inkex import (
         addNS, Transform, Style, ClipPath, Use, NamedView, Defs, \
         Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command,\
         SvgDocumentElement,Image,Group,Polyline,Anchor,Switch,ShapeElement)
-import simpletransform
-import math
 from applytransform_mod import ApplyTransform
-import lxml
+import TextParser as tp
+import lxml, simpletransform, math
 from lxml import etree  
 
 
@@ -71,10 +70,9 @@ def split_distant(el,ctable):
         myx = myx.split();
         myx =[float(x) for x in myx];
         if len(myx)>1:
-            docscale = get_parent_svg(el).scale;
             sty = el.composed_style();
             fs = float(sty.get('font-size').strip('px'));
-            sty = normalize_style(sty)  
+            sty = tp.Character_Table.normalize_style(sty)  
             stxt = [x for _, x in sorted(zip(myx, el.text), key=lambda pair: pair[0])] # text sorted in ascending x
             sx   = [x for _, x in sorted(zip(myx, myx)    , key=lambda pair: pair[0])] # x sorted in ascending x
             stxt = "".join(stxt) # back to string
@@ -127,93 +125,143 @@ def pop_tspans(el):
         el.delete();
     return newtxt
 
-def generate_character_table(els,ctable):
-    if isinstance(els,list):
-        for el in els:
-            ctable = generate_character_table(el,ctable);
-    else:
-        el=els;
-        ks=el.getchildren();
-        for k in ks:
-            ctable = generate_character_table(k,ctable);
-                
-        if ctable is None:
-            ctable = dict();
-        if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
-            if el.text is not None:
-                sty = str(el.composed_style());
-                sty = normalize_style(sty)    
-                if sty in list(ctable.keys()):
-                    ctable[sty] = list(set(ctable[sty]+list(el.text)));
-                else:
-                    ctable[sty] = list(set(list(el.text)));
-            if isinstance(el,Tspan) and el.tail is not None and el.tail!='':
-                sty = str(el.getparent().composed_style());
-                sty = normalize_style(sty)    
-                if sty in list(ctable.keys()):
-                    ctable[sty] = list(set(ctable[sty]+list(el.tail)));
-                else:
-                    ctable[sty] = list(set(list(el.tail)));
-                
-    return ctable
-
-def measure_character_widths(els,slf):
-    # Measure the width of all characters of a given style by generating copies with two and three extra spaces.
-    # We take the difference to get the width of a space, then subtract that to get the character's full width.
-    # This includes any spaces between characters as well.
-    # The width will be the width of a character whose composed font size is 1 uu.
-    ct = generate_character_table(els,None);
-    docscale = slf.svg.scale;
+def reverse_shattering2(os,ct,fixshattering,mergesupersub):
+    NUM_SPACES = 1.0;   # number of spaces beyond which text will be merged/split
+    XTOL = 0.5          # x tolerance (number of spaces)...let be big since there are kerning inaccuracies
+    YTOL = 0.01         # y tolerance (number of spaces)...can be small
+    SUBSUPER_THR = 0.9;  # ensuring sub/superscripts are smaller helps reduce false merges
     
-    def Make_Character(c,sty):
-        nt = TextElement();
-        nt.text = c;
-        nt.set('style',sty)
-        slf.svg.append(nt);
-        nt.get_id(); # assign id now
-        return nt
-                        
-    for s in list(ct.keys()):
-        for ii in range(len(ct[s])):
-            t = Make_Character(ct[s][ii]+'\u00A0\u00A0',s); # character with 2 nb spaces (last space not rendered)
-            ct[s][ii] = [ct[s][ii],t,t.get_id()]; 
-        t = Make_Character('pI\u00A0\u00A0',s);              # pI with 2 nb spaces
-        ct[s].append([ct[s][ii],t,t.get_id()]);             
-        t = Make_Character('pI\u00A0\u00A0\u00A0',s);        # pI with 3 nb spaces
-        ct[s].append([ct[s][ii],t,t.get_id()]); 
+    ws = []; lls=[]
+    for el in os:
+        if isinstance(el,TextElement) and el.getparent() is not None:
+            lls.append(tp.LineList(el,ct.ctable));
+            # ll.Position_Check();
+            if lls[-1].lns is not None:
+                ws += [w for ln in lls[-1].lns for w in ln.ws];
+    
+    # Generate list of merges           
+    for w in ws:
+        dx = w.sw*NUM_SPACES # a big bounding box that includes the extra space
+        w.bb_big = tp.bbox([w.bb.x1-dx,w.bb.y1-dx,w.bb.w+2*dx,w.bb.h+2*dx])
+    for w in ws:
+        mw = [];
+        dx = w.sw*NUM_SPACES
+        xtol = XTOL*w.sw/w.sf;
+        ytol = YTOL*w.sw/w.sf;
+        for w2 in ws:
+            if w2 is not w:
+                if abs(w2.angle-w.angle)<.001 and \
+                   w2.cs[0].nstyc==w.cs[-1].nstyc and \
+                   w.cs[-1].loc[0:1]!=w2.cs[0].loc[0:1]:        # different parents
+                    if w.bb_big.intersect(w2.bb): # so we don't waste time transforming, check if bboxes overlap
+                        # calculate 2's coords in 1's system
+                        bl2 = (-w.transform).apply_to_point(w2.pts_t[0])
+                        tl2 = (-w.transform).apply_to_point(w2.pts_t[1])
+                        tr1 = w.pts_ut[2];
+                        br1 = w.pts_ut[3];
+                        if br1.x-xtol <= bl2.x <= br1.x + dx/w.sf + xtol:
+                            type = None;
+                            if abs(bl2.y-br1.y)<ytol and abs(w.fs-w2.fs)<.001 and fixshattering:
+                                type = 'same';
+                            elif br1.y+ytol >= bl2.y >= tr1.y-ytol and mergesupersub:
+                                if   w2.fs<w.fs*SUBSUPER_THR: 
+                                    type = 'super';
+                                elif w.fs<w2.fs*SUBSUPER_THR:
+                                    type = 'subreturn';
+                            elif br1.y+ytol >= tl2.y >= tr1.y-ytol and mergesupersub:
+                                if   w2.fs<w.fs*SUBSUPER_THR:
+                                    type = 'sub';
+                                elif w.fs<w2.fs*SUBSUPER_THR:
+                                    type = 'superreturn'
+                            if type is not None:
+                                mw.append([w2,type,br1,bl2])
+#                                    dh.debug(w.txt+' to '+w2.txt+' as '+type)
+                elif w2==w.nextw and fixshattering:       # part of the same line, so same transform and y
+                    bl2 = w2.pts_ut[0];
+                    br1 = w.pts_ut[3];
+                    mw.append([w2,'same',br1,bl2])
         
-    nbb = Get_Bounding_Boxes(slf,True);  
-    for s in list(ct.keys()):
-        for ii in range(len(ct[s])):
-            bb=nbb[ct[s][ii][2]]
-            wdth = bb[0]+bb[2]
-            caphgt = -bb[1]
-            bbstrt = bb[0]
-            dscnd = bb[1]+bb[3]
-            ct[s][ii][1].delete();
-            ct[s][ii] = [ct[s][ii][0],wdth,bbstrt,caphgt,dscnd]
-    for s in list(ct.keys()):
-        Nl = len(ct[s])-2;
-        sw = ct[s][-1][1] - ct[s][-2][1] # space width is the difference in widths of the last two
-        ch = ct[s][-1][3]                # cap height
-        dr = ct[s][-1][4]                # descender
-        for ii in range(Nl):
-            cw = ct[s][ii][1] - sw;  # character width (full, including extra space on each side)
-            xo = ct[s][ii][2]        # x offset: how far it starts from the left anchor
-            if ct[s][ii][0]==' ':
-                cw = sw;
-                xo = 0;
-            ct[s][ii] = [ct[s][ii][0],cw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale];
-            # Because a nominal 1 px font is docscale px tall, we need to divide by the docscale to get the true width
-        ct[s] = ct[s][0:Nl]
-    return ct, nbb
+        minx = float('inf');
+        for ii in range(len(mw)):
+            w2=mw[ii][0]; type=mw[ii][1]; br1=mw[ii][2]; bl2=mw[ii][3];
+            if bl2.x < minx:
+                minx = bl2.x; # only use the furthest left one
+                mi   = ii
+        w.merges = [];
+        w.mergetypes = [];
+        w.merged = False;
+        if len(mw)>0:
+            w2=mw[mi][0]; type=mw[mi][1]; br1=mw[mi][2]; bl2=mw[mi][3];
+            w.merges     = [w2];
+            w.mergetypes = [type];
+            # dh.debug(w.txt+' to '+ w.merges[0].txt+' as '+w.mergetypes[0])
+        
+    # Generate chains of merges
+    for w in ws:
+        if not(w.merged) and len(w.merges)>0:
+            w.merges[-1].merged = True;
+            nextmerge  = w.merges[-1].merges
+            nextmerget = w.merges[-1].mergetypes
+            while len(nextmerge)>0:
+                w.merges += nextmerge
+                w.mergetypes += nextmerget
+                w.merges[-1].merged = True;
+                nextmerge  = w.merges[-1].merges
+                nextmerget = w.merges[-1].mergetypes
+    
+    # Create a merge plan            
+    for w in ws:
+        if len(w.merges)>0:
+            ctype = 'normal';
+            w.wtypes = [ctype]; bail=False;
+            for mt in w.mergetypes:
+                if ctype=='normal':
+                    if   mt=='same':        pass
+                    elif mt=='sub':         ctype = 'sub';
+                    elif mt=='super':       ctype = 'super';
+                    elif all([t=='normal' for t in w.wtypes]): # maybe started on sub/super
+                        bail = True
+                        # if mt=='superreturn':
+                        #     w.wtypes = ['super' for t in w.wtypes];
+                        #     ctype = 'normal'
+                        # elif mt=='subreturn':
+                        #     w.wtypes = ['sub' for t in w.wtypes];
+                        #     ctype = 'normal'
+                        # else: bail=True
+                    else: bail=True
+                elif ctype=='super':
+                    if   mt=='same':        pass
+                    elif mt=='superreturn': ctype = 'normal'
+                    else:                   bail=True
+                elif ctype=='sub':
+                    if   mt=='same':        pass
+                    elif mt=='subreturn':   ctype = 'normal'
+                    else:                   bail = True
+                w.wtypes.append(ctype)
+            if bail==True:
+                w.wtypes = []
+                w.merges = []
+    # Execute the merge plan
+    for w in ws:
+        if len(w.merges)>0 and not(w.merged):
+#            debug(w.mergetypes)
+            # if w.wtypes[0]=='sub' or w.wtypes[0]=='super': # initial sub/super
+            #     iin = [v=='normal' for v in w.wtype].index(True) # first normal index
+            #     fc = w.cs[0]
+            for ii in range(len(w.merges)):
+                w.appendw(w.merges[ii],w.wtypes[ii+1])
+            for c in w.cs:
+                if c.type=='super' or c.type=='sub':
+                    c.makesubsuper();
+    # Clean up empty elements
+    for ll in lls:
+        if ll.lns is not None:
+            if all([len(ln.cs)==0 for ln in ll.lns]): ll.parent.delete();
+            else:
+                for ln in ll.lns:
+                    if len(ln.cs)==0:
+                        if isinstance(ln.prt,Tspan):  ln.prt.delete();
 
-def normalize_style(sty):
-    sty = Set_Style_Comp2(str(sty),'font-size','1px');
-    sty = Set_Style_Comp2(sty,'fill',None)         
-    sty = Set_Style_Comp2(sty,'text-anchor',None)
-    sty = Set_Style_Comp2(sty,'baseline-shift',None)
-    return sty
 def reverse_shattering(el,ctable):
     # In PDFs, text is often positioned by letter.
     # This makes it hard to modify / adjust it. This fixes that.
@@ -231,7 +279,7 @@ def reverse_shattering(el,ctable):
             docscale = get_parent_svg(el).scale;
             sty = el.composed_style();
             fs = float(sty.get('font-size').strip('px'));
-            sty = normalize_style(sty)                       
+            sty = tp.Character_Table.normalize_style(sty)                       
             
             # We sometimes need to add non-breaking spaces to keep letter positioning similar
             stxt = [x for _, x in sorted(zip(myx, el.text), key=lambda pair: pair[0])] # text sorted in ascending x
@@ -268,7 +316,8 @@ def Set_Style_Comp(el,comp,val):
             if val is not None:
                 sty.append(comp+':'+val);
             else: pass
-        sty = ';'.join(sty);
+        sty = [v.strip(';') for v in sty if v!=''];
+        sty = ';'.join(sty)
         el.set('style',sty);
     else:
         sty = comp+':'+val
@@ -290,7 +339,8 @@ def Set_Style_Comp2(sty,comp,val):
             if val is not None:
                 sty.append(comp+':'+val);
             else: pass
-        sty = ';'.join(sty);
+        sty = [v.strip(';') for v in sty if v!=''];
+        sty = ';'.join(sty)
     else:
         sty = comp+':'+val
     return sty
@@ -302,8 +352,8 @@ def Get_Style_Comp(sty,comp):
     if sty is not None:#not(sty==None):
         sty = sty.split(';');
         for ii in range(len(sty)):
-            if comp in sty[ii]:
-                a=sty[ii].split(':');
+            a=sty[ii].split(':');
+            if comp.lower()==a[0].lower():
                 val=a[1];
     return val
 
@@ -335,8 +385,8 @@ def Get_Composed_Width(el,comp,nargout=1):
             else:
                 return sw*sf
     else:
-        if nargout==2:
-            return None,None
+        if nargout==4:
+            return None,None,None,None
         else:
             return None
     
@@ -429,9 +479,13 @@ def ungroup(groupnode):
     if len(groupnode.getchildren())==0:
         groupnode.delete();
          
-# Same as composed_style(), but no recursion
+# Same as composed_style(), but no recursion and with some tweaks
 def shallow_composed_style(el):
     parent = el.getparent();
+    if parent.get('opacity') is not None:                          # make sure style includes opacity
+        Set_Style_Comp(parent,'opacity',parent.get('opacity'));
+    if Get_Style_Comp(parent.style,'stroke-linecap') is not None:  # linecaps not currently inherited, so don't include in composition
+        Set_Style_Comp(parent,'stroke-linecap',None);
     if parent is not None and isinstance(parent, ShapeElement):
         return parent.style + el.style
     return el.style
@@ -617,7 +671,10 @@ def get_parent_svg(el):
     myn = el
     while myn.getparent() is not None:
         myn = myn.getparent();
-    return myn;
+    if isinstance(myn,SvgDocumentElement):    
+        return myn;
+    else:
+        return None
 
 def get_mod(slf, *types):
     """Originally from _selected.py in inkex, doesn't fail on comments"""

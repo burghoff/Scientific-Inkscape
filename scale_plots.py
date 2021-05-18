@@ -114,6 +114,7 @@ class ScalePlots(inkex.EffectExtension):
                         xs, ys = dh.get_points(el);
                         # For clipped objects the list of points is a bad description of the geometric bounding box.
                         # As a rough workaround, use the visual bbox if its limits are smaller than the geometric bbox.
+                        # I think this is almost always fine since clips use the geometric bbox
                         minx = max(min(xs),fbbs[el.get_id()][0])
                         maxx = min(max(xs),fbbs[el.get_id()][0]+fbbs[el.get_id()][2])
                         miny = max(min(ys),fbbs[el.get_id()][1])
