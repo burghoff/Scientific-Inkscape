@@ -357,14 +357,25 @@ def Get_Style_Comp(sty,comp):
                 val=a[1];
     return val
 
+# A temporary version of the new selected_style until it's officially released. Replace later
+def selected_style_local(el):
+    parent = el.getparent();
+    if parent is not None and isinstance(parent, ShapeElement):
+        return selected_style_local(parent) + el.cascaded_style()
+    return el.cascaded_style()
+
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms/document scaling
 def Get_Composed_Width(el,comp,nargout=1):
     cs = el.composed_style();
+#    cs = selected_style_local(el);
     ct = el.composed_transform();
     svg = get_parent_svg(el)
     docscale = svg.scale;
     sc = Get_Style_Comp(cs,comp);
+    if sc is None:
+        cs = selected_style_local(el); # as a last ditch effort, try the slower selected_style
+        sc = Get_Style_Comp(cs,comp);
     if sc is not None:
         if '%' in sc: # relative width, get parent width
             sc = float(sc.strip('%'))/100;

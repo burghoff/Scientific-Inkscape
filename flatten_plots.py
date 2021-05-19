@@ -28,7 +28,7 @@ import TextParser as tp
 
 #import warnings
 #warnings.filterwarnings("ignore", category=DeprecationWarning)
-
+import time
     
 
 class FlattenPlots(inkex.EffectExtension):
@@ -46,6 +46,11 @@ class FlattenPlots(inkex.EffectExtension):
     def effect(self):   
         # import random
         # random.seed(a=1)
+#        tic = time.time();
+#        import cProfile, pstats, io
+#        from pstats import SortKey
+#        pr = cProfile.Profile()
+#        pr.enable()
         
         poprest = self.options.deepungroup
         removerectw = self.options.removerectw
@@ -140,7 +145,15 @@ class FlattenPlots(inkex.EffectExtension):
                         if (removerectw and fill in ['#ffffff','white'] and strk in [None,'none']):
                             el.delete()
     
-    
+#        dh.debug(time.time()-tic)
+                                            
+#        pr.disable()
+#        s = io.StringIO()
+#        sortby = SortKey.CUMULATIVE
+#        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+#        ps.print_stats()
+#        dh.debug(s.getvalue())
+                            
 #        self.svg.selection = inkex.elements._selected.ElementList([el for el in gs + os + newos \
 #                                if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Tspan)))])
         # removedupes = True

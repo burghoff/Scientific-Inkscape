@@ -35,7 +35,6 @@ class LineList():
         tlvlcall = (lns is None);
         sty = el.composed_style();
         fs,sf,ct,ang = dh.Get_Composed_Width(el,'font-size',4);
-        if fs is None: return None
         nsty=Character_Table.normalize_style(sty);
         tv = el.text;
         
@@ -75,6 +74,7 @@ class LineList():
         if tv is not None and tv!='':
             for ii in range(len(tv)):
                 myi = [jj for jj in range(len(ctable[nsty])) if ctable[nsty][jj][0]==tv[ii]][0]
+                if fs is None: return None # bail if there is text without font
                 cw = ctable[nsty][myi][1]*fs;
                 sw = ctable[nsty][myi][2]*fs;
                 ch = ctable[nsty][myi][4]*fs;
@@ -88,6 +88,7 @@ class LineList():
             if tv is not None and tv!='':
                 for ii in range(len(tv)):
                     myi = [jj for jj in range(len(ctable[nsty])) if ctable[nsty][jj][0]==tv[ii]][0]
+                    if fs is None: return None # bail if there is text without font
                     cw = ctable[nsty][myi][1]*fs;
                     sw = ctable[nsty][myi][2]*fs;
                     ch = ctable[nsty][myi][4]*fs;
@@ -95,8 +96,9 @@ class LineList():
                     lns[-1].addc(tchar(tv[ii],fs,sf,cw,sty,nsty,[k,'tail',ii],ch,dr,sw));
                     
         if tlvlcall: # finished recursing
-            for ln in lns:                
-                ln.parse_words()
+            if lns is not None:
+                for ln in lns:                
+                    ln.parse_words()
         return lns
     
     # For debugging only: make a rectange at all of the line's words' nominal bboxes
