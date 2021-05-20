@@ -461,11 +461,12 @@ def ungroup(groupnode):
     # Pops a node out of its group, unless it's already in a layer or the base
     # Unlink any clones
     # Remove any comments
-    # Preserves style and clipping
+    # Preserves style, clipping, and masking
     node_index = list(groupnode.getparent()).index(groupnode)   # parent's location in grandparent
 #    node_style = dict(Style.parse_str(groupnode.get("style")))
     node_transform = Transform(groupnode.get("transform")).matrix;
     node_clippathurl = groupnode.get('clip-path')
+    node_maskurl     = groupnode.get('mask')
         
     els = groupnode.getchildren();
     for el in list(reversed(els)):
@@ -480,7 +481,8 @@ def ungroup(groupnode):
         elif isinstance(el,lxml.etree._Comment): # remove comments
             groupnode.remove(el)
         if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment))):
-            recursive_merge_clip(el, node_clippathurl) # transform applies to clip, so do clip first
+            recursive_merge_clipmask(el, node_clippathurl)          # transform applies to clip, so do clip first
+            recursive_merge_clipmask(el, node_maskurl, mask=True)   # also mask
             _merge_transform(el, node_transform)
             el.style = shallow_composed_style(el)
 #            _merge_style(el, node_style)    
@@ -611,19 +613,25 @@ def duplicate2(el,*args):
         duplicate2(k,True)
     return d
 
-def recursive_merge_clip(node,clippathurl):
+def recursive_merge_clipmask(node,clippathurl,mask=False):
     # Modified from Deep Ungroup
     if clippathurl is not None:
         svg = get_parent_svg(node);
+        if not(mask):
+            cmstr1 = 'clipPath'
+            cmstr2 = 'clip-path'
+        else:
+            cmstr1 = cmstr2 = 'mask'
+            
         if node.transform is not None:
             # Clip-paths on nodes with a transform have the transform
             # applied to the clipPath as well, which we don't want.  So, we
             # create new clipPath element with references to all existing
             # clippath subelements, but with the inverse transform applied 
             new_clippath = etree.SubElement(
-                svg.getElement('//svg:defs'), 'clipPath',
-                {'clipPathUnits': 'userSpaceOnUse',
-                  'id': svg.get_unique_id("clipPath")})
+                svg.getElement('//svg:defs'), cmstr1,
+                {cmstr1+'Units': 'userSpaceOnUse',
+                  'id': svg.get_unique_id(cmstr1)})
 
             clippath = svg.getElementById(clippathurl[5:-1])
             for c in clippath.iterchildren():
@@ -633,18 +641,17 @@ def recursive_merge_clip(node,clippathurl):
                           'transform': str(-node.transform),
                           'id': svg.get_unique_id("use")})
             clippathurl = "url(#" + new_clippath.get("id") + ")"  
-        
-        myclip = node.get('clip-path');
+        myclip = node.get(cmstr2);
         if myclip is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
             clipnode = svg.getElementById(myclip[5:-1]);
             d = duplicate2(clipnode); # very important to use dup2 here
-            node.set('clip-path',"url(#" + d.get("id") + ")")
+            node.set(cmstr2,"url(#" + d.get("id") + ")")
             ks = d.getchildren();
             for k in ks:
-                recursive_merge_clip(k,clippathurl);
+                recursive_merge_clipmask(k,clippathurl);
         else:
-            node.set('clip-path',clippathurl)
+            node.set(cmstr2,clippathurl)
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
 def Get_Bounding_Boxes(s,getnew):
@@ -667,12 +674,7 @@ def Get_Bounding_Boxes(s,getnew):
         key = str(d).split(',')[0][2:];
         data = [float(x.strip('\''))*s.svg.unittouu('1px') for x in str(d).split(',')[1:]]
         bbs[key] = data;
-       
-#    docscale = s.svg.scale
-#    if not(docscale==1):
-#        for ii in list(bbs.keys()):
-#            for jj in range(len(bbs[ii])):
-#                bbs[ii][jj] *= 1/docscale;
+
     return bbs
 
 def debug(x):

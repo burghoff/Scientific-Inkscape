@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+    <name>Combine by color</name>
+    <id>burghoff.combine_by_color</id>
+    <param name="tab" type="notebook">
+        
+        <page name="scaling" gui-text="Options">
+            <label>Combines all selected paths of the same color (and style) into a single path, ignoring black lines.
+            </label>
+            <label>Useful when:</label>
+<label indent="1">1. You would like to reduce the number of elements, improving responsivity and shrinking the file size.</label>
+<label indent="1">2. Your plot rendering program has split your data into multiple paths.</label>
+<label>Note: Inkscape may freeze if you try to pass thousands of elements to an extension. If necessary, temporarily group them.</label>
+            <label>By David Burghoff, University of Notre Dame</label>   
+        </page>
+    </param>
+    <effect>
+        <object-type>text</object-type>
+        <effects-menu>
+            <submenu name="Academic"/>
+        </effects-menu>
+    </effect>
+    <script>
+        <command location="inx" interpreter="python">combine_by_color.py</command>
+    </script>
+</inkscape-extension>
