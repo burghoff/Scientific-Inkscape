@@ -12,6 +12,7 @@ from inkex.transforms import Transform
 from inkex.styles import Style
 from inkex import (Line, Rectangle,Polygon,Polyline,Ellipse,Circle)
 import dhelpers as dh
+import copy
 
 NULL_TRANSFORM = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 from lxml import etree
@@ -34,7 +35,8 @@ class ApplyTransform(inkex.EffectExtension):
 
         if node.tag == inkex.addNS('path', 'svg') or node.tag == 'path':
             for attName in node.attrib.keys():
-                if ("sodipodi" in attName) or ("inkscape" in attName):
+                if ("sodipodi" in attName) or ("inkscape" in attName) \
+                    and attName!='inkscape-academic-combined-by-color':
                     del node.attrib[attName]
             return node
 
@@ -61,7 +63,7 @@ class ApplyTransform(inkex.EffectExtension):
                 node.attrib['style'] = Style(style).to_str()
     
 
-    def recursiveFuseTransform(self, node, transf=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]):
+    def recursiveFuseTransform(self, node, transf=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],irange=None,trange=None):
         # Modification by David Burghoff:
         # Since transforms apply to an object's clips, before applying the transform
         # we will need to duplicate the clip path and transform it
@@ -85,25 +87,30 @@ class ApplyTransform(inkex.EffectExtension):
         
         transf = Transform(transf) * Transform(node.get("transform", None))
 
+        # if node.get_id()=='path207':
+        #     dh.debug(node.get('transform'))
         if 'transform' in node.attrib:
             del node.attrib['transform']
 
         node = ApplyTransform.objectToPath(node)
 
-        if transf == NULL_TRANSFORM:
-            # Don't do anything if there is effectively no transform applied
-            # reduces alerts for unsupported nodes
+        if transf == NULL_TRANSFORM and irange is None and trange is None:
+            # Don't do anything if there is effectively no transform applied (reduces alerts for unsupported nodes)
             pass
         elif 'd' in node.attrib:
             d = node.get('d')
-            p = CubicSuperPath(d)
-            p = Path(p).to_absolute().transform(transf, True)
+            p = CubicSuperPath(d);
+            if irange is None:
+                p = Path(p).to_absolute().transform(transf, True)
+            if irange is not None:
+                p = Path(p).to_absolute(); pnew=[]
+                for ii in range(len(irange)):
+                    xf = trange[ii] * Transform(node.get("transform", None))
+                    pnew += Path(p[irange[ii][0]:irange[ii][1]]).transform(xf, True)
+                p = pnew
             node.set('d', str(Path(CubicSuperPath(p).to_path())))
-
             self.scaleStrokeWidth(node, transf)
-
-        elif isinstance(node,(Polygon,Polyline)): # node.tag in [inkex.addNS('polygon', 'svg'),
-                                                  # inkex.addNS('polyline', 'svg')]:
+        elif isinstance(node,(Polygon,Polyline)): # node.tag in [inkex.addNS('polygon', 'svg'), inkex.addNS('polyline', 'svg')]:
             points = node.get('points')
             points = points.strip().split(' ')
             for k, p in enumerate(points):
@@ -116,9 +123,7 @@ class ApplyTransform(inkex.EffectExtension):
                     points[k] = p
             points = ' '.join(points)
             node.set('points', points)
-
             self.scaleStrokeWidth(node, transf)
-
         elif isinstance(node,(Ellipse,Circle)): #node.tag in [inkex.addNS("ellipse", "svg"), inkex.addNS("circle", "svg")]:
             def isequal(a, b):
                 return abs(a - b) <= transf.absolute_tolerance
@@ -189,20 +194,20 @@ class ApplyTransform(inkex.EffectExtension):
             p = node.get_path().to_absolute().transform(transf, True)
             node.set_path(p);
 
-        elif node.tag in [inkex.addNS('text', 'svg'),
-                          inkex.addNS('image', 'svg'),
-                          inkex.addNS('use', 'svg')]:
-            inkex.utils.errormsg(
-                "Shape %s (%s) not yet supported, try Object to path first"
-                % (node.TAG, node.get("id"))
-            )
-
+#        elif node.tag in [inkex.addNS('text', 'svg'),
+#                          inkex.addNS('image', 'svg'),
+#                          inkex.addNS('use', 'svg')]:
+#            inkex.utils.errormsg(
+#                "Shape %s (%s) not yet supported, try Object to path first"
+#                % (node.TAG, node.get("id"))
+#            )
         else:
             # e.g. <g style="...">
             self.scaleStrokeWidth(node, transf)
 
         for child in node.getchildren():
             self.recursiveFuseTransform(child, transf)
+            
 
         
 if __name__ == '__main__':

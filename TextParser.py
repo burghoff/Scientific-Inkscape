@@ -186,7 +186,7 @@ class tword:
         self.iis.append(ii);
         c.w = self;
     # Add a new character to the end of the word
-    def appendc(self,ncv,ncw,type=None):
+    def appendc(self,ncv,ncw,type=None,osw=None):
         # Add to document
         lc = self.cs[-1]; # last character
         myi = lc.loc[2]+1; # insert after last character
@@ -199,6 +199,7 @@ class tword:
         c = copy.copy(lc)
         c.c  = ncv
         c.cw = ncw
+        c.reduction_factor = osw/c.sw  # how much the font was reduced, for subscript/superscript calcs
         if type is not None:
             c.type = type
         c.loc = [c.loc[0],c.loc[1],c.loc[2]+1] # updated location
@@ -234,7 +235,7 @@ class tword:
         lc = self.cs[-1]; # last character
         numsp = max(0,round((bl2.x-br1.x)/(lc.sw/self.sf)));
         for ii in range(numsp):
-            self.appendc('\u00A0',lc.sw)
+            self.appendc('\u00A0',lc.sw,osw=lc.sw)
         for c in nw.cs:
             c.delc();
             ntype = copy.copy(type)
@@ -242,7 +243,7 @@ class tword:
             if otype in ['super','sub'] and type=='normal':
                 ntype = otype
 #            dh.debug(ntype)
-            self.appendc(c.c,c.cw,ntype)
+            self.appendc(c.c,c.cw,type=ntype,osw=c.sw)
     
     # Calculate the properties of a word that depend on its characters       
     def calcprops(self): # calculate properties inherited from characters
@@ -291,6 +292,7 @@ class tchar:
         self.ln = None;   # my line (to be assigned)
         self.w  = None;   # my word (to be assigned)
         self.type=None;   # 'normal','super', or 'sub' (to be assigned)
+        self.ofs = fs;    # original character width (never changed, even if character is updated later)
     def delc(self): # deletes me from document (and from my word/line)
         # Delete from document
         if self.loc[1]=='text':
@@ -323,13 +325,13 @@ class tchar:
         self.w.calcprops()
         self.w = None
         
-    def makesubsuper(self):
+    def makesubsuper(self,sz=65):
         t = Tspan();
         t.text = self.c;
         if self.type=='super':
-            t.style = 'font-size:65%;baseline-shift:super';
+            t.style = 'font-size:'+str(sz)+'%;baseline-shift:super';
         else: #sub
-            t.style = 'font-size:65%;baseline-shift:sub';
+            t.style = 'font-size:'+str(sz)+'%;baseline-shift:sub';
         
         prt = self.loc[0];
         if self.loc[1]=='text':

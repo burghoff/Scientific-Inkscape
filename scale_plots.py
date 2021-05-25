@@ -19,6 +19,13 @@
 #
 
 import inkex
+
+try:
+    from inkex.paths import Path, CubicSuperPath
+    ver = 1.0 
+except:
+    ver = 0.92
+
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, addNS, \
     Transform, Style, PathElement, Line, Rectangle, Path,Vector2d, \
@@ -29,11 +36,45 @@ from inkex import (
 import lxml
 import dhelpers as dh
 import copy
+It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
+def geometric_bbox(el,vis_bbox,irange=None):
+    gbb = copy.copy(vis_bbox);
+    if isinstance(el,(PathElement,Rectangle,Line,Polyline)):   # if path-like, use nodes instead
+        xs, ys = dh.get_points(el,irange=irange);
+        # For clipped objects the list of points is a bad description of the geometric bounding box.
+        # As a rough workaround, use the visual bbox if its limits are smaller than the geometric bbox.
+        # I think this is almost always fine since clips use the geometric bbox
+        minx = max(min(xs),vis_bbox[0])
+        maxx = min(max(xs),vis_bbox[0]+vis_bbox[2])
+        miny = max(min(ys),vis_bbox[1])
+        maxy = min(max(ys),vis_bbox[1]+vis_bbox[3])
+        # if el.get_id()=='path207':
+        #     # dh.debug([min(xs),max(xs),min(ys),max(ys)])
+        #     # dh.debug([vis_bbox[0],vis_bbox[0]+vis_bbox[2],vis_bbox[1],vis_bbox[1]+vis_bbox[3]])
+        #     dh.debug([min(xs),max(xs),min(ys),max(ys)])
+        #     dh.debug([vis_bbox[0],vis_bbox[0]+vis_bbox[2],vis_bbox[1],vis_bbox[1]+vis_bbox[3]])
+        gbb = [minx,miny,maxx-minx,maxy-miny] # geometric bounding box
+    return bbox(gbb)
 
-#import warnings
-#warnings.filterwarnings("ignore", category=DeprecationWarning) 
-
+class bbox:
+    def __init__(self, bb):
+        self.x1 = bb[0];
+        self.x2 = bb[0]+bb[2];
+        self.y1 = bb[1];
+        self.y2 = bb[1]+bb[3];
+        self.xc = (self.x1+self.x2)/2;
+        self.yc = (self.y1+self.y2)/2;
+        self.w  = bb[2];
+        self.h  = bb[3];
+        self.sbb= [self.x1,self.y1,self.w,self.h];          # standard bbox
+    def transform(self,xform):
+        tr1 = xform.apply_to_point([self.x1,self.y1]);
+        tr2 = xform.apply_to_point([self.x2,self.y2]);
+        return bbox([min(tr1[0],tr2[0]),min(tr1[1],tr2[1]),\
+                     max(tr1[0],tr2[0])-min(tr1[0],tr2[0]),\
+                     max(tr1[1],tr2[1])-min(tr1[1],tr2[1])])
+        
 class ScalePlots(inkex.EffectExtension):
     def add_arguments(self, pars):
         pars.add_argument("--hscale", type=float, default=100, help="Horizontal scaling");
@@ -59,10 +100,14 @@ class ScalePlots(inkex.EffectExtension):
         sels=[sel[k] for k in sel.id_dict().keys()];
         sels=[k for k in sels if not(isinstance(k, (Tspan,\
                 NamedView, Defs, Metadata, ForeignObject)))]; # regular selectable objects only
-         
+        
+#        import cProfile, pstats, io
+#        from pstats import SortKey
+#        pr = cProfile.Profile()
+#        pr.enable()
         
         tickcorrect = self.options.tickcorrect
-        tickthreshold = self.options.tickthreshold
+        tickthr = self.options.tickthreshold/100;
         layerfix = self.options.layerfix
         if self.options.tab=='scaling':
             hscale = self.options.hscale
@@ -82,16 +127,20 @@ class ScalePlots(inkex.EffectExtension):
             inkex.utils.errormsg('Select Scaling or Matching mode'); return;
             
         
-        sfgs = []; sfels = [];
+        sfgs = []; sfels = [];    # all scale-free objects, whether or not they're selected
         if not(layerfix=='None'): # find scale-free objects
             ls = [t.strip() for t in layerfix.split(',')]
             for el in ls:
                 lyr = self.svg.getElementByName(el);
-                if lyr is None:
+                if lyr is None: # name didn't work, try ID
                     lyr = self.svg.getElementById(el);
                 if lyr is not None:
-                    sfgs.append(lyr)
-                    sfels=sfels+lyr.getchildren()
+                    if isinstance(lyr,Group):
+                        sfgs.append(lyr)
+                        sfels=sfels+lyr.getchildren();
+                    elif isinstance(lyr,PathElement):
+                        sfels.append(lyr)
+                    
         
         fbbs=dh.Get_Bounding_Boxes(self,False); # full visual bbs
         firstsel = sels[0];
@@ -109,17 +158,7 @@ class ScalePlots(inkex.EffectExtension):
             bbs=dict();  
             for el in [firstsel]+sels+sfels:
                 if el.get_id() in list(fbbs.keys()):
-                    bbs[el.get_id()] = copy.copy(fbbs[el.get_id()]);
-                    if isinstance(el,(PathElement,Rectangle,Line,Polyline)):   # if path-like, use nodes instead
-                        xs, ys = dh.get_points(el);
-                        # For clipped objects the list of points is a bad description of the geometric bounding box.
-                        # As a rough workaround, use the visual bbox if its limits are smaller than the geometric bbox.
-                        # I think this is almost always fine since clips use the geometric bbox
-                        minx = max(min(xs),fbbs[el.get_id()][0])
-                        maxx = min(max(xs),fbbs[el.get_id()][0]+fbbs[el.get_id()][2])
-                        miny = max(min(ys),fbbs[el.get_id()][1])
-                        maxy = min(max(ys),fbbs[el.get_id()][1]+fbbs[el.get_id()][3])
-                        bbs[el.get_id()] = [minx,miny,maxx-minx,maxy-miny] # geometric bounding box
+                    bbs[el.get_id()] = geometric_bbox(el,fbbs[el.get_id()]).sbb;
                 
             # Find horizontal and vertical lines (to within .001 rad), elements to be used in plot area calculations
             vl = dict(); hl = dict(); boxes = dict(); solids = dict();
@@ -203,143 +242,145 @@ class ScalePlots(inkex.EffectExtension):
             trl = Transform('translate('+str(refx)+', '+str(refy)+')');
             scl = Transform('scale('+str(scalex)+', '+str(scaley)+')');
             gtr = trl*scl*(-trl); # global transformation
+            iscl = Transform('scale('+str(1/scalex)+', '+str(1/scaley)+')');
     
             trul = gtr.apply_to_point([minxp,minyp]) # transformed upper-left
             trbr = gtr.apply_to_point([maxxp,maxyp]) # transformed bottom-right
             
-            # Apply the global transform to all selected regular elements
-            cdict=dict();
-            for el in list(reversed(sels)):
-                dh.global_transform(el,gtr)
-                cdict[el.get_id()]=False;
-                for k in el.getchildren():
-                    cdict[k.get_id()]=False;
-                    
             # Diagnostic mode                    
             diagmode = False
             if diagmode:
                 r = Rectangle();
-                r.set('x',minxp)
-                r.set('y',minyp)
-                r.set('width',abs(maxxp-minxp))
-                r.set('height', abs(maxyp-minyp))
+                r.set('x',minxp); r.set('y',minyp)
+                r.set('width',abs(maxxp-minxp));  r.set('height', abs(maxyp-minyp))
                 r.set('style','fill-opacity:0.5')
                 self.svg.append(r)
                 dh.global_transform(r,gtr)
                 dh.debug('Largest vertical line: '+lvl)
                 dh.debug('Largest horizontal line: '+lhl)
             
-            # Correct text and group scaling
-            iscl = Transform('scale('+str(1/scalex)+', '+str(1/scaley)+')');
-            for el in list(reversed(sels)):
-                bb=bbs[el.get_id()];
-                fbb=fbbs[el.get_id()];   
-                outsideplot = fbb[0]>fmaxxp or fbb[0]+fbb[2]<fminxp \
-                        or fbb[1]>fmaxyp or fbb[1]+fbb[3]<fminyp;
+            
+            # Make a list of elements to be transformed
+            sclels=[]
+            for el in sels:
+                if el in sfgs: # Is a scale-free group, apply transform to children instead
+                    for k in el.getchildren(): sclels.append(k)
+                else:                          sclels.append(el)
+            sclels = list(set(sclels))
+            
+            # Apply transform and compute corrections (if needed)
+            for el in sclels:
+                dh.global_transform(el,gtr);                                  # apply the transform
+                elid = el.get_id();
                 
-                if (isinstance(el, (TextElement,Group,FlowRoot)) or outsideplot) and not(el in sfgs): #el.typename in ['TextElement','Group'] or outsideplot:
-                    # Invert the transformation for any text/groups  or anything outside the plot
-                    bb1 = gtr.apply_to_point([bb[0],bb[1]]);
-                    bb2 = gtr.apply_to_point([bb[0]+bb[2],bb[1]+bb[3]]);
-                    cx = (bb1[0]+bb2[0])/2;
-                    cy = (bb1[1]+bb2[1])/2;
-    
-                    trl = Transform('translate('+str(cx)+', '+str(cy)+')');
+                bb =bbs[elid];
+                fbb=fbbs[elid];   
+                isalwayscorr  = isinstance(el, (TextElement,Group,FlowRoot)); # els always corrected
+                isoutsideplot = fbb[0]>fmaxxp or fbb[0]+fbb[2]<fminxp \
+                             or fbb[1]>fmaxyp or fbb[1]+fbb[3]<fminyp;        # els outside plot
+                issf = (el in sfels);                                         # is scale-free
+
+                vtickt = vtickb = htickl = htickr = False;                    # el is a tick
+                if tickcorrect and ((elid in list(vl.keys())) \
+                                 or (elid in list(hl.keys()))):    
+                    isvert = (elid in list(vl.keys()));
+                    ishorz = (elid in list(hl.keys()));
+                    bb=bbs[elid];
+                    if isvert and bb[3]<tickthr*(maxyp-minyp): # vertical tick
+                        if bb[1]+bb[3]<minyp+tickthr*(maxyp-minyp):
+                            vtickt = True;
+                        elif bb[1]>maxyp-tickthr*(maxyp-minyp):
+                            vtickb = True;
+                    if ishorz and bb[2]<tickthr*(maxxp-minxp): # horizontal tick
+                        if bb[0]+bb[2]<minxp+tickthr*(maxxp-minxp):
+                            htickl = True;
+                        elif bb[0]>maxxp-tickthr*(maxxp-minxp):
+                            htickr = True;
+                 
+                if any([vtickt,vtickb,htickl,htickr]):
+                    # If a tick, scale using the edge as a reference point
+                    bb_tr = bbox(bb).transform(gtr);
+                    cx = bb_tr.xc; cy = bb_tr.yc;
+                    
+                    if vtickt:
+                        if cy>trul[1]: trl = Transform('translate('+str(cx)+', '+str(bb_tr.y1)+')'); # inner tick
+                        else:          trl = Transform('translate('+str(cx)+', '+str(bb_tr.y2)+')'); # outer tick
+                    elif vtickb: 
+                        if cy<trbr[1]: trl = Transform('translate('+str(cx)+', '+str(bb_tr.y2)+')'); # inner tick
+                        else:          trl = Transform('translate('+str(cx)+', '+str(bb_tr.y1)+')'); # outer tick
+                    elif htickl:
+                        if cx>trul[0]: trl = Transform('translate('+str(bb_tr.x1)+', '+str(cy)+')'); # inner tick
+                        else:          trl = Transform('translate('+str(bb_tr.x2)+', '+str(cy)+')'); # outer tick
+                    elif htickr:
+                        if cx<trbr[0]: trl = Transform('translate('+str(bb_tr.x2)+', '+str(cy)+')'); # inner tick
+                        else:          trl = Transform('translate('+str(bb_tr.x1)+', '+str(cy)+')'); # outer tick
                     tr1 = trl*iscl*(-trl);
-                    
-                    
-                    # For elements outside the plot area, adjust position to maintain the distance to the plot
-                    dx = 0; dy = 0;
-                    if cx < trul[0]:
-                        ox = bb[0]+bb[2]/2 - minxp;
-                        dx = ox - (cx-trul[0]);
-                    if cx > trbr[0]:
-                        ox = bb[0]+bb[2]/2 - maxxp;
-                        dx = ox - (cx-trbr[0]);
-                    if cy < trul[1]:
-                        oy = bb[1]+bb[3]/2 - minyp;
-                        dy = oy - (cy-trul[1]);
-                    if cy > trbr[1]:
-                        oy = bb[1]+bb[3]/2 - maxyp;
-                        dy = oy - (cy-trbr[1]);
-                    tr2 = Transform('translate('+str(dx)+', '+str(dy)+')');
-                    
-                    dh.global_transform(el,tr2*tr1);
-                    cdict[el.get_id()]=True;
-                    
-            
-            tickthr = tickthreshold/100;
-            # Tick detection and correction
-            if tickcorrect:
-                for el in list(reversed(sels)):
-                    isvert = (el.get_id() in list(vl.keys()));
-                    ishorz = (el.get_id() in list(hl.keys()));
-                    if isvert or ishorz:
-                        bb=bbs[el.get_id()];
-                        vtickt = vtickb = htickl = htickr = False;
+                    dh.global_transform(el,tr1)
+                elif isalwayscorr or isoutsideplot or issf: 
+                    # Invert the transformation for text/groups, anything outside the plot, scale-free
+                    cbc = el.get('inkscape-academic-combined-by-color');
+                    if cbc is None:
+                        bb_tr = bbox(bb).transform(gtr);
+                        cx = bb_tr.xc; cy = bb_tr.yc;
+                        trl = Transform('translate('+str(cx)+', '+str(cy)+')');
+                        tr1 = trl*iscl*(-trl);
                         
-                        if isvert and bb[3]<tickthr*(maxyp-minyp): # vertical tick
-                            if bb[1]+bb[3]<minyp+tickthr*(maxyp-minyp):
-                                vtickt = True;
-                            elif bb[1]>maxyp-tickthr*(maxyp-minyp):
-                                vtickb = True;
-                        if ishorz and bb[2]<tickthr*(maxxp-minxp): # horizontal tick
-                            if bb[0]+bb[2]<minxp+tickthr*(maxxp-minxp):
-                                htickl = True;
-                            elif bb[0]>maxxp-tickthr*(maxxp-minxp):
-                                htickr = True;
-                                        
-                        if any([vtickt,vtickb,htickl,htickr]):
-                            bb1 = gtr.apply_to_point([bb[0],bb[1]]);
-                            bb2 = gtr.apply_to_point([bb[0]+bb[2],bb[1]+bb[3]]);
-                            cx = (bb1[0]+bb2[0])/2;
-                            cy = (bb1[1]+bb2[1])/2;
-                            
-                            if vtickt:
-                                if cy>trul[1]: # inner tick
-                                    trl = Transform('translate('+str(cx)+', '+str(bb1[1])+')');
-                                else: # outer tick
-                                    trl = Transform('translate('+str(cx)+', '+str(bb2[1])+')');
-                            elif vtickb: 
-                                if cy<trbr[1]: # inner tick
-                                    trl = Transform('translate('+str(cx)+', '+str(bb2[1])+')');
-                                else: # outer tick
-                                    trl = Transform('translate('+str(cx)+', '+str(bb1[1])+')');
-                            elif htickl:
-                                if cx>trul[0]: # inner tick
-                                    trl = Transform('translate('+str(bb1[0])+', '+str(cy)+')');
-                                else:
-                                    trl = Transform('translate('+str(bb2[0])+', '+str(cy)+')');
-                            elif htickr:
-                                if cx<trbr[0]: # inner tick
-                                    trl = Transform('translate('+str(bb2[0])+', '+str(cy)+')');
-                                else:
-                                    trl = Transform('translate('+str(bb1[0])+', '+str(cy)+')');
-                            
-                            tr1 = trl*iscl*(-trl);
-                            if not(cdict[el.get_id()]):
-                                dh.global_transform(el,tr1);
-                            cdict[el.get_id()]=True;
-            
-            # Correct anything in scale-free groups                    
-            if not(layerfix=='None'):
-                for lyr in sfgs:
-                    ks=lyr.getchildren();
-                    for el in list(reversed(ks)):
-                        if el.get_id() in list(cdict.keys()) and cdict[el.get_id()]==False:
-                            bb = bbs[el.get_id()];
-                            bb1 = gtr.apply_to_point([bb[0],bb[1]]);
-                            bb2 = gtr.apply_to_point([bb[0]+bb[2],bb[1]+bb[3]]);
-                            cx = (bb1[0]+bb2[0])/2;
-                            cy = (bb1[1]+bb2[1])/2;
-            
+                        # For elements outside the plot area, adjust position to maintain 
+                        # the distance to the plot area
+                        dx = 0; dy = 0;
+                        if cx < trul[0]:
+                            ox = bb[0]+bb[2]/2 - minxp;
+                            dx = ox - (cx-trul[0]);
+                        if cx > trbr[0]:
+                            ox = bb[0]+bb[2]/2 - maxxp;
+                            dx = ox - (cx-trbr[0]);
+                        if cy < trul[1]:
+                            oy = bb[1]+bb[3]/2 - minyp;
+                            dy = oy - (cy-trul[1]);
+                        if cy > trbr[1]:
+                            oy = bb[1]+bb[3]/2 - maxyp;
+                            dy = oy - (cy-trbr[1]);
+                        tr2 = Transform('translate('+str(dx)+', '+str(dy)+')');
+                        dh.global_transform(el,tr2*tr1);
+                    else: # If previously combined, apply to subpaths instead
+                        cbc = [int(v) for v in cbc.split()];
+                        fbb_tr = bbox(fbb).transform(gtr).sbb
+                        irng = []; trng=[];
+                        for ii in range(len(cbc)-1):
+                            bb_tr = geometric_bbox(el,fbb_tr,irange=[cbc[ii],cbc[ii+1]]);
+                            bb = bb_tr.transform(-gtr).sbb
+                            cx = bb_tr.xc; cy = bb_tr.yc;
                             trl = Transform('translate('+str(cx)+', '+str(cy)+')');
                             tr1 = trl*iscl*(-trl);
-                            dh.global_transform(el,tr1);
-                            cdict[el.get_id()]=True
+                            dx = 0; dy = 0;
+                            if cx < trul[0]:
+                                ox = bb[0]+bb[2]/2 - minxp;
+                                dx = ox - (cx-trul[0]);
+                            if cx > trbr[0]:
+                                ox = bb[0]+bb[2]/2 - maxxp;
+                                dx = ox - (cx-trbr[0]);
+                            if cy < trul[1]:
+                                oy = bb[1]+bb[3]/2 - minyp;
+                                dy = oy - (cy-trul[1]);
+                            if cy > trbr[1]:
+                                 oy = bb[1]+bb[3]/2 - maxyp;
+                                 dy = oy - (cy-trbr[1]);
+                            tr2 = Transform('translate('+str(dx)+', '+str(dy)+')');
+                            irng.append([cbc[ii],cbc[ii+1]])
+                            trng.append(tr2*tr1)
+                        dh.global_transform(el,It,irange=irng,trange=trng);
+                            
+#        pr.disable()
+#        s = io.StringIO()
+#        sortby = SortKey.CUMULATIVE
+#        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+#        ps.print_stats()
+#        dh.debug(s.getvalue())
+                    
 
 if __name__ == '__main__':
     try:
         ScalePlots().run()
     except lxml.etree.XMLSyntaxError:
         inkex.utils.errormsg('Error parsing XML! Extensions can only run on SVG files. If this is a file imported from another format, try saving as an SVG or pasting the contents into a new SVG.');
+       

@@ -252,7 +252,7 @@ def reverse_shattering2(os,ct,fixshattering,mergesupersub):
                 w.appendw(w.merges[ii],w.wtypes[ii+1])
             for c in w.cs:
                 if c.type=='super' or c.type=='sub':
-                    c.makesubsuper();
+                    c.makesubsuper(round(c.reduction_factor*100));
     # Clean up empty elements
     for ll in lls:
         if ll.lns is not None:
@@ -434,12 +434,17 @@ def urender(v,u):
         return None
 
 # Get points of a path, element, or rectangle in the global coordinate system
-def get_points(el):
+def get_points(el,irange=None):
     if isinstance(el,Line): #el.typename=='Line':
         pts = [Vector2d(el.get('x1'),el.get('y1')),\
                Vector2d(el.get('x2'),el.get('y2'))];
     elif isinstance(el,(PathElement,Polyline)): # el.typename=='PathElement':
         pth=Path(el.get_path()).to_absolute();
+        if irange is not None:
+            pnew = Path();
+            for ii in range(irange[0],irange[1]):
+                pnew.append(pth[ii])
+            pth = pnew
         pts = list(pth.control_points);
     elif isinstance(el,Rectangle):  # el.typename=='Rectangle':
         x = float(el.get('x'));
@@ -658,7 +663,6 @@ def Get_Bounding_Boxes(s,getnew):
 # Gets all of a document's bounding boxes (by ID)
 # Note that this uses a command line call, so by default it will only get the values from BEFORE the extension is called
 # Set getnew to True to make a temporary copy of the file that is then read. This gets the new boxes but is slower
-
     if not(getnew):
         tFStR = command.inkscape(s.options.input_file,'--query-all');
     else:
@@ -671,10 +675,11 @@ def Get_Bounding_Boxes(s,getnew):
 #    x=[[float(x.strip('\'')) for x in str(d).split(',')[1:]] for d in tBBLi]
     bbs=dict();
     for d in tBBLi:
-        key = str(d).split(',')[0][2:];
+        key = str(d).split(',')[0];
+        if key[0:1]=='b\'': # pre version 1.1
+            key = key[2:];
         data = [float(x.strip('\''))*s.svg.unittouu('1px') for x in str(d).split(',')[1:]]
         bbs[key] = data;
-
     return bbs
 
 def debug(x):
@@ -757,9 +762,8 @@ def Replace_Non_Ascii_Font(el,newfont,*args):
             
                 
             
-def global_transform(el,trnsfrm):
+def global_transform(el,trnsfrm,irange=None,trange=None):
     # Transforms an object and fuses it to any paths, preserving stroke
-   
     # If parent layer is transformed, need to rotate out of its coordinate system
     myp = el.getparent();
     if isinstance(myp,SvgDocumentElement):
@@ -771,14 +775,20 @@ def global_transform(el,trnsfrm):
     myt = el.get('transform');
     if myt==None:
         newtr=(-prt)*trnsfrm*prt;
+        if trange is not None:
+            for ii in range(len(trange)):
+                trange[ii] = (-prt)*trange[ii]*prt
     else:
         newtr=(-prt)*trnsfrm*prt*Transform(myt)
+        if trange is not None:
+            for ii in range(len(trange)):
+                trange[ii] = (-prt)*trange[ii]*prt*Transform(myt)
     
     sw = Get_Composed_Width(el,'stroke-width');
     sd = Get_Composed_List(el, 'stroke-dasharray');
     el.set('transform',newtr); # Add the new transform
     if not(isinstance(el, (TextElement,Image,Group,FlowRoot))): # not(el.typename in ['TextElement','Image','Group']):
-        ApplyTransform().recursiveFuseTransform(el);
+        ApplyTransform().recursiveFuseTransform(el,irange=irange,trange=trange);
         if sw is not None:
             nw = float(Get_Style_Comp(el.get('style'),'stroke-width'))
             sw = nw*sw/Get_Composed_Width(el,'stroke-width');

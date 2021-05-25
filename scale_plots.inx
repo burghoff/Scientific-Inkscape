@@ -51,8 +51,8 @@
             <label>If tick correction is enabled, any horizontal or vertical lines smaller than the threshold will be corrected for size and position.</label>
             <param name="tickcorrect" type="bool" gui-text="Auto tick correct?">true</param>
             <param name="tickthreshold" type="float" precision="0" min="0" max="100" gui-text="Tick threshold (% plot area)">10</param>
-            <label appearance="header">Scale-free layer or groups</label>
-            <label>Layers or groups whose objects will be repositioned separately but left unscaled, comma-separated. Useful for markers. These can be layer names or group IDs (found using Object Properties).</label>
+            <label appearance="header">Scale-free elements</label>
+            <label>For elements like markers that should not be scaled. This can be a comma-separated list of layer names, group IDs, and path IDs. (IDs can be found using Object Properties.)</label>
             <param name="layerfix" type="string" gui-text="Scale-free layer">None</param>
         </page>
         

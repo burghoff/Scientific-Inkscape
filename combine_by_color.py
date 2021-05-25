@@ -22,32 +22,10 @@ import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, addNS, \
     Transform, Style, PathElement, Line, Rectangle, Path,Vector2d, \
-    Use, NamedView, Defs, Metadata, ForeignObject, Group, FontFace, FlowSpan
+    Use, NamedView, Defs, Metadata, ForeignObject, Group, FontFace, FlowSpan, MissingGlyph
 )
 
 import dhelpers as dh
-
-
-def combine_paths(els):
-    pnew = Path();
-    fp = None; # first path
-    sp = [];   # subsequent paths
-    for ii in range(len(els)):
-        el = els[ii];
-        if el.get('d') is not None:
-            if fp is None:
-                fp=ii;
-            else:
-                sp.append(ii)
-            pth = Path(el.get_path()).to_absolute().transform(el.composed_transform());
-            for p in pth:
-                pnew.append(p)
-    if fp is not None:
-        els[fp].set_path(pnew.transform(-els[fp].composed_transform()));
-        els[fp].set('clip-path',None); # release any clips
-        for s in sp:
-            els[s].delete()
-
 
 
 class ScalePlots(inkex.EffectExtension):
@@ -61,8 +39,8 @@ class ScalePlots(inkex.EffectExtension):
         sel = self.svg.selection;                     # an ElementList
         sel = dh.get_mod(sel)
         els = [sel[k] for k in sel.id_dict().keys()];
-        els = [el for el in els if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group))) and\
-                                el.get('d') is not None]
+        els = [el for el in els if not(isinstance(el, (NamedView, Defs, Metadata, \
+               ForeignObject,Group,MissingGlyph))) and el.get('d') is not None]
         
         merged = [False for el in els]
         stys = [el.composed_style() for el in els]
@@ -77,14 +55,14 @@ class ScalePlots(inkex.EffectExtension):
                         if stys[ii]==stys[jj]:
                             merges.append(el2); merged[jj]=True
                 if len(merges)>1:
-                    combine_paths(merges)
-#        dh.debug('test')
+                    self.combine_paths(merges)
         
         
     def combine_paths(self,els):
         pnew = Path();
         fp = None; # first path
         sp = [];   # subsequent paths
+        si = [];  # start indices
         for ii in range(len(els)):
             el = els[ii];
             if fp is None:
@@ -92,11 +70,19 @@ class ScalePlots(inkex.EffectExtension):
             else:
                 sp.append(ii)
             pth = Path(el.get_path()).to_absolute().transform(el.composed_transform());
+            if el.get('inkscape-academic-combined-by-color') is None:
+                si.append(len(pnew))
+            else:
+                cbc = el.get('inkscape-academic-combined-by-color') # take existing ones and weld them
+                cbc = [int(v) for v in cbc.split()]
+                si += [v+len(pnew) for v in cbc[0:-1]]
             for p in pth:
                 pnew.append(p)
+        si.append(len(pnew))
         if fp is not None:
             els[fp].set_path(pnew.transform(-els[fp].composed_transform()));
             els[fp].set('clip-path',None); # release any clips
+            els[fp].set('inkscape-academic-combined-by-color',' '.join([str(v) for v in si]))
             for s in sp:
                 els[s].delete()
         
