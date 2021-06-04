@@ -167,7 +167,7 @@ class tline:
             for ii in range(len(sws)-1):
                 sws[ii].nextw = sws[ii+1]
                 
-# A word (a group of characters with the same assigned position, not actual words)
+# A word (a group of characters with the same assigned anchor)
 class tword: 
     def __init__(self,ii,x,y,ln):
         c = ln.cs[ii];
@@ -185,6 +185,7 @@ class tword:
         self.cs.append(c);
         self.iis.append(ii);
         c.w = self;
+        
     # Add a new character to the end of the word
     def appendc(self,ncv,ncw,type=None,osw=None):
         # Add to document
@@ -226,6 +227,7 @@ class tword:
         # Add to word, recalculate properties
         self.addc(myi)
         self.calcprops()
+        
     # Add a new word (possibly from another line) into the current one
     def appendw(self,nw,type):
         # Calculate the number of spaces we need to keep the position constant

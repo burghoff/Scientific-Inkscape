@@ -54,6 +54,11 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument("--setstrokew", type=float, default=1, help="New stroke width (px)");
 
     def effect(self):   
+        # import cProfile, pstats, io
+        # from pstats import SortKey
+        # pr = cProfile.Profile()
+        # pr.enable()
+        
         setfontsize = self.options.setfontsize
         fontsize = self.options.fontsize
         setfontfamily = self.options.setfontfamily
@@ -134,6 +139,14 @@ class ScalePlots(inkex.EffectExtension):
                     sw = dh.urender(nw*nomw/actw,u)    
                     dh.Set_Style_Comp(el,'stroke-width',sw)
         
+        # pr.disable()
+        # s = io.StringIO()
+        # sortby = SortKey.CUMULATIVE
+        # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        # ps.print_stats()
+        # dh.debug(s.getvalue())
 
 if __name__ == '__main__':
+
+    
     ScalePlots().run()

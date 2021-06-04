@@ -361,7 +361,10 @@ def Get_Style_Comp(sty,comp):
 def selected_style_local(el):
     parent = el.getparent();
     if parent is not None and isinstance(parent, ShapeElement):
-        return selected_style_local(parent) + el.cascaded_style()
+        if el.get('class') is not None:
+            return selected_style_local(parent) + el.cascaded_style()
+        else:
+            return selected_style_local(parent)
     return el.cascaded_style()
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate
