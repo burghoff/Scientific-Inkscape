@@ -23,6 +23,17 @@ import copy
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath ,Vector2d, Rectangle)
 
+def GetXY(el,xy):
+    if xy=='y':
+        val = el.get('y');
+    else:
+        val = el.get('x');
+    if val is None:   
+        val = [None]
+    else:             
+        val = [float(x) for x in val.split()];
+    return val
+
 # A text element that has been parsed into a list of lines
 class LineList():
     def __init__(self, el, ctable):
@@ -33,17 +44,20 @@ class LineList():
     # Seperate a text element into a group of lines
     def Parse_Lines(self,el,lns=None):
         tlvlcall = (lns is None);
-        sty = el.composed_style();
+        # sty = el.composed_style();
+        sty = dh.selected_style_local(el);
         fs,sf,ct,ang = dh.Get_Composed_Width(el,'font-size',4);
         nsty=Character_Table.normalize_style(sty);
         tv = el.text;
         
-        myx = el.get('x');
-        myy = el.get('y');
-        if myx is None:   xv = [None]
-        else:             xv = [float(x) for x in myx.split()];
-        if myy is None:   yv = [None]
-        else:             yv = [float(y) for y in myy.split()];
+        xv = GetXY(el,'x')
+        yv = GetXY(el,'y')
+        # myx = el.get('x');
+        # myy = el.get('y');
+        # if myx is None:   xv = [None]
+        # else:             xv = [float(x) for x in myx.split()];
+        # if myy is None:   yv = [None]
+        # else:             yv = [float(y) for y in myy.split()];
         
         # Detect effective sodipodi:role line (overridden by multiple x values)
         nspr = el.get('sodipodi:role'); spr = False;
@@ -64,6 +78,14 @@ class LineList():
             anch = sty.get('text-anchor')    
             if len(lns)!=0 and nspr!='line':
                 anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
+            
+            # If x is still none, hopefully parent has it...
+            if xv[0] is None:
+                xv = GetXY(el.getparent(),'x');
+                el.set('x',' '.join([str(v) for v in xv]))
+            if yv[0] is None:
+                yv = GetXY(el.getparent(),'y');
+                el.set('y',' '.join([str(v) for v in yv]))
             lns.append(tline(xv,yv,spr,nspr,anch,ct,ang,el))
         else:
             if lns is not None:   # if we're continuing, make sure we have a valid x and y
@@ -396,14 +418,16 @@ class Character_Table():
                 ctable = dict();
             if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
                 if el.text is not None:
-                    sty = str(el.composed_style());
+                    # sty = str(el.composed_style());
+                    sty = str(dh.selected_style_local(el));
                     sty = self.normalize_style(sty)    
                     if sty in list(ctable.keys()):
                         ctable[sty] = list(set(ctable[sty]+list(el.text)));
                     else:
                         ctable[sty] = list(set(list(el.text)));
                 if isinstance(el,Tspan) and el.tail is not None and el.tail!='':
-                    sty = str(el.getparent().composed_style());
+                    # sty = str(el.getparent().composed_style());
+                    sty = str(dh.selected_style_local(el.getparent()));
                     sty = self.normalize_style(sty)    
                     if sty in list(ctable.keys()):
                         ctable[sty] = list(set(ctable[sty]+list(el.tail)));

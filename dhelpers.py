@@ -70,7 +70,8 @@ def split_distant(el,ctable):
         myx = myx.split();
         myx =[float(x) for x in myx];
         if len(myx)>1:
-            sty = el.composed_style();
+            # sty = el.composed_style();
+            sty = selected_style_local(el);
             fs = float(sty.get('font-size').strip('px'));
             sty = tp.Character_Table.normalize_style(sty)  
             stxt = [x for _, x in sorted(zip(myx, el.text), key=lambda pair: pair[0])] # text sorted in ascending x
@@ -112,7 +113,8 @@ def pop_tspans(el):
     node_index = list(el.getparent()).index(el);
     newtxt = [];
     for k in ks:
-        k.style = k.composed_style();
+        # k.style = k.composed_style();
+        k.style = selected_style_local(k);
         # k.set('sodipodi:role',None)
         el.getparent().insert(node_index,k); # pop everything out   
     for k in ks:
@@ -277,7 +279,8 @@ def reverse_shattering(el,ctable):
         myx =[float(x) for x in myx];
         if len(myx)>1:
             docscale = get_parent_svg(el).scale;
-            sty = el.composed_style();
+            # sty = el.composed_style();
+            sty = selected_style_local(el);
             fs = float(sty.get('font-size').strip('px'));
             sty = tp.Character_Table.normalize_style(sty)                       
             
@@ -394,15 +397,15 @@ def cascaded_style2(el):
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms/document scaling
 def Get_Composed_Width(el,comp,nargout=1):
-    cs = el.composed_style();
-#    cs = selected_style_local(el);
+    # cs = el.composed_style();
+    cs = selected_style_local(el);
     ct = el.composed_transform();
     svg = get_parent_svg(el)
     docscale = svg.scale;
     sc = Get_Style_Comp(cs,comp);
-    if sc is None:
-        cs = selected_style_local(el); # as a last ditch effort, try the slower selected_style
-        sc = Get_Style_Comp(cs,comp);
+    # if sc is None:
+    #     cs = selected_style_local(el); # as a last ditch effort, try the slower selected_style
+    #     sc = Get_Style_Comp(cs,comp);
     if sc is not None:
         if '%' in sc: # relative width, get parent width
             sc = float(sc.strip('%'))/100;
@@ -431,7 +434,8 @@ def Get_Composed_Width(el,comp,nargout=1):
 # For style components that are a list (stroke-dasharray), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms
 def Get_Composed_List(el,comp):
-    cs = el.composed_style();
+    # cs = el.composed_style();
+    cs = selected_style_local(el);
     ct = el.composed_transform();
     sc = Get_Style_Comp(cs,comp);
     docscale = get_parent_svg(el).scale;
@@ -532,8 +536,8 @@ def shallow_composed_style(el):
     if Get_Style_Comp(parent.style,'stroke-linecap') is not None:  # linecaps not currently inherited, so don't include in composition
         Set_Style_Comp(parent,'stroke-linecap',None);
     if parent is not None and isinstance(parent, ShapeElement):
-        return parent.style + el.style
-    return el.style
+        return cascaded_style2(parent) + cascaded_style2(el)
+    return cascaded_style2(el)
 
 def _merge_transform(node, transform):
     # From Deep Ungroup
@@ -685,6 +689,10 @@ def recursive_merge_clipmask(node,clippathurl,mask=False):
                 recursive_merge_clipmask(k,clippathurl);
         else:
             node.set(cmstr2,clippathurl)
+
+# def getElementById2(elid):
+#     # Getting element by IDs can be really slow. If we need to do it, then make a dict of 
+#     # all the SVG's
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
 def Get_Bounding_Boxes(s,getnew):

@@ -29,7 +29,8 @@ import TextParser as tp
 #import warnings
 #warnings.filterwarnings("ignore", category=DeprecationWarning)
 import time
-    
+
+dispprofile = False;
 
 class FlattenPlots(inkex.EffectExtension):
     def add_arguments(self, pars):
@@ -47,10 +48,11 @@ class FlattenPlots(inkex.EffectExtension):
         # import random
         # random.seed(a=1)
 #        tic = time.time();
-#        import cProfile, pstats, io
-#        from pstats import SortKey
-#        pr = cProfile.Profile()
-#        pr.enable()
+        if dispprofile:
+            import cProfile, pstats, io
+            from pstats import SortKey
+            pr = cProfile.Profile()
+            pr.enable()
         
         poprest = self.options.deepungroup
         removerectw = self.options.removerectw
@@ -69,7 +71,7 @@ class FlattenPlots(inkex.EffectExtension):
         if len(gs)==0 and len(os)==0:
             inkex.utils.errormsg('No objects selected!'); return;
         
-        if poprest:        
+        if poprest:       
             for g in list(reversed(gs)):
                 ks = g.getchildren()
                 if any([isinstance(k,lxml.etree._Comment) for k in ks]) and \
@@ -136,7 +138,8 @@ class FlattenPlots(inkex.EffectExtension):
                 if isinstance(el, (PathElement, Rectangle, Line)):
                     xs,ys = dh.get_points(el);
                     if len(xs)==5 and len(set(xs))==2 and len(set(ys))==2: # is a rectangle
-                        sty=el.composed_style();
+                        # sty=el.composed_style();
+                        sty=dh.selected_style_local(el);
                         fill = sty.get('fill');
                         strk = sty.get('stroke');
                         # if (removerectw and fill in ['#ffffff','white'] and strk in [None,'none'])\
@@ -146,13 +149,14 @@ class FlattenPlots(inkex.EffectExtension):
                             el.delete()
     
 #        dh.debug(time.time()-tic)
-                                            
-#        pr.disable()
-#        s = io.StringIO()
-#        sortby = SortKey.CUMULATIVE
-#        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-#        ps.print_stats()
-#        dh.debug(s.getvalue())
+        
+        if dispprofile:                                   
+            pr.disable()
+            s = io.StringIO()
+            sortby = SortKey.CUMULATIVE
+            ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+            ps.print_stats()
+            dh.debug(s.getvalue())
                             
 #        self.svg.selection = inkex.elements._selected.ElementList([el for el in gs + os + newos \
 #                                if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Tspan)))])

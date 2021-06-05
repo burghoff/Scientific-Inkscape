@@ -43,7 +43,7 @@ class ScalePlots(inkex.EffectExtension):
                ForeignObject,Group,MissingGlyph))) and el.get('d') is not None]
         
         merged = [False for el in els]
-        stys = [el.composed_style() for el in els]
+        stys = [dh.selected_style_local(el) for el in els]
         for ii in range(len(els)):
             el1 = els[ii];
             strk = stys[ii].get('stroke');

@@ -31,7 +31,7 @@ import applytransform_mod
 import copy
 
 import os
-
+dispprofile = False
 #import warnings
 #warnings.filterwarnings("ignore", category=DeprecationWarning) 
 
@@ -53,11 +53,12 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument("--setstroke", type=inkex.Boolean, default=True,help="Set stroke width?")
         pars.add_argument("--setstrokew", type=float, default=1, help="New stroke width (px)");
 
-    def effect(self):   
-        # import cProfile, pstats, io
-        # from pstats import SortKey
-        # pr = cProfile.Profile()
-        # pr.enable()
+    def effect(self):
+        if dispprofile:
+            import cProfile, pstats, io
+            from pstats import SortKey
+            pr = cProfile.Profile()
+            pr.enable()
         
         setfontsize = self.options.setfontsize
         fontsize = self.options.fontsize
@@ -95,6 +96,7 @@ class ScalePlots(inkex.EffectExtension):
         if setfontfamily:
             for el in reversed(sel):
                 dh.Set_Style_Comp(el,'font-family',fontfamily)
+                dh.Set_Style_Comp(el,'-inkscape-font-specification',None)
                 if fontfamily=='Avenir' and isinstance(el,(TextElement,FlowRoot)):
                     dh.Replace_Non_Ascii_Font(el,'Avenir Next, Arial')
         
@@ -139,12 +141,13 @@ class ScalePlots(inkex.EffectExtension):
                     sw = dh.urender(nw*nomw/actw,u)    
                     dh.Set_Style_Comp(el,'stroke-width',sw)
         
-        # pr.disable()
-        # s = io.StringIO()
-        # sortby = SortKey.CUMULATIVE
-        # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        # ps.print_stats()
-        # dh.debug(s.getvalue())
+        if dispprofile:
+            pr.disable()
+            s = io.StringIO()
+            sortby = SortKey.CUMULATIVE
+            ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+            ps.print_stats()
+            dh.debug(s.getvalue())
 
 if __name__ == '__main__':
 

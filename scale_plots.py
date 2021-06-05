@@ -178,8 +178,10 @@ class ScalePlots(inkex.EffectExtension):
                     if len(xs)==5 and len(set(xs))==2 and len(set(ys))==2:
                         isrect = True;
                 if isrect or isinstance(el,(Rectangle)): #el.typename=='Rectangle':
-                    strk = el.composed_style().get('stroke');
-                    fill = el.composed_style().get('fill');
+                    # strk = el.composed_style().get('stroke');
+                    strk = dh.selected_style_local(el).get('stroke');
+                    # fill = el.composed_style().get('fill');
+                    fill = dh.selected_style_local(el).get('fill');
                     nones = [None,'none','white','#ffffff'];
                     if not(fill in nones) and (strk in nones or strk==fill): # solid rectangle
                         solids[el.get_id()]=[bb[2],bb[3]];
