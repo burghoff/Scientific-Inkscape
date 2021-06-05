@@ -357,17 +357,39 @@ def Get_Style_Comp(sty,comp):
                 val=a[1];
     return val
 
-# A temporary version of the new selected_style until it's officially released. Replace later
+# A temporary version of the new selected_style until it's officially released.
+# Maybe replace later (but it's currently way faster, so maybe not)
 def selected_style_local(el):
     parent = el.getparent();
     if parent is not None and isinstance(parent, ShapeElement):
         return selected_style_local(parent) + cascaded_style2(el)
     return cascaded_style2(el)
+
+global cssdict
+cssdict = None;
 def cascaded_style2(el):
-    if el.get('class') is not None:
-        return el.cascaded_style();
+    global cssdict
+    if cssdict is None:
+        # Generate a dictionary of styles at least once so we don't have to do constant lookups
+        # If elements change, will need to rerun by setting cssdict to None
+        svg = get_parent_svg(el)
+        cssdict= dict();
+        for sheet in svg.root.stylesheets:
+            for style in sheet:
+                for elem in svg.xpath(style.to_xpath()):
+                    elid = elem.get('id',None);
+                    if elid is not None and style!=Style():
+                        if cssdict.get(elid) is None:
+                            cssdict[elid] = Style() + style;
+                        else:
+                            cssdict[elid] += style;
+    """Add all cascaded styles, do not write to this Style object"""
+    sty = cssdict.get(el.get_id());
+    if sty is None:
+        return el.style
     else:
-        return Style(el.get('style'));
+        return sty+el.style
+
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms/document scaling
@@ -644,13 +666,14 @@ def recursive_merge_clipmask(node,clippathurl,mask=False):
                   'id': svg.get_unique_id(cmstr1)})
 
             clippath = svg.getElementById(clippathurl[5:-1])
-            for c in clippath.iterchildren():
-                etree.SubElement(
-                        new_clippath, 'use',
-                        {inkex.addNS('href', 'xlink'): '#' + c.get("id"),
-                          'transform': str(-node.transform),
-                          'id': svg.get_unique_id("use")})
-            clippathurl = "url(#" + new_clippath.get("id") + ")"  
+            if clippath is not None:
+                for c in clippath.iterchildren():
+                    etree.SubElement(
+                            new_clippath, 'use',
+                            {inkex.addNS('href', 'xlink'): '#' + c.get("id"),
+                              'transform': str(-node.transform),
+                              'id': svg.get_unique_id("use")})
+                clippathurl = "url(#" + new_clippath.get("id") + ")"  
         myclip = node.get(cmstr2);
         if myclip is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
