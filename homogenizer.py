@@ -83,6 +83,7 @@ class ScalePlots(inkex.EffectExtension):
             for el in sel:
                 newsize = self.svg.unittouu('1pt')*fontsize;
                 actualsize = dh.Get_Composed_Width(el,'font-size');
+                # dh.debug(actualsize)
                 if actualsize is not None:
                     scalef = newsize/actualsize
                     fs = dh.Get_Style_Comp(el.style,'font-size');

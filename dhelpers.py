@@ -493,17 +493,27 @@ def get_points(el,irange=None):
         ys.append(p.y*docscale)
     return xs, ys
 
+import time
+global tic
+tic = time.time();
+global ncalls
+ncalls = 0
 def ungroup(groupnode):
     # Pops a node out of its group, unless it's already in a layer or the base
     # Unlink any clones
     # Remove any comments
     # Preserves style, clipping, and masking
+    global tic
+    global ncalls
+    ncalls+=1
+        
     node_index = list(groupnode.getparent()).index(groupnode)   # parent's location in grandparent
-#    node_style = dict(Style.parse_str(groupnode.get("style")))
+    #    node_style = dict(Style.parse_str(groupnode.get("style")))
     node_transform = Transform(groupnode.get("transform")).matrix;
     node_clippathurl = groupnode.get('clip-path')
     node_maskurl     = groupnode.get('mask')
-        
+            
+    # if time.time()-tic<60 and ncalls<41750:
     els = groupnode.getchildren();
     for el in list(reversed(els)):
         wasuse = False;
@@ -527,6 +537,11 @@ def ungroup(groupnode):
             ungroup(el)
     if len(groupnode.getchildren())==0:
         groupnode.delete();
+    # elif ncalls==4175:
+    #     debug(groupnode.get_id())
+    # else:
+    #     debug(ncalls)
+        
          
 # Same as composed_style(), but no recursion and with some tweaks
 def shallow_composed_style(el):
@@ -645,11 +660,14 @@ def duplicate2(el,*args):
     else:
         d = el;
     for k in d.getchildren():
-        k.set_random_id();
+        set_random_id2(k);
         duplicate2(k,True)
     return d
 
 def recursive_merge_clipmask(node,clippathurl,mask=False):
+    # global tic
+    # global ncalls
+    # if time.time()-tic<60 and ncalls<41750:
     # Modified from Deep Ungroup
     if clippathurl is not None:
         svg = get_parent_svg(node);
@@ -659,6 +677,7 @@ def recursive_merge_clipmask(node,clippathurl,mask=False):
         else:
             cmstr1 = cmstr2 = 'mask'
             
+            
         if node.transform is not None:
             # Clip-paths on nodes with a transform have the transform
             # applied to the clipPath as well, which we don't want.  So, we
@@ -667,32 +686,75 @@ def recursive_merge_clipmask(node,clippathurl,mask=False):
             new_clippath = etree.SubElement(
                 svg.getElement('//svg:defs'), cmstr1,
                 {cmstr1+'Units': 'userSpaceOnUse',
-                  'id': svg.get_unique_id(cmstr1)})
+                  'id': get_unique_id2(svg,cmstr1)})
+            # new_clippath = etree.SubElement(
+            #     svg.getElement('//svg:defs'), cmstr1,
+            #     {cmstr1+'Units': 'userSpaceOnUse',
+            #       'id': svg.get_unique_id(cmstr1)})
 
-            clippath = svg.getElementById(clippathurl[5:-1])
+            # clippath = svg.getElementById(clippathurl[5:-1])
+            clippath = getElementById2(svg,clippathurl[5:-1])
             if clippath is not None:
                 for c in clippath.iterchildren():
                     etree.SubElement(
                             new_clippath, 'use',
                             {inkex.addNS('href', 'xlink'): '#' + c.get("id"),
                               'transform': str(-node.transform),
-                              'id': svg.get_unique_id("use")})
-                clippathurl = "url(#" + new_clippath.get("id") + ")"  
+                              'id': get_unique_id2(svg,"use")})
+                    # etree.SubElement(
+                    #         new_clippath, 'use',
+                    #         {inkex.addNS('href', 'xlink'): '#' + c.get("id"),
+                    #           'transform': str(-node.transform),
+                    #           'id': svg.get_unique_id("use")})
+                clippathurl = "url(#" + new_clippath.get("id") + ")"
+                addtodict(new_clippath);
         myclip = node.get(cmstr2);
         if myclip is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
-            clipnode = svg.getElementById(myclip[5:-1]);
+            # clipnode = svg.getElementById(myclip[5:-1]);
+            clipnode = getElementById2(svg,myclip[5:-1]);
             d = duplicate2(clipnode); # very important to use dup2 here
-            node.set(cmstr2,"url(#" + d.get("id") + ")")
+            node.set(cmstr2,"url(#" + d.get("id") + ")");
+            addtodict(d);
             ks = d.getchildren();
             for k in ks:
                 recursive_merge_clipmask(k,clippathurl);
         else:
             node.set(cmstr2,clippathurl)
 
-# def getElementById2(elid):
-#     # Getting element by IDs can be really slow. If we need to do it, then make a dict of 
-#     # all the SVG's
+# Repeated getElementById lookups can be really slow, so instead create a dict that can be used to 
+# speed this up. When an element is created that may be needed later, it MUST be added. 
+global iddict
+iddict = None;
+def getElementById2(svg,elid):
+    global iddict
+    if iddict is None:
+        iddict = dict();
+        for el in svg.descendants():
+            iddict[el.get_id()] = el;
+    return iddict.get(elid);
+def addtodict(el):
+    global iddict
+    iddict[el.get("id")] = el;
+    
+# The built-in get_unique_id gets stuck if there are too many elements. Instead use an adaptive
+# size based on the current number of ids
+import math,random
+def get_unique_id2(svg, prefix):
+    ids = svg.get_ids()
+    new_id = None
+    size = math.ceil(math.log10(len(ids)))+1
+    _from = 10 ** size - 1
+    _to = 10 ** size
+    while new_id is None or new_id in ids:
+        # Do not use randint because py2/3 incompatibility
+        new_id = prefix + str(int(random.random() * _from - _to) + _to)
+    svg.ids.add(new_id)
+    return new_id
+def set_random_id2(el, prefix=None, size=4, backlinks=False):
+    """Sets the id attribute if it is not already set."""
+    prefix = str(el) if prefix is None else prefix
+    el.set_id(get_unique_id2(el.root,prefix), backlinks=backlinks)
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
 def Get_Bounding_Boxes(s,getnew):
