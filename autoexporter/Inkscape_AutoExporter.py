@@ -4,6 +4,7 @@
 # It has only been tested in Python 3.7 and above.
 
 EXPORT_FORMATS = ['pdf','emf','png']            # list of formats to use
+# EXPORT_FORMATS = ['pdf']            # list of formats to use
 PNG_DPI = 600;                                  # resolution for PNG export
 # Any more options, and you will need to modify the call string (see export_file function below) 
 
@@ -17,11 +18,11 @@ import platform
 # Use the Inkscape binary to export the file
 def export_file(bfn,fin,fout,fformat,timeoutv):
     myoutput = fout[0:-4] + '.' + fformat
-    if fformat=='png':
-        callstr = '"'+bfn+'"'+' --export-background=#ffffff --export-background-opacity=1.0 --export-dpi='\
-                +str(PNG_DPI)+' --export-filename=' + '"'+myoutput+'"' + ' "'+fin+'"'
-    else:
-        callstr = '"'+bfn+'"'+' --export-filename=' + '"'+myoutput+'"' + ' "'+fin+'"'
+#    if fformat=='png':
+    callstr = '"'+bfn+'"'+' --export-background=#ffffff --export-background-opacity=1.0 --export-dpi='\
+            +str(PNG_DPI)+' --export-filename=' + '"'+myoutput+'"' + ' "'+fin+'"'
+#    else:
+#        callstr = '"'+bfn+'"'+' --export-filename=' + '"'+myoutput+'"' + ' "'+fin+'"'
     print('    To '+fformat+'...',end='')
     try:
         subprocess.run(callstr, shell=True,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

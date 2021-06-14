@@ -31,6 +31,7 @@ import TextParser as tp
 import time
 
 dispprofile = False;
+# dispprofile = True;
 
 class FlattenPlots(inkex.EffectExtension):
     def add_arguments(self, pars):

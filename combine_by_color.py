@@ -44,6 +44,7 @@ class ScalePlots(inkex.EffectExtension):
         
         merged = [False for el in els]
         stys = [dh.selected_style_local(el) for el in els]
+#        dh.debug(stys)
         for ii in range(len(els)):
             el1 = els[ii];
             strk = stys[ii].get('stroke');
@@ -56,6 +57,7 @@ class ScalePlots(inkex.EffectExtension):
                             merges.append(el2); merged[jj]=True
                 if len(merges)>1:
                     self.combine_paths(merges)
+#                    dh.debug(merges)
         
         
     def combine_paths(self,els):

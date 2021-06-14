@@ -44,8 +44,8 @@ def inkscape_editable(el):
         if len(myp.getchildren())==1 and isinstance(myp,TextElement):  # only child, no nesting
             tx = el.get('x'); ty=el.get('y');
             myp = el.getparent();
-            myp.set('x',tx)      # enabling sodipodi causes it to move to the parent's x and y
-            myp.set('y',ty)
+            if tx is not None: myp.set('x',tx)      # enabling sodipodi causes it to move to the parent's x and y
+            if ty is not None: myp.set('y',ty)      # enabling sodipodi causes it to move to the parent's x and y
             el.set('sodipodi:role','line'); # reenable sodipodi so we can insert returns
 #            Set_Style_Comp(el,'text-anchor','middle');
 #            Set_Style_Comp(el,'text-align','center') # one day...
@@ -80,9 +80,9 @@ def split_distant(el,ctable):
             
             starti = 0;
             for ii in range(1,min(len(sx),len(stxt))):
-                myi = [jj for jj in range(len(ctable[sty])) if ctable[sty][jj][0]==stxt[ii-1]][0]
-                sw = ctable[sty][myi][2]*fs
-                cw = ctable[sty][myi][1]*fs
+                myi = [jj for jj in range(len(ctable[sty])) if ctable[sty][jj].char==stxt[ii-1]][0]
+                sw = ctable[sty][myi].spacew*fs
+                cw = ctable[sty][myi].charw*fs
                 if abs(sx[ii]-sx[ii-1])>=1.5*sw+cw:
                     word = stxt[starti:ii]
                     # ts = el.duplicate();
@@ -135,6 +135,8 @@ def reverse_shattering2(os,ct,fixshattering,mergesupersub):
     
     ws = []; lls=[]
     for el in os:
+        # debug(el.get_id());
+        # debug(selected_style_local(el));
         if isinstance(el,TextElement) and el.getparent() is not None:
             lls.append(tp.LineList(el,ct.ctable));
             # ll.Position_Check();
@@ -152,9 +154,16 @@ def reverse_shattering2(os,ct,fixshattering,mergesupersub):
         ytol = YTOL*w.sw/w.sf;
         for w2 in ws:
             if w2 is not w:
+                # debug(w.txt+' '+w2.txt)
+                # debug(w2.cs[0].nstyc==w.cs[-1].nstyc);
+                # debug(w2.cs[0].nstyc);
+                # debug(w.cs[-1].nstyc);
+                # debug((w.cs[-1].loc.el!=w2.cs[0].loc.el or w.cs[-1].loc.tt!=w2.cs[0].loc.tt));
+                # debug(w.bb_big.intersect(w2.bb))
                 if abs(w2.angle-w.angle)<.001 and \
                    w2.cs[0].nstyc==w.cs[-1].nstyc and \
-                   w.cs[-1].loc[0:1]!=w2.cs[0].loc[0:1]:        # different parents
+                   (w.cs[-1].loc.el!=w2.cs[0].loc.el or w.cs[-1].loc.tt!=w2.cs[0].loc.tt):        # different parents
+                   # w.cs[-1].loc[0:1]!=w2.cs[0].loc[0:1]:        # different parents
                     if w.bb_big.intersect(w2.bb): # so we don't waste time transforming, check if bboxes overlap
                         # calculate 2's coords in 1's system
                         bl2 = (-w.transform).apply_to_point(w2.pts_t[0])
@@ -162,6 +171,9 @@ def reverse_shattering2(os,ct,fixshattering,mergesupersub):
                         tr1 = w.pts_ut[2];
                         br1 = w.pts_ut[3];
                         if br1.x-xtol <= bl2.x <= br1.x + dx/w.sf + xtol:
+                            # debug(abs(bl2.y-br1.y)<ytol);
+                            # debug(abs(w.fs-w2.fs)<.001);
+                            # debug(br1.y+ytol >= bl2.y >= tr1.y-ytol);
                             type = None;
                             if abs(bl2.y-br1.y)<ytol and abs(w.fs-w2.fs)<.001 and fixshattering:
                                 type = 'same';
@@ -245,6 +257,7 @@ def reverse_shattering2(os,ct,fixshattering,mergesupersub):
                 w.merges = []
     # Execute the merge plan
     for w in ws:
+        # debug(ws[0].ln.xsrc.get_id())
         if len(w.merges)>0 and not(w.merged):
 #            debug(w.mergetypes)
             # if w.wtypes[0]=='sub' or w.wtypes[0]=='super': # initial sub/super
@@ -256,51 +269,19 @@ def reverse_shattering2(os,ct,fixshattering,mergesupersub):
                 if c.type=='super' or c.type=='sub':
                     c.makesubsuper(round(c.reduction_factor*100));
     # Clean up empty elements
-    for ll in lls:
-        if ll.lns is not None:
-            if all([len(ln.cs)==0 for ln in ll.lns]): ll.parent.delete();
-            else:
-                for ln in ll.lns:
-                    if len(ln.cs)==0:
-                        if isinstance(ln.prt,Tspan):  ln.prt.delete();
+    for el in os:
+        if isinstance(el,TextElement) and el.getparent() is not None:
+            deleteempty(el)
 
-def reverse_shattering(el,ctable):
-    # In PDFs, text is often positioned by letter.
-    # This makes it hard to modify / adjust it. This fixes that.
-    # Recursively run on children first
-    # el.set('sodipodi:role',None);
-    ks=el.getchildren();
-    for k in ks:
-        if isinstance(k, (Tspan,TextElement)):    # k.typename=='Tspan' or k.typename=='TextElement':
-            reverse_shattering(k,ctable);
-    myx = el.get('x');
-    if myx is not None:#not(myx==None):
-        myx = myx.split();
-        myx =[float(x) for x in myx];
-        if len(myx)>1:
-            docscale = get_parent_svg(el).scale;
-            # sty = el.composed_style();
-            sty = selected_style_local(el);
-            fs = float(sty.get('font-size').strip('px'));
-            sty = tp.Character_Table.normalize_style(sty)                       
-            
-            # We sometimes need to add non-breaking spaces to keep letter positioning similar
-            stxt = [x for _, x in sorted(zip(myx, el.text), key=lambda pair: pair[0])] # text sorted in ascending x
-            sx   = [x for _, x in sorted(zip(myx, myx)    , key=lambda pair: pair[0])] # x sorted in ascending x
-            stxt = "".join(stxt) # back to string
-            spaces_before = []; cpos=sx[0];
-            for ii in range(len(stxt)): # advance the cursor to figure out how many spaces are needed
-                myi = [jj for jj in range(len(ctable[sty])) if ctable[sty][jj][0]==stxt[ii]][0]
-                myw  = ctable[sty][myi][1]*fs
-                mysw = ctable[sty][myi][2]*fs
-                spaces_needed = round((sx[ii]-cpos)/mysw)
-                spaces_before.append(max(0,spaces_needed - sum(spaces_before)))
-                cpos += myw # advance the cursor
-            for ii in reversed(range(len(stxt)-1)): 
-                if spaces_before[ii+1]>0:
-                    stxt = stxt[0:ii+1]+('\u00A0'*spaces_before[ii+1])+stxt[ii+1:]; # NBSPs don't collapse
-            el.text = stxt
-            el.set('x',str(sx[0]));
+def deleteempty(el):
+    def wstrip(txt): # strip whitespaces
+        return txt.translate({ord(c):None for c in ' \n\t\r'});
+    for k in el.getchildren():
+        deleteempty(k)
+    txt = el.text;
+    tail = el.tail;
+    if (txt is None or len(wstrip(txt))==0) and (tail is None or len(wstrip(tail))==0) and len(el.getchildren())==0:
+        el.delete();
 
 # sets a style property (of an element)  
 def Set_Style_Comp(el,comp,val):
@@ -784,6 +765,7 @@ def debug(x):
     inkex.utils.debug(x);
 
 def get_parent_svg(el):
+    # slightly faster than el.root
     myn = el
     while myn.getparent() is not None:
         myn = myn.getparent();
@@ -791,6 +773,13 @@ def get_parent_svg(el):
         return myn;
     else:
         return None
+
+# from inkex.utils import FragmentError    
+# def get_parent_svg(el):
+#     try:
+#         return el.root
+#     except FragmentError:
+#         return None
 
 def get_mod(slf, *types):
     """Originally from _selected.py in inkex, doesn't fail on comments"""
