@@ -40,6 +40,7 @@ class FlattenPlots(inkex.EffectExtension):
         pars.add_argument("--fixtext", type=inkex.Boolean, default=True, help="Text fixes")
         pars.add_argument("--removerectw", type=inkex.Boolean, default=True, help="Remove white rectangles")
         pars.add_argument("--splitdistant", type=inkex.Boolean, default=True, help="Split distant text")
+        pars.add_argument("--mergenearby", type=inkex.Boolean, default=True, help="Merge nearby text")
         pars.add_argument("--fixshattering", type=inkex.Boolean, default=True, help="Fix text shattering")
         pars.add_argument("--mergesubsuper", type=inkex.Boolean, default=True, help="Import superscripts and subscripts")
         pars.add_argument("--setreplacement", type=inkex.Boolean, default=True, help="Replace missing fonts")
@@ -60,6 +61,7 @@ class FlattenPlots(inkex.EffectExtension):
         splitdistant = self.options.splitdistant and self.options.fixtext
         fixshattering = self.options.fixshattering and self.options.fixtext
         mergesubsuper = self.options.mergesubsuper and self.options.fixtext
+        mergenearby = self.options.mergenearby and self.options.fixtext
         setreplacement = self.options.setreplacement and self.options.fixtext
         replacement = self.options.replacement
         
@@ -91,31 +93,13 @@ class FlattenPlots(inkex.EffectExtension):
         
         newos = [];
         if self.options.fixtext:
-            spd = dict()
-            for el in list(reversed(os)):
-                if isinstance(el,(TextElement,Tspan)):
-                    spd[el.get_id()] = el.get('sodipodi:role');
-                    el.set('sodipodi:role',None);
-                    
-                    
-            if splitdistant or fixshattering:
-                ct = tp.Character_Table(list(set(list(reversed(os)))),self)
-                
-            if splitdistant:
-                for el in list(reversed(os)):
-                    if isinstance(el,TextElement):
-                        newos += dh.split_distant(el,ct.ctable)
-                        newos += dh.pop_tspans(el)
-            allos = list(set(list(reversed(os))+list(newos)));
-               
-            if fixshattering or mergesubsuper:            
-#                for el in allos:
-#                    if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
-#                        dh.reverse_shattering(el,ct.ctable)
-                dh.reverse_shattering2(allos,ct,fixshattering,mergesubsuper)
-                
+            # spd = dict()
+            # for el in list(reversed(os)):
+            #     if isinstance(el,(TextElement,Tspan)):
+            #         spd[el.get_id()] = el.get('sodipodi:role');
+                    # el.set('sodipodi:role',None);
             if setreplacement:
-                for el in allos:
+                for el in os:
                     if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
                         ff = dh.Get_Style_Comp(el.get('style'),'font-family');
 #                        dh.Set_Style_Comp(el,'-inkscape-font-specification',None)
@@ -128,8 +112,16 @@ class FlattenPlots(inkex.EffectExtension):
                             ff = [x.strip('\'') for x in ff]
                             ff.append(replacement)
                             ff = ['\''+x+'\'' for x in ff]
-                            dh.Set_Style_Comp(el,'font-family',','.join(ff))         
-            for el in allos:
+                            dh.Set_Style_Comp(el,'font-family',','.join(ff))   
+                            
+            if fixshattering or mergesubsuper or splitdistant or mergenearby:            
+#                for el in allos:
+#                    if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
+#                        dh.reverse_shattering(el,ct.ctable)
+                ct = tp.Character_Table(list(set(list(reversed(os)))),self)
+                os = dh.remove_kerning(os,ct,fixshattering,mergesubsuper,splitdistant,mergenearby) 
+                
+            for el in os:
                 if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
                     dh.inkscape_editable(el)
 

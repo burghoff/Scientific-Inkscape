@@ -42,6 +42,9 @@ class LineList():
         self.ctable = ctable
         self.lns = self.Parse_Lines(el);
         self.parent = el;
+        if self.lns is not None:
+            for ln in self.lns:
+                ln.ll = self;
         
     # Seperate a text element into a group of lines
     def Parse_Lines(self,el,lns=None):
@@ -64,6 +67,7 @@ class LineList():
         
         # Detect if inheriting position
         nspr = el.get('sodipodi:role');
+        # dh.debug(el.get('x'))
         inheritpos = (nspr=='line' and len(xv)<=1) or (xv[0] is None)
         
         # Determine if new line
@@ -76,13 +80,17 @@ class LineList():
                 newline = False
             else:
                 newline = True;
-            
+        
+        # dh.debug(el.get_id() + str(inheritpos))
+        
         if newline:
             if lns is None:  
                 lns=[];
             elif inheritpos:                # if inheriting
-                xv = [lns[-1].x[0]]; 
-                xsrc = lns[-1].xsrc;
+                if len(lns)==0 or len(lns[-1].x)==0: return None
+                else:
+                    xv = [lns[-1].x[0]]; 
+                    xsrc = lns[-1].xsrc;
             anch = sty.get('text-anchor')    
             if len(lns)!=0 and nspr!='line':
                 anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
@@ -93,7 +101,7 @@ class LineList():
                 if lns[-1].y[0] is None: lns[-1].y = yv
             
         ctable = self.ctable    
-        if tv is not None and tv!='':
+        if tv is not None and tv!='' and len(tv)>0:
             for ii in range(len(tv)):
                 myi = [jj for jj in range(len(ctable[nsty])) if ctable[nsty][jj].char==tv[ii]][0]
                 if fs is None: return None # bail if there is text without font
@@ -113,14 +121,16 @@ class LineList():
                     
         if tlvlcall: # finished recursing
             if lns is not None:
-                for ln in lns:                
+                for ln in reversed(lns):                
                     ln.parse_words()
+                    if len(ln.cs)==0:
+                        lns.remove(ln); # prune empty lines
         return lns
     
     # For debugging only: make a rectange at all of the line's words' nominal bboxes
     def Position_Check(self):
         if len(self.lns)>0:
-            svg = dh.get_parent_svg(self.lns[0].el)
+            svg = dh.get_parent_svg(self.lns[0].xsrc)
             xs = []; ys = []; x2s = []; y2s = [];
             for ln in self.lns:          
                 for w in ln.ws:
@@ -155,6 +165,7 @@ class tline:
         self.transform = xform;
         self.angle = ang;
         self.xsrc = xsrc; # element where we derive our x value
+        # self.ll = None;   # line list we belong to (add later)
     def addc(self,c):
         self.cs.append(c)
         c.ln = self;
@@ -164,6 +175,8 @@ class tline:
     def addw(self,w): # Add a complete word and calculate its properties
         self.ws.append(w)
         w.calcprops();
+        # if len(w.cs)==0:
+        #     dh.debug(self.xsrc.get_id())
     def parse_words(self):
         w=None;
         for ii in range(len(self.cs)):
@@ -181,6 +194,14 @@ class tline:
             sws = [x for _, x in sorted(zip(self.x, self.ws), key=lambda pair: pair[0])] # words sorted in ascending x
             for ii in range(len(sws)-1):
                 sws[ii].nextw = sws[ii+1]
+    def dell(self): # deletes the whole line
+        for c in reversed(self.cs):
+            c.delc();
+        if self.ll is not None:
+            self.ll.lns.remove(self)
+        self.ll = None;
+    def txt(self):   
+        return ''.join([c.c for c in self.cs])
                 
 # A word (a group of characters with the same assigned anchor)
 class tword: 
@@ -200,7 +221,18 @@ class tword:
         self.cs.append(c);
         self.iis.append(ii);
         c.w = self;
-        
+    
+    # Deletes me from everywhere
+    def delw(self):
+        for c in reversed(self.cs):
+            c.delc();
+        if self in self.ln.ws:
+            self.ln.ws.remove(self)
+            
+    # Gets all text
+    def txt(self):   
+        return ''.join([c.c for c in self.cs])
+            
     # Add a new character to the end of the word
     def appendc(self,ncv,ncw,type=None,osw=None):
         # Add to document
@@ -229,7 +261,7 @@ class tword:
                 self.ln.x = [self.ln.x[0]]
             self.ln.xsrc.set('x',' '.join([str(v) for v in self.ln.x]))
             if len(self.ln.x)==1 and self.ln.nsodipodirole=='line': # would re-enable spr
-                self.ln.el.set('sodipodi:role',None)
+                self.ln.xsrc.set('sodipodi:role',None)
                 self.ln.nsodipodirole = None;
         self.ln.insertc(c,myi)
         for ii in range(myi+1,len(self.ln.cs)):        # need to increment index of subsequent objects with the same parent
@@ -288,7 +320,7 @@ class tword:
                 max([p.x for p in w.pts_t])-min([p.x for p in w.pts_t]),\
                 max([p.y for p in w.pts_t])-min([p.y for p in w.pts_t])]);
                 # bounding box that begins at the anchor and stops at the cap height
-        w.txt = ''.join([c.c for c in w.cs])
+        # w.txt = ''.join([c.c for c in w.cs])
         
         
 # A single character and its style
@@ -319,12 +351,13 @@ class tchar:
         myi = self.ln.cs.index(self) # index in line
         if len(self.ln.x)>0:
             if myi<len(self.ln.x):
+                oldx = self.ln.x
                 self.ln.x = del2(self.ln.x,myi)
                 self.ln.x = self.ln.x[0:len(self.ln.cs)-1]
-                # dh.debug(self.ln.x)
-                self.ln.xsrc.set('x',' '.join([str(v) for v in self.ln.x]))
-                if len(self.ln.x)==1 and self.ln.nsodipodirole=='line': # would re-enable spr
-                    self.ln.el.set('sodipodi:role',None)
+                if self.ln.x==[]: self.ln.xsrc.set('x',None)
+                else:             self.ln.xsrc.set('x',' '.join([str(v) for v in self.ln.x]))
+                if len(self.ln.x)==1 and self.ln.nsodipodirole=='line': # would enable inheritance
+                    self.ln.xsrc.set('sodipodi:role',None)
                     self.ln.nsodipodirole = None;
         # Delete from line
         for ii in range(myi+1,len(self.ln.cs)):         # need to decrement index of subsequent objects with the same parent
@@ -335,12 +368,16 @@ class tchar:
                 i2 = ca.w.cs.index(ca)
                 ca.w.iis[i2] -= 1
         self.ln.cs = del2(self.ln.cs,myi)
+        if len(self.ln.cs)==0: # line now empty
+            self.ln.dell();
         self.ln = None
         # Delete from word
         myi = self.w.cs.index(self)
         self.w.cs = del2(self.w.cs ,myi)
         self.w.iis= del2(self.w.iis,myi)
         self.w.calcprops()
+        if len(self.w.cs)==0: # word now empty
+            self.w.delw();
         self.w = None
         
     def makesubsuper(self,sz=65):
@@ -409,6 +446,11 @@ class cloc():
         self.el = el;  # the element it belongs to
         self.tt = tt;  # 'text' or 'tail'
         self.ind= ind; # its index
+        
+        tmp = el;
+        if isinstance(tmp.getparent(),(TextElement,Tspan)):
+            tmp = tmp.getparent()
+        self.textel = tmp; # parent TextElement
 
 # A class representing the properties of a collection of characters
 class Character_Table():
@@ -496,6 +538,8 @@ class Character_Table():
                 ct[s][ii] = cprop(ct[s][ii][0],cw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale);
                 # Because a nominal 1 px font is docscale px tall, we need to divide by the docscale to get the true width
             ct[s] = ct[s][0:Nl]
+            ct[s].append(cprop(' ',sw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale));
+            ct[s].append(cprop('\u00A0',sw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale));
         return ct, nbb
     
     @staticmethod

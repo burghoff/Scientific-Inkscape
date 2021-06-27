@@ -10,10 +10,13 @@
             <spacer/><label>By David Burghoff, University of Notre Dame</label>
         </page>
         <page name="Options2" gui-text="Text fix options">
-            <param name="splitdistant"  type="bool" gui-text="Split distant text?">true</param>
-            <param name="fixshattering" type="bool"  gui-text="Repair shattered text?">true</param>
-            <param name="mergesubsuper" type="bool"  gui-text="Merge superscripts and subscripts?">true</param>
-            <param name="setreplacement" type="bool" gui-text="Replace missing fonts?">true</param>
+        <label appearance="header">Recommended options</label>
+            <param name="splitdistant"  type="bool" gui-text="Split distant text and lines">true</param>
+            <param name="mergenearby"  type="bool" gui-text="Merge nearby text">true</param>
+            <param name="fixshattering" type="bool"  gui-text="Remove manual kerning">true</param>
+            <param name="mergesubsuper" type="bool"  gui-text="Merge superscripts and subscripts">true</param>
+        <label appearance="header">Other options</label>
+            <param name="setreplacement" type="bool" gui-text="Replace missing fonts">true</param>
             <param name="replacement" type="string" gui-text="Missing font replacement">Arial</param>
             <spacer/><label>By David Burghoff, University of Notre Dame</label>
         </page>

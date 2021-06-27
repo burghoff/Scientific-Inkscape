@@ -54,80 +54,77 @@ def inkscape_editable(el):
         
     
 
-def split_distant(el,ctable):
-    # In PDFs, distant text is often merged together into a single word whose letters are positioned.
-    # This makes it hard to modify / adjust it. This splits text separated by more than 1.5 spaces.
-    # Recursively run on children first
-#    oldsodipodi = el.get('sodipodi:role');
-    # el.set('sodipodi:role',None);
-    ks=el.getchildren();
-    newtxt = [];
-    for k in ks:
-        if isinstance(k, (Tspan,TextElement)):
-            newtxt += split_distant(k,ctable);
-    myx = el.get('x');
-    if myx is not None:#not(myx==None):
-        myx = myx.split();
-        myx =[float(x) for x in myx];
-        if len(myx)>1:
-            # sty = el.composed_style();
-            sty = selected_style_local(el);
-            fs = float(sty.get('font-size').strip('px'));
-            sty = tp.Character_Table.normalize_style(sty)  
-            stxt = [x for _, x in sorted(zip(myx, el.text), key=lambda pair: pair[0])] # text sorted in ascending x
-            sx   = [x for _, x in sorted(zip(myx, myx)    , key=lambda pair: pair[0])] # x sorted in ascending x
-            stxt = "".join(stxt) # back to string
+# def split_distant(el,ctable):
+#     # In PDFs, distant text is often merged together into a single word whose letters are positioned.
+#     # This makes it hard to modify / adjust it. This splits text separated by more than 1.5 spaces.
+#     # Recursively run on children first
+# #    oldsodipodi = el.get('sodipodi:role');
+#     # el.set('sodipodi:role',None);
+#     ks=el.getchildren();
+#     newtxt = [];
+#     for k in ks:
+#         if isinstance(k, (Tspan,TextElement)):
+#             newtxt += split_distant(k,ctable);
+#     myx = el.get('x');
+#     if myx is not None:#not(myx==None):
+#         myx = myx.split();
+#         myx =[float(x) for x in myx];
+#         if len(myx)>1:
+#             # sty = el.composed_style();
+#             sty = selected_style_local(el);
+#             fs = float(sty.get('font-size').strip('px'));
+#             sty = tp.Character_Table.normalize_style(sty)  
+#             stxt = [x for _, x in sorted(zip(myx, el.text), key=lambda pair: pair[0])] # text sorted in ascending x
+#             sx   = [x for _, x in sorted(zip(myx, myx)    , key=lambda pair: pair[0])] # x sorted in ascending x
+#             stxt = "".join(stxt) # back to string
             
-            starti = 0;
-            for ii in range(1,min(len(sx),len(stxt))):
-                myi = [jj for jj in range(len(ctable[sty])) if ctable[sty][jj].char==stxt[ii-1]][0]
-                sw = ctable[sty][myi].spacew*fs
-                cw = ctable[sty][myi].charw*fs
-                if abs(sx[ii]-sx[ii-1])>=1.5*sw+cw:
-                    word = stxt[starti:ii]
-                    # ts = el.duplicate();
-                    ts = duplicate2(el);
-                    ts.text = word;
-                    ts.set('x',' '.join(str(x) for x in sx[starti:ii]));
-                    ts.set('y',el.get('y'));
-                    el.getparent().append(ts);
-                    starti = ii;
-                    newtxt.append(ts);
-            word = stxt[starti:]
-            # ts = el.duplicate();
-            ts = duplicate2(el);
-            ts.text = word;
-            ts.set('x',' '.join(str(x) for x in sx[starti:]));
-            ts.set('y',el.get('y'));
-            newtxt.append(ts);
+#             starti = 0;
+#             for ii in range(1,min(len(sx),len(stxt))):
+#                 myi = [jj for jj in range(len(ctable[sty])) if ctable[sty][jj].char==stxt[ii-1]][0]
+#                 sw = ctable[sty][myi].spacew*fs
+#                 cw = ctable[sty][myi].charw*fs
+#                 if abs(sx[ii]-sx[ii-1])>=1.5*sw+cw:
+#                     word = stxt[starti:ii]
+#                     ts = duplicate2(el);
+#                     ts.text = word;
+#                     ts.set('x',' '.join(str(x) for x in sx[starti:ii]));
+#                     ts.set('y',el.get('y'));
+#                     el.getparent().append(ts);
+#                     starti = ii;
+#                     newtxt.append(ts);
+#             word = stxt[starti:]
+#             ts = duplicate2(el);
+#             ts.text = word;
+#             ts.set('x',' '.join(str(x) for x in sx[starti:]));
+#             ts.set('y',el.get('y'));
+#             newtxt.append(ts);
             
-            el.getparent().append(ts);
-            el.delete();
-    return newtxt
+#             el.getparent().append(ts);
+#             el.delete();
+#     return newtxt
 
-def pop_tspans(el):
-    # Pop out text from different tspans
-    # el.set('sodipodi:role',None);
-    ks=el.getchildren();
-    ks=[t for t in ks if isinstance(t, Tspan)]; # ks=[t for t in ks if t.typename=='Tspan'];
-    node_index = list(el.getparent()).index(el);
-    newtxt = [];
-    for k in ks:
-        # k.style = k.composed_style();
-        k.style = selected_style_local(k);
-        # k.set('sodipodi:role',None)
-        el.getparent().insert(node_index,k); # pop everything out   
-    for k in ks:
-        # dp = el.duplicate();             # make dupes of the empty
-        dp = duplicate2(el);             # make dupes of the empty
-        dp.insert(0,k)                   # fill with individual tspans
-        newtxt.append(dp)
-    if (el.getchildren()==None or len(el.getchildren())==0) and (el.text==None or len(el.text)==0):
-        # original now empty, safe to delete
-        el.delete();
-    return newtxt
+# def pop_tspans(el):
+#     # Pop out text from different tspans
+#     # el.set('sodipodi:role',None);
+#     ks=el.getchildren();
+#     ks=[t for t in ks if isinstance(t, Tspan)]; # ks=[t for t in ks if t.typename=='Tspan'];
+#     node_index = list(el.getparent()).index(el);
+#     newtxt = [];
+#     for k in ks:
+#         # k.style = k.composed_style();
+#         k.style = selected_style_local(k);
+#         # k.set('sodipodi:role',None)
+#         el.getparent().insert(node_index,k); # pop everything out   
+#     for k in ks:
+#         dp = duplicate2(el);             # make dupes of the empty
+#         dp.insert(0,k)                   # fill with individual tspans
+#         newtxt.append(dp)
+#     if (el.getchildren()==None or len(el.getchildren())==0) and (el.text==None or len(el.text)==0):
+#         # original now empty, safe to delete
+#         el.delete();
+#     return newtxt
 
-def reverse_shattering2(os,ct,fixshattering,mergesupersub):
+def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
     NUM_SPACES = 1.0;   # number of spaces beyond which text will be merged/split
     XTOL = 0.5          # x tolerance (number of spaces)...let be big since there are kerning inaccuracies
     YTOL = 0.01         # y tolerance (number of spaces)...can be small
@@ -139,11 +136,56 @@ def reverse_shattering2(os,ct,fixshattering,mergesupersub):
         # debug(selected_style_local(el));
         if isinstance(el,TextElement) and el.getparent() is not None:
             lls.append(tp.LineList(el,ct.ctable));
-            # ll.Position_Check();
+            # lls[-1].Position_Check();
             if lls[-1].lns is not None:
                 ws += [w for ln in lls[-1].lns for w in ln.ws];
+                
+    # Generate splits
+    if splitdistant:
+        for ll in lls:
+            if ll.lns is not None:
+                for il in range(len(ll.lns)):
+                    ln = ll.lns[il];
+                    sws = [x for _, x in sorted(zip([w.x for w in ln.ws], ln.ws), key=lambda pair: pair[0])] # words sorted in ascending x
+                    splits = [];
+                    for ii in range(1,len(ln.ws)):
+                        w = sws[ii-1]
+                        w2= sws[ii]
+                        dx = w.sw*NUM_SPACES
+                        xtol = XTOL*w.sw/w.sf;
+                        
+                        bl2 = w2.pts_ut[0]; tl2 = w2.pts_ut[1];
+                        tr1 = w.pts_ut[2];  br1 = w.pts_ut[3];      
+                        if bl2.x > br1.x + dx/w.sf + xtol:
+                            splits.append(ii);
+                    for ii in reversed(range(len(splits))):
+                        sstart = splits[ii];
+                        if ii!=len(splits)-1:
+                            sstop  = splits[ii+1]
+                        else:
+                            sstop = len(ln.ws)
+                        # to split, duplicate the whole text el and delete all other lines/words
+                        newtxt = duplicate2(ln.ws[sstart].cs[0].loc.textel);
+                        os.append(newtxt)
+                        nll = tp.LineList(newtxt,ct.ctable);
+                        for jj in reversed(range(sstart,sstop)):
+                            sws[jj].delw();
+                        for il2 in reversed(range(len(nll.lns))):
+                            if il2!=il:
+                                nll.lns[il2].dell();
+                            else:
+                                nln = nll.lns[il2];
+                                nsws = [x for _, x in sorted(zip([w.x for w in nln.ws], nln.ws), key=lambda pair: pair[0])] # words sorted in ascending x
+                                for jj in reversed(range(len(nsws))):
+                                    if not(jj in list(range(sstart,sstop))):
+                                        nsws[jj].delw();
+                        lls.append(nll)
+                        
     
-    # Generate list of merges           
+    # Generate list of merges     
+    ws = [];
+    for ll in lls:                
+        ws += [w for ln in ll.lns for w in ln.ws];
     for w in ws:
         dx = w.sw*NUM_SPACES # a big bounding box that includes the extra space
         w.bb_big = tp.bbox([w.bb.x1-dx,w.bb.y1-dx,w.bb.w+2*dx,w.bb.h+2*dx])
@@ -154,16 +196,11 @@ def reverse_shattering2(os,ct,fixshattering,mergesupersub):
         ytol = YTOL*w.sw/w.sf;
         for w2 in ws:
             if w2 is not w:
-                # debug(w.txt+' '+w2.txt)
-                # debug(w2.cs[0].nstyc==w.cs[-1].nstyc);
-                # debug(w2.cs[0].nstyc);
-                # debug(w.cs[-1].nstyc);
-                # debug((w.cs[-1].loc.el!=w2.cs[0].loc.el or w.cs[-1].loc.tt!=w2.cs[0].loc.tt));
-                # debug(w.bb_big.intersect(w2.bb))
+                # if len(w2.cs)==0:
+                #     debug(w2)
                 if abs(w2.angle-w.angle)<.001 and \
-                   w2.cs[0].nstyc==w.cs[-1].nstyc and \
-                   (w.cs[-1].loc.el!=w2.cs[0].loc.el or w.cs[-1].loc.tt!=w2.cs[0].loc.tt):        # different parents
-                   # w.cs[-1].loc[0:1]!=w2.cs[0].loc[0:1]:        # different parents
+                    w2.cs[0].nstyc==w.cs[-1].nstyc and \
+                    (w.cs[-1].loc.el!=w2.cs[0].loc.el or w.cs[-1].loc.tt!=w2.cs[0].loc.tt):        # different parents
                     if w.bb_big.intersect(w2.bb): # so we don't waste time transforming, check if bboxes overlap
                         # calculate 2's coords in 1's system
                         bl2 = (-w.transform).apply_to_point(w2.pts_t[0])
@@ -171,12 +208,11 @@ def reverse_shattering2(os,ct,fixshattering,mergesupersub):
                         tr1 = w.pts_ut[2];
                         br1 = w.pts_ut[3];
                         if br1.x-xtol <= bl2.x <= br1.x + dx/w.sf + xtol:
-                            # debug(abs(bl2.y-br1.y)<ytol);
-                            # debug(abs(w.fs-w2.fs)<.001);
-                            # debug(br1.y+ytol >= bl2.y >= tr1.y-ytol);
                             type = None;
-                            if abs(bl2.y-br1.y)<ytol and abs(w.fs-w2.fs)<.001 and fixshattering:
-                                type = 'same';
+                            if abs(bl2.y-br1.y)<ytol and abs(w.fs-w2.fs)<.001 and (fixshattering or mergenearby):
+                                if (w.cs[0].loc.textel == w2.cs[-1].loc.textel and fixshattering) or mergenearby:
+                                    type = 'same';
+                                # debug(w.txt+' '+w2.txt)
                             elif br1.y+ytol >= bl2.y >= tr1.y-ytol and mergesupersub:
                                 if   w2.fs<w.fs*SUBSUPER_THR: 
                                     type = 'super';
@@ -208,7 +244,7 @@ def reverse_shattering2(os,ct,fixshattering,mergesupersub):
             w2=mw[mi][0]; type=mw[mi][1]; br1=mw[mi][2]; bl2=mw[mi][3];
             w.merges     = [w2];
             w.mergetypes = [type];
-            # dh.debug(w.txt+' to '+ w.merges[0].txt+' as '+w.mergetypes[0])
+            # debug(w.txt+' to '+ w.merges[0].txt+' as '+w.mergetypes[0])
         
     # Generate chains of merges
     for w in ws:
@@ -264,14 +300,37 @@ def reverse_shattering2(os,ct,fixshattering,mergesupersub):
             #     iin = [v=='normal' for v in w.wtype].index(True) # first normal index
             #     fc = w.cs[0]
             for ii in range(len(w.merges)):
+                # debug(w.txt)
+                # debug(w.merges[ii].txt)
                 w.appendw(w.merges[ii],w.wtypes[ii+1])
             for c in w.cs:
                 if c.type=='super' or c.type=='sub':
                     c.makesubsuper(round(c.reduction_factor*100));
+    
+    # Split different lines
+    if splitdistant:                    
+        for ll in lls:
+            if ll.lns is not None:
+                for il in reversed(range(1,len(ll.lns))):
+                    # to split by line, duplicate the whole text el and delete all other lines
+                    ln = ll.lns[il]; # line to be popped out
+                    if len(ln.cs)>0:
+                        newtxt = duplicate2(ln.cs[0].loc.textel); os.append(newtxt)
+                        nll = tp.LineList(newtxt,ct.ctable);
+                        ln.dell();
+                        if nll.lns is not None:
+                            for il2 in reversed(range(len(nll.lns))):
+                                if il2!=il:
+                                    nll.lns[il2].dell();
+                        lls.append(nll)
+                    
     # Clean up empty elements
-    for el in os:
+    for el in reversed(os):
         if isinstance(el,TextElement) and el.getparent() is not None:
             deleteempty(el)
+    return [el for el in os if el.getparent() is not None]
+            
+    
 
 def deleteempty(el):
     def wstrip(txt): # strip whitespaces
