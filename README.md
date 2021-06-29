@@ -39,9 +39,10 @@ Flatten Plots is a useful utility that eliminates many of the difficulties that 
 
 ### Text fixes
 <ol>
-<li><i>Split distant text</i>: Depending on the renderer, it is often the case that the PDF/EPS printing process generates text implemented as a single text object. For example, all of the x-axis ticks might be one object, all of the y-axis ticks might be another, and the title and labels may be another. Internally, each letter is positioned independently. This looks fine, but causes issues when trying to scale or do anything nontrivial.
+<li><i>Split distant text and lines</i>: Depending on the renderer, it is often the case that the PDF/EPS printing process generates text implemented as a single text object. For example, all of the x-axis ticks might be one object, all of the y-axis ticks might be another, and the title and labels may be another. Internally, each letter is positioned independently. This looks fine, but causes issues when trying to scale or do anything nontrivial.
 <br><p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Split_distant_draw.png" alt="drawing" ></img></p></li>
-<li><i>Repair shattered text</i>: Similarly, text in PDFs is often 'shattered'—its letters are positioned individually, so if you try to edit it you will get strange results. This option reverses that, although the tradeoff is that text may be slightly repositioned.
+<li><i>Merge nearby text</i>: The opposite can also occur: text that should be one line is split into multiple objects. This option reverses that.
+<li><i>Remove manual kerning</i>: Text in PDFs is often 'kerned'—its letters are positioned individually, so if you try to edit it you will get strange results. This option reverses that, although the tradeoff is that text may be slightly repositioned.
 <br><p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Repair_shattered_draw.png" alt="drawing" ></img></p></li>
 <li><i>Merge superscripts and subscripts</i>: Detect likely subscripts and superscripts, replacing them with native SVG versions.</li>
 <li><i>Replace missing fonts</i>: Useful for imported documents whose original fonts are not installed on the current machine.</li></ol>
