@@ -38,16 +38,18 @@ def GetXY(el,xy):
 
 # A text element that has been parsed into a list of lines
 class LineList():
-    def __init__(self, el, ctable):
+    def __init__(self, el, ctable,debug=False):
         self.ctable = ctable
-        self.lns = self.Parse_Lines(el);
-        self.parent = el;
+        self.lns = self.Parse_Lines(el,debug=debug);
+        self.textel = el;
         if self.lns is not None:
             for ln in self.lns:
                 ln.ll = self;
+    def txt(self):
+        return [v.txt() for v in self.lns]
         
     # Seperate a text element into a group of lines
-    def Parse_Lines(self,el,lns=None):
+    def Parse_Lines(self,el,lns=None,debug=False):
         tlvlcall = (lns is None);
         # sty = el.composed_style();
         sty = dh.selected_style_local(el);
@@ -83,6 +85,13 @@ class LineList():
         
         # dh.debug(el.get_id() + str(inheritpos))
         
+        if debug:
+            dh.debug(el.get_id())
+            dh.debug(tv)
+            dh.debug(newline)
+            dh.debug(fs)
+            # dh.debug(inheritpos)
+        
         if newline:
             if lns is None:  
                 lns=[];
@@ -91,7 +100,7 @@ class LineList():
                 else:
                     xv = [lns[-1].x[0]]; 
                     xsrc = lns[-1].xsrc;
-            anch = sty.get('text-anchor')    
+            anch = sty.get('text-anchor') 
             if len(lns)!=0 and nspr!='line':
                 anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
             lns.append(tline(xv,yv,inheritpos,nspr,anch,ct,ang,el,xsrc))
@@ -99,9 +108,15 @@ class LineList():
             if lns is not None:   # if we're continuing, make sure we have a valid x and y
                 if lns[-1].x[0] is None: lns[-1].x = xv; lns[-1].xsrc = xsrc;
                 if lns[-1].y[0] is None: lns[-1].y = yv
-            
+        
+        
+        # if debug:
+        #     dh.debug(tv)
+        
         ctable = self.ctable    
         if tv is not None and tv!='' and len(tv)>0:
+            # if debug:
+            #     dh.debug(tv)
             for ii in range(len(tv)):
                 myi = [jj for jj in range(len(ctable[nsty])) if ctable[nsty][jj].char==tv[ii]][0]
                 if fs is None: return None # bail if there is text without font
@@ -109,8 +124,10 @@ class LineList():
                 lns[-1].addc(tchar(tv[ii],fs,sf,prop,sty,nsty,cloc(el,'text',ii)));
         
         ks = el.getchildren();
+        # if debug:
+        #     dh.debug(ks)
         for k in ks:
-            lns = self.Parse_Lines(k,lns);
+            lns = self.Parse_Lines(k,lns,debug=debug);
             tv = k.tail;
             if tv is not None and tv!='':
                 for ii in range(len(tv)):

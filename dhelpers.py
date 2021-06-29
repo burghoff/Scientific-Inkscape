@@ -310,13 +310,16 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
     # Split different lines
     if splitdistant:                    
         for ll in lls:
-            if ll.lns is not None:
+            if ll.lns is not None and len(ll.lns)!=0:
                 for il in reversed(range(1,len(ll.lns))):
                     # to split by line, duplicate the whole text el and delete all other lines
                     ln = ll.lns[il]; # line to be popped out
                     if len(ln.cs)>0:
-                        newtxt = duplicate2(ln.cs[0].loc.textel); os.append(newtxt)
-                        nll = tp.LineList(newtxt,ct.ctable);
+                        newtxt = duplicate2(ll.textel);
+                        os.append(newtxt)
+                        nll = tp.LineList(newtxt,ct.ctable,debug=False);
+                        # debug(ll.lns[0].ws[0].txt())
+                        # debug(len(nll.lns))
                         ln.dell();
                         if nll.lns is not None:
                             for il2 in reversed(range(len(nll.lns))):
@@ -432,7 +435,13 @@ def cascaded_style2(el):
         return el.style
     else:
         return sty+el.style
-
+def dupe_in_cssdict(oldid,newid):
+    # duplicate a style in cssdict
+    global cssdict
+    if cssdict is not None:
+        csssty = cssdict.get(oldid);
+        if csssty is not None:
+            cssdict[newid]=csssty;
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms/document scaling
@@ -693,15 +702,21 @@ def _merge_style(node, style):
 
 # Like duplicate, but randomly sets the id of all descendants also
 # Normal duplicate does not
-# Second argument disables duplication
-def duplicate2(el,*args):
-    if not(len(args)>0 and args[0]):
+# Second argument disables duplication (for children, whose ids only need to be set)
+def duplicate2(el,disabledup=False):
+    if not(disabledup):
         d = el.duplicate();
+        dupe_in_cssdict(el.get_id(),d.get_id())
+        add_to_iddict(d);
     else:
         d = el;
     for k in d.getchildren():
+        oldid = k.get_id();
         set_random_id2(k);
+        dupe_in_cssdict(oldid,k.get_id())
+        add_to_iddict(k);
         duplicate2(k,True)
+    
     return d
 
 def recursive_merge_clipmask(node,clippathurl,mask=False):
@@ -747,7 +762,7 @@ def recursive_merge_clipmask(node,clippathurl,mask=False):
                     #           'transform': str(-node.transform),
                     #           'id': svg.get_unique_id("use")})
                 clippathurl = "url(#" + new_clippath.get("id") + ")"
-                addtodict(new_clippath);
+                add_to_iddict(new_clippath);
         myclip = node.get(cmstr2);
         if myclip is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
@@ -755,7 +770,7 @@ def recursive_merge_clipmask(node,clippathurl,mask=False):
             clipnode = getElementById2(svg,myclip[5:-1]);
             d = duplicate2(clipnode); # very important to use dup2 here
             node.set(cmstr2,"url(#" + d.get("id") + ")");
-            addtodict(d);
+            add_to_iddict(d);
             ks = d.getchildren();
             for k in ks:
                 recursive_merge_clipmask(k,clippathurl);
@@ -773,7 +788,7 @@ def getElementById2(svg,elid):
         for el in svg.descendants():
             iddict[el.get_id()] = el;
     return iddict.get(elid);
-def addtodict(el):
+def add_to_iddict(el):
     global iddict
     iddict[el.get("id")] = el;
     
