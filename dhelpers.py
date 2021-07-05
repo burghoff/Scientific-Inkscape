@@ -784,17 +784,22 @@ iddict = None;
 def getElementById2(svg,elid):
     global iddict
     if iddict is None:
-        iddict = dict();
-        for el in svg.descendants():
-            iddict[el.get_id()] = el;
+        generate_iddict(svg)
     return iddict.get(elid);
+def generate_iddict(svg):
+    global iddict
+    iddict = dict();
+    for el in svg.descendants():
+        iddict[el.get_id()] = el;
 def add_to_iddict(el):
     global iddict
+    if iddict is None:
+        generate_iddict(get_parent_svg(el))
     iddict[el.get("id")] = el;
     
 # The built-in get_unique_id gets stuck if there are too many elements. Instead use an adaptive
 # size based on the current number of ids
-import math,random
+import random
 def get_unique_id2(svg, prefix):
     ids = svg.get_ids()
     new_id = None

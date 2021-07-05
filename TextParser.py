@@ -504,6 +504,8 @@ class Character_Table():
                         ctable[sty] = list(set(ctable[sty]+list(el.tail)));
                     else:
                         ctable[sty] = list(set(list(el.tail)));
+        for sty in list(ctable.keys()): # make sure they have NBSPs
+            ctable[sty] = list(set(ctable[sty]+['\u00A0']))
         return ctable
     
     def measure_character_widths(self,els):
@@ -555,8 +557,8 @@ class Character_Table():
                 ct[s][ii] = cprop(ct[s][ii][0],cw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale);
                 # Because a nominal 1 px font is docscale px tall, we need to divide by the docscale to get the true width
             ct[s] = ct[s][0:Nl]
-            ct[s].append(cprop(' ',sw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale));
-            ct[s].append(cprop('\u00A0',sw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale));
+            # ct[s].append(cprop(' ',sw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale));
+            # ct[s].append(cprop('\u00A0',sw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale));
         return ct, nbb
     
     @staticmethod

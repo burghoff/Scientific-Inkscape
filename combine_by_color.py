@@ -86,7 +86,16 @@ class ScalePlots(inkex.EffectExtension):
             els[fp].set('clip-path',None); # release any clips
             els[fp].set('inkscape-academic-combined-by-color',' '.join([str(v) for v in si]))
             for s in sp:
-                els[s].delete()
+                deleteup(els[s])
+
+# Delete and prune empty ancestor groups       
+def deleteup(el):
+    myp = el.getparent();
+    el.delete()
+    if myp is not None:
+        myc = myp.getchildren();
+        if myc is not None and len(myc)==0:
+            deleteup(myp)
         
 
 if __name__ == '__main__':
