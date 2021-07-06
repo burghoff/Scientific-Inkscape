@@ -577,13 +577,33 @@ def ungroup(groupnode):
             groupnode.remove(el)
         if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment))):
             recursive_merge_clipmask(el, node_clippathurl)          # transform applies to clip, so do clip first
+#            debug(el.get_id());
+#            debug(el.get('clip-path'));
             recursive_merge_clipmask(el, node_maskurl, mask=True)   # also mask
             _merge_transform(el, node_transform)
             el.style = shallow_composed_style(el)
-#            _merge_style(el, node_style)    
+            
+            # If the element had clipping/masking specified in a stylesheet, this will override any attributes
+            # Fix by creating a style specific to my id that includes the new clipping/masking
+            global cssdict
+            mycss = cssdict.get(el.get_id());
+            if mycss is not None:
+                if mycss.get('clip-path') is not None and mycss.get('clip-path')!=el.get('clip-path'):
+                    get_parent_svg(el).stylesheet.add('#'+el.get_id(),'clip-path:'+el.get('clip-path'));
+                    mycss['clip-path']=el.get('clip-path');
+                if mycss.get('mask') is not None and mycss.get('mask')!=el.get('mask'):
+                    get_parent_svg(el).stylesheet.add('#'+el.get_id(),'mask:'+el.get('mask'));
+                    mycss.set['mask']=el.get('mask');
+            if el.style.get('clip-path') is not None: # also clear local style
+                Set_Style_Comp(el,'clip-path',None);
+            if el.style.get('mask') is not None:
+                Set_Style_Comp(el,'mask',None);
+                
             groupnode.getparent().insert(node_index+1,el); # places above
         if isinstance(el, Group) and wasuse: # if Use was a group, ungroup it
             ungroup(el)
+#        debug(el.get_id());
+#        debug(el.get('clip-path'));
     if len(groupnode.getchildren())==0:
         groupnode.delete();
     # elif ncalls==4175:
@@ -720,9 +740,6 @@ def duplicate2(el,disabledup=False):
     return d
 
 def recursive_merge_clipmask(node,clippathurl,mask=False):
-    # global tic
-    # global ncalls
-    # if time.time()-tic<60 and ncalls<41750:
     # Modified from Deep Ungroup
     if clippathurl is not None:
         svg = get_parent_svg(node);
@@ -742,27 +759,18 @@ def recursive_merge_clipmask(node,clippathurl,mask=False):
                 svg.getElement('//svg:defs'), cmstr1,
                 {cmstr1+'Units': 'userSpaceOnUse',
                   'id': get_unique_id2(svg,cmstr1)})
-            # new_clippath = etree.SubElement(
-            #     svg.getElement('//svg:defs'), cmstr1,
-            #     {cmstr1+'Units': 'userSpaceOnUse',
-            #       'id': svg.get_unique_id(cmstr1)})
-
-            # clippath = svg.getElementById(clippathurl[5:-1])
+            add_to_iddict(new_clippath);
+            
             clippath = getElementById2(svg,clippathurl[5:-1])
             if clippath is not None:
                 for c in clippath.iterchildren():
-                    etree.SubElement(
+                    newuse = etree.SubElement(
                             new_clippath, 'use',
                             {inkex.addNS('href', 'xlink'): '#' + c.get("id"),
                               'transform': str(-node.transform),
                               'id': get_unique_id2(svg,"use")})
-                    # etree.SubElement(
-                    #         new_clippath, 'use',
-                    #         {inkex.addNS('href', 'xlink'): '#' + c.get("id"),
-                    #           'transform': str(-node.transform),
-                    #           'id': svg.get_unique_id("use")})
+                    add_to_iddict(newuse);
                 clippathurl = "url(#" + new_clippath.get("id") + ")"
-                add_to_iddict(new_clippath);
         myclip = node.get(cmstr2);
         if myclip is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
@@ -770,12 +778,16 @@ def recursive_merge_clipmask(node,clippathurl,mask=False):
             clipnode = getElementById2(svg,myclip[5:-1]);
             d = duplicate2(clipnode); # very important to use dup2 here
             node.set(cmstr2,"url(#" + d.get("id") + ")");
-            add_to_iddict(d);
+#            add_to_iddict(d);
             ks = d.getchildren();
             for k in ks:
                 recursive_merge_clipmask(k,clippathurl);
         else:
             node.set(cmstr2,clippathurl)
+#            debug(node.get_id())
+#            debug(cmstr2)
+#            debug(clippathurl)
+#            debug(node.get(cmstr2))
 
 # Repeated getElementById lookups can be really slow, so instead create a dict that can be used to 
 # speed this up. When an element is created that may be needed later, it MUST be added. 

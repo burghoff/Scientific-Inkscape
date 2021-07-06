@@ -90,8 +90,11 @@ class FlattenPlots(inkex.EffectExtension):
             # dh.debug(self.svg.get_ids())
             # dh.debug(len(self.svg.get_ids()))
             # x=asdf
+#        
+#        for el in os:
+#            dh.debug(el.get_id());
+#            dh.debug(el.get('clip-path'));
         
-        newos = [];
         if self.options.fixtext:
             # spd = dict()
             # for el in list(reversed(os)):
@@ -125,7 +128,7 @@ class FlattenPlots(inkex.EffectExtension):
                 if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
                     dh.inkscape_editable(el)
 
-         
+        
         if removerectw:
             for el in os:
                 if isinstance(el, (PathElement, Rectangle, Line)):
@@ -151,6 +154,11 @@ class FlattenPlots(inkex.EffectExtension):
             ps.print_stats()
             dh.debug(s.getvalue())
                             
+            
+        
+#        for el in os:
+#            dh.debug(el.get_id());
+#            dh.debug(el.get('clip-path'));
 #        self.svg.selection = inkex.elements._selected.ElementList([el for el in gs + os + newos \
 #                                if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Tspan)))])
         # removedupes = True

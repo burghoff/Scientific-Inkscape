@@ -138,7 +138,11 @@ class LineList():
                     
         if tlvlcall: # finished recursing
             if lns is not None:
-                for ln in reversed(lns):                
+                for ln in reversed(lns): 
+                    if ln.x[0] is None: # no x ever assigned
+                        ln.x[0] = 0;
+                    if ln.y[0] is None: # no y ever assigned
+                        ln.y[0] = 0;
                     ln.parse_words()
                     if len(ln.cs)==0:
                         lns.remove(ln); # prune empty lines
@@ -326,6 +330,8 @@ class tword:
             w.offx = -w.ww/2;
         elif self.ln.anchor=='end':
             w.offx = -w.ww;
+#        if w.x is None:
+#            dh.debug(w.ln.xsrc.get_id())
         w.pts_ut = [Vector2d(w.x + w.offx/w.sf, w.y), Vector2d(w.x+ w.offx/w.sf, w.y-w.ch/w.sf),\
                     Vector2d(w.x+(w.ww+w.offx)/w.sf, w.y-w.ch/w.sf), Vector2d(w.x+(w.ww+w.offx)/w.sf, w.y)];
             # untransformed pts: bottom-left, top-left (cap height), top-right, bottom right
