@@ -194,10 +194,18 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
         dx = w.sw*NUM_SPACES
         xtol = XTOL*w.sw/w.sf;
         ytol = YTOL*w.sw/w.sf;
+        # debug(w.txt())
+        # debug(w.ww)
+        # debug(w.pts_t[0].x)
+        # debug(w.pts_t[3].x)
+        # debug(w.transform)
         for w2 in ws:
             if w2 is not w:
                 # if len(w2.cs)==0:
                 #     debug(w2)
+                # debug(abs(w2.angle-w.angle)<.001)
+                # debug(w2.cs[0].nstyc==w.cs[-1].nstyc)
+                # debug((w.cs[-1].loc.el!=w2.cs[0].loc.el or w.cs[-1].loc.tt!=w2.cs[0].loc.tt))
                 if abs(w2.angle-w.angle)<.001 and \
                     w2.cs[0].nstyc==w.cs[-1].nstyc and \
                     (w.cs[-1].loc.el!=w2.cs[0].loc.el or w.cs[-1].loc.tt!=w2.cs[0].loc.tt):        # different parents
@@ -207,6 +215,12 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
                         tl2 = (-w.transform).apply_to_point(w2.pts_t[1])
                         tr1 = w.pts_ut[2];
                         br1 = w.pts_ut[3];
+                        # debug(w.txt() + ' ' + w2.txt())
+                        # debug(w.pts_t[3].x)
+                        # debug(w2.pts_t[0].x)
+                        # debug(br1.x)
+                        # debug(bl2.x)
+                        # debug(br1.x + dx/w.sf + xtol)
                         if br1.x-xtol <= bl2.x <= br1.x + dx/w.sf + xtol:
                             type = None;
                             if abs(bl2.y-br1.y)<ytol and abs(w.fs-w2.fs)<.001 and (fixshattering or mergenearby):
@@ -449,6 +463,8 @@ def Get_Composed_Width(el,comp,nargout=1):
     # cs = el.composed_style();
     cs = selected_style_local(el);
     ct = el.composed_transform();
+    if nargout==4:
+        ang = math.atan2(ct.c,ct.d)*180/math.pi;
     svg = get_parent_svg(el)
     docscale = svg.scale;
     sc = Get_Style_Comp(cs,comp);
@@ -461,7 +477,7 @@ def Get_Composed_Width(el,comp,nargout=1):
             fs, sf, ct, ang = Get_Composed_Width(el.getparent(),comp,4)
             if nargout==4:
                 ang = math.atan2(ct.c,ct.d)*180/math.pi;
-                return fs*sc,sf,ct, ang
+                return fs*sc,sf,ct,ang
             else:
                 return fs*sc
             # sc = sc*Get_Composed_Width(el.getparent(),comp)
@@ -470,13 +486,12 @@ def Get_Composed_Width(el,comp,nargout=1):
             sw = float(sc.strip().replace("px", ""))
             sf = math.sqrt(abs(ct.a*ct.d - ct.b*ct.c))*docscale # scale factor
             if nargout==4:
-                ang = math.atan2(ct.c,ct.d)*180/math.pi;
                 return sw*sf, sf, ct, ang
             else:
                 return sw*sf
     else:
         if nargout==4:
-            return None,None,None,None
+            return None,None,ct,ang
         else:
             return None
     

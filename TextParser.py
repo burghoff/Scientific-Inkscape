@@ -21,7 +21,7 @@
 import dhelpers as dh
 import copy
 from inkex import (
-    TextElement, FlowRoot, FlowPara, Tspan, TextPath ,Vector2d, Rectangle)
+    TextElement, FlowRoot, FlowPara, Tspan, TextPath ,Vector2d, Rectangle,Transform)
 
 
 def GetXY(el,xy):
@@ -53,7 +53,8 @@ class LineList():
         tlvlcall = (lns is None);
         # sty = el.composed_style();
         sty = dh.selected_style_local(el);
-        fs,sf,ct,ang = dh.Get_Composed_Width(el,'font-size',4);
+        fs,sf,ct,ang = dh.Get_Composed_Width(el,'font-size',4); #dh.debug(el.get_id()); dh.debug(el.composed_transform())
+        # ct = el.composed_transform();
         nsty=Character_Table.normalize_style(sty);
         tv = el.text;
         
@@ -98,15 +99,21 @@ class LineList():
             elif inheritpos:                # if inheriting
                 if len(lns)==0 or len(lns[-1].x)==0: return None
                 else:
-                    xv = [lns[-1].x[0]]; 
+                    xv   = [lns[-1].x[0]]; 
                     xsrc = lns[-1].xsrc;
+                    ct   = lns[-1].transform;
+                    ang  = lns[-1].angle;
             anch = sty.get('text-anchor') 
             if len(lns)!=0 and nspr!='line':
                 anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
             lns.append(tline(xv,yv,inheritpos,nspr,anch,ct,ang,el,xsrc))
         else:
             if lns is not None:   # if we're continuing, make sure we have a valid x and y
-                if lns[-1].x[0] is None: lns[-1].x = xv; lns[-1].xsrc = xsrc;
+                if lns[-1].x[0] is None: 
+                    lns[-1].x = xv; 
+                    lns[-1].xsrc = xsrc;
+                    lns[-1].transform = ct;
+                    lns[-1].angle = ang;
                 if lns[-1].y[0] is None: lns[-1].y = yv
         
         
@@ -176,15 +183,21 @@ class LineList():
 # This is further subdivided into a list of words
 class tline:
     def __init__(self, x, y, inheritpos, nspr, anch, xform,ang,el,xsrc):
-        self.x = x;
+        self.x = x; 
         self.y = y;
         self.inheritpos = inheritpos;    # inheriting position
         self.nsodipodirole = nspr;  # nominal value
         self.anchor = anch
         self.cs = [];
         self.ws = [];
-        self.transform = xform;
-        self.angle = ang;
+        if xform is None:
+            self.transform = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+        else:
+            self.transform = xform;
+        if ang is None:
+            self.angle = 0;
+        else:
+            self.angle = ang; 
         self.xsrc = xsrc; # element where we derive our x value
         # self.ll = None;   # line list we belong to (add later)
     def addc(self,c):
@@ -313,6 +326,8 @@ class tword:
             if otype in ['super','sub'] and type=='normal':
                 ntype = otype
             self.appendc(c.c,c.cw,type=ntype,osw=c.sw)
+        if dh.cascaded_style2(self.ln.xsrc).get('letter-spacing') is not None:
+            dh.Set_Style_Comp(self.ln.xsrc,'letter-spacing','0');
     
     # Calculate the properties of a word that depend on its characters       
     def calcprops(self): # calculate properties inherited from characters
@@ -542,12 +557,13 @@ class Character_Table():
         nbb = dh.Get_Bounding_Boxes(self.caller,True);  
         for s in list(ct.keys()):
             for ii in range(len(ct[s])):
+                # dh.debug(nbb)
                 bb=nbb[ct[s][ii][2]]
                 wdth = bb[0]+bb[2]
                 caphgt = -bb[1]
                 bbstrt = bb[0]
                 dscnd = bb[1]+bb[3]
-                ct[s][ii][1].delete();
+                # ct[s][ii][1].delete();
                 ct[s][ii] = [ct[s][ii][0],wdth,bbstrt,caphgt,dscnd]
         for s in list(ct.keys()):
             Nl = len(ct[s])-2;
@@ -576,6 +592,9 @@ class Character_Table():
         sty = dh.Set_Style_Comp2(sty,'baseline-shift',None)
         sty = dh.Set_Style_Comp2(sty,'line-height',None)
         sty = dh.Set_Style_Comp2(sty,'writing-mode',None)
+        sty = dh.Set_Style_Comp2(sty,'clip-path',None)
+        sty = dh.Set_Style_Comp2(sty,'mask',None)
+        sty = dh.Set_Style_Comp2(sty,'letter-spacing',None)
         strk = dh.Get_Style_Comp(sty,'stroke');
         if strk is None or strk.lower()=='none':
             sty = dh.Set_Style_Comp2(sty,'stroke',None)
