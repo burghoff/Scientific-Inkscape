@@ -563,7 +563,7 @@ class Character_Table():
                 caphgt = -bb[1]
                 bbstrt = bb[0]
                 dscnd = bb[1]+bb[3]
-                # ct[s][ii][1].delete();
+                ct[s][ii][1].delete();
                 ct[s][ii] = [ct[s][ii][0],wdth,bbstrt,caphgt,dscnd]
         for s in list(ct.keys()):
             Nl = len(ct[s])-2;
