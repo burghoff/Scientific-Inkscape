@@ -21,7 +21,7 @@
 import dhelpers as dh
 import copy
 from inkex import (
-    TextElement, FlowRoot, FlowPara, Tspan, TextPath ,Vector2d, Rectangle,Transform)
+    TextElement, FlowRoot, FlowPara, Tspan, TextPath ,Vector2d, Rectangle,Transform,Style)
 
 
 def GetXY(el,xy):
@@ -31,7 +31,7 @@ def GetXY(el,xy):
         val = el.get('x');
         
     if val is None:   
-        val = [None];
+        val = [None]; # None forces inheritance
     else:             
         val = [float(x) for x in val.split()];
     return val
@@ -86,11 +86,13 @@ class LineList():
         
         # dh.debug(el.get_id() + str(inheritpos))
         
+        # debug = True
         if debug:
             dh.debug(el.get_id())
             dh.debug(tv)
             dh.debug(newline)
             dh.debug(fs)
+            dh.debug(xv)
             # dh.debug(inheritpos)
         
         if newline:
@@ -107,14 +109,15 @@ class LineList():
             if len(lns)!=0 and nspr!='line':
                 anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
             lns.append(tline(xv,yv,inheritpos,nspr,anch,ct,ang,el,xsrc))
-        else:
-            if lns is not None:   # if we're continuing, make sure we have a valid x and y
-                if lns[-1].x[0] is None: 
-                    lns[-1].x = xv; 
-                    lns[-1].xsrc = xsrc;
-                    lns[-1].transform = ct;
-                    lns[-1].angle = ang;
-                if lns[-1].y[0] is None: lns[-1].y = yv
+        # else: # disabled on 2021.07.14, I don't think it's necessary any more
+        #     if lns is not None:   # if we're continuing, make sure we have a valid x and y
+        #         if lns[-1].x[0] is None:
+        #             dh.debug(el.get_id())
+        #             lns[-1].x = xv; 
+        #             lns[-1].xsrc = xsrc;
+        #             lns[-1].transform = ct;
+        #             lns[-1].angle = ang;
+        #         if lns[-1].y[0] is None: lns[-1].y = yv
         
         
         # if debug:
@@ -157,7 +160,7 @@ class LineList():
     
     # For debugging only: make a rectange at all of the line's words' nominal bboxes
     def Position_Check(self):
-        if len(self.lns)>0:
+        if self.lns is not None and len(self.lns)>0:
             svg = dh.get_parent_svg(self.lns[0].xsrc)
             xs = []; ys = []; x2s = []; y2s = [];
             for ln in self.lns:          
@@ -583,20 +586,47 @@ class Character_Table():
             # ct[s].append(cprop('\u00A0',sw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale));
         return ct, nbb
     
+    
+    # For generating test characters, we want to normalize the style so that we don't waste time
+    # generating a bunch of identical characters whose font-sizes are different. A style is generated
+    # with a 1px font-size, and only with presentation attributes that affect character shape.
+    textshapeatt = ['font-family','font-size-adjust','font-stretch',\
+                    'font-style','font-variant','font-weight','stroke','stroke-width',\
+                    'text-decoration','text-rendering','font-size']
     @staticmethod
-    # Return a style that doesn't have extraneous information
     def normalize_style(sty):
-        sty = dh.Set_Style_Comp2(str(sty),'font-size','1px');
-        sty = dh.Set_Style_Comp2(sty,'fill',None)         
-        sty = dh.Set_Style_Comp2(sty,'text-anchor',None)
-        sty = dh.Set_Style_Comp2(sty,'baseline-shift',None)
-        sty = dh.Set_Style_Comp2(sty,'line-height',None)
-        sty = dh.Set_Style_Comp2(sty,'writing-mode',None)
-        sty = dh.Set_Style_Comp2(sty,'clip-path',None)
-        sty = dh.Set_Style_Comp2(sty,'mask',None)
-        sty = dh.Set_Style_Comp2(sty,'letter-spacing',None)
-        strk = dh.Get_Style_Comp(sty,'stroke');
-        if strk is None or strk.lower()=='none':
-            sty = dh.Set_Style_Comp2(sty,'stroke',None)
-            sty = dh.Set_Style_Comp2(sty,'stroke-width',None)
-        return sty
+        # sty = dh.Set_Style_Comp2(str(sty),'font-size','1px');
+        # sty = dh.Set_Style_Comp2(sty,'fill',None)         
+        # sty = dh.Set_Style_Comp2(sty,'text-anchor',None)
+        # sty = dh.Set_Style_Comp2(sty,'baseline-shift',None)
+        # sty = dh.Set_Style_Comp2(sty,'line-height',None)
+        # sty = dh.Set_Style_Comp2(sty,'writing-mode',None)
+        # sty = dh.Set_Style_Comp2(sty,'clip-path',None)
+        # sty = dh.Set_Style_Comp2(sty,'mask',None)
+        # sty = dh.Set_Style_Comp2(sty,'letter-spacing',None)
+        # strk = dh.Get_Style_Comp(sty,'stroke');
+        # if strk is None or strk.lower()=='none':
+        #     sty = dh.Set_Style_Comp2(sty,'stroke',None)
+        #     sty = dh.Set_Style_Comp2(sty,'stroke-width',None)
+        sty  = Style(sty); stykeys = list(sty.keys());
+        sty2 = Style('')
+        for a in Character_Table.textshapeatt:
+            if a in stykeys:
+                styv = sty.get(a);
+                if styv is not None and styv.lower()=='none':
+                    styv=None
+                if styv is not None:
+                    sty2[a]=styv;
+        
+        sty2['font-size']='1px'
+        if sty2.get('stroke') is None:
+            sty2['stroke-width']=None;
+        if sty2.get('font-family') is not None:
+            sty2['font-family']=','.join([v.strip() for v in sty2['font-family'].split(',')]); # strip spaces b/t styles
+
+        tmp = Style('');
+        for k in sorted(sty2.keys()): # be sure key order is alphabetical
+            tmp[k]=sty2[k];
+        sty2 = tmp;
+
+        return str(sty2)

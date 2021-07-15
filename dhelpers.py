@@ -129,222 +129,230 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
     XTOL = 0.5          # x tolerance (number of spaces)...let be big since there are kerning inaccuracies
     YTOL = 0.01         # y tolerance (number of spaces)...can be small
     SUBSUPER_THR = 0.9;  # ensuring sub/superscripts are smaller helps reduce false merges
+    diagmode = True;
+    diagmode = False;
     
     ws = []; lls=[]
     for el in os:
         # debug(el.get_id());
         # debug(selected_style_local(el));
         if isinstance(el,TextElement) and el.getparent() is not None:
-            lls.append(tp.LineList(el,ct.ctable));
-            # lls[-1].Position_Check();
+            lls.append(tp.LineList(el,ct.ctable,debug=False));
+            if diagmode: 
+                lls[-1].Position_Check();
             if lls[-1].lns is not None:
                 ws += [w for ln in lls[-1].lns for w in ln.ws];
-                
-    # Generate splits
-    if splitdistant:
-        for ll in lls:
-            if ll.lns is not None:
-                for il in range(len(ll.lns)):
-                    ln = ll.lns[il];
-                    sws = [x for _, x in sorted(zip([w.x for w in ln.ws], ln.ws), key=lambda pair: pair[0])] # words sorted in ascending x
-                    splits = [];
-                    for ii in range(1,len(ln.ws)):
-                        w = sws[ii-1]
-                        w2= sws[ii]
-                        dx = w.sw*NUM_SPACES
-                        xtol = XTOL*w.sw/w.sf;
-                        
-                        bl2 = w2.pts_ut[0]; tl2 = w2.pts_ut[1];
-                        tr1 = w.pts_ut[2];  br1 = w.pts_ut[3];      
-                        if bl2.x > br1.x + dx/w.sf + xtol:
-                            splits.append(ii);
-                    for ii in reversed(range(len(splits))):
-                        sstart = splits[ii];
-                        if ii!=len(splits)-1:
-                            sstop  = splits[ii+1]
-                        else:
-                            sstop = len(ln.ws)
-                        # to split, duplicate the whole text el and delete all other lines/words
-                        newtxt = duplicate2(ln.ws[sstart].cs[0].loc.textel);
-                        os.append(newtxt)
-                        nll = tp.LineList(newtxt,ct.ctable);
-                        for jj in reversed(range(sstart,sstop)):
-                            sws[jj].delw();
-                        for il2 in reversed(range(len(nll.lns))):
-                            if il2!=il:
-                                nll.lns[il2].dell();
+    
+    if not(diagmode):
+        # Generate splits
+        if splitdistant:
+            for ll in lls:
+                if ll.lns is not None:
+                    for il in range(len(ll.lns)):
+                        ln = ll.lns[il];
+                        sws = [x for _, x in sorted(zip([w.x for w in ln.ws], ln.ws), key=lambda pair: pair[0])] # words sorted in ascending x
+                        splits = [];
+                        for ii in range(1,len(ln.ws)):
+                            w = sws[ii-1]
+                            w2= sws[ii]
+                            dx = w.sw*NUM_SPACES
+                            xtol = XTOL*w.sw/w.sf;
+                            
+                            bl2 = w2.pts_ut[0]; tl2 = w2.pts_ut[1];
+                            tr1 = w.pts_ut[2];  br1 = w.pts_ut[3];      
+                            if bl2.x > br1.x + dx/w.sf + xtol:
+                                splits.append(ii);
+                        for ii in reversed(range(len(splits))):
+                            sstart = splits[ii];
+                            if ii!=len(splits)-1:
+                                sstop  = splits[ii+1]
                             else:
-                                nln = nll.lns[il2];
-                                nsws = [x for _, x in sorted(zip([w.x for w in nln.ws], nln.ws), key=lambda pair: pair[0])] # words sorted in ascending x
-                                for jj in reversed(range(len(nsws))):
-                                    if not(jj in list(range(sstart,sstop))):
-                                        nsws[jj].delw();
-                        lls.append(nll)
-                        
-    
-    # Generate list of merges     
-    ws = [];
-    for ll in lls:                
-        ws += [w for ln in ll.lns for w in ln.ws];
-    for w in ws:
-        dx = w.sw*NUM_SPACES # a big bounding box that includes the extra space
-        w.bb_big = tp.bbox([w.bb.x1-dx,w.bb.y1-dx,w.bb.w+2*dx,w.bb.h+2*dx])
-    for w in ws:
-        mw = [];
-        dx = w.sw*NUM_SPACES
-        xtol = XTOL*w.sw/w.sf;
-        ytol = YTOL*w.sw/w.sf;
-        # debug(w.txt())
-        # debug(w.ww)
-        # debug(w.pts_t[0].x)
-        # debug(w.pts_t[3].x)
-        # debug(w.transform)
-        for w2 in ws:
-            if w2 is not w:
-                # if len(w2.cs)==0:
-                #     debug(w2)
-                # debug(abs(w2.angle-w.angle)<.001)
-                # debug(w2.cs[0].nstyc==w.cs[-1].nstyc)
-                # debug((w.cs[-1].loc.el!=w2.cs[0].loc.el or w.cs[-1].loc.tt!=w2.cs[0].loc.tt))
-                if abs(w2.angle-w.angle)<.001 and \
-                    w2.cs[0].nstyc==w.cs[-1].nstyc and \
-                    (w.cs[-1].loc.el!=w2.cs[0].loc.el or w.cs[-1].loc.tt!=w2.cs[0].loc.tt):        # different parents
-                    if w.bb_big.intersect(w2.bb): # so we don't waste time transforming, check if bboxes overlap
-                        # calculate 2's coords in 1's system
-                        bl2 = (-w.transform).apply_to_point(w2.pts_t[0])
-                        tl2 = (-w.transform).apply_to_point(w2.pts_t[1])
-                        tr1 = w.pts_ut[2];
-                        br1 = w.pts_ut[3];
-                        # debug(w.txt() + ' ' + w2.txt())
-                        # debug(w.pts_t[3].x)
-                        # debug(w2.pts_t[0].x)
-                        # debug(br1.x)
-                        # debug(bl2.x)
-                        # debug(br1.x + dx/w.sf + xtol)
-                        if br1.x-xtol <= bl2.x <= br1.x + dx/w.sf + xtol:
-                            type = None;
-                            if abs(bl2.y-br1.y)<ytol and abs(w.fs-w2.fs)<.001 and (fixshattering or mergenearby):
-                                if (w.cs[0].loc.textel == w2.cs[-1].loc.textel and fixshattering) or mergenearby:
-                                    type = 'same';
-                                # debug(w.txt+' '+w2.txt)
-                            elif br1.y+ytol >= bl2.y >= tr1.y-ytol and mergesupersub:
-                                if   w2.fs<w.fs*SUBSUPER_THR: 
-                                    type = 'super';
-                                elif w.fs<w2.fs*SUBSUPER_THR:
-                                    type = 'subreturn';
-                            elif br1.y+ytol >= tl2.y >= tr1.y-ytol and mergesupersub:
-                                if   w2.fs<w.fs*SUBSUPER_THR:
-                                    type = 'sub';
-                                elif w.fs<w2.fs*SUBSUPER_THR:
-                                    type = 'superreturn'
-                            if type is not None:
-                                mw.append([w2,type,br1,bl2])
-#                                    dh.debug(w.txt+' to '+w2.txt+' as '+type)
-                elif w2==w.nextw and fixshattering:       # part of the same line, so same transform and y
-                    bl2 = w2.pts_ut[0];
-                    br1 = w.pts_ut[3];
-                    mw.append([w2,'same',br1,bl2])
-        
-        minx = float('inf');
-        for ii in range(len(mw)):
-            w2=mw[ii][0]; type=mw[ii][1]; br1=mw[ii][2]; bl2=mw[ii][3];
-            if bl2.x < minx:
-                minx = bl2.x; # only use the furthest left one
-                mi   = ii
-        w.merges = [];
-        w.mergetypes = [];
-        w.merged = False;
-        if len(mw)>0:
-            w2=mw[mi][0]; type=mw[mi][1]; br1=mw[mi][2]; bl2=mw[mi][3];
-            w.merges     = [w2];
-            w.mergetypes = [type];
-            # debug(w.txt+' to '+ w.merges[0].txt+' as '+w.mergetypes[0])
-        
-    # Generate chains of merges
-    for w in ws:
-        if not(w.merged) and len(w.merges)>0:
-            w.merges[-1].merged = True;
-            nextmerge  = w.merges[-1].merges
-            nextmerget = w.merges[-1].mergetypes
-            while len(nextmerge)>0:
-                w.merges += nextmerge
-                w.mergetypes += nextmerget
-                w.merges[-1].merged = True;
-                nextmerge  = w.merges[-1].merges
-                nextmerget = w.merges[-1].mergetypes
-    
-    # Create a merge plan            
-    for w in ws:
-        if len(w.merges)>0:
-            ctype = 'normal';
-            w.wtypes = [ctype]; bail=False;
-            for mt in w.mergetypes:
-                if ctype=='normal':
-                    if   mt=='same':        pass
-                    elif mt=='sub':         ctype = 'sub';
-                    elif mt=='super':       ctype = 'super';
-                    elif all([t=='normal' for t in w.wtypes]): # maybe started on sub/super
-                        bail = True
-                        # if mt=='superreturn':
-                        #     w.wtypes = ['super' for t in w.wtypes];
-                        #     ctype = 'normal'
-                        # elif mt=='subreturn':
-                        #     w.wtypes = ['sub' for t in w.wtypes];
-                        #     ctype = 'normal'
-                        # else: bail=True
-                    else: bail=True
-                elif ctype=='super':
-                    if   mt=='same':        pass
-                    elif mt=='superreturn': ctype = 'normal'
-                    else:                   bail=True
-                elif ctype=='sub':
-                    if   mt=='same':        pass
-                    elif mt=='subreturn':   ctype = 'normal'
-                    else:                   bail = True
-                w.wtypes.append(ctype)
-            if bail==True:
-                w.wtypes = []
-                w.merges = []
-    # Execute the merge plan
-    for w in ws:
-        # debug(ws[0].ln.xsrc.get_id())
-        if len(w.merges)>0 and not(w.merged):
-#            debug(w.mergetypes)
-            # if w.wtypes[0]=='sub' or w.wtypes[0]=='super': # initial sub/super
-            #     iin = [v=='normal' for v in w.wtype].index(True) # first normal index
-            #     fc = w.cs[0]
-            for ii in range(len(w.merges)):
-                # debug(w.txt)
-                # debug(w.merges[ii].txt)
-                w.appendw(w.merges[ii],w.wtypes[ii+1])
-            for c in w.cs:
-                if c.type=='super' or c.type=='sub':
-                    c.makesubsuper(round(c.reduction_factor*100));
-    
-    # Split different lines
-    if splitdistant:                    
-        for ll in lls:
-            if ll.lns is not None and len(ll.lns)!=0:
-                for il in reversed(range(1,len(ll.lns))):
-                    # to split by line, duplicate the whole text el and delete all other lines
-                    ln = ll.lns[il]; # line to be popped out
-                    if len(ln.cs)>0:
-                        newtxt = duplicate2(ll.textel);
-                        os.append(newtxt)
-                        nll = tp.LineList(newtxt,ct.ctable,debug=False);
-                        # debug(ll.lns[0].ws[0].txt())
-                        # debug(len(nll.lns))
-                        ln.dell();
-                        if nll.lns is not None:
+                                sstop = len(ln.ws)
+                            # to split, duplicate the whole text el and delete all other lines/words
+                            newtxt = duplicate2(ln.ws[sstart].cs[0].loc.textel);
+                            os.append(newtxt)
+                            nll = tp.LineList(newtxt,ct.ctable);
+                            for jj in reversed(range(sstart,sstop)):
+                                sws[jj].delw();
                             for il2 in reversed(range(len(nll.lns))):
                                 if il2!=il:
                                     nll.lns[il2].dell();
-                        lls.append(nll)
-                    
-    # Clean up empty elements
-    for el in reversed(os):
-        if isinstance(el,TextElement) and el.getparent() is not None:
-            deleteempty(el)
+                                else:
+                                    nln = nll.lns[il2];
+                                    nsws = [x for _, x in sorted(zip([w.x for w in nln.ws], nln.ws), key=lambda pair: pair[0])] # words sorted in ascending x
+                                    for jj in reversed(range(len(nsws))):
+                                        if not(jj in list(range(sstart,sstop))):
+                                            nsws[jj].delw();
+                            lls.append(nll)
+                            
+        
+        # Generate list of merges     
+        ws = [];
+        for ll in lls:           
+            if ll.lns is not None:
+                ws += [w for ln in ll.lns for w in ln.ws];
+        for w in ws:
+            dx = w.sw*NUM_SPACES # a big bounding box that includes the extra space
+            w.bb_big = tp.bbox([w.bb.x1-dx,w.bb.y1-dx,w.bb.w+2*dx,w.bb.h+2*dx])
+        for w in ws:
+            mw = [];
+            dx = w.sw*NUM_SPACES
+            xtol = XTOL*w.sw/w.sf;
+            ytol = YTOL*w.sw/w.sf;
+            # debug(w.txt())
+            # debug(w.ww)
+            # debug(w.pts_t[0].x)
+            # debug(w.pts_t[3].x)
+            # debug(w.transform)
+            for w2 in ws:
+                if w2 is not w:
+                    # if len(w2.cs)==0:
+                    #     debug(w2)
+                    # debug(abs(w2.angle-w.angle)<.001)
+                    # debug(w.txt() + ' ' + w2.txt())
+                    # debug(w2.cs[0].nstyc==w.cs[-1].nstyc)
+                    # debug(w.cs[-1].nstyc)
+                    # debug(w2.cs[0].nstyc)
+                    # debug((w.cs[-1].loc.el!=w2.cs[0].loc.el or w.cs[-1].loc.tt!=w2.cs[0].loc.tt))
+                    if abs(w2.angle-w.angle)<.001 and \
+                        w2.cs[0].nstyc==w.cs[-1].nstyc and \
+                        (w.cs[-1].loc.el!=w2.cs[0].loc.el or w.cs[-1].loc.tt!=w2.cs[0].loc.tt):        # different parents
+                        if w.bb_big.intersect(w2.bb): # so we don't waste time transforming, check if bboxes overlap
+                            # calculate 2's coords in 1's system
+                            bl2 = (-w.transform).apply_to_point(w2.pts_t[0])
+                            tl2 = (-w.transform).apply_to_point(w2.pts_t[1])
+                            tr1 = w.pts_ut[2];
+                            br1 = w.pts_ut[3];
+                            # debug(w.txt() + ' ' + w2.txt())
+                            # debug(w.pts_t[3].x)
+                            # debug(w2.pts_t[0].x)
+                            # debug(br1.x)
+                            # debug(bl2.x)
+                            # debug(br1.x + dx/w.sf + xtol)
+                            if br1.x-xtol <= bl2.x <= br1.x + dx/w.sf + xtol:
+                                type = None;
+                                if abs(bl2.y-br1.y)<ytol and abs(w.fs-w2.fs)<.001 and (fixshattering or mergenearby):
+                                    if (w.cs[0].loc.textel == w2.cs[-1].loc.textel and fixshattering) or mergenearby:
+                                        type = 'same';
+                                    # debug(w.txt+' '+w2.txt)
+                                elif br1.y+ytol >= bl2.y >= tr1.y-ytol and mergesupersub:
+                                    if   w2.fs<w.fs*SUBSUPER_THR: 
+                                        type = 'super';
+                                    elif w.fs<w2.fs*SUBSUPER_THR:
+                                        type = 'subreturn';
+                                elif br1.y+ytol >= tl2.y >= tr1.y-ytol and mergesupersub:
+                                    if   w2.fs<w.fs*SUBSUPER_THR:
+                                        type = 'sub';
+                                    elif w.fs<w2.fs*SUBSUPER_THR:
+                                        type = 'superreturn'
+                                if type is not None:
+                                    mw.append([w2,type,br1,bl2])
+    #                                    dh.debug(w.txt+' to '+w2.txt+' as '+type)
+                    elif w2==w.nextw and fixshattering:       # part of the same line, so same transform and y
+                        bl2 = w2.pts_ut[0];
+                        br1 = w.pts_ut[3];
+                        mw.append([w2,'same',br1,bl2])
+            
+            minx = float('inf');
+            for ii in range(len(mw)):
+                w2=mw[ii][0]; type=mw[ii][1]; br1=mw[ii][2]; bl2=mw[ii][3];
+                if bl2.x < minx:
+                    minx = bl2.x; # only use the furthest left one
+                    mi   = ii
+            w.merges = [];
+            w.mergetypes = [];
+            w.merged = False;
+            if len(mw)>0:
+                w2=mw[mi][0]; type=mw[mi][1]; br1=mw[mi][2]; bl2=mw[mi][3];
+                w.merges     = [w2];
+                w.mergetypes = [type];
+                # debug(w.txt+' to '+ w.merges[0].txt+' as '+w.mergetypes[0])
+            
+        # Generate chains of merges
+        for w in ws:
+            if not(w.merged) and len(w.merges)>0:
+                w.merges[-1].merged = True;
+                nextmerge  = w.merges[-1].merges
+                nextmerget = w.merges[-1].mergetypes
+                while len(nextmerge)>0:
+                    w.merges += nextmerge
+                    w.mergetypes += nextmerget
+                    w.merges[-1].merged = True;
+                    nextmerge  = w.merges[-1].merges
+                    nextmerget = w.merges[-1].mergetypes
+        
+        # Create a merge plan            
+        for w in ws:
+            if len(w.merges)>0:
+                ctype = 'normal';
+                w.wtypes = [ctype]; bail=False;
+                for mt in w.mergetypes:
+                    if ctype=='normal':
+                        if   mt=='same':        pass
+                        elif mt=='sub':         ctype = 'sub';
+                        elif mt=='super':       ctype = 'super';
+                        elif all([t=='normal' for t in w.wtypes]): # maybe started on sub/super
+                            bail = True
+                            # if mt=='superreturn':
+                            #     w.wtypes = ['super' for t in w.wtypes];
+                            #     ctype = 'normal'
+                            # elif mt=='subreturn':
+                            #     w.wtypes = ['sub' for t in w.wtypes];
+                            #     ctype = 'normal'
+                            # else: bail=True
+                        else: bail=True
+                    elif ctype=='super':
+                        if   mt=='same':        pass
+                        elif mt=='superreturn': ctype = 'normal'
+                        else:                   bail=True
+                    elif ctype=='sub':
+                        if   mt=='same':        pass
+                        elif mt=='subreturn':   ctype = 'normal'
+                        else:                   bail = True
+                    w.wtypes.append(ctype)
+                if bail==True:
+                    w.wtypes = []
+                    w.merges = []
+        # Execute the merge plan
+        for w in ws:
+            # debug(ws[0].ln.xsrc.get_id())
+            if len(w.merges)>0 and not(w.merged):
+    #            debug(w.mergetypes)
+                # if w.wtypes[0]=='sub' or w.wtypes[0]=='super': # initial sub/super
+                #     iin = [v=='normal' for v in w.wtype].index(True) # first normal index
+                #     fc = w.cs[0]
+                for ii in range(len(w.merges)):
+                    # debug(w.txt)
+                    # debug(w.merges[ii].txt)
+                    w.appendw(w.merges[ii],w.wtypes[ii+1])
+                for c in w.cs:
+                    if c.type=='super' or c.type=='sub':
+                        c.makesubsuper(round(c.reduction_factor*100));
+        
+        # Split different lines
+        if splitdistant:                    
+            for ll in lls:
+                if ll.lns is not None and len(ll.lns)!=0:
+                    for il in reversed(range(1,len(ll.lns))):
+                        # to split by line, duplicate the whole text el and delete all other lines
+                        ln = ll.lns[il]; # line to be popped out
+                        if len(ln.cs)>0:
+                            newtxt = duplicate2(ll.textel);
+                            os.append(newtxt)
+                            nll = tp.LineList(newtxt,ct.ctable,debug=False);
+                            # debug(ll.lns[0].ws[0].txt())
+                            # debug(len(nll.lns))
+                            ln.dell();
+                            if nll.lns is not None:
+                                for il2 in reversed(range(len(nll.lns))):
+                                    if il2!=il:
+                                        nll.lns[il2].dell();
+                            lls.append(nll)
+                        
+        # Clean up empty elements
+        for el in reversed(os):
+            if isinstance(el,TextElement) and el.getparent() is not None:
+                deleteempty(el)
     return [el for el in os if el.getparent() is not None]
             
     
@@ -425,9 +433,12 @@ def selected_style_local(el):
         return selected_style_local(parent) + cascaded_style2(el)
     return cascaded_style2(el)
 
+svgpres = ['alignment-baseline','baseline-shift','clip','clip-path','clip-rule','color','color-interpolation','color-interpolation-filters','color-profile','color-rendering','cursor','direction','display','dominant-baseline','enable-background','fill','fill-opacity','fill-rule','filter','flood-color','flood-opacity','font-family','font-size','font-size-adjust','font-stretch','font-style','font-variant','font-weight','glyph-orientation-horizontal','glyph-orientation-vertical','image-rendering','kerning','letter-spacing','lighting-color','marker-end','marker-mid','marker-start','mask','opacity','overflow','pointer-events','shape-rendering','stop-color','stop-opacity','stroke','stroke-dasharray','stroke-dashoffset','stroke-linecap','stroke-linejoin','stroke-miterlimit','stroke-opacity','stroke-width','text-anchor','text-decoration','text-rendering','transform','transform-origin','unicode-bidi','vector-effect','visibility','word-spacing','writing-mode']
+excludes = ['clip','clip-path','mask','transform','transform-origin']
 global cssdict
 cssdict = None;
 def cascaded_style2(el):
+# Object's style including any CSS
     global cssdict
     if cssdict is None:
         # Generate a dictionary of styles at least once so we don't have to do constant lookups
@@ -443,12 +454,24 @@ def cascaded_style2(el):
                             cssdict[elid] = Style() + style;
                         else:
                             cssdict[elid] += style;
-    """Add all cascaded styles, do not write to this Style object"""
-    sty = cssdict.get(el.get_id());
-    if sty is None:
-        return el.style
+    csssty = cssdict.get(el.get_id());
+    locsty = el.style;
+    
+    # debug(el.style)
+    
+    # Add any presentation attributes to local style
+    attr = list(el.keys());
+    attsty = Style('');
+    for a in attr:
+        if a in svgpres and not(a in excludes) and locsty.get(a) is None and el.get(a) is not None:
+            attsty[a] = el.get(a)
+            
+    # debug(attsty)
+
+    if csssty is None:
+        return attsty+locsty
     else:
-        return sty+el.style
+        return csssty+attsty+locsty
 def dupe_in_cssdict(oldid,newid):
     # duplicate a style in cssdict
     global cssdict
@@ -468,6 +491,8 @@ def Get_Composed_Width(el,comp,nargout=1):
     svg = get_parent_svg(el)
     docscale = svg.scale;
     sc = Get_Style_Comp(cs,comp);
+    # if sc is None: # if none, see if there's an attribute (e.g., font-size)
+    #     sc = el.get(comp); 
     # if sc is None:
     #     cs = selected_style_local(el); # as a last ditch effort, try the slower selected_style
     #     sc = Get_Style_Comp(cs,comp);
