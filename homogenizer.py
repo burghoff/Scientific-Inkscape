@@ -70,9 +70,11 @@ class ScalePlots(inkex.EffectExtension):
         setstrokew = self.options.setstrokew;
         setstrokeu = 'px';
         
-        sel = dh.get_mod(self.svg.selection)
-        # sel = .get()
-        sel =[sel[k] for k in sel.id_dict().keys()];
+        # sel = dh.get_mod(self.svg.selection)
+        # # sel = .get()
+        # sel =[sel[k] for k in sel.id_dict().keys()];
+        sel = [v for el in self.svg.selection for v in dh.descendants2(el)]
+        
         sela= [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject)))];
         sel = [el for el in sel if isinstance(el,(TextElement,Tspan,FlowRoot,FlowPara,FlowSpan))];
         

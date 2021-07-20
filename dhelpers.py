@@ -23,7 +23,7 @@ from inkex import (
     TextElement, FlowRoot, FlowPara, FlowSpan, Tspan, TextPath, Rectangle, \
         addNS, Transform, Style, ClipPath, Use, NamedView, Defs, \
         Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command,\
-        SvgDocumentElement,Image,Group,Polyline,Anchor,Switch,ShapeElement)
+        SvgDocumentElement,Image,Group,Polyline,Anchor,Switch,ShapeElement, BaseElement)
 from applytransform_mod import ApplyTransform
 import TextParser as tp
 import lxml, simpletransform, math
@@ -31,6 +31,34 @@ from lxml import etree
 
 
 It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+
+def descendants2(el):
+    # Like descendants(), but avoids recursion to avoid recursion depth issues
+    cel = el;
+    keepgoing = True; childrendone = False;
+    descendants = [];
+    while keepgoing:
+        keepgoing = False;
+        if not(childrendone):
+            descendants.append(cel); 
+            ks = cel.getchildren();
+            if len(ks)>0: # try children
+                cel = ks[0];
+                keepgoing = True; childrendone = False; continue;
+        
+        if cel==el:
+            keepgoing = False; continue;
+        else:
+            sibs = cel.getparent().getchildren();
+            myi = [ii for ii in range(len(sibs)) if sibs[ii]==cel][0];
+            if myi!=len(sibs)-1: # try younger siblings
+                cel = sibs[myi+1];
+                keepgoing = True; childrendone = False; continue;
+            else:
+                cel = cel.getparent();
+                keepgoing = True; childrendone = True; continue;
+    descendants = [v for v in descendants if isinstance(v, (BaseElement, str))]
+    return descendants;
 
 def inkscape_editable(el):
     ks=el.getchildren();
@@ -137,7 +165,7 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
         # debug(el.get_id());
         # debug(selected_style_local(el));
         if isinstance(el,TextElement) and el.getparent() is not None:
-            lls.append(tp.LineList(el,ct.ctable,debug=False));
+            lls.append(tp.LineList(el,ct,debug=False));
             if diagmode: 
                 lls[-1].Position_Check();
             if lls[-1].lns is not None:
@@ -171,7 +199,7 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
                             # to split, duplicate the whole text el and delete all other lines/words
                             newtxt = duplicate2(ln.ws[sstart].cs[0].loc.textel);
                             os.append(newtxt)
-                            nll = tp.LineList(newtxt,ct.ctable);
+                            nll = tp.LineList(newtxt,ct);
                             for jj in reversed(range(sstart,sstop)):
                                 sws[jj].delw();
                             for il2 in reversed(range(len(nll.lns))):
@@ -339,7 +367,7 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
                         if len(ln.cs)>0:
                             newtxt = duplicate2(ll.textel);
                             os.append(newtxt)
-                            nll = tp.LineList(newtxt,ct.ctable,debug=False);
+                            nll = tp.LineList(newtxt,ct,debug=False);
                             # debug(ll.lns[0].ws[0].txt())
                             # debug(len(nll.lns))
                             ln.dell();
@@ -430,7 +458,7 @@ def Get_Style_Comp(sty,comp):
 def selected_style_local(el):
     parent = el.getparent();
     if parent is not None and isinstance(parent, ShapeElement):
-        return selected_style_local(parent) + cascaded_style2(el)
+        return selected_style_local(parent) + cascaded_style2(el) 
     return cascaded_style2(el)
 
 svgpres = ['alignment-baseline','baseline-shift','clip','clip-path','clip-rule','color','color-interpolation','color-interpolation-filters','color-profile','color-rendering','cursor','direction','display','dominant-baseline','enable-background','fill','fill-opacity','fill-rule','filter','flood-color','flood-opacity','font-family','font-size','font-size-adjust','font-stretch','font-style','font-variant','font-weight','glyph-orientation-horizontal','glyph-orientation-vertical','image-rendering','kerning','letter-spacing','lighting-color','marker-end','marker-mid','marker-start','mask','opacity','overflow','pointer-events','shape-rendering','stop-color','stop-opacity','stroke','stroke-dasharray','stroke-dashoffset','stroke-linecap','stroke-linejoin','stroke-miterlimit','stroke-opacity','stroke-width','text-anchor','text-decoration','text-rendering','transform','transform-origin','unicode-bidi','vector-effect','visibility','word-spacing','writing-mode']
@@ -457,21 +485,21 @@ def cascaded_style2(el):
     csssty = cssdict.get(el.get_id());
     locsty = el.style;
     
-    # debug(el.style)
-    
     # Add any presentation attributes to local style
     attr = list(el.keys());
     attsty = Style('');
     for a in attr:
         if a in svgpres and not(a in excludes) and locsty.get(a) is None and el.get(a) is not None:
             attsty[a] = el.get(a)
-            
-    # debug(attsty)
+#            debug(el.get(a))
 
+    
     if csssty is None:
         return attsty+locsty
     else:
-        return csssty+attsty+locsty
+        # Any style specified locally takes priority, followed by CSS,
+        # followed by any attributes that the element has
+        return attsty+csssty+locsty
 def dupe_in_cssdict(oldid,newid):
     # duplicate a style in cssdict
     global cssdict
@@ -841,7 +869,7 @@ def getElementById2(svg,elid):
 def generate_iddict(svg):
     global iddict
     iddict = dict();
-    for el in svg.descendants():
+    for el in descendants2(svg):
         iddict[el.get_id()] = el;
 def add_to_iddict(el):
     global iddict

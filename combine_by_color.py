@@ -36,21 +36,23 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
 
     def effect(self):   
-        sel = self.svg.selection;                     # an ElementList
-        sel = dh.get_mod(sel)
-        els = [sel[k] for k in sel.id_dict().keys()];
+        # sel = self.svg.selection;                     # an ElementList
+        # sel = dh.get_mod(sel)
+        # els = [sel[k] for k in sel.id_dict().keys()];
+        els = [v for el in self.svg.selection for v in dh.descendants2(el)]
+        
         els = [el for el in els if not(isinstance(el, (NamedView, Defs, Metadata, \
                ForeignObject,Group,MissingGlyph))) and el.get('d') is not None]
         
         merged = [False for el in els]
         stys = [dh.selected_style_local(el) for el in els]
 #        dh.debug(stys)
-        for ii in range(len(els)):
+        for ii in reversed(range(len(els))): # reversed so that order is preserved
             el1 = els[ii];
             strk = stys[ii].get('stroke');
             if strk is not None and strk.lower()!='#000000':
                 merges = [el1]; merged[ii]=True
-                for jj in range(ii+1,len(els)):
+                for jj in range(ii):
                     el2 = els[jj];
                     if not(merged[jj]):
                         if stys[ii]==stys[jj]:

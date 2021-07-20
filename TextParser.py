@@ -124,13 +124,15 @@ class LineList():
         #     dh.debug(tv)
         
         ctable = self.ctable    
+#        dh.debug('test')
         if tv is not None and tv!='' and len(tv)>0:
             # if debug:
             #     dh.debug(tv)
             for ii in range(len(tv)):
-                myi = [jj for jj in range(len(ctable[nsty])) if ctable[nsty][jj].char==tv[ii]][0]
+#                myi = [jj for jj in range(len(ctable.ctable[nsty])) if ctable.ctable[nsty][jj].char==tv[ii]][0]
                 if fs is None: return None # bail if there is text without font
-                prop = ctable[nsty][myi]*fs;
+#                prop = ctable.ctable[nsty][myi]*fs;
+                prop = ctable.get_prop(tv[ii],nsty)*fs;
                 lns[-1].addc(tchar(tv[ii],fs,sf,prop,sty,nsty,cloc(el,'text',ii)));
         
         ks = el.getchildren();
@@ -141,9 +143,10 @@ class LineList():
             tv = k.tail;
             if tv is not None and tv!='':
                 for ii in range(len(tv)):
-                    myi = [jj for jj in range(len(ctable[nsty])) if ctable[nsty][jj].char==tv[ii]][0]
+#                    myi = [jj for jj in range(len(ctable.ctable[nsty])) if ctable.ctable[nsty][jj].char==tv[ii]][0]
                     if fs is None: return None # bail if there is text without font
-                    prop = ctable[nsty][myi]*fs;
+#                    prop = ctable.ctable[nsty][myi]*fs;    
+                    prop = ctable.get_prop(tv[ii],nsty)*fs;
                     lns[-1].addc(tchar(tv[ii],fs,sf,prop,sty,nsty,cloc(k,'tail',ii)));
                     
         if tlvlcall: # finished recursing
@@ -498,6 +501,23 @@ class Character_Table():
     def __init__(self, els,caller):
         self.caller = caller;
         self.ctable, self.bbs = self.measure_character_widths(els)
+        
+    def get_prop(self,char,sty):
+        if sty in list(self.ctable.keys()):
+            matches = [jj for jj in range(len(self.ctable[sty])) if self.ctable[sty][jj].char==char]
+            if len(matches)>0:
+                return self.ctable[sty][matches[0]]
+            else:
+                dh.debug('No character matches!');
+                dh.debug('Character: '+char)
+                dh.debug('Style: '+sty);
+                dh.debug('Existing characters: '+str(list([self.ctable[sty][jj].char for jj in range(len(self.ctable[sty]))])))
+                quit()
+        else:
+            dh.debug('No style matches!');
+            dh.debug('Character: '+char)
+            dh.debug('Style: '+sty);
+            dh.debug('Existing styles: '+str(list(self.ctable.keys())))
 
     def generate_character_table(self,els,ctable):
         if isinstance(els,list):
@@ -523,7 +543,11 @@ class Character_Table():
                 if isinstance(el,Tspan) and el.tail is not None and el.tail!='':
                     # sty = str(el.getparent().composed_style());
                     sty = str(dh.selected_style_local(el.getparent()));
-                    sty = self.normalize_style(sty)    
+                    sty = self.normalize_style(sty)   
+#                    dh.debug(el.tail)
+#                    dh.debug(el.get_id())
+#                    dh.debug(str(dh.selected_style_local(el.getparent())))
+#                    dh.debug(sty)
                     if sty in list(ctable.keys()):
                         ctable[sty] = list(set(ctable[sty]+list(el.tail)));
                     else:
@@ -595,19 +619,20 @@ class Character_Table():
                     'text-decoration','text-rendering','font-size']
     @staticmethod
     def normalize_style(sty):
-        # sty = dh.Set_Style_Comp2(str(sty),'font-size','1px');
-        # sty = dh.Set_Style_Comp2(sty,'fill',None)         
-        # sty = dh.Set_Style_Comp2(sty,'text-anchor',None)
-        # sty = dh.Set_Style_Comp2(sty,'baseline-shift',None)
-        # sty = dh.Set_Style_Comp2(sty,'line-height',None)
-        # sty = dh.Set_Style_Comp2(sty,'writing-mode',None)
-        # sty = dh.Set_Style_Comp2(sty,'clip-path',None)
-        # sty = dh.Set_Style_Comp2(sty,'mask',None)
-        # sty = dh.Set_Style_Comp2(sty,'letter-spacing',None)
-        # strk = dh.Get_Style_Comp(sty,'stroke');
-        # if strk is None or strk.lower()=='none':
-        #     sty = dh.Set_Style_Comp2(sty,'stroke',None)
-        #     sty = dh.Set_Style_Comp2(sty,'stroke-width',None)
+#         sty = dh.Set_Style_Comp2(str(sty),'font-size','1px');
+#         sty = dh.Set_Style_Comp2(sty,'fill',None)         
+#         sty = dh.Set_Style_Comp2(sty,'text-anchor',None)
+#         sty = dh.Set_Style_Comp2(sty,'baseline-shift',None)
+#         sty = dh.Set_Style_Comp2(sty,'line-height',None)
+#         sty = dh.Set_Style_Comp2(sty,'writing-mode',None)
+#         sty = dh.Set_Style_Comp2(sty,'clip-path',None)
+#         sty = dh.Set_Style_Comp2(sty,'mask',None)
+#         sty = dh.Set_Style_Comp2(sty,'letter-spacing',None)
+#         strk = dh.Get_Style_Comp(sty,'stroke');
+#         if strk is None or strk.lower()=='none':
+#             sty = dh.Set_Style_Comp2(sty,'stroke',None)
+#             sty = dh.Set_Style_Comp2(sty,'stroke-width',None)
+#         return sty
         sty  = Style(sty); stykeys = list(sty.keys());
         sty2 = Style('')
         for a in Character_Table.textshapeatt:
@@ -622,7 +647,7 @@ class Character_Table():
         if sty2.get('stroke') is None:
             sty2['stroke-width']=None;
         if sty2.get('font-family') is not None:
-            sty2['font-family']=','.join([v.strip() for v in sty2['font-family'].split(',')]); # strip spaces b/t styles
+            sty2['font-family']=','.join([v.strip().strip('\'') for v in sty2['font-family'].split(',')]); # strip spaces b/t styles
 
         tmp = Style('');
         for k in sorted(sty2.keys()): # be sure key order is alphabetical

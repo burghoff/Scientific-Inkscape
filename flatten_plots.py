@@ -25,10 +25,8 @@ from inkex import (TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle,\
 import lxml
 import dhelpers as dh
 import TextParser as tp
+import sys
 
-#import warnings
-#warnings.filterwarnings("ignore", category=DeprecationWarning)
-import time
 
 dispprofile = False;
 # dispprofile = True;
@@ -65,11 +63,13 @@ class FlattenPlots(inkex.EffectExtension):
         setreplacement = self.options.setreplacement and self.options.fixtext
         replacement = self.options.replacement
         
-        sel = self.svg.selection;                     # an ElementList
-        gpe= dh.get_mod(sel)
-        els =[gpe[k] for k in gpe.id_dict().keys()];
-        gs = [el for el in els if isinstance(el,Group)]
-        os = [el for el in els if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group)))]
+#        sel = self.svg.selection;                     # an ElementList
+#        gpe= dh.get_mod(sel)
+#        els =[gpe[k] for k in gpe.id_dict().keys()];
+        sel = [v for el in self.svg.selection for v in dh.descendants2(el)];
+        
+        gs = [el for el in sel if isinstance(el,Group)]
+        os = [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group)))]
         
         if len(gs)==0 and len(os)==0:
             inkex.utils.errormsg('No objects selected!'); return;
@@ -104,23 +104,20 @@ class FlattenPlots(inkex.EffectExtension):
             if setreplacement:
                 for el in os:
                     if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
-                        ff = dh.Get_Style_Comp(el.get('style'),'font-family');
+#                        ff = dh.Get_Style_Comp(el.get('style'),'font-family');
+                        ff = dh.selected_style_local(el).get('font-family');
 #                        dh.Set_Style_Comp(el,'-inkscape-font-specification',None)
                         if ff==None or ff=='none' or ff=='':
                             dh.Set_Style_Comp(el,'font-family',replacement)
                         elif ff==replacement:
                             pass
                         else:
-                            ff = ff.split(',');
-                            ff = [x.strip('\'') for x in ff]
-                            ff.append(replacement)
-                            ff = ['\''+x+'\'' for x in ff]
+                            ff = [x.strip('\'').strip() for x in ff.split(',')]
+                            if not(ff[-1].lower()==replacement.lower()):
+                                ff.append(replacement)
                             dh.Set_Style_Comp(el,'font-family',','.join(ff))   
                             
-            if fixshattering or mergesubsuper or splitdistant or mergenearby:            
-#                for el in allos:
-#                    if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
-#                        dh.reverse_shattering(el,ct.ctable)
+            if fixshattering or mergesubsuper or splitdistant or mergenearby:
                 ct = tp.Character_Table(list(set(list(reversed(os)))),self)
                 os = dh.remove_kerning(os,ct,fixshattering,mergesubsuper,splitdistant,mergenearby) 
                 
@@ -138,9 +135,6 @@ class FlattenPlots(inkex.EffectExtension):
                         sty=dh.selected_style_local(el);
                         fill = sty.get('fill');
                         strk = sty.get('stroke');
-                        # if (removerectw and fill in ['#ffffff','white'] and strk in [None,'none'])\
-                        #     or (removerectb and fill in ['#000000','black'] and strk in [None,'none']):
-                        #     el.delete()
                         if (removerectw and fill in ['#ffffff','white'] and strk in [None,'none']):
                             el.delete()
     
