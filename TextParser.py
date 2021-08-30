@@ -25,15 +25,30 @@ from inkex import (
 
 
 def GetXY(el,xy):
-    if xy=='y':
-        val = el.get('y');
-    else:
-        val = el.get('x');
+    val = el.get(xy)
+    # if xy=='y':
+    #     val = el.get('y');
+    # else:
+    #     val = el.get('x');
         
     if val is None:   
         val = [None]; # None forces inheritance
     else:             
         val = [float(x) for x in val.split()];
+        # if dval is not None:
+        #     dval = [float(x) for x in dval.split()];
+        #     # dval2 = [dval[0]];
+        #     # for ii in range(1,len(dval)):
+        #     #     dval2.append(dval2[ii-1]+dval[ii]); # cumulative sum
+        #     # dh.debug(dval2)
+        #     if len(dval)<=len(val):
+        #         for ii in range(len(dval)):  # dx shorter than x
+        #             val[ii] = val[ii]+dval[ii];
+        #     else:
+        #         for ii in range(len(val)):  # x shorter than dx
+        #             dval[ii] = val[ii]+dval[ii];
+        #         val = dval;
+    # dh.debug(val)
     return val
 
 # A text element that has been parsed into a list of lines
@@ -66,6 +81,7 @@ class LineList():
         # The x value is taken from the previous line's x value.
         # The y value is taken by adding [something] to the previous y value.
         # However, inheritance is disabled by the presence of multiple x values or multiple y values.
+        # (Multiple dx or dy values does not disable this inheritance.)
         # If sodipodi:role is not line, its anchoring/alignment will be inherited from the previous line.
         
         # Detect if inheriting position
@@ -149,7 +165,7 @@ class LineList():
                     prop = ctable.get_prop(tv[ii],nsty)*fs;
                     lns[-1].addc(tchar(tv[ii],fs,sf,prop,sty,nsty,cloc(k,'tail',ii)));
                     
-        if tlvlcall: # finished recursing
+        if tlvlcall: # finished recursing, finish lines
             if lns is not None:
                 for ln in reversed(lns): 
                     if ln.x[0] is None: # no x ever assigned
@@ -185,6 +201,14 @@ class LineList():
                 r.set('style','fill-opacity:0.5')
                 svg.append(r)
     
+    
+    
+    
+    
+    
+    
+    
+    
 # A single line, which represents a list of characters. Typically a top-level Tspan or TextElement.
 # This is further subdivided into a list of words
 class tline:
@@ -204,7 +228,7 @@ class tline:
             self.angle = 0;
         else:
             self.angle = ang; 
-        self.xsrc = xsrc; # element where we derive our x value
+        self.xsrc = xsrc; # element from which we derive our x value
         # self.ll = None;   # line list we belong to (add later)
     def addc(self,c):
         self.cs.append(c)
@@ -218,6 +242,16 @@ class tline:
         # if len(w.cs)==0:
         #     dh.debug(self.xsrc.get_id())
     def parse_words(self):
+        # Parsing a line into words is the final step that should be called once
+        # the line parser has gotten all the characters
+        
+        dx = GetXY(self.xsrc,'dx')
+        dy = GetXY(self.xsrc,'dy')
+        # dh.debug(self.txt())
+        # dh.debug(dx)
+        # dh.debug(dy)
+        
+        
         w=None;
         for ii in range(len(self.cs)):
             if ii==0:
@@ -243,6 +277,16 @@ class tline:
     def txt(self):   
         return ''.join([c.c for c in self.cs])
                 
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 # A word (a group of characters with the same assigned anchor)
 class tword: 
     def __init__(self,ii,x,y,ln):
@@ -424,13 +468,11 @@ class tchar:
             self.w.delw();
         self.w = None
         
-    def makesubsuper(self,sz=65):
+    def add_style(self,sty):
+    # Adds a style to an existing character by wrapping it in a new Tspan
         t = Tspan();
         t.text = self.c;
-        if self.type=='super':
-            t.style = 'font-size:'+str(sz)+'%;baseline-shift:super';
-        else: #sub
-            t.style = 'font-size:'+str(sz)+'%;baseline-shift:sub';
+        t.style = str(sty);
         
         prt = self.loc.el;
         if self.loc.tt=='text':
@@ -453,7 +495,14 @@ class tchar:
             ca = self.ln.cs[ii];
             ca.loc = cloc(t,'tail',ii-myi-1)
         self.loc = cloc(t,'text',0)                  # update my own location
-    
+        
+    def makesubsuper(self,sz=65):
+        if self.type=='super':
+            sty = 'font-size:'+str(sz)+'%;baseline-shift:super';
+        else: #sub
+            sty = 'font-size:'+str(sz)+'%;baseline-shift:sub';
+        self.add_style(sty);
+        
 
 # A modified bounding box class
 class bbox:
@@ -484,7 +533,7 @@ class cprop():
         self.descrh = dr;   # descender height
     def __mul__(self, scl):
         return cprop(self.char,self.charw*scl,self.spacew*scl,self.xoffset*scl,self.caph*scl,self.descrh*scl)
-# A class indicating a single character's location
+# A class indicating a single character's location in the SVG
 class cloc():
     def __init__(self, el,tt,ind):
         self.el = el;  # the element it belongs to
@@ -580,6 +629,8 @@ class Character_Table():
             ct[s].append([ct[s][ii],t,t.get_id()]);             
             t = Make_Character('pI\u00A0\u00A0\u00A0',s);        # pI with 3 nb spaces
             ct[s].append([ct[s][ii],t,t.get_id()]); 
+            # We add pI as test characters because p gives the font's descender (how much the tail descends)
+            # and I gives its cap height (how tall capital letters are).
             
         nbb = dh.Get_Bounding_Boxes(self.caller,True);  
         for s in list(ct.keys()):
@@ -619,20 +670,6 @@ class Character_Table():
                     'text-decoration','text-rendering','font-size']
     @staticmethod
     def normalize_style(sty):
-#         sty = dh.Set_Style_Comp2(str(sty),'font-size','1px');
-#         sty = dh.Set_Style_Comp2(sty,'fill',None)         
-#         sty = dh.Set_Style_Comp2(sty,'text-anchor',None)
-#         sty = dh.Set_Style_Comp2(sty,'baseline-shift',None)
-#         sty = dh.Set_Style_Comp2(sty,'line-height',None)
-#         sty = dh.Set_Style_Comp2(sty,'writing-mode',None)
-#         sty = dh.Set_Style_Comp2(sty,'clip-path',None)
-#         sty = dh.Set_Style_Comp2(sty,'mask',None)
-#         sty = dh.Set_Style_Comp2(sty,'letter-spacing',None)
-#         strk = dh.Get_Style_Comp(sty,'stroke');
-#         if strk is None or strk.lower()=='none':
-#             sty = dh.Set_Style_Comp2(sty,'stroke',None)
-#             sty = dh.Set_Style_Comp2(sty,'stroke-width',None)
-#         return sty
         sty  = Style(sty); stykeys = list(sty.keys());
         sty2 = Style('')
         for a in Character_Table.textshapeatt:

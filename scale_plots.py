@@ -93,11 +93,20 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument("--layerfix", type=str, default='None',help="Layer whose elements should not be scaled")
 
 
-    def effect(self):   
+    def effect(self):
+        v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
+        if v1:
+           inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
+           return
+        # gpe= dh.get_mod(self.svg.selection)
+        # sel =[gpe[k] for k in gpe.id_dict().keys()];
+        else:
+           sels = [v for el in self.svg.selection for v in dh.descendants2(el)];
+            
         # starttime = time.time();
-        sel = self.svg.selection;                     # an ElementList
+        # sel = self.svg.selection;                     # an ElementList
         # inkex.utils.debug(sel)
-        sels=[sel[k] for k in sel.id_dict().keys()];
+        # sels=[sel[k] for k in sel.id_dict().keys()];
         sels=[k for k in sels if not(isinstance(k, (Tspan,\
                 NamedView, Defs, Metadata, ForeignObject)))]; # regular selectable objects only
         

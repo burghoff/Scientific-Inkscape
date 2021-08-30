@@ -63,10 +63,14 @@ class FlattenPlots(inkex.EffectExtension):
         setreplacement = self.options.setreplacement and self.options.fixtext
         replacement = self.options.replacement
         
-#        sel = self.svg.selection;                     # an ElementList
-#        gpe= dh.get_mod(sel)
-#        els =[gpe[k] for k in gpe.id_dict().keys()];
-        sel = [v for el in self.svg.selection for v in dh.descendants2(el)];
+        v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
+        if v1:
+            inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
+            return
+            # gpe= dh.get_mod(self.svg.selection)
+            # sel =[gpe[k] for k in gpe.id_dict().keys()];
+        else:
+            sel = [v for el in self.svg.selection for v in dh.descendants2(el)];
         
         gs = [el for el in sel if isinstance(el,Group)]
         os = [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group)))]
@@ -106,7 +110,7 @@ class FlattenPlots(inkex.EffectExtension):
                     if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
 #                        ff = dh.Get_Style_Comp(el.get('style'),'font-family');
                         ff = dh.selected_style_local(el).get('font-family');
-#                        dh.Set_Style_Comp(el,'-inkscape-font-specification',None)
+                        dh.Set_Style_Comp(el,'-inkscape-font-specification',None)
                         if ff==None or ff=='none' or ff=='':
                             dh.Set_Style_Comp(el,'font-family',replacement)
                         elif ff==replacement:

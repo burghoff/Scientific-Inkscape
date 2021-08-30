@@ -17,7 +17,7 @@
                  
             <label appearance="header">Stroke options</label>
             <param name="setstroke"  type="bool" gui-text="Set stroke width?">true</param>            
-            <param name="setstrokew" type="float" precision="1" min="0" max="100" gui-text="New stroke width (px)">1</param>
+            <param name="setstrokew" type="float" precision="2" min="0" max="100" gui-text="New stroke width (px)">1</param>
             <label>By David Burghoff, University of Notre Dame</label>   
         </page>
     </param>

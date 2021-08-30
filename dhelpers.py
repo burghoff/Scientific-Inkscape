@@ -35,12 +35,15 @@ It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
 def descendants2(el):
     # Like descendants(), but avoids recursion to avoid recursion depth issues
     cel = el;
+    # debug(cel.descendants())
     keepgoing = True; childrendone = False;
     descendants = [];
     while keepgoing:
         keepgoing = False;
         if not(childrendone):
             descendants.append(cel); 
+            # if isinstance(cel, (str)):
+            #     debug(type(cel))
             ks = cel.getchildren();
             if len(ks)>0: # try children
                 cel = ks[0];
@@ -416,7 +419,9 @@ def Set_Style_Comp(el,comp,val):
         sty = ';'.join(sty)
         el.set('style',sty);
     else:
-        sty = comp+':'+val
+        if val is not None:
+            sty = comp+':'+val
+
     el.set('style',sty);
     
 # sets a style property (of a style string) 

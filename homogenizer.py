@@ -70,10 +70,19 @@ class ScalePlots(inkex.EffectExtension):
         setstrokew = self.options.setstrokew;
         setstrokeu = 'px';
         
+        v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
+        if v1:
+            inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
+            return
+            # gpe= dh.get_mod(self.svg.selection)
+            # sel =[gpe[k] for k in gpe.id_dict().keys()];
+        else:
+            sel = [v for el in self.svg.selection for v in dh.descendants2(el)];
+        
         # sel = dh.get_mod(self.svg.selection)
         # # sel = .get()
         # sel =[sel[k] for k in sel.id_dict().keys()];
-        sel = [v for el in self.svg.selection for v in dh.descendants2(el)]
+        # sel = [v for el in self.svg.selection for v in dh.descendants2(el)]
         
         sela= [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject)))];
         sel = [el for el in sel if isinstance(el,(TextElement,Tspan,FlowRoot,FlowPara,FlowSpan))];
@@ -85,6 +94,8 @@ class ScalePlots(inkex.EffectExtension):
             for el in sel:
                 newsize = self.svg.unittouu('1pt')*fontsize;
                 actualsize = dh.Get_Composed_Width(el,'font-size');
+                # dh.debug(newsize)
+                # dh.debug(actualsize)
                 # dh.debug(actualsize)
                 if actualsize is not None:
                     scalef = newsize/actualsize
