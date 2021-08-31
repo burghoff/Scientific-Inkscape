@@ -36,22 +36,24 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
 
     def effect(self):
-        v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
-        if v1:
-            inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
-            return
-            # gpe= dh.get_mod(self.svg.selection)
-            # sel =[gpe[k] for k in gpe.id_dict().keys()];
-        else:
-            els = [v for el in self.svg.selection for v in dh.descendants2(el)];
-            
+        # v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
+        # if v1:
+        #     inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
+        #     return
+        #     # gpe= dh.get_mod(self.svg.selection)
+        #     # sel =[gpe[k] for k in gpe.id_dict().keys()];
+        # else:
+        #     els = [v for el in self.svg.selection for v in dh.descendants2(el)];
+        
+        sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
+        sel = [v for el in sel for v in dh.descendants2(el)];
             
         # sel = self.svg.selection;                     # an ElementList
         # sel = dh.get_mod(sel)
         # els = [sel[k] for k in sel.id_dict().keys()];
         # els = [v for el in self.svg.selection for v in dh.descendants2(el)]
         
-        els = [el for el in els if not(isinstance(el, (NamedView, Defs, Metadata, \
+        els = [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, \
                ForeignObject,Group,MissingGlyph))) and el.get('d') is not None]
         
         merged = [False for el in els]

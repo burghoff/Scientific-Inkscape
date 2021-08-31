@@ -64,25 +64,25 @@ class ScalePlots(inkex.EffectExtension):
         fontsize = self.options.fontsize
         setfontfamily = self.options.setfontfamily
         fontfamily = self.options.fontfamily
-#        setreplacement = self.options.setreplacement
-#        replacement = self.options.replacement
         setstroke = self.options.setstroke;
         setstrokew = self.options.setstrokew;
         setstrokeu = 'px';
         
-        v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
-        if v1:
-            inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
-            return
-            # gpe= dh.get_mod(self.svg.selection)
-            # sel =[gpe[k] for k in gpe.id_dict().keys()];
-        else:
-            sel = [v for el in self.svg.selection for v in dh.descendants2(el)];
+        # v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
+        # if v1:
+        #     inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
+        #     return
+        #     # gpe= dh.get_mod(self.svg.selection)
+        #     # sel =[gpe[k] for k in gpe.id_dict().keys()];
+        # else:
+        #     sel = [v for el in self.svg.selection for v in dh.descendants2(el)];
         
         # sel = dh.get_mod(self.svg.selection)
         # # sel = .get()
         # sel =[sel[k] for k in sel.id_dict().keys()];
         # sel = [v for el in self.svg.selection for v in dh.descendants2(el)]
+        sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
+        sel = [v for el in sel for v in dh.descendants2(el)];
         
         sela= [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject)))];
         sel = [el for el in sel if isinstance(el,(TextElement,Tspan,FlowRoot,FlowPara,FlowSpan))];

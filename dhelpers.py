@@ -919,8 +919,10 @@ def Get_Bounding_Boxes(s,getnew):
     bbs=dict();
     for d in tBBLi:
         key = str(d).split(',')[0];
-        if key[0:1]=='b\'': # pre version 1.1
+        if key[0:2]=='b\'': # pre version 1.1
             key = key[2:];
+        if str(d)[2:52]=='WARNING: Requested update while update in progress':
+            continue;                       # skip warnings (version 1.0 only?)
         data = [float(x.strip('\''))*s.svg.unittouu('1px') for x in str(d).split(',')[1:]]
         bbs[key] = data;
     return bbs

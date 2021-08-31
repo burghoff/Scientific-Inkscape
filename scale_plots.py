@@ -94,20 +94,23 @@ class ScalePlots(inkex.EffectExtension):
 
 
     def effect(self):
-        v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
-        if v1:
-           inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
-           return
-        # gpe= dh.get_mod(self.svg.selection)
-        # sel =[gpe[k] for k in gpe.id_dict().keys()];
-        else:
-           sels = [v for el in self.svg.selection for v in dh.descendants2(el)];
-            
+        # v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
+        # if v1:
+        #    inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
+        #    return
+        # # gpe= dh.get_mod(self.svg.selection)
+        # # sel =[gpe[k] for k in gpe.id_dict().keys()];
+        # else:
+        #    sel = [v for el in self.svg.selection for v in dh.descendants2(el)];
+        sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
+        # sel = [v for el in sel for v in dh.descendants2(el)];
+           
+        
         # starttime = time.time();
         # sel = self.svg.selection;                     # an ElementList
         # inkex.utils.debug(sel)
-        # sels=[sel[k] for k in sel.id_dict().keys()];
-        sels=[k for k in sels if not(isinstance(k, (Tspan,\
+        # sel=[sel[k] for k in sel.id_dict().keys()];
+        sel=[k for k in sel if not(isinstance(k, (Tspan,\
                 NamedView, Defs, Metadata, ForeignObject)))]; # regular selectable objects only
         
 #        import cProfile, pstats, io
@@ -152,27 +155,27 @@ class ScalePlots(inkex.EffectExtension):
                     
         
         fbbs=dh.Get_Bounding_Boxes(self,False); # full visual bbs
-        firstsel = sels[0];
+        firstsel = sel[0];
         if matchingmode:
-            sels=sels[1:];    
-        groupedmode = all([isinstance(k,Group) for k in sels]);
+            sel=sel[1:];    
+        groupedmode = all([isinstance(k,Group) for k in sel]);
         if not(groupedmode):
-            asels = [sels];
+            asel = [sel];
         else:
-            asels = [list(s.getchildren()) for s in sels];
+            asel = [list(s.getchildren()) for s in sel];
         
-        for sels in asels:
+        for sel in asel:
             # Calculate geometric (tight) bounding boxes of selected items
-            sels = [k for k in sels if k.get_id() in list(fbbs.keys())]; # only work on objects with a BB
+            sel = [k for k in sel if k.get_id() in list(fbbs.keys())]; # only work on objects with a BB
             bbs=dict();  
-            for el in [firstsel]+sels+sfels:
+            for el in [firstsel]+sel+sfels:
                 if el.get_id() in list(fbbs.keys()):
                     bbs[el.get_id()] = geometric_bbox(el,fbbs[el.get_id()]).sbb;
                 
             # Find horizontal and vertical lines (to within .001 rad), elements to be used in plot area calculations
             vl = dict(); hl = dict(); boxes = dict(); solids = dict();
             vels = dict(); hels = dict();
-            for el in list(reversed(sels)):
+            for el in list(reversed(sel)):
                 isrect = False;
                 if isinstance(el,(PathElement,Rectangle,Line,Polyline)): 
                     bb=bbs[el.get_id()];
@@ -212,7 +215,7 @@ class ScalePlots(inkex.EffectExtension):
             # Determine the bounding box of the whole selection and the plot area
             minx = miny = minxp = minyp = fminxp = fminyp = float('inf');
             maxx = maxy = maxxp = maxyp = fmaxxp = fmaxyp = float('-inf');
-            for el in sels:
+            for el in sel:
                 bb=bbs[el.get_id()];
                 minx = min(minx,bb[0]);
                 miny = min(miny,bb[1]);
@@ -273,7 +276,7 @@ class ScalePlots(inkex.EffectExtension):
             
             # Make a list of elements to be transformed
             sclels=[]
-            for el in sels:
+            for el in sel:
                 if el in sfgs: # Is a scale-free group, apply transform to children instead
                     for k in el.getchildren(): sclels.append(k)
                 else:                          sclels.append(el)
