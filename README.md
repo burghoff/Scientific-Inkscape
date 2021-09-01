@@ -48,7 +48,7 @@ Flatten Plots is a useful utility that eliminates many of the difficulties that 
 <li><i>Replace missing fonts</i>: Useful for imported documents whose original fonts are not installed on the current machine.</li></ol>
 
 # The Homogenizer
-The Homogenizer is a utility that does what its name implies: it will set all of the fonts, font sizes, and stroke widths in a selection to the same value. This is most useful when assembling sub-figures, as it allows you to ensure that the whole figure has a uniform look. 
+The Homogenizer is a utility that does what its name implies: it will set all of the fonts, font sizes, and stroke widths in a selection to the same value. It also removes any text distortions. This is most useful when assembling sub-figures, as it allows you to ensure that the whole figure has a uniform look. 
 
 # Auto-Exporter
 The Auto-Exporter is not technically an extension, it is a Python script meant to be run in the background as a service. If you frequently export your figures to other formats, you know that updating them whenever you change your figure is a nuisance. This program does it automatically: you specify a directory that the program monitors, and whenever any SVGs are changed, it automatically converts them to the formats you specify. Just select (a) the location where the Inkscape binary is installed, (b) what directory you would like it to watch, and (c) where you would like it to put the exports.
