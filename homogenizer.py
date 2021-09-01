@@ -24,17 +24,10 @@ from inkex import (
     Transform, Style, PathElement, Line, Rectangle, Path,Vector2d, \
     Use, NamedView, Defs, Metadata, ForeignObject, Group, FontFace, FlowSpan
 )
-
-import simplepath
 import dhelpers as dh
-import applytransform_mod
-import copy
+import math
 
-import os
 dispprofile = False
-#import warnings
-#warnings.filterwarnings("ignore", category=DeprecationWarning) 
-
 class ScalePlots(inkex.EffectExtension):
 #    def document_path(self):
 #        return 'test'
@@ -46,6 +39,7 @@ class ScalePlots(inkex.EffectExtension):
         
         pars.add_argument("--setfontfamily", type=inkex.Boolean, default=False,help="Set font family?")
         pars.add_argument("--fontfamily", type=str, default='', help="New font family");
+        pars.add_argument("--fixtextdistortion", type=inkex.Boolean, default=False,help="Fix distorted text?")
         
 #        pars.add_argument("--setreplacement", type=inkex.Boolean, default=False,help="Replace missing fonts?")
 #        pars.add_argument("--replacement", type=str, default='', help="Missing fon replacement");
@@ -66,37 +60,22 @@ class ScalePlots(inkex.EffectExtension):
         fontfamily = self.options.fontfamily
         setstroke = self.options.setstroke;
         setstrokew = self.options.setstrokew;
+        fixtextdistortion = self.options.fixtextdistortion;
         setstrokeu = 'px';
         
-        # v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
-        # if v1:
-        #     inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
-        #     return
-        #     # gpe= dh.get_mod(self.svg.selection)
-        #     # sel =[gpe[k] for k in gpe.id_dict().keys()];
-        # else:
-        #     sel = [v for el in self.svg.selection for v in dh.descendants2(el)];
-        
-        # sel = dh.get_mod(self.svg.selection)
-        # # sel = .get()
-        # sel =[sel[k] for k in sel.id_dict().keys()];
-        # sel = [v for el in self.svg.selection for v in dh.descendants2(el)]
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
         sel = [v for el in sel for v in dh.descendants2(el)];
         
         sela= [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject)))];
         sel = [el for el in sel if isinstance(el,(TextElement,Tspan,FlowRoot,FlowPara,FlowSpan))];
         
-        if setfontfamily or setfontsize:
+        if setfontfamily or setfontsize or fixtextdistortion:
             bbs=dh.Get_Bounding_Boxes(self,False);
         
         if setfontsize:
             for el in sel:
                 newsize = self.svg.unittouu('1pt')*fontsize;
                 actualsize = dh.Get_Composed_Width(el,'font-size');
-                # dh.debug(newsize)
-                # dh.debug(actualsize)
-                # dh.debug(actualsize)
                 if actualsize is not None:
                     scalef = newsize/actualsize
                     fs = dh.Get_Style_Comp(el.style,'font-size');
@@ -106,6 +85,18 @@ class ScalePlots(inkex.EffectExtension):
                         dh.Set_Style_Comp(el,'font-size',str(fs*scalef)+us)
                 else:
                     dh.Set_Style_Comp(el,'font-size',str(newsize))
+        
+        if fixtextdistortion:
+            # make a new transform that removes bad scaling and shearing (see General_affine_transformation.nb)
+            for el in sel:                     
+                ct = el.composed_transform();
+                detv = ct.a*ct.d-ct.b*ct.c;
+                signdet = -1*(detv<0)+(detv>=0);
+                sqrtdet = math.sqrt(abs(detv));
+                magv = math.sqrt(ct.b**2 + ct.a**2);
+                ctnew = Transform([[ct.a*sqrtdet/magv, -ct.b*sqrtdet*signdet/magv, ct.e], \
+                                   [ct.b*sqrtdet/magv,  ct.a*sqrtdet*signdet/magv, ct.f]]);
+                dh.global_transform(el,ctnew*(-ct)); 
                 
         if setfontfamily:
             for el in reversed(sel):
@@ -128,7 +119,7 @@ class ScalePlots(inkex.EffectExtension):
 #                    ff = ['\''+x+'\'' for x in ff]
 #                    dh.Set_Style_Comp(el,'font-family',','.join(ff))
             
-        if setfontfamily or setfontsize:
+        if setfontfamily or setfontsize or fixtextdistortion:
             bbs2=dh.Get_Bounding_Boxes(self,True);
             for el in sel:
                 myid = el.get_id();

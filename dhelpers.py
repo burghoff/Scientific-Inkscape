@@ -521,6 +521,7 @@ def Get_Composed_Width(el,comp,nargout=1):
     ct = el.composed_transform();
     if nargout==4:
         ang = math.atan2(ct.c,ct.d)*180/math.pi;
+    # debug(math.atan2(ct.c,ct.d)*180/math.pi)
     svg = get_parent_svg(el)
     docscale = svg.scale;
     sc = Get_Style_Comp(cs,comp);
@@ -1040,7 +1041,7 @@ def global_transform(el,trnsfrm,irange=None,trange=None):
     sw = Get_Composed_Width(el,'stroke-width');
     sd = Get_Composed_List(el, 'stroke-dasharray');
     el.set('transform',newtr); # Add the new transform
-    if not(isinstance(el, (TextElement,Image,Group,FlowRoot))): # not(el.typename in ['TextElement','Image','Group']):
+    if not(isinstance(el, (TextElement,Image,Group,FlowRoot,Tspan))): # not(el.typename in ['TextElement','Image','Group']):
         ApplyTransform().recursiveFuseTransform(el,irange=irange,trange=trange);
         if sw is not None:
             nw = float(Get_Style_Comp(el.get('style'),'stroke-width'))

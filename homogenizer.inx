@@ -5,13 +5,12 @@
     <param name="tab" type="notebook">
         
         <page name="scaling" gui-text="Options">
-            <label>Sets the properties of all selected objects without changing objects' position.
+            <label>Sets the properties of all selected objects without changing objects' center position.
             </label>
             <label appearance="header">Text options</label>
-            
+            <param name="fixtextdistortion" type="bool" gui-text="Correct distorted text?">true</param>    
             <param name="setfontsize" type="bool" gui-text="Set font size?">true</param>            
             <param name="fontsize" type="float" precision="1" min="0" max="100" gui-text="New font size (pt)">8</param>
-            
             <param name="setfontfamily" type="bool" gui-text="Set font family?">true</param>
             <param name="fontfamily" type="string" gui-text="Font family"></param>
                  
