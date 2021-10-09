@@ -23,7 +23,7 @@ from inkex import (
     TextElement, FlowRoot, FlowPara, FlowSpan, Tspan, TextPath, Rectangle, \
         addNS, Transform, Style, ClipPath, Use, NamedView, Defs, \
         Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command,\
-        SvgDocumentElement,Image,Group,Polyline,Anchor,Switch,ShapeElement, BaseElement)
+        SvgDocumentElement,Image,Group,Polyline,Anchor,Switch,ShapeElement, BaseElement,FlowRegion)
 from applytransform_mod import ApplyTransform
 import TextParser as tp
 import lxml, simpletransform, math
@@ -173,6 +173,11 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
                 lls[-1].Position_Check();
             if lls[-1].lns is not None:
                 ws += [w for ln in lls[-1].lns for w in ln.ws];
+    
+    # for ll in lls:
+    #     for ln in ll.lns:
+    #         debug(ln.x)
+    #         debug(ln.dx)
     
     if not(diagmode):
         # Generate splits
@@ -1041,9 +1046,11 @@ def global_transform(el,trnsfrm,irange=None,trange=None):
     sw = Get_Composed_Width(el,'stroke-width');
     sd = Get_Composed_List(el, 'stroke-dasharray');
     el.set('transform',newtr); # Add the new transform
-    if not(isinstance(el, (TextElement,Image,Group,FlowRoot,Tspan))): # not(el.typename in ['TextElement','Image','Group']):
+    if not(isinstance(el, (TextElement,Image,Group,Tspan,FlowRoot,FlowPara,FlowRegion,FlowSpan))): # not(el.typename in ['TextElement','Image','Group']):
         ApplyTransform().recursiveFuseTransform(el,irange=irange,trange=trange);
         if sw is not None:
+#            if Get_Style_Comp(el.get('style'),'stroke-width') is None:
+#                debug(el.get_id())
             nw = float(Get_Style_Comp(el.get('style'),'stroke-width'))
             sw = nw*sw/Get_Composed_Width(el,'stroke-width');
             Set_Style_Comp(el,'stroke-width',str(sw)); # fix width

@@ -75,6 +75,8 @@ class LineList():
         
         xv = GetXY(el,'x'); xsrc = el;
         yv = GetXY(el,'y'); ysrc = el;
+        dxv = GetXY(el,'dx'); dxsrc = el;
+        dyv = GetXY(el,'dy'); dysrc = el;
         
         # Notes on sodipodi:role line
         # If a Tspan has sodipodi:role set to line, its position is inherited based on the previous line.
@@ -121,10 +123,13 @@ class LineList():
                     xsrc = lns[-1].xsrc;
                     ct   = lns[-1].transform;
                     ang  = lns[-1].angle;
+                    
+                    dxv   = [lns[-1].dx[0]]; 
+                    dyv   = [lns[-1].dy[0]]; 
             anch = sty.get('text-anchor') 
             if len(lns)!=0 and nspr!='line':
                 anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
-            lns.append(tline(xv,yv,inheritpos,nspr,anch,ct,ang,el,xsrc))
+            lns.append(tline(xv,yv,inheritpos,nspr,anch,ct,ang,el,xsrc,dxv,dyv))
         # else: # disabled on 2021.07.14, I don't think it's necessary any more
         #     if lns is not None:   # if we're continuing, make sure we have a valid x and y
         #         if lns[-1].x[0] is None:
@@ -172,6 +177,10 @@ class LineList():
                         ln.x[0] = 0;
                     if ln.y[0] is None: # no y ever assigned
                         ln.y[0] = 0;
+                    if ln.dx[0] is None: # no dx ever assigned
+                        ln.dx[0] = 0;
+                    if ln.dy[0] is None: # no dy ever assigned
+                        ln.dy[0] = 0;
                     ln.parse_words()
                     if len(ln.cs)==0:
                         lns.remove(ln); # prune empty lines
@@ -212,7 +221,7 @@ class LineList():
 # A single line, which represents a list of characters. Typically a top-level Tspan or TextElement.
 # This is further subdivided into a list of words
 class tline:
-    def __init__(self, x, y, inheritpos, nspr, anch, xform,ang,el,xsrc):
+    def __init__(self, x, y, inheritpos, nspr, anch, xform,ang,el,xsrc,dx,dy):
         self.x = x; 
         self.y = y;
         self.inheritpos = inheritpos;    # inheriting position
@@ -229,6 +238,8 @@ class tline:
         else:
             self.angle = ang; 
         self.xsrc = xsrc; # element from which we derive our x value
+        self.dx = dx;
+        self.dy = dy;
         # self.ll = None;   # line list we belong to (add later)
     def addc(self,c):
         self.cs.append(c)
@@ -245,12 +256,21 @@ class tline:
         # Parsing a line into words is the final step that should be called once
         # the line parser has gotten all the characters
         
-        dx = GetXY(self.xsrc,'dx')
-        dy = GetXY(self.xsrc,'dy')
+        # dx = GetXY(self.xsrc,'dx')
+        # dy = GetXY(self.xsrc,'dy')
         # dh.debug(self.txt())
-        # dh.debug(dx)
-        # dh.debug(dy)
-        
+        # dh.debug(self.x)
+        # dh.debug(self.dx)
+        # for ii in range(len(self.x)):
+        #     if len(self.dx)<len(self.x):
+        #         self.x[ii]=self.x[ii] + self.dx[-1];
+        #     else:
+        #         self.x[ii] = self.x[ii] + self.dx[ii];
+        # for ii in range(len(self.y)):
+        #     if len(self.dy)<len(self.y):
+        #         self.y[ii]=self.y[ii] + self.dy[-1];
+        #     else:
+        #         self.y[ii] = self.y[ii] + self.dy[ii];
         
         w=None;
         for ii in range(len(self.cs)):
