@@ -32,7 +32,7 @@ Scale Plots has two modes. In Scaling Mode, the plot is scaled by a constant fac
 2. If a layer name or group ID is put into the "Scale-free elements" option, any elements on that layer will remain unscaled. This is basically the same thing as putting an object in a group, but can be easier if there are many such objects (e.g, if your plot has markers).
 
 # Flatten Plots
-Flatten Plots is a useful utility that eliminates many of the difficulties that arise when plots are exported from common plotting programs.
+Flatten Plots is a utility that makes it easier to edit plots are exported from common plotting programs and imported into Inkscape, as well as figures imported from PDF papers.
 1. *Deep ungroup*: The Scale Plots utility uses grouping to determine when objects are to be kept together, so a deep ungroup is typically needed to remove any existing groupings initially. It also unlinks any clones.
 2. *Apply text fixes*: Applies a series of fixes to text described below (particularly useful for PDF/EPS text).
 3. *Remove white rectangles*: Removes any rectangles that have white fill and no stroke. Mostly for removing a plot's background.
@@ -42,7 +42,7 @@ Flatten Plots is a useful utility that eliminates many of the difficulties that 
 <li><i>Split distant text and lines</i>: Depending on the renderer, it is often the case that the PDF/EPS printing process generates text implemented as a single text object. For example, all of the x-axis ticks might be one object, all of the y-axis ticks might be another, and the title and labels may be another. Internally, each letter is positioned independently. This looks fine, but causes issues when trying to scale or do anything nontrivial.
 <br><p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Split_distant_draw.png" alt="drawing" ></img></p></li>
 <li><i>Merge nearby text</i>: The opposite can also occur: text that should be one line is split into multiple objects. This option reverses that.
-<li><i>Remove manual kerning</i>: Text in PDFs is often 'kerned'—its letters are positioned individually, so if you try to edit it you will get strange results. This option reverses that, although the tradeoff is that text may be slightly repositioned.
+<li><i>Remove manual kerning</i>: Text in PDFs is typically kerned—its letters are positioned individually, so if you try to edit it you will get strange results. This option reverses that, although the tradeoff is that text may be slightly repositioned.
 <br><p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Repair_shattered_draw.png" alt="drawing" ></img></p></li>
 <li><i>Merge superscripts and subscripts</i>: Detect likely subscripts and superscripts, replacing them with native SVG versions.</li>
 <li><i>Replace missing fonts</i>: Useful for imported documents whose original fonts are not installed on the current machine.</li></ol>
