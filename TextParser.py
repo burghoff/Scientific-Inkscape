@@ -51,6 +51,13 @@ def GetXY(el,xy):
     # dh.debug(val)
     return val
 
+def GetdXY(el,xy):
+    eld = GetXY(el,xy); tmp=el;
+    while eld[0] is None and isinstance(tmp.getparent(),(Tspan,TextElement)):
+        tmp = tmp.getparent();
+        eld = GetXY(el,xy);
+    return [eld,tmp]
+
 # A text element that has been parsed into a list of lines
 class LineList():
     def __init__(self, el, ctable,debug=False):
@@ -60,6 +67,10 @@ class LineList():
         if self.lns is not None:
             for ln in self.lns:
                 ln.ll = self;
+        # self.Get_Delta(el,'dx');
+        # self.Get_Delta(el,'dy');
+        # dh.debug([c.c for ln in self.lns for c in ln.cs])
+        # dh.debug([c.dx for ln in self.lns for c in ln.cs])
     def txt(self):
         return [v.txt() for v in self.lns]
         
@@ -69,40 +80,69 @@ class LineList():
         # sty = el.composed_style();
         sty = dh.selected_style_local(el);
         fs,sf,ct,ang = dh.Get_Composed_Width(el,'font-size',4); #dh.debug(el.get_id()); dh.debug(el.composed_transform())
+        # lh = dh.selected_style_local(el).get('line-height');
+        # lh2 = dh.Get_Composed_Width(el,'line-height');
+        lh = dh.Get_Composed_LineHeight(el);
+        # dh.debug(lh)
+        # if lh is None: lh=1.25;
+#        dh.debug(fs)
         # ct = el.composed_transform();
         nsty=Character_Table.normalize_style(sty);
         tv = el.text;
         
         xv = GetXY(el,'x'); xsrc = el;
         yv = GetXY(el,'y'); ysrc = el;
-        dxv = GetXY(el,'dx'); dxsrc = el;
-        dyv = GetXY(el,'dy'); dysrc = el;
+        # dxv = GetXY(el,'dx'); dxsrc = el;
+        # dyv = GetXY(el,'dy'); dysrc = el;
         
         # Notes on sodipodi:role line
-        # If a Tspan has sodipodi:role set to line, its position is inherited based on the previous line.
+        # If a top-level Tspan has sodipodi:role set to line, its position is inherited based on the previous line.
         # The x value is taken from the previous line's x value.
-        # The y value is taken by adding [something] to the previous y value.
+        # The y value is taken by adding the line height to the previous y value.
         # However, inheritance is disabled by the presence of multiple x values or multiple y values.
         # (Multiple dx or dy values does not disable this inheritance.)
         # If sodipodi:role is not line, its anchoring/alignment will be inherited from the previous line.
         
         # Detect if inheriting position
         nspr = el.get('sodipodi:role');
+        
+        toplevelTspan = isinstance(el,Tspan) and isinstance(el.getparent(),TextElement);
+        myi = el.getparent().getchildren().index(el);
+        
+        if toplevelTspan:                tlvlno=myi;
+        elif isinstance(el,TextElement): tlvlno=0;
+        else:                            tlvlno=None;
+        
+        multiplepos = len(xv)>1 or len(yv)>1;           # multiple x or y values can disable sodipodi:role line
+#        if not(isinstance(el,Tspan) and isinstance(el.getparent(),TextElement)):
+#            nspr = None;
         # dh.debug(el.get('x'))
-        inheritpos = (nspr=='line' and len(xv)<=1) or (xv[0] is None)
+        inheritx = (nspr=='line' and not(multiplepos)) or (xv[0] is None)
+        inherity = (nspr=='line' and not(multiplepos)) or (yv[0] is None)
+
+#        if el.get_id()=='tspan7885':
+#            dh.debug(nspr)
+#            dh.debug(inheritx)
         
         # Determine if new line
         newline = False;            
         if isinstance(el,TextElement):
             newline = True
-        elif isinstance(el,Tspan) and isinstance(el.getparent(),TextElement):
-            myi = el.getparent().getchildren().index(el)
-            if inheritpos and myi==0: # if the first Tspan inherits, continue previous line
-                newline = False
-            else:
-                newline = True;
+        elif toplevelTspan: # top level Tspans
+            if not(inheritx) or not(inherity) or not(myi==0):                                         # if the first Tspan inherits, continue previous line
+                newline = True
+        elif isinstance(el,Tspan):                      # nested Tspans: become a new line with an explicit x or y
+            if el.get('x') is not None:  
+                newline = True; inheritx=False;
+            if el.get('y') is not None:  
+                newline = True; inherity=False;
         
-        # dh.debug(el.get_id() + str(inheritpos))
+        # dh.debug(el.get_id() + str(inheritx))
+#        dh.debug(el.get_id())
+#        dh.debug(newline)
+#        dh.debug(inheritx)
+#        dh.debug(inherity)
+#        dh.debug(toplevelTspan)
         
         # debug = True
         if debug:
@@ -111,48 +151,51 @@ class LineList():
             dh.debug(newline)
             dh.debug(fs)
             dh.debug(xv)
-            # dh.debug(inheritpos)
+            # dh.debug(inheritx)
         
         if newline:
+            continuex = False;
             if lns is None:  
                 lns=[];
-            elif inheritpos:                # if inheriting
-                if len(lns)==0 or len(lns[-1].x)==0: return None
-                else:
-                    xv   = [lns[-1].x[0]]; 
-                    xsrc = lns[-1].xsrc;
-                    ct   = lns[-1].transform;
-                    ang  = lns[-1].angle;
-                    
-                    dxv   = [lns[-1].dx[0]]; 
-                    dyv   = [lns[-1].dy[0]]; 
+            else:
+                if inheritx:                
+                    if len(lns)==0 or len(lns[-1].x)==0: return None
+                    else:
+                        if toplevelTspan and myi>0: # inheriting from previous top-level line
+                            lastln = [ln for ln in lns if ln.tlvlno==tlvlno-1][-1];
+                            xv   = [lastln.x[0]]; 
+                            xsrc = lastln.xsrc;
+                        else:                       # continuing previous line
+                            xv   = [None]; 
+                            xsrc = lns[-1].xsrc;
+                            continuex = True;
+#                        ct   = lns[-1].transform; # I don't think these do anything (2021.10.18)
+#                        ang  = lns[-1].angle;
+                if inherity:               
+                    if len(lns)==0 or len(lns[-1].y)==0: return None
+                    else:
+                        if toplevelTspan and myi>0: # inheriting from previous top-level line
+                            lastln = [ln for ln in lns if ln.tlvlno==tlvlno-1][-1];
+                            offs = lh/sf;
+                            if lns[-1].y[0] is not None:
+                                yv   = [lastln.y[0]+offs];
+                            else: yv = [None];
+                            ysrc = lastln.ysrc;
+                        else:
+                            yv   = [lns[-1].y[0]];
+                            ysrc = lns[-1].ysrc;
+                            
             anch = sty.get('text-anchor') 
             if len(lns)!=0 and nspr!='line':
-                anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
-            lns.append(tline(xv,yv,inheritpos,nspr,anch,ct,ang,el,xsrc,dxv,dyv))
-        # else: # disabled on 2021.07.14, I don't think it's necessary any more
-        #     if lns is not None:   # if we're continuing, make sure we have a valid x and y
-        #         if lns[-1].x[0] is None:
-        #             dh.debug(el.get_id())
-        #             lns[-1].x = xv; 
-        #             lns[-1].xsrc = xsrc;
-        #             lns[-1].transform = ct;
-        #             lns[-1].angle = ang;
-        #         if lns[-1].y[0] is None: lns[-1].y = yv
-        
-        
-        # if debug:
-        #     dh.debug(tv)
+                if lns[-1].anchor is not None:
+                    anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
+            lns.append(tline(xv,yv,inheritx,nspr,anch,ct,ang,el,xsrc,ysrc,continuex,tlvlno))
         
         ctable = self.ctable    
 #        dh.debug('test')
         if tv is not None and tv!='' and len(tv)>0:
-            # if debug:
-            #     dh.debug(tv)
             for ii in range(len(tv)):
-#                myi = [jj for jj in range(len(ctable.ctable[nsty])) if ctable.ctable[nsty][jj].char==tv[ii]][0]
-                if fs is None: return None # bail if there is text without font
-#                prop = ctable.ctable[nsty][myi]*fs;
+                # if fs is None: return None # bail if there is text without font
                 prop = ctable.get_prop(tv[ii],nsty)*fs;
                 lns[-1].addc(tchar(tv[ii],fs,sf,prop,sty,nsty,cloc(el,'text',ii)));
         
@@ -164,26 +207,37 @@ class LineList():
             tv = k.tail;
             if tv is not None and tv!='':
                 for ii in range(len(tv)):
-#                    myi = [jj for jj in range(len(ctable.ctable[nsty])) if ctable.ctable[nsty][jj].char==tv[ii]][0]
-                    if fs is None: return None # bail if there is text without font
-#                    prop = ctable.ctable[nsty][myi]*fs;    
+                    # if fs is None: return None # bail if there is text without font
                     prop = ctable.get_prop(tv[ii],nsty)*fs;
                     lns[-1].addc(tchar(tv[ii],fs,sf,prop,sty,nsty,cloc(k,'tail',ii)));
                     
         if tlvlcall: # finished recursing, finish lines
             if lns is not None:
-                for ln in reversed(lns): 
+                self.Get_Delta(lns,el,'dx');
+                self.Get_Delta(lns,el,'dy');
+#                for ln in reversed(lns): 
+#                    if ln.x[0] is None: # no x ever assigned
+#                        ln.x[0] = 0;
+#                    if ln.y[0] is None: # no y ever assigned
+#                        ln.y[0] = 0;
+#                    ln.parse_words()
+#                    if len(ln.cs)==0:
+#                        lns.remove(ln); # prune empty lines
+                for ii in range(len(lns)):
+                    ln = lns[ii];
                     if ln.x[0] is None: # no x ever assigned
-                        ln.x[0] = 0;
+                        if ln.continuex and ii>0 and len(lns[ii-1].ws)>0:
+                            lns[ii-1].ws[-1].calcprops();
+                            ln.x[0] = lns[ii-1].ws[-1].pts_ut[3].x
+                        else:
+                            ln.x[0] = 0;
                     if ln.y[0] is None: # no y ever assigned
                         ln.y[0] = 0;
-                    if ln.dx[0] is None: # no dx ever assigned
-                        ln.dx[0] = 0;
-                    if ln.dy[0] is None: # no dy ever assigned
-                        ln.dy[0] = 0;
                     ln.parse_words()
+                for ln in reversed(lns): 
                     if len(ln.cs)==0:
                         lns.remove(ln); # prune empty lines
+#                    dh.debug(ln.txt())
         return lns
     
     # For debugging only: make a rectange at all of the line's words' nominal bboxes
@@ -211,20 +265,56 @@ class LineList():
                 svg.append(r)
     
     
-    
-    
-    
-    
-    
-    
+    # Traverse the element tree to find dx/dy values and apply them to the chars
+    def Get_Delta(self,lns,el,xy,dxin=None,cntin=None,dxysrc=None):
+        if dxin is None:
+            dxy = GetXY(el,xy); dxysrc=el;
+            cnt = 0;
+            toplevel = True;
+        else:
+            dxy = dxin;
+            cnt = cntin;
+            toplevel = False;
+        
+
+        if len(dxy)>0 and dxy[0] is not None:
+            allcs = [c for ln in lns for c in ln.cs];
+        
+            # get text, then each child, then each child's tail
+            if el.text is not None:
+                for ii in range(len(el.text)):
+                    thec = [c for c in allcs if c.loc.el==el and c.loc.tt=='text' and c.loc.ind==ii];
+                    if cnt < len(dxy):
+                        if xy=='dx': thec[0].dx = dxy[cnt]; thec[0].dxloc = cloc(dxysrc,None,cnt);
+                        if xy=='dy': thec[0].dy = dxy[cnt]; thec[0].dyloc = cloc(dxysrc,None,cnt);
+                        cnt+=1
+#            dh.debug(cnt)
+            for k in el.getchildren():
+                cnt = self.Get_Delta(lns,k,xy,dxy,cnt,dxysrc);
+                if k.get('sodipodi:role')=='line' and isinstance(k,Tspan) and isinstance(k.getparent(),TextElement):
+                    cnt += 1; # top-level Tspans have an implicit CR
+                if k.tail is not None:
+                    for ii in range(len(k.tail)):
+                        thec = [c for c in allcs if c.loc.el==k and c.loc.tt=='tail' and c.loc.ind==ii];
+                        if cnt < len(dxy):
+                            if xy=='dx': thec[0].dx = dxy[cnt]; thec[0].dxloc = cloc(dxysrc,None,cnt);
+                            if xy=='dy': thec[0].dy = dxy[cnt]; thec[0].dyloc = cloc(dxysrc,None,cnt);
+                            cnt+=1
+                        
+        if toplevel:
+            for k in el.getchildren():
+                self.Get_Delta(lns,k,xy);
+                    
+        return cnt
+               
     
 # A single line, which represents a list of characters. Typically a top-level Tspan or TextElement.
 # This is further subdivided into a list of words
 class tline:
-    def __init__(self, x, y, inheritpos, nspr, anch, xform,ang,el,xsrc,dx,dy):
+    def __init__(self, x, y, inheritx, nspr, anch, xform,ang,el,xsrc,ysrc,continuex,tlvlno):
         self.x = x; 
         self.y = y;
-        self.inheritpos = inheritpos;    # inheriting position
+        self.inheritx = inheritx;    # inheriting position
         self.nsodipodirole = nspr;  # nominal value
         self.anchor = anch
         self.cs = [];
@@ -238,8 +328,11 @@ class tline:
         else:
             self.angle = ang; 
         self.xsrc = xsrc; # element from which we derive our x value
-        self.dx = dx;
-        self.dy = dy;
+        self.ysrc = ysrc; # element from which we derive our x value
+        self.continuex = continuex;  # when enabled, x of a line is the endpoint of the previous line
+        self.tlvlno = tlvlno;        # which number Tspan I am if I'm top-level (otherwise None)
+        # self.dx = dx;
+        # self.dy = dy;
         # self.ll = None;   # line list we belong to (add later)
     def addc(self,c):
         self.cs.append(c)
@@ -255,22 +348,6 @@ class tline:
     def parse_words(self):
         # Parsing a line into words is the final step that should be called once
         # the line parser has gotten all the characters
-        
-        # dx = GetXY(self.xsrc,'dx')
-        # dy = GetXY(self.xsrc,'dy')
-        # dh.debug(self.txt())
-        # dh.debug(self.x)
-        # dh.debug(self.dx)
-        # for ii in range(len(self.x)):
-        #     if len(self.dx)<len(self.x):
-        #         self.x[ii]=self.x[ii] + self.dx[-1];
-        #     else:
-        #         self.x[ii] = self.x[ii] + self.dx[ii];
-        # for ii in range(len(self.y)):
-        #     if len(self.dy)<len(self.y):
-        #         self.y[ii]=self.y[ii] + self.dy[-1];
-        #     else:
-        #         self.y[ii] = self.y[ii] + self.dy[ii];
         
         w=None;
         for ii in range(len(self.cs)):
@@ -297,13 +374,6 @@ class tline:
     def txt(self):   
         return ''.join([c.c for c in self.cs])
                 
-    
-    
-    
-    
-    
-    
-    
     
     
     
@@ -402,23 +472,35 @@ class tword:
     # Calculate the properties of a word that depend on its characters       
     def calcprops(self): # calculate properties inherited from characters
         w = self;
+        dxl = [c.dx for c in self.cs];
+        if len(dxl)==0: dxl=[0];
+#        dh.debug(w.txt())
+#        dh.debug(dxl)
         if len(w.cs)>0:
-            w.ww = sum([c.cw  for c in w.cs])
+            w.ww = sum([c.cw  for c in w.cs])+sum(dxl[1:])*w.sf
             w.fs = max([c.fs          for c in w.cs])
             w.sw = max([c.sw for c in w.cs])
             w.ch = max([c.ch   for c in w.cs])
             # w.dr = max([c.prop.descrh for c in w.cs])
         w.angle = w.ln.angle
         
-        w.offx = 0;
+        if len(w.cs)>0:
+            ymin = min([w.y+c.dy-c.ch/w.sf   for c in w.cs]);
+            ymax = max([w.y+c.dy             for c in w.cs]);
+        else:
+            ymin = w.y-w.ch/w.sf; ymax = w.y;
+        
         if self.ln.anchor=='middle':
-            w.offx = -w.ww/2;
+            w.offx = dxl[0]*w.sf/2-w.ww/2;
         elif self.ln.anchor=='end':
             w.offx = -w.ww;
+        else:
+            w.offx = dxl[0]*w.sf;
+            
 #        if w.x is None:
 #            dh.debug(w.ln.xsrc.get_id())
-        w.pts_ut = [Vector2d(w.x + w.offx/w.sf, w.y), Vector2d(w.x+ w.offx/w.sf, w.y-w.ch/w.sf),\
-                    Vector2d(w.x+(w.ww+w.offx)/w.sf, w.y-w.ch/w.sf), Vector2d(w.x+(w.ww+w.offx)/w.sf, w.y)];
+        w.pts_ut = [Vector2d(w.x + w.offx/w.sf, ymax), Vector2d(w.x+ w.offx/w.sf, ymin),\
+                    Vector2d(w.x+(w.ww+w.offx)/w.sf, ymin), Vector2d(w.x+(w.ww+w.offx)/w.sf, ymax)];
             # untransformed pts: bottom-left, top-left (cap height), top-right, bottom right
         w.pts_t=[];
         for p in w.pts_ut:
@@ -427,6 +509,13 @@ class tword:
                 min([p.y for p in w.pts_t]),\
                 max([p.x for p in w.pts_t])-min([p.x for p in w.pts_t]),\
                 max([p.y for p in w.pts_t])-min([p.y for p in w.pts_t])]);
+            
+        # if self.ln.anchor=='middle':
+        #     w.anchorpos = (w.x + w.offx/w.sf + w.x+(w.ww+w.offx)/w.sf)/2;
+        # elif self.ln.anchor=='end':
+        #     w.anchorpos = w.x+(w.ww+w.offx)/w.sf;
+        # else:
+        #     w.anchorpos = w.x + w.offx/w.sf;
                 # bounding box that begins at the anchor and stops at the cap height
         # w.txt = ''.join([c.c for c in w.cs])
         
@@ -450,6 +539,10 @@ class tchar:
         self.w  = None;   # my word (to be assigned)
         self.type=None;   # 'normal','super', or 'sub' (to be assigned)
         self.ofs = fs;    # original character width (never changed, even if character is updated later)
+        self.dx = 0;      # get later
+        self.dy = 0;      # get later
+        self.dxloc = None;      # get later
+        self.dyloc = None;      # get later
     def delc(self): # deletes me from document (and from my word/line)
         # Delete from document
         if self.loc.tt=='text':
@@ -487,6 +580,18 @@ class tchar:
         if len(self.w.cs)==0: # word now empty
             self.w.delw();
         self.w = None
+        # Delete from dx/dy
+        # if self.dxloc is not None:
+        #     olddx = [float(v) for v in self.dxloc.el.get('dx').split()]
+        #     newdx = del2(olddx,self.dxloc.ind);
+        #     newdx = ' '.join([str(v) for v in newdx])
+        #     self.dxloc.el.set('dx',newdx);
+        #     dh.debug(self.dxloc.el.get('dx'))
+        # if self.dyloc is not None:
+        #     olddy = [float(v) for v in self.dyloc.el.get('dy').split()]
+        #     newdy = del2(olddy,self.dyloc.ind);
+        #     newdy = ' '.join([str(v) for v in newdy])
+        #     self.dyloc.el.set('dy',newdy);
         
     def add_style(self,sty):
     # Adds a style to an existing character by wrapping it in a new Tspan

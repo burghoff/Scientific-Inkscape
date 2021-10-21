@@ -18,6 +18,10 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
+
+diagmode = True;
+diagmode = False;
+
 import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, FlowSpan, Tspan, TextPath, Rectangle, \
@@ -64,20 +68,21 @@ def descendants2(el):
     return descendants;
 
 def inkscape_editable(el):
-    ks=el.getchildren();
-    for k in ks:
-        if isinstance(k, (Tspan,TextElement)):
-            inkscape_editable(k)
-    if isinstance(el,TextElement):  # enable xml preserve so we can add spaces
-        el.set('xml:space','preserve')      
-    elif isinstance(el,Tspan):
-        myp = el.getparent();
-        if len(myp.getchildren())==1 and isinstance(myp,TextElement):  # only child, no nesting
-            tx = el.get('x'); ty=el.get('y');
+    if not(diagmode):
+        ks=el.getchildren();
+        for k in ks:
+            if isinstance(k, (Tspan,TextElement)):
+                inkscape_editable(k)
+        if isinstance(el,TextElement):  # enable xml preserve so we can add spaces
+            el.set('xml:space','preserve')      
+        elif isinstance(el,Tspan):
             myp = el.getparent();
-            if tx is not None: myp.set('x',tx)      # enabling sodipodi causes it to move to the parent's x and y
-            if ty is not None: myp.set('y',ty)      # enabling sodipodi causes it to move to the parent's x and y
-            el.set('sodipodi:role','line'); # reenable sodipodi so we can insert returns
+            if len(myp.getchildren())==1 and isinstance(myp,TextElement):  # only child, no nesting
+                tx = el.get('x'); ty=el.get('y');
+                myp = el.getparent();
+                if tx is not None: myp.set('x',tx)      # enabling sodipodi causes it to move to the parent's x and y
+                if ty is not None: myp.set('y',ty)      # enabling sodipodi causes it to move to the parent's x and y
+                el.set('sodipodi:role','line'); # reenable sodipodi so we can insert returns
 #            Set_Style_Comp(el,'text-anchor','middle');
 #            Set_Style_Comp(el,'text-align','center') # one day...
 #            Set_Style_Comp(myp,'text-anchor','middle');
@@ -160,8 +165,6 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
     XTOL = 0.5          # x tolerance (number of spaces)...let be big since there are kerning inaccuracies
     YTOL = 0.01         # y tolerance (number of spaces)...can be small
     SUBSUPER_THR = 0.9;  # ensuring sub/superscripts are smaller helps reduce false merges
-    diagmode = True;
-    diagmode = False;
     
     ws = []; lls=[]
     for el in os:
@@ -208,6 +211,14 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
                             newtxt = duplicate2(ln.ws[sstart].cs[0].loc.textel);
                             os.append(newtxt)
                             nll = tp.LineList(newtxt,ct);
+                            
+                            
+                            # Record position and d
+                            x0 = sws[sstart].x
+                            dxl = [c.dx for w in sws[sstart:sstop] for c in w.cs];
+                            y0 = sws[sstart].y
+                            dyl = [c.dy for w in sws[sstart:sstop] for c in w.cs];
+                            
                             for jj in reversed(range(sstart,sstop)):
                                 sws[jj].delw();
                             for il2 in reversed(range(len(nll.lns))):
@@ -216,9 +227,17 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
                                 else:
                                     nln = nll.lns[il2];
                                     nsws = [x for _, x in sorted(zip([w.x for w in nln.ws], nln.ws), key=lambda pair: pair[0])] # words sorted in ascending x
+                                    nsws[sstart].cs[0].loc.el.set('x',str(x0))
                                     for jj in reversed(range(len(nsws))):
                                         if not(jj in list(range(sstart,sstop))):
                                             nsws[jj].delw();
+                                            
+
+                            for d in newtxt.descendants(): d.set('dx',None)
+                            newtxt.set('dx',' '.join([str(v) for v in dxl]));
+                            for d in newtxt.descendants(): d.set('dy',None)
+                            newtxt.set('dy',' '.join([str(v) for v in dyl]));
+                                            
                             lls.append(nll)
                             
         
@@ -353,7 +372,7 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
         for w in ws:
             # debug(ws[0].ln.xsrc.get_id())
             if len(w.merges)>0 and not(w.merged):
-    #            debug(w.mergetypes)
+                # debug(w.mergetypes)
                 # if w.wtypes[0]=='sub' or w.wtypes[0]=='super': # initial sub/super
                 #     iin = [v=='normal' for v in w.wtype].index(True) # first normal index
                 #     fc = w.cs[0]
@@ -370,20 +389,50 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
             for ll in lls:
                 if ll.lns is not None and len(ll.lns)!=0:
                     for il in reversed(range(1,len(ll.lns))):
-                        # to split by line, duplicate the whole text el and delete all other lines
+                        # To split by line, duplicate the whole text el and delete all other lines
                         ln = ll.lns[il]; # line to be popped out
                         if len(ln.cs)>0:
                             newtxt = duplicate2(ll.textel);
                             os.append(newtxt)
                             nll = tp.LineList(newtxt,ct,debug=False);
-                            # debug(ll.lns[0].ws[0].txt())
-                            # debug(len(nll.lns))
+                            nln = nll.lns[il]  # new copy of line
+                            
+                            # Record positions and d's
+                            x0 = nln.ws[0].x
+                            dxl = [c.dx for c in ln.cs];
+                            y0 = nln.ws[0].y
+                            dyl = [c.dy for c in ln.cs];
+
+                            # Delete other lines
                             ln.dell();
                             if nll.lns is not None:
                                 for il2 in reversed(range(len(nll.lns))):
                                     if il2!=il:
                                         nll.lns[il2].dell();
+                                
+                            # Put position on element and parent text
+                            nln.cs[0].loc.el.set('x',str(x0))
+                            nln.cs[0].loc.el.set('y',str(y0))
+                            newtxt.set('x',str(x0))
+                            newtxt.set('y',str(y0))
+                            
+                            # Clear d's and restore
+                            for d in newtxt.descendants(): d.set('dx',None)
+                            newtxt.set('dx',' '.join([str(v) for v in dxl]));
+                            for d in newtxt.descendants(): d.set('dy',None)
+                            newtxt.set('dy',' '.join([str(v) for v in dyl]));
+                            
                             lls.append(nll)
+                            
+                        # If the parent x got deleted, restore it
+                        if ll.textel.get('x') is None:
+                            if len(ll.lns)>0 and len(ll.lns[0].ws)>0:
+                                x0 = ll.lns[0].ws[0].x
+                                ll.textel.set('x',str(x0))
+                        if ll.textel.get('y') is None:
+                            if len(ll.lns)>0 and len(ll.lns[0].ws)>0:
+                                y0 = ll.lns[0].ws[0].y
+                                ll.textel.set('y',str(y0))
                         
         # Clean up empty elements
         for el in reversed(os):
@@ -395,7 +444,8 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
 
 def deleteempty(el):
     def wstrip(txt): # strip whitespaces
-        return txt.translate({ord(c):None for c in ' \n\t\r'});
+        return txt # removing whitespace can cause problems if it is needed for the line's structure
+        # return txt.translate({ord(c):None for c in ' \n\t\r'}); 
     for k in el.getchildren():
         deleteempty(k)
     txt = el.text;
@@ -519,22 +569,16 @@ def dupe_in_cssdict(oldid,newid):
             cssdict[newid]=csssty;
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate
-# the true size reported by Inkscape, inheriting any styles/transforms/document scaling
+# the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
 def Get_Composed_Width(el,comp,nargout=1):
     # cs = el.composed_style();
     cs = selected_style_local(el);
     ct = el.composed_transform();
     if nargout==4:
         ang = math.atan2(ct.c,ct.d)*180/math.pi;
-    # debug(math.atan2(ct.c,ct.d)*180/math.pi)
     svg = get_parent_svg(el)
     docscale = svg.scale;
     sc = Get_Style_Comp(cs,comp);
-    # if sc is None: # if none, see if there's an attribute (e.g., font-size)
-    #     sc = el.get(comp); 
-    # if sc is None:
-    #     cs = selected_style_local(el); # as a last ditch effort, try the slower selected_style
-    #     sc = Get_Style_Comp(cs,comp);
     if sc is not None:
         if '%' in sc: # relative width, get parent width
             sc = float(sc.strip('%'))/100;
@@ -554,10 +598,28 @@ def Get_Composed_Width(el,comp,nargout=1):
             else:
                 return sw*sf
     else:
+        returnval = None;
+        if comp=='font-size':
+            returnval = 12; # default font is 12 uu
         if nargout==4:
-            return None,None,ct,ang
+            return returnval,None,ct,ang
         else:
-            return None
+            return returnval
+    
+# Get line-height in user units
+def Get_Composed_LineHeight(el):    # cs = el.composed_style();
+    cs = selected_style_local(el);
+    svg = get_parent_svg(el);
+    sc = Get_Style_Comp(cs,'line-height');
+    if sc is not None:
+        if '%' in sc: # relative width, get parent width
+            sc = float(sc.strip('%'))/100;
+        else:
+            sc = float(sc);
+    if sc is None:
+        sc = 1.25;   # default line-height is 12 uu
+    fs = Get_Composed_Width(el,'font-size')
+    return sc*fs
     
 # For style components that are a list (stroke-dasharray), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms
@@ -1007,6 +1069,7 @@ def Replace_Non_Ascii_Font(el,newfont,*args):
                 sty = 'baseline-shift:0%;';
                 for w in ws:
                     if any([nonletter(c) for c in w]):
+                        w=w.replace(' ','\u00A0'); # spaces can disappear, replace with NBSP
                         ts = Tspan(w,style=sty+'font-family:'+newfont)
                         el.append(ts);
                         lstspan = ts;

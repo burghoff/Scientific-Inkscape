@@ -36,7 +36,7 @@ Replace missing fonts: If a font is not on your machine, replace it with this fo
     <effect>
         <object-type>text</object-type>
         <effects-menu>
-            <submenu name="Academic"/>
+            <submenu name="Scientific"/>
         </effects-menu>
     </effect>
     <script>

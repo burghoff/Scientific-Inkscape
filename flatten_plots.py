@@ -127,9 +127,9 @@ class FlattenPlots(inkex.EffectExtension):
                 ct = tp.Character_Table(list(set(list(reversed(os)))),self)
                 os = dh.remove_kerning(os,ct,fixshattering,mergesubsuper,splitdistant,mergenearby) 
                 
-            for el in os:
-                if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
-                    dh.inkscape_editable(el)
+            # for el in os:
+            #     if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
+            #         dh.inkscape_editable(el)
 
         
         if removerectw:
