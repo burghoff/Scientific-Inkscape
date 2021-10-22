@@ -25,7 +25,7 @@ To use:
 2. Place any objects that you wish to remain unscaled in a group.
 3. Select the elements of your plot and run Scale Plots.
 
-Scale Plots has two modes. In Scaling Mode, the plot is scaled by a constant factor. In Matching Mode, the plot area is made to match the size of the first object you select. This can be convenient when assembling subfigures, as it allows you to match the size of one plot to another plot or to a template rectangle.
+Scale Plots has three modes. In Scaling Mode, the plot is scaled by a constant factor. In Matching Mode, the plot area is made to match the size of the first object you select. This can be convenient when assembling subfigures, as it allows you to match the size of one plot to another plot or to a template rectangle. In Correction Mode, a plot that has already been (badly) manually scaled will be corrected.
             
 ## Advanced options
 1. If "Auto tick correct" is enabled, the extension assumes that any small horizontal or vertical lines near the edges of the plot area are ticks, and automatically leaves them unscaled.
@@ -51,7 +51,7 @@ Flatten Plots is a utility that makes it easier to edit plots are exported from 
 The Homogenizer is a utility that does what its name implies: it will set all of the fonts, font sizes, and stroke widths in a selection to the same value. It also removes any text distortions. This is most useful when assembling sub-figures, as it allows you to ensure that the whole figure has a uniform look. 
 
 # Auto-Exporter
-The Auto-Exporter is not technically an extension, it is a Python script meant to be run in the background as a service. If you frequently export your figures to other formats, you know that updating them whenever you change your figure is a nuisance. This program does it automatically: you specify a directory that the program monitors, and whenever any SVGs are changed, it automatically converts them to the formats you specify. Just select (a) the location where the Inkscape binary is installed, (b) what directory you would like it to watch, and (c) where you would like it to put the exports.
+The Auto-Exporter is not an extension, it is a Python script meant to be run in the background as a service. If you frequently export your figures to other formats, you know that updating them whenever you change your figure is a nuisance. This program does it automatically: you specify a directory that the program monitors, and whenever any SVGs are changed, it automatically converts them to the formats you specify. Just select (a) the location where the Inkscape binary is installed, (b) what directory you would like it to watch, and (c) where you would like it to put the exports.
 
 It is currently implemented as a Python script and requires at least Python 3.7. If someone would like to package it into a nice GUI and create executables, let me know.
 
