@@ -34,7 +34,14 @@ def GetXY(el,xy):
     if val is None:   
         val = [None]; # None forces inheritance
     else:             
-        val = [float(x) for x in val.split()];
+#        dh.debug(val);
+#        dh.debug(val.lower()=='None')
+        tmp = [];
+        for x in val.split():
+            if x.lower()=='none':  tmp.append(0);
+            else:                  tmp.append(float(x));
+        val = tmp;
+        # val = [float(x) for x in val.split()];
         # if dval is not None:
         #     dval = [float(x) for x in dval.split()];
         #     # dval2 = [dval[0]];

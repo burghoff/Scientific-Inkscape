@@ -135,8 +135,16 @@ class ScalePlots(inkex.EffectExtension):
             hmatch = self.options.hmatch;
             vmatch = self.options.vmatch;
             matchingmode = True;
+        elif self.options.tab=='correction':
+            hdrag = 1
+            vdrag = 1
+            scalex = 1;
+            scaley = 1;
+            matchingmode = False;
+            if not(all([isinstance(k,Group) for k in sel])):
+                inkex.utils.errormsg('Correction mode requires that every selected object be a group'); return
         else:
-            inkex.utils.errormsg('Select Scaling or Matching mode'); return;
+            inkex.utils.errormsg('Select Scaling, Matching, or Correction mode'); return;
             
         
         sfgs = []; sfels = [];    # all scale-free objects, whether or not they're selected
@@ -162,9 +170,12 @@ class ScalePlots(inkex.EffectExtension):
         if not(groupedmode):
             asel = [sel];
         else:
+            gsel = sel; # groups
+            trs = [Transform(s.get('transform')) for s in sel]; # for correction mode
             asel = [list(s.getchildren()) for s in sel];
         
-        for sel in asel:
+        for i0 in range(len(asel)): #sel in asel:
+            sel = asel[i0];
             # Calculate geometric (tight) bounding boxes of selected items
             sel = [k for k in sel if k.get_id() in list(fbbs.keys())]; # only work on objects with a BB
             bbs=dict();  
@@ -202,15 +213,22 @@ class ScalePlots(inkex.EffectExtension):
                         vels[el.get_id()]=bb[3];
                         hels[el.get_id()]=bb[2];
             
-            # Display error message            
-            if len(vels)==0:
-                inkex.utils.errormsg('No vertical lines detected in selection! Make a vertical line or box to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
-            if len(hels)==0:
-                inkex.utils.errormsg('No horizontal lines detected in selection! Make a horizontal line or box to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
+            # Display warning message            
             if len(vels)==0 or len(hels)==0:
-                return;
-            lvl = max(vels, key=vels.get); # largest vertical
-            lhl = max(hels, key=hels.get); # largest horizontal
+                inkex.utils.errormsg('Plot area could not be automatically detected. Draw an outlined box to define the plot area.'+\
+                                     '\nScaling will still be performed, but the results will be less ideal.');
+                noplotarea = True;
+                lvl = None; lhl = None;
+            else:
+                noplotarea = False;
+                lvl = max(vels, key=vels.get); # largest vertical
+                lhl = max(hels, key=hels.get); # largest horizontal
+            # if len(vels)==0:
+            #     inkex.utils.errormsg('No vertical lines detected in selection! Make a vertical line or box to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
+            # if len(hels)==0:
+            #     inkex.utils.errormsg('No horizontal lines detected in selection! Make a horizontal line or box to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
+            # if len(vels)==0 or len(hels)==0:
+            #     return;
                 
             # Determine the bounding box of the whole selection and the plot area
             minx = miny = minxp = minyp = fminxp = fminyp = float('inf');
@@ -221,7 +239,7 @@ class ScalePlots(inkex.EffectExtension):
                 miny = min(miny,bb[1]);
                 maxx = max(maxx,bb[0]+bb[2]);
                 maxy = max(maxy,bb[1]+bb[3]);
-                if el.get_id() in [lvl,lhl]:
+                if el.get_id() in [lvl,lhl] or noplotarea:
                     minyp = min(minyp,bb[1]);
                     maxyp = max(maxyp,bb[1]+bb[3]);
                     minxp = min(minxp,bb[0]);
@@ -232,6 +250,42 @@ class ScalePlots(inkex.EffectExtension):
                     fminxp = min(fminxp,fbb[0]);
                     fmaxxp = max(fmaxxp,fbb[0]+fbb[2]);
                     
+            if self.options.tab=='correction':
+                # Invert the existing transform so we can run the rest of the code regularly
+                extr = trs[i0]; # existing transform
+                scalex = extr.a
+                scaley = extr.d
+                refx = (minxp+maxxp)/2; refy = (minyp+maxyp)/2;
+                trl = Transform('translate('+str(refx)+', '+str(refy)+')');
+                scl = Transform('scale('+str(1/scalex)+', '+str(1/scaley)+')');
+                iextr = trl*scl*(-trl); # invert existing transform
+                dh.global_transform(gsel[i0],iextr);
+                # Invert the transform on the bounding boxes (fix later)
+                import copy
+                actfbbs = copy.deepcopy(fbbs); actbbs=copy.deepcopy(bbs);
+                for elid in fbbs.keys():
+                    fbbs[elid] = bbox(fbbs[elid]).transform(iextr).sbb;
+                for elid in bbs.keys():
+                    bbs[elid]  = bbox(bbs[elid] ).transform(iextr).sbb;
+                minx = miny = minxp = minyp = fminxp = fminyp = float('inf');
+                maxx = maxy = maxxp = maxyp = fmaxxp = fmaxyp = float('-inf');
+                for el in sel:
+                    bb=bbs[el.get_id()];
+                    minx = min(minx,bb[0]);
+                    miny = min(miny,bb[1]);
+                    maxx = max(maxx,bb[0]+bb[2]);
+                    maxy = max(maxy,bb[1]+bb[3]);
+                    if el.get_id() in [lvl,lhl] or noplotarea:
+                        minyp = min(minyp,bb[1]);
+                        maxyp = max(maxyp,bb[1]+bb[3]);
+                        minxp = min(minxp,bb[0]);
+                        maxxp = max(maxxp,bb[0]+bb[2]);
+                        fbb=fbbs[el.get_id()];
+                        fminyp = min(fminyp,fbb[1]);
+                        fmaxyp = max(fmaxyp,fbb[1]+fbb[3]);
+                        fminxp = min(fminxp,fbb[0]);
+                        fmaxxp = max(fmaxxp,fbb[0]+fbb[2]);
+            
                     
             if self.options.tab=='matching':
                 bbfirst = bbs[firstsel.get_id()];
@@ -244,20 +298,22 @@ class ScalePlots(inkex.EffectExtension):
                 else:
                     scaley = 1;
             
-            # Compute global transformation        
-            if hdrag==1: # right
-                refx = minx;
-            else:        # left
-                refx = maxx;
-            if vdrag==1: # bottom
-                refy = miny;
-            else:        # top
-                refy = maxy;
+            
+            # Compute global transformation
+            if self.options.tab!='correction':
+                if hdrag==1: # right
+                    refx = minx;
+                else:        # left
+                    refx = maxx;
+                if vdrag==1: # bottom
+                    refy = miny;
+                else:        # top
+                    refy = maxy;
             trl = Transform('translate('+str(refx)+', '+str(refy)+')');
             scl = Transform('scale('+str(scalex)+', '+str(scaley)+')');
+            
             gtr = trl*scl*(-trl); # global transformation
             iscl = Transform('scale('+str(1/scalex)+', '+str(1/scaley)+')');
-    
             trul = gtr.apply_to_point([minxp,minyp]) # transformed upper-left
             trbr = gtr.apply_to_point([maxxp,maxyp]) # transformed bottom-right
             
@@ -291,12 +347,12 @@ class ScalePlots(inkex.EffectExtension):
                 fbb=fbbs[elid];   
                 isalwayscorr  = isinstance(el, (TextElement,Group,FlowRoot)); # els always corrected
                 isoutsideplot = fbb[0]>fmaxxp or fbb[0]+fbb[2]<fminxp \
-                             or fbb[1]>fmaxyp or fbb[1]+fbb[3]<fminyp;        # els outside plot
+                              or fbb[1]>fmaxyp or fbb[1]+fbb[3]<fminyp;        # els outside plot
                 issf = (el in sfels);                                         # is scale-free
 
                 vtickt = vtickb = htickl = htickr = False;                    # el is a tick
                 if tickcorrect and ((elid in list(vl.keys())) \
-                                 or (elid in list(hl.keys()))):    
+                                  or (elid in list(hl.keys()))):    
                     isvert = (elid in list(vl.keys()));
                     ishorz = (elid in list(hl.keys()));
                     bb=bbs[elid];
@@ -377,13 +433,18 @@ class ScalePlots(inkex.EffectExtension):
                                 oy = bb[1]+bb[3]/2 - minyp;
                                 dy = oy - (cy-trul[1]);
                             if cy > trbr[1]:
-                                 oy = bb[1]+bb[3]/2 - maxyp;
-                                 dy = oy - (cy-trbr[1]);
+                                  oy = bb[1]+bb[3]/2 - maxyp;
+                                  dy = oy - (cy-trbr[1]);
                             tr2 = Transform('translate('+str(dx)+', '+str(dy)+')');
                             irng.append([cbc[ii],cbc[ii+1]])
                             trng.append(tr2*tr1)
                         dh.global_transform(el,It,irange=irng,trange=trng);
-                            
+            
+
+            # restore bbs             
+            if self.options.tab=='correction':
+                fbbs = actfbbs; bbs=actbbs;
+                
 #        pr.disable()
 #        s = io.StringIO()
 #        sortby = SortKey.CUMULATIVE

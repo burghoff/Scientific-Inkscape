@@ -22,9 +22,11 @@ import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, addNS, \
     Transform, Style, PathElement, Line, Rectangle, Path,Vector2d, \
-    Use, NamedView, Defs, Metadata, ForeignObject, Group, FontFace, FlowSpan
+    Use, NamedView, Defs, Metadata, ForeignObject, Group, FontFace, FlowSpan, \
+    Image, FlowRegion
 )
 import dhelpers as dh
+from applytransform_mod import ApplyTransform
 import math
 
 dispprofile = False
@@ -46,6 +48,7 @@ class ScalePlots(inkex.EffectExtension):
         
         pars.add_argument("--setstroke", type=inkex.Boolean, default=True,help="Set stroke width?")
         pars.add_argument("--setstrokew", type=float, default=1, help="New stroke width (px)");
+        pars.add_argument("--fusetransforms", type=inkex.Boolean, default=1, help="Fuse transforms to paths?");
 
     def effect(self):
         if dispprofile:
@@ -102,7 +105,7 @@ class ScalePlots(inkex.EffectExtension):
             for el in reversed(sel):
                 dh.Set_Style_Comp(el,'font-family',fontfamily)
                 dh.Set_Style_Comp(el,'-inkscape-font-specification',None)
-                if fontfamily=='Avenir' and isinstance(el,(TextElement,FlowRoot)):
+                if fontfamily in ['Avenir','Whitney','Whitney Book'] and isinstance(el,(TextElement,FlowRoot)):
                     dh.Replace_Non_Ascii_Font(el,'Avenir Next, Arial')
         
 #        if setreplacement:
@@ -145,6 +148,12 @@ class ScalePlots(inkex.EffectExtension):
                         nomw,u = dh.uparse(dh.Get_Style_Comp(el.style,'stroke-width'));
                     sw = dh.urender(nw*nomw/actw,u)    
                     dh.Set_Style_Comp(el,'stroke-width',sw)
+                    
+                    
+        if self.options.fusetransforms:
+            for el in sela:
+                 if not(isinstance(el, (TextElement,Image,Group,Tspan,FlowRoot,FlowPara,FlowRegion,FlowSpan))): # not(el.typename in ['TextElement','Image','Group']):
+                     ApplyTransform().recursiveFuseTransform(el);
         
         if dispprofile:
             pr.disable()

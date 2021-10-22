@@ -39,7 +39,6 @@ It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
 def descendants2(el):
     # Like descendants(), but avoids recursion to avoid recursion depth issues
     cel = el;
-    # debug(cel.descendants())
     keepgoing = True; childrendone = False;
     descendants = [];
     while keepgoing:
@@ -434,23 +433,40 @@ def remove_kerning(os,ct,fixshattering,mergesupersub,splitdistant,mergenearby):
                                 y0 = ll.lns[0].ws[0].y
                                 ll.textel.set('y',str(y0))
                         
-        # Clean up empty elements
+        # Clean up empty elements and enable xml:space
         for el in reversed(os):
             if isinstance(el,TextElement) and el.getparent() is not None:
+                # if len(el.getchildren())>0 and any([k.text=='analyzer' for k in el.getchildren()]):
+                #     for k in el.getchildren():
+                #         debug([ord(c) for c in k.text])
+                        # debug(k.tail)
+                el.set('xml:space','preserve')    
                 deleteempty(el)
     return [el for el in os if el.getparent() is not None]
             
     
 
 def deleteempty(el):
-    def wstrip(txt): # strip whitespaces
-        return txt # removing whitespace can cause problems if it is needed for the line's structure
-        # return txt.translate({ord(c):None for c in ' \n\t\r'}); 
+    # def wstrip(txt): # strip whitespaces
+    #     return txt # removing whitespace can cause problems if it is needed for the line's structure
+#         return txt.translate({ord(c):None for c in ' \n\t\r'}); 
     for k in el.getchildren():
         deleteempty(k)
     txt = el.text;
     tail = el.tail;
-    if (txt is None or len(wstrip(txt))==0) and (tail is None or len(wstrip(tail))==0) and len(el.getchildren())==0:
+    if (txt is None or len((txt))==0) and (tail is None or len((tail))==0) and len(el.getchildren())==0:
+        el.delete();                    # delete anything empty
+    elif isinstance(el, (TextElement)):    
+        def wstrip(txt): # strip whitespaces
+             return txt.translate({ord(c):None for c in ' \n\t\r'}); 
+        if all([(d.text is None or len(wstrip(d.text))==0) and (d.tail is None or len(wstrip(d.tail))==0) for d in descendants2(el)]):
+            el.delete(); # delete any text elements that are just white space
+        
+def deleteempty2(el):
+    # delete elements totally empty but for whitespace
+    def wstrip(txt): # strip whitespaces
+         return txt.translate({ord(c):None for c in ' \n\t\r'}); 
+    if all([(d.text is None or len(wstrip(d.text))==0) and (d.tail is None or len(wstrip(d.tail))==0) for d in descendants2(el)]):
         el.delete();
 
 # sets a style property (of an element)  
@@ -614,6 +630,8 @@ def Get_Composed_LineHeight(el):    # cs = el.composed_style();
     if sc is not None:
         if '%' in sc: # relative width, get parent width
             sc = float(sc.strip('%'))/100;
+        elif sc.lower()=='normal':
+            sc = 1.25
         else:
             sc = float(sc);
     if sc is None:

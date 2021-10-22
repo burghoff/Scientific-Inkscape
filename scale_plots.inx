@@ -12,17 +12,7 @@
             
             <label appearance="header">Main options</label>
             <param name="hscale" type="float" precision="0" min="1" max="9999" gui-text="Horizontal scaling (%)">100</param>
-            <param name="hdrag" type="optiongroup" appearance="combo"
-                    gui-text="Drag from">
-                       <option value="1">Right</option>
-                       <option value="2">Left</option>
-                    </param>
             <param name="vscale" type="float" precision="0" min="1" max="9999" gui-text="Vertical scaling (%)">100</param>
-            <param name="vdrag" type="optiongroup" appearance="combo"
-                    gui-text="Drag from">
-                       <option value="1">Bottom</option>
-                       <option value="2">Top</option>
-                    </param>
             <spacer/><label>By David Burghoff, University of Notre Dame</label>
         </page> 
         
@@ -32,21 +22,32 @@
             </label>
             <label appearance="header">Main options</label>
             <param name="hmatch" type="bool" gui-text="Match width?">true</param>
-            <param name="hdrag2" type="optiongroup" appearance="combo"
+            <param name="vmatch" type="bool" gui-text="Match height?">true</param>
+            <spacer/><label>By David Burghoff, University of Notre Dame</label>
+        </page>
+        
+        <page name="correction" gui-text="Correction mode">
+            <label>Corrects the text and lines of plots that have already been manually scaled. To use, Flatten each plot (as normal) and</label>
+            <label>1. Group each plot you wish to scale.</label>
+            <label>2. Manually scale the plot to its desired size. </label>
+            <label>3. Select each manually scaled plot and run in this mode.</label>
+            <label>It is important that you scale the plot AFTER grouping it, because the extension infers the scale from the group's properties.</label>
+            <spacer/><label>By David Burghoff, University of Notre Dame</label>
+        </page>
+        
+        <page name="options" gui-text="Advanced">
+            <label appearance="header">How to drag</label>
+            <param name="hdrag" type="optiongroup" appearance="combo"
                     gui-text="Drag from">
                        <option value="1">Right</option>
                        <option value="2">Left</option>
                     </param>
-            <param name="vmatch" type="bool" gui-text="Match height?">true</param>
-            <param name="vdrag2" type="optiongroup" appearance="combo"
+            <param name="vdrag" type="optiongroup" appearance="combo"
                     gui-text="Drag from">
                        <option value="1">Bottom</option>
                        <option value="2">Top</option>
                     </param>
-            <spacer/><label>By David Burghoff, University of Notre Dame</label>
-        </page>
-        
-        <page name="options" gui-text="Advanced options">
+                    
             <label appearance="header">Tick correction</label>
             <label>If tick correction is enabled, any horizontal or vertical lines smaller than the threshold will be corrected for size and position.</label>
             <param name="tickcorrect" type="bool" gui-text="Auto tick correct?">true</param>
