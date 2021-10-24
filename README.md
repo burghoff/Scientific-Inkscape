@@ -25,7 +25,7 @@ To use:
 2. Place any objects that you wish to remain unscaled in a group.
 3. Select the elements of your plot and run Scale Plots.
 
-Scale Plots has three modes. In Scaling Mode, the plot is scaled by a constant factor. In Matching Mode, the plot area is made to match the size of the first object you select. This can be convenient when assembling subfigures, as it allows you to match the size of one plot to another plot or to a template rectangle. In Correction Mode, a plot that has already been (badly) manually scaled will be corrected. This is handy for manually adjusting figures.
+Scale Plots has three modes. In Scaling Mode, the plot is scaled by a constant factor. In Matching Mode, the plot area is made to match the size of the first object you select. This can be convenient when assembling subfigures, as it allows you to match the size of one plot to another plot or to a template rectangle. In Correction Mode, a plot that has already been (badly) manually scaled will be corrected. This is so you can manually drag the figure (see below).
 <br><p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Correction_mode.gif" width="75%"></img></p>
 
 ## Advanced options
@@ -33,7 +33,7 @@ Scale Plots has three modes. In Scaling Mode, the plot is scaled by a constant f
 2. If a layer name or group ID is put into the "Scale-free elements" option, any elements on that layer will remain unscaled. This is basically the same thing as putting an object in a group, but can be easier if there are many such objects (e.g, if your plot has markers).
 
 # Flatten Plots
-Flatten Plots is a utility that makes it easier to edit plots are exported from common plotting programs and imported into Inkscape, as well as figures imported from PDF papers.
+Flatten Plots is a utility that makes it easier to edit plots are exported from common plotting programs and imported into Inkscape, as well as figures imported from papers.
 1. *Deep ungroup*: The Scale Plots utility uses grouping to determine when objects are to be kept together, so a deep ungroup is typically needed to remove any existing groupings initially. It also unlinks any clones.
 2. *Apply text fixes*: Applies a series of fixes to text described below (particularly useful for PDF/EPS text).
 3. *Remove white rectangles*: Removes any rectangles that have white fill and no stroke. Mostly for removing a plot's background.
