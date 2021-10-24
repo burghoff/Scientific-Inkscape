@@ -22,7 +22,7 @@
             <label>By David Burghoff, University of Notre Dame</label>   
         </page>
     </param>
-    <effect>
+    <effect needs-live-preview="false">
         <object-type>text</object-type>
         <effects-menu>
             <submenu name="Scientific"/>

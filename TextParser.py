@@ -87,6 +87,8 @@ class LineList():
         # sty = el.composed_style();
         sty = dh.selected_style_local(el);
         fs,sf,ct,ang = dh.Get_Composed_Width(el,'font-size',4); #dh.debug(el.get_id()); dh.debug(el.composed_transform())
+        # if sf is None:
+        #     dh.debug(el.get_id())
         # lh = dh.selected_style_local(el).get('line-height');
         # lh2 = dh.Get_Composed_Width(el,'line-height');
         lh = dh.Get_Composed_LineHeight(el);
@@ -121,12 +123,11 @@ class LineList():
         else:                            tlvlno=None;
         
         multiplepos = len(xv)>1 or len(yv)>1;           # multiple x or y values can disable sodipodi:role line
-#        if not(isinstance(el,Tspan) and isinstance(el.getparent(),TextElement)):
-#            nspr = None;
-        # dh.debug(el.get('x'))
         inheritx = (nspr=='line' and not(multiplepos)) or (xv[0] is None)
         inherity = (nspr=='line' and not(multiplepos)) or (yv[0] is None)
 
+        # dh.debug(el.get_id())
+        # dh.debug(inheritx)
 #        if el.get_id()=='tspan7885':
 #            dh.debug(nspr)
 #            dh.debug(inheritx)
@@ -145,10 +146,13 @@ class LineList():
                 newline = True; inherity=False;
         
         # dh.debug(el.get_id() + str(inheritx))
-#        dh.debug(el.get_id())
-#        dh.debug(newline)
-#        dh.debug(inheritx)
-#        dh.debug(inherity)
+        # dh.debug(el.get_id())
+        # dh.debug(len(el.text))
+        # dh.debug(newline)
+        # dh.debug(inheritx)
+        # dh.debug(inherity)
+        # dh.debug((nspr=='line' and not(multiplepos)) or (yv[0] is None))
+        # dh.debug(' ')
 #        dh.debug(toplevelTspan)
         
         # debug = True
@@ -188,7 +192,7 @@ class LineList():
                                 yv   = [lastln.y[0]+offs];
                             else: yv = [None];
                             ysrc = lastln.ysrc;
-                        else:
+                        else:                       # continuing previous line
                             yv   = [lns[-1].y[0]];
                             ysrc = lns[-1].ysrc;
                             
@@ -196,7 +200,7 @@ class LineList():
             if len(lns)!=0 and nspr!='line':
                 if lns[-1].anchor is not None:
                     anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
-            lns.append(tline(xv,yv,inheritx,nspr,anch,ct,ang,el,xsrc,ysrc,continuex,tlvlno))
+            lns.append(tline(xv,yv,inheritx,nspr,anch,ct,ang,el,xsrc,ysrc,continuex,tlvlno,sty))
         
         ctable = self.ctable    
 #        dh.debug('test')
@@ -261,6 +265,8 @@ class LineList():
                     ys.append(ap.y);
                     x2s.append(ap2.x);
                     y2s.append(ap2.y);
+                    # dh.debug(w.pts_ut[0][0])
+                    # dh.debug(w.pts_ut[2][0])
                 
             for ii in range(len(xs)):
                 r = Rectangle();
@@ -276,6 +282,8 @@ class LineList():
     def Get_Delta(self,lns,el,xy,dxin=None,cntin=None,dxysrc=None):
         if dxin is None:
             dxy = GetXY(el,xy); dxysrc=el;
+            # dh.debug(el.get_id())
+            # dh.debug(dxy)
             cnt = 0;
             toplevel = True;
         else:
@@ -292,6 +300,7 @@ class LineList():
                 for ii in range(len(el.text)):
                     thec = [c for c in allcs if c.loc.el==el and c.loc.tt=='text' and c.loc.ind==ii];
                     if cnt < len(dxy):
+                        # if dxy[cnt]==30: dh.debug(dxysrc.get_id())
                         if xy=='dx': thec[0].dx = dxy[cnt]; thec[0].dxloc = cloc(dxysrc,None,cnt);
                         if xy=='dy': thec[0].dy = dxy[cnt]; thec[0].dyloc = cloc(dxysrc,None,cnt);
                         cnt+=1
@@ -304,6 +313,7 @@ class LineList():
                     for ii in range(len(k.tail)):
                         thec = [c for c in allcs if c.loc.el==k and c.loc.tt=='tail' and c.loc.ind==ii];
                         if cnt < len(dxy):
+                            # if dxy[cnt]==30: dh.debug(dxysrc.get_id())
                             if xy=='dx': thec[0].dx = dxy[cnt]; thec[0].dxloc = cloc(dxysrc,None,cnt);
                             if xy=='dy': thec[0].dy = dxy[cnt]; thec[0].dyloc = cloc(dxysrc,None,cnt);
                             cnt+=1
@@ -313,12 +323,38 @@ class LineList():
                 self.Get_Delta(lns,k,xy);
                     
         return cnt
-               
+    
+#     def Change_Deltas(self,alldx,alldy):
+#         cnt = 0;
+#         dxdict = dict();
+#         for ln in self.lns:
+#             for c in self.cs:
+#                 elid = c.loc.el.get_id();
+#                 if elid in dxdict.keys():
+#                     if c.loc.el.tt=='text:
+#                 eldict[] = eldict()
+#         
+#         
+#         dxdict = dic
+#         for d in descendants2(self.textel):
+#             d.
+#         
+#         
+#         self.Get_Delta(self.lns,self.textel,'dx');
+#         self.Get_Delta(self.lns,self.textel,'dy');
+#         for ln in self.lns:
+#             ln.parse_words();
+#             for w in ln.ws:
+#                 w.calcprops()
+                
+    # def change_deltas(self,newdx,newdy):
+        
+        
     
 # A single line, which represents a list of characters. Typically a top-level Tspan or TextElement.
 # This is further subdivided into a list of words
 class tline:
-    def __init__(self, x, y, inheritx, nspr, anch, xform,ang,el,xsrc,ysrc,continuex,tlvlno):
+    def __init__(self, x, y, inheritx, nspr, anch, xform,ang,el,xsrc,ysrc,continuex,tlvlno,sty):
         self.x = x; 
         self.y = y;
         self.inheritx = inheritx;    # inheriting position
@@ -338,6 +374,8 @@ class tline:
         self.ysrc = ysrc; # element from which we derive our x value
         self.continuex = continuex;  # when enabled, x of a line is the endpoint of the previous line
         self.tlvlno = tlvlno;        # which number Tspan I am if I'm top-level (otherwise None)
+        self.style = sty;
+        self.el = el;
         # self.dx = dx;
         # self.dy = dy;
         # self.ll = None;   # line list we belong to (add later)
@@ -356,7 +394,7 @@ class tline:
         # Parsing a line into words is the final step that should be called once
         # the line parser has gotten all the characters
         
-        w=None;
+        w=None; self.ws=[];
         for ii in range(len(self.cs)):
             if ii==0:
                 w = tword(ii,self.x[0],self.y[0],self);         # open new word
@@ -380,9 +418,55 @@ class tline:
         self.ll = None;
     def txt(self):   
         return ''.join([c.c for c in self.cs])
+    
+    # Change the alignment of a line without affecting character position
+    def change_alignment(self,newanch):
+        if newanch!=self.anchor:
+            if self.nsodipodirole == 'line' and (self.tlvlno is not None and self.tlvlno>0):
+                # Need to disable sodipodi to change alignment of one line
+                # Note that it's impossible to change one line without affecting the others
+                self.el.set('sodipodi:role',None);   
+                self.xsrc = self.el;
                 
+            for w in self.ws:
+                minx = min([w.pts_ut[ii][0] for ii in range(4)]);
+                maxx = max([w.pts_ut[ii][0] for ii in range(4)]);
+                
+                dxl = [c.dx for c in self.cs];
+                if len(dxl)==0: dxl=[0];
+                if newanch=='middle':
+                    newx = (minx+maxx)/2-dxl[0]/2;
+                elif newanch=='end':
+                    newx = maxx;
+                else:
+                    newx = minx-dxl[0];
+                
+                # dh.debug(min([w.pts_ut[ii][0] for ii in range(4)]))
+                # dh.debug(min([w.pts_ut[ii][0] for ii in range(4)]))
+                # if w.txt()=='0.4':
+                #     dh.debug(w.txt())
+                #     dh.debug(GetXY(w.cs[0].loc.el,'x'))
+                
+                if len(w.cs)>0:
+                    self.x[self.cs.index(w.cs[0])] = newx
+                    self.xsrc.set('x',' '.join([str(v) for v in self.x]));
+                    dh.Set_Style_Comp(w.cs[0].loc.el,'text-anchor',newanch)
+                    alignd = {'start': 'start', 'middle': 'center', 'end': 'end'}
+                    dh.Set_Style_Comp(w.cs[0].loc.el,'text-align',alignd[newanch]);
+                    # dh.debug(self.el.get_id())
+                    
+                self.anchor = newanch;
+                w.x = newx; w.calcprops();
     
-    
+    # Update the position everywhere
+    def change_pos(self,newx,newy):
+        self.x = newx;
+        self.y = newy;
+        self.xsrc.set('x',' '.join([str(v) for v in newx]))
+        self.ysrc.set('y',' '.join([str(v) for v in newy]))
+        self.parse_words();
+    # def change_d(self,dx,dy)
+                
     
 # A word (a group of characters with the same assigned anchor)
 class tword: 
@@ -454,6 +538,20 @@ class tword:
                 ca.w.iis[i2] += 1
         # Add to word, recalculate properties
         self.addc(myi)
+        # self.calcprops()
+        
+        # Adding a character causes the word to move if it's center- or right-justified
+        # Need to fix this by adjusting position
+        if self.ln.anchor=='middle':
+            deltax = -self.ln.cs[myi].cw/self.sf / 2;
+        elif self.ln.anchor=='end':
+            deltax = -self.ln.cs[myi].cw/self.sf;
+        else:
+            deltax = 0;
+        if deltax!=0:
+            self.ln.x[self.ln.cs.index(self.cs[0])] -= deltax
+            self.x -= deltax
+            self.ln.xsrc.set('x',' '.join([str(v) for v in self.ln.x]));
         self.calcprops()
         
     # Add a new word (possibly from another line) into the current one
@@ -504,9 +602,7 @@ class tword:
         else:
             w.offx = dxl[0]*w.sf;
             
-#        if w.x is None:
-#            dh.debug(w.ln.xsrc.get_id())
-        w.pts_ut = [Vector2d(w.x + w.offx/w.sf, ymax), Vector2d(w.x+ w.offx/w.sf, ymin),\
+        w.pts_ut = [Vector2d(w.x + w.offx/w.sf,      ymax), Vector2d(w.x+ w.offx/w.sf,       ymin),\
                     Vector2d(w.x+(w.ww+w.offx)/w.sf, ymin), Vector2d(w.x+(w.ww+w.offx)/w.sf, ymax)];
             # untransformed pts: bottom-left, top-left (cap height), top-right, bottom right
         w.pts_t=[];
@@ -517,14 +613,6 @@ class tword:
                 max([p.x for p in w.pts_t])-min([p.x for p in w.pts_t]),\
                 max([p.y for p in w.pts_t])-min([p.y for p in w.pts_t])]);
             
-        # if self.ln.anchor=='middle':
-        #     w.anchorpos = (w.x + w.offx/w.sf + w.x+(w.ww+w.offx)/w.sf)/2;
-        # elif self.ln.anchor=='end':
-        #     w.anchorpos = w.x+(w.ww+w.offx)/w.sf;
-        # else:
-        #     w.anchorpos = w.x + w.offx/w.sf;
-                # bounding box that begins at the anchor and stops at the cap height
-        # w.txt = ''.join([c.c for c in w.cs])
         
         
 # A single character and its style
@@ -539,7 +627,7 @@ class tchar:
         self.nsty = nsty; # normalized style
         self.nstyc = dh.Set_Style_Comp2(nsty,'fill',dh.Get_Style_Comp(sty,'fill')) # with color
         self.loc = loc;   # true location: [parent, 'text' or 'tail', index]
-        self.ch = prop.caph;     # cap height (height of flat capitals)
+        self.ch = prop.caph;     # cap height (height of flat capitals like T)
         # self.dr = dr;     # descender (length of p/q descender))
         self.sw = prop.spacew;     # space width for style
         self.ln = None;   # my line (to be assigned)
@@ -550,6 +638,7 @@ class tchar:
         self.dy = 0;      # get later
         self.dxloc = None;      # get later
         self.dyloc = None;      # get later
+        
     def delc(self): # deletes me from document (and from my word/line)
         # Delete from document
         if self.loc.tt=='text':
@@ -557,12 +646,12 @@ class tchar:
         else:
             self.loc.el.tail = del2(self.loc.el.tail,self.loc.ind)
         myi = self.ln.cs.index(self) # index in line
-        if len(self.ln.x)>0:
+        if len(self.ln.x)>1:
             if myi<len(self.ln.x):
-                oldx = self.ln.x
+                # oldx = self.ln.x
                 self.ln.x = del2(self.ln.x,myi)
                 self.ln.x = self.ln.x[0:len(self.ln.cs)-1]
-                if self.ln.x==[]: self.ln.xsrc.set('x',None)
+                if self.ln.x==[]: self.ln.xsrc.set('x',None);
                 else:             self.ln.xsrc.set('x',' '.join([str(v) for v in self.ln.x]))
                 if len(self.ln.x)==1 and self.ln.nsodipodirole=='line': # would enable inheritance
                     self.ln.xsrc.set('sodipodi:role',None)
@@ -587,7 +676,7 @@ class tchar:
         if len(self.w.cs)==0: # word now empty
             self.w.delw();
         self.w = None
-        # Delete from dx/dy
+        # Delete from dx/dy (not currently used because you also need to detect sodipodi:role lines before it...)
         # if self.dxloc is not None:
         #     olddx = [float(v) for v in self.dxloc.el.get('dx').split()]
         #     newdx = del2(olddx,self.dxloc.ind);
@@ -634,6 +723,11 @@ class tchar:
         else: #sub
             sty = 'font-size:'+str(sz)+'%;baseline-shift:sub';
         self.add_style(sty);
+        
+    # def changex(self,newx):
+    #     self.ln.x[self.ln.cs.index(self)] = newx
+    #     if self.ln.x==[]: self.ln.xsrc.set('x',None)
+    #     else:             self.ln.xsrc.set('x',' '.join([str(v) for v in self.ln.x]))
         
 
 # A modified bounding box class

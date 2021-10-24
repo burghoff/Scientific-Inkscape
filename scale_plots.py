@@ -142,7 +142,7 @@ class ScalePlots(inkex.EffectExtension):
             scaley = 1;
             matchingmode = False;
             if not(all([isinstance(k,Group) for k in sel])):
-                inkex.utils.errormsg('Correction mode requires that every selected object be a group'); return
+                inkex.utils.errormsg('Correction mode requires that every selected object be a group that has already been scaled.'); return
         else:
             inkex.utils.errormsg('Select Scaling, Matching, or Correction mode'); return;
             
@@ -215,7 +215,23 @@ class ScalePlots(inkex.EffectExtension):
             
             # Display warning message            
             if len(vels)==0 or len(hels)==0:
-                inkex.utils.errormsg('Plot area could not be automatically detected. Draw an outlined box to define the plot area.'+\
+                def appendInt(num):
+                    if num > 9:
+                        secondToLastDigit = str(num)[-2]
+                        if secondToLastDigit == '1':
+                            return 'th'
+                    lastDigit = num % 10
+                    if (lastDigit == 1):
+                        return 'st'
+                    elif (lastDigit == 2):
+                        return 'nd'
+                    elif (lastDigit == 3):
+                        return 'rd'
+                    else:
+                        return 'th'
+                numgroup = str(i0+1)+appendInt(i0+1);
+                inkex.utils.errormsg('Plot area could not be automatically detected on the '+numgroup+   \
+                                     ' selected plot (group ID '+gsel[i0].get_id()+'). Draw an outlined box to define the plot area.'+\
                                      '\nScaling will still be performed, but the results will be less ideal.');
                 noplotarea = True;
                 lvl = None; lhl = None;

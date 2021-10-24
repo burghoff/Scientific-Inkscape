@@ -25,6 +25,7 @@ from inkex import (TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle,\
 import lxml
 import dhelpers as dh
 import TextParser as tp
+import RemoveKerning
 import sys
 
 
@@ -43,6 +44,7 @@ class FlattenPlots(inkex.EffectExtension):
         pars.add_argument("--mergesubsuper", type=inkex.Boolean, default=True, help="Import superscripts and subscripts")
         pars.add_argument("--setreplacement", type=inkex.Boolean, default=True, help="Replace missing fonts")
         pars.add_argument("--replacement", type=str, default='Arial', help="Missing font replacement");
+        pars.add_argument("--justification", type=int, default=1, help="Text justification");
 
     def effect(self):   
         # import random
@@ -124,12 +126,15 @@ class FlattenPlots(inkex.EffectExtension):
                             dh.Set_Style_Comp(el,'font-family',','.join(ff))   
                             
             if fixshattering or mergesubsuper or splitdistant or mergenearby:
-                ct = tp.Character_Table(list(set(list(reversed(os)))),self)
-                os = dh.remove_kerning(os,ct,fixshattering,mergesubsuper,splitdistant,mergenearby) 
-                
-            # for el in os:
-            #     if isinstance(el,TextElement) and el.getparent() is not None: # textelements not deleted
-            #         dh.inkscape_editable(el)
+                if self.options.justification==1:
+                    justification = 'middle';
+                elif self.options.justification==2:
+                    justification = 'start';
+                elif self.options.justification==3:
+                    justification = 'end';
+                elif self.options.justification==4:
+                    justification = None;
+                os = RemoveKerning.remove_kerning(self,os,fixshattering,mergesubsuper,splitdistant,mergenearby,justification) 
 
         
         if removerectw:

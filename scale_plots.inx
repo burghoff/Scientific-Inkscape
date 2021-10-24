@@ -70,7 +70,7 @@
             plot's axes do not have lines, temporarily add a box to define a plot area.</label>
         </page>
     </param>
-    <effect>
+    <effect needs-live-preview="false">
         <object-type>text</object-type>
         <effects-menu>
             <submenu name="Scientific"/>

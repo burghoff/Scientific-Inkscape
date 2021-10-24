@@ -15,6 +15,13 @@
             <param name="mergenearby"  type="bool" gui-text="Merge nearby text">true</param>
             <param name="fixshattering" type="bool"  gui-text="Remove manual kerning">true</param>
             <param name="mergesubsuper" type="bool"  gui-text="Merge superscripts and subscripts">true</param>
+            <param name="justification" type="optiongroup" appearance="combo"
+                    gui-text="Final text justification">
+                       <option value="1">Centered</option>
+                       <option value="2">Left</option>
+                       <option value="3">Right</option>
+                       <option value="4">Unchanged</option>
+                    </param>
         <label appearance="header">Other options</label>
             <param name="setreplacement" type="bool" gui-text="Replace missing fonts">true</param>
             <param name="replacement" type="string" gui-text="Missing font replacement">Arial</param>
@@ -33,7 +40,7 @@ Repair shattered text: Letters in a word that have been individually positioned 
 Replace missing fonts: If a font is not on your machine, replace it with this font.</label>
         </page>
     </param>
-    <effect>
+    <effect needs-live-preview="false">
         <object-type>text</object-type>
         <effects-menu>
             <submenu name="Scientific"/>
