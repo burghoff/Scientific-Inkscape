@@ -22,7 +22,7 @@ import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, addNS, \
     Transform, Style, PathElement, Line, Rectangle, Path,Vector2d, \
-    Use, NamedView, Defs, Metadata, ForeignObject, Group, FontFace, FlowSpan, MissingGlyph
+    Use, NamedView, Defs, Metadata, ForeignObject, Group, FontFace, FlowSpan, MissingGlyph,Polyline
 )
 
 import dhelpers as dh
@@ -54,11 +54,13 @@ class ScalePlots(inkex.EffectExtension):
         # els = [v for el in self.svg.selection for v in dh.descendants2(el)]
         
         els = [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, \
-               ForeignObject,Group,MissingGlyph))) and el.get('d') is not None]
+               ForeignObject,Group,MissingGlyph))) and (el.get('d') is not None or \
+                                                        el.get('points') is not None or \
+                                                        el.get('x1') is not None)]
         
         merged = [False for el in els]
         stys = [dh.selected_style_local(el) for el in els]
-#        dh.debug(stys)
+        # dh.debug(els)
         for ii in reversed(range(len(els))): # reversed so that order is preserved
             el1 = els[ii];
             strk = stys[ii].get('stroke');
@@ -71,9 +73,10 @@ class ScalePlots(inkex.EffectExtension):
                             merges.append(el2); merged[jj]=True
                 if len(merges)>1:
                     self.combine_paths(merges)
-#                    dh.debug(merges)
+                    # dh.debug(merges[0].get('clip-path'))
+                    # dh.debug(merges)
         
-        
+        # dh.debug(len(els))
     def combine_paths(self,els):
         pnew = Path();
         fp = None; # first path
@@ -96,8 +99,13 @@ class ScalePlots(inkex.EffectExtension):
                 pnew.append(p)
         si.append(len(pnew))
         if fp is not None:
-            els[fp].set_path(pnew.transform(-els[fp].composed_transform()));
-            els[fp].set('clip-path',None); # release any clips
+            if el.get('d') is not None:
+                els[fp].set_path(pnew.transform(-els[fp].composed_transform()));
+            else:
+                # Polylines and lines have to be replaced with a new path
+                dh.object_to_path(els[fp])
+                els[fp].set('d',str(pnew.transform(-els[fp].composed_transform())));
+            els[fp].set('clip-path','None'); # release any clips
             els[fp].set('inkscape-academic-combined-by-color',' '.join([str(v) for v in si]))
             for s in sp:
                 deleteup(els[s])

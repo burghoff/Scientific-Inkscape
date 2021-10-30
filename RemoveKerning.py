@@ -220,6 +220,9 @@ def remove_kerning(caller,os,fixshattering,mergesupersub,splitdistant,mergenearb
                 if bail==True:
                     w.wtypes = []
                     w.merges = []
+        # Pre-merge position calculation
+        for w in ws:
+            w.premerge_br = w.pts_t[3];
         # Execute the merge plan
         for w in ws:
             # debug(ws[0].ln.xsrc.get_id())

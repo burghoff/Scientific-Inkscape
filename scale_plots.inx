@@ -31,7 +31,11 @@
             <label>1. Group each plot you wish to scale.</label>
             <label>2. Manually scale the plot to its desired size. </label>
             <label>3. Select each manually scaled plot and run in this mode.</label>
-            <label>It is important that you scale the plot AFTER grouping it, because the extension infers the scale from the group's properties.</label>
+            
+            <label appearance="header">Note</label>
+            <label>It is important that you scale the plot after grouping it, because the extension infers the scale from the group's properties. In addition, when scaling the default scale options should be selected, as shown below:</label>
+            <image>examples/scale_options.png</image>
+            <label>Otherwise, the final stroke widths may be changed.</label>
             <spacer/><label>By David Burghoff, University of Notre Dame</label>
         </page>
         

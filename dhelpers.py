@@ -201,7 +201,8 @@ def Get_Composed_Width(el,comp,nargout=1):
             # sc = sc*Get_Composed_Width(el.getparent(),comp)
             # sc = str(sc)+'px'
         else:
-            sw = float(sc.strip().replace("px", ""))
+            # sw = float(sc.strip().replace("px", ""))
+            sw = implicitpx(sc)
             sf = math.sqrt(abs(ct.a*ct.d - ct.b*ct.c))*docscale # scale factor
             if nargout==4:
                 return sw*sf, sf, ct, ang
@@ -223,7 +224,6 @@ def Get_Composed_Width(el,comp,nargout=1):
 # Get line-height in user units
 def Get_Composed_LineHeight(el):    # cs = el.composed_style();
     cs = selected_style_local(el);
-    svg = get_parent_svg(el);
     sc = Get_Style_Comp(cs,'line-height');
     if sc is not None:
         if '%' in sc: # relative width, get parent width
@@ -249,7 +249,7 @@ def Get_Composed_List(el,comp):
         return 'none'
     elif sc is not None:
         sw = sc.strip().replace("px", "").split(',')
-        sw = [float(x)*math.sqrt(abs(ct.a*ct.d - ct.b*ct.c))*docscale for x in sw];
+        sw = [implicitpx(x)*math.sqrt(abs(ct.a*ct.d - ct.b*ct.c))*docscale for x in sw];
         return sw
     else:
         return None
@@ -269,6 +269,13 @@ def urender(v,u):
             return str(v)
     else:
         return None
+    
+def implicitpx(str):
+    # For many properties, a size specification of '1px' actually means '1uu'
+    # Even if the size explicitly says '1mm' and the user units are mm, this will be
+    # first converted to px and then interpreted to mean user units. (So '1mm' would
+    # up being bigger than 1 mm). This returns the size as Inkscape will interpret it (in uu)
+    return inkex.units.convert_unit(str.lower().strip(), 'px', default='px')
 
 # Get points of a path, element, or rectangle in the global coordinate system
 def get_points(el,irange=None):
@@ -284,12 +291,18 @@ def get_points(el,irange=None):
             pth = pnew
         pts = list(pth.control_points);
     elif isinstance(el,Rectangle):  # el.typename=='Rectangle':
-        x = float(el.get('x'));
-        y = float(el.get('y'));
-        w = float(el.get('width'));
-        h = float(el.get('height'));
-        pts = [Vector2d(x,y),Vector2d(x+w,y),Vector2d(x+w,y+h),Vector2d(x,y+h),Vector2d(x,y)];
-    
+        x = (el.get('x'));
+        y = (el.get('y'));
+        w = (el.get('width'));
+        h = (el.get('height'));
+        if x is not None and y is not None and w is not None and h is not None:
+            x = float(x);
+            y = float(y);
+            w = float(w);
+            h = float(h);
+            pts = [Vector2d(x,y),Vector2d(x+w,y),Vector2d(x+w,y+h),Vector2d(x,y+h),Vector2d(x,y)];
+        else:
+            pts = [];
     ct = el.composed_transform();
     docscale = get_parent_svg(el).scale;
     xs = []; ys = [];
@@ -314,28 +327,31 @@ def ungroup(groupnode):
     ncalls+=1
         
     node_index = list(groupnode.getparent()).index(groupnode)   # parent's location in grandparent
-    #    node_style = dict(Style.parse_str(groupnode.get("style")))
     node_transform = Transform(groupnode.get("transform")).matrix;
     node_clippathurl = groupnode.get('clip-path')
     node_maskurl     = groupnode.get('mask')
             
-    # if time.time()-tic<60 and ncalls<41750:
     els = groupnode.getchildren();
     for el in list(reversed(els)):
-        wasuse = False;
-        if isinstance(el,Use):                   # unlink clones
+        
+        unlinkclone = False;
+        if isinstance(el,Use):
+            useid = el.get('xlink:href');
+            if useid is not None:
+                useel = getElementById2(get_parent_svg(el),useid[1:]);
+                unlinkclone = not(isinstance(useel,(inkex.Symbol)));
+        
+        if unlinkclone:                   # unlink clones
             p=el.unlink();
             tx = el.get('x'); ty=el.get('y')
             if tx is None: tx = 0;
             if ty is None: ty = 0;
             p.set('transform',Transform('translate('+str(tx)+','+str(ty)+')')*Transform(p.get('transform')))
-            el.delete(); el=p; el.set('unlinked_clone',True); wasuse=True;
+            el.delete(); el=p; el.set('unlinked_clone',True); #wasuse=True;
         elif isinstance(el,lxml.etree._Comment): # remove comments
             groupnode.remove(el)
         if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment))):
             recursive_merge_clipmask(el, node_clippathurl)          # transform applies to clip, so do clip first
-#            debug(el.get_id());
-#            debug(el.get('clip-path'));
             recursive_merge_clipmask(el, node_maskurl, mask=True)   # also mask
             _merge_transform(el, node_transform)
             el.style = shallow_composed_style(el)
@@ -357,7 +373,7 @@ def ungroup(groupnode):
                 Set_Style_Comp(el,'mask',None);
                 
             groupnode.getparent().insert(node_index+1,el); # places above
-        if isinstance(el, Group) and wasuse: # if Use was a group, ungroup it
+        if isinstance(el, Group) and unlinkclone: # if Use was a group, ungroup it
             ungroup(el)
 #        debug(el.get_id());
 #        debug(el.get('clip-path'));
@@ -387,31 +403,19 @@ def _merge_transform(node, transform):
         """Convert an SVG length string from arbitrary units to pixels"""
         if s == "":
             return 0
-        try:
-            last = int(s[-1])
-        except:
-            last = None
+        try:               last = int(s[-1])
+        except:            last = None
 
-        if type(last) == int:
-            return float(s)
-        elif s[-1] == "%":
-            return 1024
-        elif s[-2:] == "px":
-            return float(s[:-2])
-        elif s[-2:] == "pt":
-            return float(s[:-2]) * 1.25
-        elif s[-2:] == "em":
-            return float(s[:-2]) * 16
-        elif s[-2:] == "mm":
-            return float(s[:-2]) * 3.54
-        elif s[-2:] == "pc":
-            return float(s[:-2]) * 15
-        elif s[-2:] == "cm":
-            return float(s[:-2]) * 35.43
-        elif s[-2:] == "in":
-            return float(s[:-2]) * 90
-        else:
-            return 1024
+        if type(last) == int: return float(s)
+        elif s[-1] == "%":    return 1024
+        elif s[-2:] == "px":  return float(s[:-2])
+        elif s[-2:] == "pt":  return float(s[:-2]) * 1.25
+        elif s[-2:] == "em":  return float(s[:-2]) * 16
+        elif s[-2:] == "mm":  return float(s[:-2]) * 3.54
+        elif s[-2:] == "pc":  return float(s[:-2]) * 15
+        elif s[-2:] == "cm":  return float(s[:-2]) * 35.43
+        elif s[-2:] == "in":  return float(s[:-2]) * 90
+        else:                 return 1024
 
     # Compose the transformations
     if node.tag == addNS("svg", "svg") and node.get("viewBox"):
@@ -737,5 +741,57 @@ def global_transform(el,trnsfrm,irange=None,trange=None):
             nd = Get_Style_Comp(el.get('style'),'stroke-dasharray').split(',');
             cd = Get_Composed_List(el,'stroke-dasharray');
             for ii in range(len(sd)):
-                sd[ii] = float(nd[ii])*sd[ii]/cd[ii];
+                sd[ii] = implicitpx(nd[ii])*sd[ii]/cd[ii];
             Set_Style_Comp(el,'stroke-dasharray',str(sd).strip('[').strip(']')); # fix width
+            
+def get_path2(el):
+# Like get_path, but correctly calculates path for rectangles and ellipses
+    class MiniRect():
+        def __init__(self,el):
+            self.left = implicitpx(el.get('x', '0'))
+            self.top = implicitpx(el.get('y', '0'))
+            self.width = implicitpx(el.get('width', '0'))
+            self.height = implicitpx(el.get('height', '0'))
+            self.rx = implicitpx(el.get('rx', el.get('ry', '0')))
+            self.ry = implicitpx(el.get('ry', el.get('rx', '0')))
+            self.right = self.left+self.width
+            self.bottom = self.top+self.height
+        def get_path(self):
+            """Calculate the path as the box around the rect"""
+            if self.rx:
+                rx, ry = self.rx, self.ry # pylint: disable=invalid-name
+                return 'M {1},{0.top}'\
+                       'L {2},{0.top}    A {0.rx},{0.ry} 0 0 1 {0.right},{3}'\
+                       'L {0.right},{4}  A {0.rx},{0.ry} 0 0 1 {2},{0.bottom}'\
+                       'L {1},{0.bottom} A {0.rx},{0.ry} 0 0 1 {0.left},{4}'\
+                       'L {0.left},{3}   A {0.rx},{0.ry} 0 0 1 {1},{0.top} z'\
+                    .format(self, self.left + rx, self.right - rx, self.top + ry, self.bottom - ry)
+            return 'M {0.left},{0.top} h{0.width}v{0.height}h{1} z'.format(self, -self.width)
+    class MiniEllipse():
+        def __init__(self,el):
+            self.cx = implicitpx(el.get('cx', '0'))
+            self.cy = implicitpx(el.get('cy', '0'))
+            if isinstance(el,(inkex.Ellipse)): # ellipse
+                self.rx = implicitpx(el.get('rx', '0'))
+                self.ry = implicitpx(el.get('ry', '0'))
+            else: # circle
+                self.rx = implicitpx(el.get('r', '0'))
+                self.ry = implicitpx(el.get('r', '0'))
+        def get_path(self):
+            return ('M {cx},{y} '
+                    'a {rx},{ry} 0 1 0 {rx}, {ry} '
+                    'a {rx},{ry} 0 0 0 -{rx}, -{ry} z'
+                    ).format(cx=self.cx, y=self.cy-self.ry, rx=self.rx, ry=self.ry)
+    if isinstance(el,(inkex.Rectangle)):
+        pth = MiniRect(el).get_path()
+    elif isinstance(el,(inkex.Circle,inkex.Ellipse)):
+        pth = MiniEllipse(el).get_path();
+    else:
+        pth = el.get_path();
+    return pth
+
+def object_to_path(el):
+    if not(isinstance(el,inkex.PathElement)):
+        pth = get_path2(el);
+        el.tag = '{http://www.w3.org/2000/svg}path';
+        el.set('d',str(pth));

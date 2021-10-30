@@ -29,17 +29,15 @@ class ApplyTransform(inkex.EffectExtension):
             self.recursiveFuseTransform(self.document.getroot())
  
     @staticmethod
-    def objectToPath(node):
+    def remove_attrs(node):
         if node.tag == inkex.addNS('g', 'svg'):
             return node
-
         if node.tag == inkex.addNS('path', 'svg') or node.tag == 'path':
             for attName in node.attrib.keys():
                 if ("sodipodi" in attName) or ("inkscape" in attName) \
                     and attName!='inkscape-academic-combined-by-color':
                     del node.attrib[attName]
             return node
-
         return node
 
     def scaleStrokeWidth(self, node, transf):
@@ -47,7 +45,6 @@ class ApplyTransform(inkex.EffectExtension):
             style = node.attrib.get('style')
             style = dict(Style.parse_str(style))
             update = False
-
             if 'stroke-width' in style:
                 try:
                     stroke_width = float(style.get('stroke-width').strip().replace("px", ""))
@@ -58,7 +55,6 @@ class ApplyTransform(inkex.EffectExtension):
                     update = True
                 except AttributeError:
                     pass
-
             if update:
                 node.attrib['style'] = Style(style).to_str()
     
@@ -87,12 +83,14 @@ class ApplyTransform(inkex.EffectExtension):
         
         transf = Transform(transf) * Transform(node.get("transform", None))
 
-        # if node.get_id()=='path207':
-        #     dh.debug(node.get('transform'))
+
         if 'transform' in node.attrib:
             del node.attrib['transform']
-
-        node = ApplyTransform.objectToPath(node)
+        node = ApplyTransform.remove_attrs(node)
+        
+        if not(transf.b==0 and transf.c==0) and isinstance(node,(Rectangle,Ellipse,Circle)):
+            # Rectangles, Ellipses, and Circles need to be converted to paths if there is shear/rotation
+            dh.object_to_path(node)
 
         if transf == NULL_TRANSFORM and irange is None and trange is None:
             # Don't do anything if there is effectively no transform applied (reduces alerts for unsupported nodes)
@@ -127,14 +125,12 @@ class ApplyTransform(inkex.EffectExtension):
         elif isinstance(node,(Ellipse,Circle)): #node.tag in [inkex.addNS("ellipse", "svg"), inkex.addNS("circle", "svg")]:
             def isequal(a, b):
                 return abs(a - b) <= transf.absolute_tolerance
-
             if node.TAG == "ellipse":
                 rx = float(node.get("rx"))
                 ry = float(node.get("ry"))
             else:
                 rx = float(node.get("r"))
                 ry = rx
-
             cx = float(node.get("cx"))
             cy = float(node.get("cy"))
             sqxy1 = (cx - rx, cy - ry)
@@ -143,7 +139,6 @@ class ApplyTransform(inkex.EffectExtension):
             newxy1 = transf.apply_to_point(sqxy1)
             newxy2 = transf.apply_to_point(sqxy2)
             newxy3 = transf.apply_to_point(sqxy3)
-
             node.set("cx", (newxy1[0] + newxy3[0]) / 2)
             node.set("cy", (newxy1[1] + newxy3[1]) / 2)
             edgex = math.sqrt(
@@ -152,7 +147,6 @@ class ApplyTransform(inkex.EffectExtension):
             edgey = math.sqrt(
                 abs(newxy2[0] - newxy3[0]) ** 2 + abs(newxy2[1] - newxy3[1]) ** 2
             )
-
             if node.TAG == "ellipse":
                 node.set("rx", edgex / 2)
                 node.set("ry", edgey / 2)
@@ -160,7 +154,7 @@ class ApplyTransform(inkex.EffectExtension):
                 node.set("r", edgex / 2)
                 
         # Modficiations by David Burghoff: Added support for lines, rectangles, polylines
-        elif isinstance(node, Line):  #node.tag in inkex.addNS('line', 'svg'):
+        elif isinstance(node, Line):  
             x1=node.get('x1')
             x2=node.get('x2')
             y1=node.get('y1')
@@ -173,7 +167,7 @@ class ApplyTransform(inkex.EffectExtension):
             node.set('y2',str(p2[1]))
             self.scaleStrokeWidth(node, transf)
 
-        elif isinstance(node,Rectangle):  #node.typename in ['Rectangle']:
+        elif isinstance(node,Rectangle):  
             x = float(node.get('x'));
             y = float(node.get('y'));
             w = float(node.get('width'));
@@ -190,17 +184,6 @@ class ApplyTransform(inkex.EffectExtension):
             node.set('height',str(max(ys)-min(ys)))
             self.scaleStrokeWidth(node, transf)
             
-        elif isinstance(node,Polyline):
-            p = node.get_path().to_absolute().transform(transf, True)
-            node.set_path(p);
-
-#        elif node.tag in [inkex.addNS('text', 'svg'),
-#                          inkex.addNS('image', 'svg'),
-#                          inkex.addNS('use', 'svg')]:
-#            inkex.utils.errormsg(
-#                "Shape %s (%s) not yet supported, try Object to path first"
-#                % (node.TAG, node.get("id"))
-#            )
         else:
             # e.g. <g style="...">
             self.scaleStrokeWidth(node, transf)
@@ -209,6 +192,5 @@ class ApplyTransform(inkex.EffectExtension):
             self.recursiveFuseTransform(child, transf)
             
 
-        
 if __name__ == '__main__':
     ApplyTransform().run()

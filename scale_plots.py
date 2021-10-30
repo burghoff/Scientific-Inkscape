@@ -230,8 +230,8 @@ class ScalePlots(inkex.EffectExtension):
                     else:
                         return 'th'
                 numgroup = str(i0+1)+appendInt(i0+1);
-                inkex.utils.errormsg('Plot area could not be automatically detected on the '+numgroup+   \
-                                     ' selected plot (group ID '+gsel[i0].get_id()+'). Draw an outlined box to define the plot area.'+\
+                inkex.utils.errormsg('A box-like plot area could not be automatically detected on the '+numgroup+   \
+                                     ' selected plot (group ID '+gsel[i0].get_id()+').\n\n Draw an outlined box to define the plot area.'+\
                                      '\nScaling will still be performed, but the results will be less ideal.');
                 noplotarea = True;
                 lvl = None; lhl = None;

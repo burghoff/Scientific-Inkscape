@@ -15,7 +15,7 @@
             <param name="fontfamily" type="string" gui-text="Font family"></param>
                  
             <label appearance="header">Stroke options</label>
-            <param name="fusetransforms"  type="bool" gui-text="Fuse transforms to paths?">true</param>    
+            <param name="fusetransforms"  type="bool" gui-text="Correct distorted paths (fuse transforms)?">true</param>    
             <param name="setstroke"  type="bool" gui-text="Set stroke width?">true</param>            
             <param name="setstrokew" type="float" precision="2" min="0" max="100" gui-text="New stroke width (px)">1</param>     
             

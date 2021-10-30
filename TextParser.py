@@ -559,7 +559,8 @@ class tword:
         # Calculate the number of spaces we need to keep the position constant
         # (still need to adjust for anchors)
         bl2 = (-self.transform).apply_to_point(nw.pts_t[0])
-        br1 = self.pts_ut[3];
+        # br1 = (-self.transform).apply_to_point(self.premerge_br); self.premerge_br = nw.premerge_br
+        br1 = self.pts_ut[3];                                      # this is usually more accurate than the premerge
         lc = self.cs[-1]; # last character
         numsp = max(0,round((bl2.x-br1.x)/(lc.sw/self.sf)));
         for ii in range(numsp):
