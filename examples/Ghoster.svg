@@ -5,9 +5,9 @@
    inkscape:version="1.1.1 (3bf5ae0d25, 2021-09-20)"
    id="svg2376"
    version="1.1"
-   viewBox="0 0 151.99756 25.777218"
-   height="25.777218mm"
-   width="151.99756mm"
+   viewBox="0 0 159.33356 31.545416"
+   height="31.545416mm"
+   width="159.33356mm"
    sodipodi:docname="Ghoster.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
@@ -24,9 +24,9 @@
      inkscape:pagecheckerboard="0"
      inkscape:document-units="mm"
      showgrid="false"
-     inkscape:zoom="1.2810466"
-     inkscape:cx="261.89523"
-     inkscape:cy="128.41063"
+     inkscape:zoom="1.8116735"
+     inkscape:cx="313.79827"
+     inkscape:cy="74.792727"
      inkscape:window-width="1920"
      inkscape:window-height="1017"
      inkscape:window-x="-8"
@@ -105,7 +105,14 @@
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
      id="layer1"
-     transform="translate(-46.337327,-74.09997)">
+     transform="translate(-43.416454,-70.740967)">
+    <rect
+       style="fill:#ffffff;stroke-width:0.503882;stroke-dasharray:0.503882, 0.503882;-inkscape-stroke:none;stop-color:#000000"
+       id="rect8280"
+       width="159.33356"
+       height="31.545416"
+       x="43.416454"
+       y="70.740967" />
     <path
        d="m 82.89852,93.1987 h 27.3438"
        style="display:inline;fill:none;stroke:#262626;stroke-width:0.198437;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:10;stroke-dasharray:none;stroke-opacity:1"
