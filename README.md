@@ -62,3 +62,5 @@ If you frequently export your figures to other formats, you know that updating t
 
 # Text Ghoster
 It can sometimes be difficult to find a place to put a text label when the plot is very dense. The Text Ghoster adds a semi-transparent background to text, allowing the text to be legible without obscuring the data.
+
+<p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Ghoster.svg" alt="drawing" ></img></p>
