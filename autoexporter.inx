@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+    <name>Autoexporter</name>
+    <id>burghoff.autoexporter</id>
+    <param name="tab" type="notebook">        
+        <page name="scaling" gui-text="Options">
+        <label>Runs the Autoexporter, which watches a directory for changes to any SVG and then exports copies in the selected formats. Any rasterization is done at 600 DPI.</label>
+        <label>Mac users: You may get a security prompt asking whether to allow Inkscape to open a Terminal. Make sure you allow it.</label>
+        <label>Linux users: This extension cannot run as an AppImage or as a Snap installation.</label>
+        <label appearance="header">Formats to export</label>
+        <param name="usepdf" type="bool" gui-text="PDF">true</param>   
+        <param name="usepng" type="bool" gui-text="PNG">true</param>    
+        <param name="useemf" type="bool" gui-text="EMF">true</param>   
+        <param name="useeps" type="bool" gui-text="EPS">true</param> 
+        
+        <label appearance="header">Directories</label>   
+        <param type="path" name="watchdir" gui-text="Watch directory" mode="folder"/>
+        <param type="path" name="writedir" gui-text="Write directory" mode="folder"/>
+        </page>
+    </param>
+    <effect needs-live-preview="false">
+        <object-type>text</object-type>
+        <effects-menu>
+            <submenu name="Scientific"/>
+        </effects-menu>
+    </effect>
+    <script>
+        <command location="inx" interpreter="python">autoexporter.py</command>
+    </script>
+</inkscape-extension>

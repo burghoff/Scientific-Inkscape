@@ -64,7 +64,7 @@ class ScalePlots(inkex.EffectExtension):
         for ii in reversed(range(len(els))): # reversed so that order is preserved
             el1 = els[ii];
             strk = stys[ii].get('stroke');
-            if strk is not None and strk.lower()!='#000000':
+            if strk is not None and not(strk.lower() in ['#000000','#262626']):
                 merges = [el1]; merged[ii]=True
                 for jj in range(ii):
                     el2 = els[jj];
