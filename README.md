@@ -27,7 +27,6 @@ To use:
 3. Select the elements of your plot and run Scale Plots.
 
 Scale Plots has three modes. In Scaling Mode, the plot is scaled by a constant factor. In Matching Mode, the plot area is made to match the size of the first object you select. This can be convenient when assembling subfigures, as it allows you to match the size of one plot to another plot or to a template rectangle. In Correction Mode, a plot that has already been (badly) manually scaled will be corrected. This is so you can manually drag the figure (see below).
-<br><p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Correction_mode.gif" width="75%"></img></p>
 
 ## Advanced options
 1. If "Auto tick correct" is enabled, the extension assumes that any small horizontal or vertical lines near the edges of the plot area are ticks, and automatically leaves them unscaled.
