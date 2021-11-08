@@ -51,6 +51,7 @@ Flatten Plots is a utility that makes it easier to edit plots are exported from 
 
 # The Homogenizer
 The Homogenizer is a utility that does what its name implies: it will set all of the fonts, font sizes, and stroke widths in a selection to the same value. It also removes any text or path distortions. This is most useful when assembling sub-figures, as it allows you to ensure that the whole figure has a uniform look. 
+<p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Homogenizer.svg" alt="drawing" ></img></p>
 
 # Combine by Color
 If you have used Inkscape for editing plots with thousands of elements, you have probably found that it behaves sluggishly. Often, this can be solved by combining paths of the same color together into a single path, but when your plot has multiple curves then you have to select the elements belonging to different curves separately. Combine by Color simplifies this, automatically fusing paths of the same style together. Not only does this tend to improve responsiveness, but typically it will also reduce the file size of the output.
