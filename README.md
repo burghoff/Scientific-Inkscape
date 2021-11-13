@@ -60,3 +60,6 @@ When you are saving figures, you would generally like to export them whenever yo
 Placing text labels can sometimes be difficult for dense or small plots. The Text Ghoster adds a blurry semi-transparent background to text, allowing the text to be legible without obscuring the data.
 
 <p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Ghoster.svg" alt="drawing" ></img></p>
+
+# Problems?
+These extensions are very well-tested on PDFs imported using Inkscape's internal importer. However, there is an ocean of potential issues that can arise when they are used with arbitrary SVGs, as every program that can generate them likes to do it differently. If you encounter a bug, please make a new Issue and include (a) the SVG that caused it, (b) a copy of any error message, and (c) the debug information (found under Help > About Inkscape... > clicking the bug icon). In the meantime, try converting the SVG to a PDF and importing it—that should fix many issues.
