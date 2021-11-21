@@ -16,6 +16,9 @@
         <label appearance="header">Directories</label>   
         <param type="path" name="watchdir" gui-text="Watch directory" mode="folder"/>
         <param type="path" name="writedir" gui-text="Write directory" mode="folder"/>
+        
+        <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+        <label>By David Burghoff, University of Notre Dame</label>
         </page>
     </param>
     <effect needs-live-preview="false">

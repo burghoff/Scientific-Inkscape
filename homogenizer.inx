@@ -8,18 +8,42 @@
             <label>Sets the properties of all selected objects without changing objects' center position.
             </label>
             <label appearance="header">Text options</label>
-            <param name="fixtextdistortion" type="bool" gui-text="Correct distorted text?">true</param>    
-            <param name="setfontsize" type="bool" gui-text="Set font size?">true</param>            
-            <param name="fontsize" type="float" precision="1" min="0" max="100" gui-text="New font size (pt)">8</param>
+            <param name="fixtextdistortion" type="bool" gui-text="Correct distorted text?">true</param>
             <param name="setfontfamily" type="bool" gui-text="Set font family?">true</param>
-            <param name="fontfamily" type="string" gui-text="Font family"></param>
+            <param name="fontfamily" type="string" gui-text="Font family"></param>  
+            
+            <param name="setfontsize" type="bool" gui-text="Set font size?">true</param>
+            <param name="fontmodes" type="optiongroup" appearance="combo"
+                    gui-text="Font size options:">
+                       <option value="2">Fixed size (pt)</option>
+                       <option value="3">Scale (%)</option>
+                       <option value="5">Mean selected</option>
+                       <option value="6">Median selected</option>
+                       <option value="7">Min selected</option>
+                       <option value="8">Max selected</option>
+                       <option value="4">Scale max to (pt)</option>
+            </param>            
+            <param name="fontsize" type="float" precision="1" min="0" max="10000"
+                    gui-text="Font size value (if applicable)">8</param>
+
                  
             <label appearance="header">Stroke options</label>
             <param name="fusetransforms"  type="bool" gui-text="Correct distorted paths (fuse transforms)?">true</param>    
-            <param name="setstroke"  type="bool" gui-text="Set stroke width?">true</param>            
-            <param name="setstrokew" type="float" precision="2" min="0" max="100" gui-text="New stroke width (px)">1</param>     
+            <param name="setstroke"  type="bool" gui-text="Set stroke width?">true</param>        
+            <param name="strokemodes" type="optiongroup" appearance="combo"
+                    gui-text="Stroke width options:">
+                       <option value="2">Fixed size (px)</option>
+                       <option value="3">Scale (%)</option>
+                       <option value="5">Mean selected</option>
+                       <option value="6">Median selected</option>
+                       <option value="7">Min selected</option>
+                       <option value="8">Max selected</option>
+            </param>                
+            <param name="setstrokew" type="float" precision="2" min="0" max="10000" gui-text="Stroke width value (if applicable)">1</param>     
             
-            <label>By David Burghoff, University of Notre Dame</label>   
+
+            <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+            <label>By David Burghoff, University of Notre Dame</label> 
         </page>
     </param>
     <effect needs-live-preview="false">

@@ -47,7 +47,8 @@ class ApplyTransform(inkex.EffectExtension):
             update = False
             if 'stroke-width' in style:
                 try:
-                    stroke_width = float(style.get('stroke-width').strip().replace("px", ""))
+#                    stroke_width = float(style.get('stroke-width').strip().replace("px", ""))
+                    stroke_width = dh.implicitpx((style.get('stroke-width').strip()));
                     # Modification by David Burghoff: corrected to use determinant
 #                    stroke_width *= math.sqrt(abs(transf.a * transf.d))
                     stroke_width *= math.sqrt(abs(transf.a * transf.d - transf.b * transf.c))
@@ -58,28 +59,34 @@ class ApplyTransform(inkex.EffectExtension):
             if update:
                 node.attrib['style'] = Style(style).to_str()
     
+    
+    def transform_clipmask(self,el,mask=False):
+        if not(mask): cm = 'clip-path'
+        else:         cm = 'mask'
+        clippathurl = el.get(cm)
+        if clippathurl is not None and el.get("transform") is not None:
+            svg = dh.get_parent_svg(el);
+            clippath = dh.getElementById2(svg,clippathurl[5:-1]);
+            if clippath is not None:
+                d = dh.duplicate2(clippath);
+                clippathurl = "url(#" + d.get("id") + ")"
+                el.set(cm, clippathurl);
+                dh.fix_css_clipmask(el,mask=mask);
+                for k in d.getchildren():
+                    if k.get('transform') is not None:
+                        tr = Transform(el.get("transform"))*Transform(k.get('transform'));
+                    else:
+                        tr = Transform(el.get("transform"));
+                    k.set('transform',tr);
+                    
+
 
     def recursiveFuseTransform(self, node, transf=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],irange=None,trange=None):
         # Modification by David Burghoff:
         # Since transforms apply to an object's clips, before applying the transform
         # we will need to duplicate the clip path and transform it
-        clippathurl = node.get('clip-path')
-        if clippathurl is not None and node.get("transform") is not None:
-            myn = node
-            while not(myn.getparent()==None):  # get svg handle
-                myn = myn.getparent();
-            svg = myn;
-            clippath = svg.getElementById(clippathurl[5:-1]);
-            if clippath is not None:
-                d = clippath.duplicate();
-                clippathurl = "url(#" + d.get("id") + ")"
-                node.set("clip-path", clippathurl);
-                for k in d.getchildren():
-                    if k.get('transform') is not None:
-                        tr = Transform(node.get("transform"))*Transform(k.get('transform'));
-                    else:
-                        tr = Transform(node.get("transform"));
-                    k.set('transform',tr);
+        self.transform_clipmask(node,mask=False);
+        self.transform_clipmask(node,mask=True);
         
         transf = Transform(transf) * Transform(node.get("transform", None))
 

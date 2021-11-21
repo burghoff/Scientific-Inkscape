@@ -18,7 +18,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 EXTENT  = 0.5;      # how far the rectangle should extend from the text, in units of font size
-OPACITY = 0.8;      # how opaque it is (0.0-1.0)
+OPACITY = 0.75;      # how opaque it is (0.0-1.0)
 STDDEV  = 0.5;      # standard deviation of the Gaussian blur as fraction of EXTENT
 
 import inkex

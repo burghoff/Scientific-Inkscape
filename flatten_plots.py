@@ -146,7 +146,11 @@ class FlattenPlots(inkex.EffectExtension):
                         sty=dh.selected_style_local(el);
                         fill = sty.get('fill');
                         strk = sty.get('stroke');
-                        if (removerectw and fill in ['#ffffff','white'] and strk in [None,'none']):
+                        opacity = sty.get('opacity')
+                        if opacity is None: opacity = 1;
+                        if (removerectw and fill in ['#ffffff','white'] and \
+                            strk in [None,'none'] and \
+                            opacity==1):
                             el.delete()
     
 #        dh.debug(time.time()-tic)

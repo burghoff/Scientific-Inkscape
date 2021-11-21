@@ -127,7 +127,7 @@ def Get_Style_Comp(sty,comp):
 # Maybe replace later (but it's currently way faster, so maybe not)
 def selected_style_local(el):
     parent = el.getparent();
-    if parent is not None and isinstance(parent, ShapeElement):
+    if parent is not None and isinstance(parent, (ShapeElement,SvgDocumentElement)):
         return selected_style_local(parent) + cascaded_style2(el) 
     return cascaded_style2(el)
 
@@ -141,17 +141,18 @@ def cascaded_style2(el):
     if cssdict is None:
         # Generate a dictionary of styles at least once so we don't have to do constant lookups
         # If elements change, will need to rerun by setting cssdict to None
-        svg = get_parent_svg(el)
-        cssdict= dict();
-        for sheet in svg.root.stylesheets:
-            for style in sheet:
-                for elem in svg.xpath(style.to_xpath()):
-                    elid = elem.get('id',None);
-                    if elid is not None and style!=Style():
-                        if cssdict.get(elid) is None:
-                            cssdict[elid] = Style() + style;
-                        else:
-                            cssdict[elid] += style;
+        generate_cssdict(get_parent_svg(el));
+#        svg = get_parent_svg(el)
+#        cssdict= dict();
+#        for sheet in svg.root.stylesheets:
+#            for style in sheet:
+#                for elem in svg.xpath(style.to_xpath()):
+#                    elid = elem.get('id',None);
+#                    if elid is not None and style!=Style():
+#                        if cssdict.get(elid) is None:
+#                            cssdict[elid] = Style() + style;
+#                        else:
+#                            cssdict[elid] += style;
     csssty = cssdict.get(el.get_id());
     locsty = el.style;
     
@@ -163,7 +164,6 @@ def cascaded_style2(el):
             attsty[a] = el.get(a)
 #            debug(el.get(a))
 
-    
     if csssty is None:
         return attsty+locsty
     else:
@@ -177,6 +177,18 @@ def dupe_in_cssdict(oldid,newid):
         csssty = cssdict.get(oldid);
         if csssty is not None:
             cssdict[newid]=csssty;
+def generate_cssdict(svg):
+    global cssdict
+    cssdict= dict();
+    for sheet in svg.root.stylesheets:
+        for style in sheet:
+            for elem in svg.xpath(style.to_xpath()):
+                elid = elem.get('id',None);
+                if elid is not None and style!=Style():
+                    if cssdict.get(elid) is None:
+                        cssdict[elid] = Style() + style;
+                    else:
+                        cssdict[elid] += style;
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
@@ -189,6 +201,7 @@ def Get_Composed_Width(el,comp,nargout=1):
     svg = get_parent_svg(el)
     docscale = svg.scale;
     sc = Get_Style_Comp(cs,comp);
+    # debug(sc)
     if sc is not None:
         if '%' in sc: # relative width, get parent width
             sc = float(sc.strip('%'))/100;
@@ -358,31 +371,28 @@ def ungroup(groupnode):
             
             # If the element had clipping/masking specified in a stylesheet, this will override any attributes
             # Fix by creating a style specific to my id that includes the new clipping/masking
-            global cssdict
-            mycss = cssdict.get(el.get_id());
-            if mycss is not None:
-                if mycss.get('clip-path') is not None and mycss.get('clip-path')!=el.get('clip-path'):
-                    get_parent_svg(el).stylesheet.add('#'+el.get_id(),'clip-path:'+el.get('clip-path'));
-                    mycss['clip-path']=el.get('clip-path');
-                if mycss.get('mask') is not None and mycss.get('mask')!=el.get('mask'):
-                    get_parent_svg(el).stylesheet.add('#'+el.get_id(),'mask:'+el.get('mask'));
-                    mycss.set['mask']=el.get('mask');
-            if el.style.get('clip-path') is not None: # also clear local style
-                Set_Style_Comp(el,'clip-path',None);
-            if el.style.get('mask') is not None:
-                Set_Style_Comp(el,'mask',None);
+#            global cssdict
+#            mycss = cssdict.get(el.get_id());
+#            if mycss is not None:
+#                if mycss.get('clip-path') is not None and mycss.get('clip-path')!=el.get('clip-path'):
+#                    get_parent_svg(el).stylesheet.add('#'+el.get_id(),'clip-path:'+el.get('clip-path'));
+#                    mycss['clip-path']=el.get('clip-path');
+#                if mycss.get('mask') is not None and mycss.get('mask')!=el.get('mask'):
+#                    get_parent_svg(el).stylesheet.add('#'+el.get_id(),'mask:'+el.get('mask'));
+#                    mycss.set['mask']=el.get('mask');
+#            if el.style.get('clip-path') is not None: # also clear local style
+#                Set_Style_Comp(el,'clip-path',None);
+#            if el.style.get('mask') is not None:
+#                Set_Style_Comp(el,'mask',None);
+#                
+            fix_css_clipmask(el,mask=True);
+            fix_css_clipmask(el,mask=False);
                 
             groupnode.getparent().insert(node_index+1,el); # places above
         if isinstance(el, Group) and unlinkclone: # if Use was a group, ungroup it
             ungroup(el)
-#        debug(el.get_id());
-#        debug(el.get('clip-path'));
     if len(groupnode.getchildren())==0:
         groupnode.delete();
-    # elif ncalls==4175:
-    #     debug(groupnode.get_id())
-    # else:
-    #     debug(ncalls)
         
          
 # Same as composed_style(), but no recursion and with some tweaks
@@ -481,12 +491,30 @@ def _merge_style(node, style):
         # Set the element's style attribs
         node.style = this_style
 
+# If an element has clipping/masking specified in a stylesheet, this will override any attributes
+# I think this is an Inkscape 
+# Fix by creating a style specific to my id that includes the new clipping/masking
+def fix_css_clipmask(el,mask=False):
+    if not(mask): cm = 'clip-path'
+    else:         cm = 'mask'
+    global cssdict
+    if cssdict is None:
+        generate_cssdict(get_parent_svg(el));
+    mycss = cssdict.get(el.get_id());
+    if mycss is not None:
+        if mycss.get(cm) is not None and mycss.get(cm)!=el.get(cm):
+            get_parent_svg(el).stylesheet.add('#'+el.get_id(),cm+':'+el.get(cm));
+            mycss[cm]=el.get(cm);
+    if el.style.get(cm) is not None: # also clear local style
+        Set_Style_Comp(el,cm,None);
+
 # Like duplicate, but randomly sets the id of all descendants also
 # Normal duplicate does not
 # Second argument disables duplication (for children, whose ids only need to be set)
 def duplicate2(el,disabledup=False):
     if not(disabledup):
-        d = el.duplicate();
+        # d = el.duplicate();
+        d = duplicate_fixed(el);
         dupe_in_cssdict(el.get_id(),d.get_id())
         add_to_iddict(d);
     else:
@@ -497,8 +525,13 @@ def duplicate2(el,disabledup=False):
         dupe_in_cssdict(oldid,k.get_id())
         add_to_iddict(k);
         duplicate2(k,True)
-    
     return d
+def duplicate_fixed(el): # fixes duplicate's set_random_id
+    """Like copy(), but the copy stays in the tree and sets a random id"""
+    elem = el.copy()
+    el.addnext(elem)
+    set_random_id2(elem)
+    return elem
 
 def recursive_merge_clipmask(node,clippathurl,mask=False):
     # Modified from Deep Ungroup
@@ -588,6 +621,22 @@ def set_random_id2(el, prefix=None, size=4, backlinks=False):
     """Sets the id attribute if it is not already set."""
     prefix = str(el) if prefix is None else prefix
     el.set_id(get_unique_id2(el.root,prefix), backlinks=backlinks)
+    
+# Like get_id(), but calls set_random_id2
+def get_id2(el, as_url=0):
+    """Get the id for the element, will set a new unique id if not set.
+
+    as_url - If set to 1, returns #{id} as a string
+             If set to 2, returns url(#{id}) as a string
+    """
+    if 'id' not in el.attrib:
+        set_random_id2(el,el.TAG)
+    eid = el.get('id')
+    if as_url > 0:
+        eid = '#' + eid
+    if as_url > 1:
+        eid = f'url({eid})'
+    return eid
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
 def Get_Bounding_Boxes(s,getnew):
@@ -627,13 +676,6 @@ def get_parent_svg(el):
         return myn;
     else:
         return None
-
-# from inkex.utils import FragmentError    
-# def get_parent_svg(el):
-#     try:
-#         return el.root
-#     except FragmentError:
-#         return None
 
 def get_mod(slf, *types):
     """Originally from _selected.py in inkex, doesn't fail on comments"""

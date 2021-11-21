@@ -84,13 +84,19 @@ class ScalePlots(inkex.EffectExtension):
         
         pars.add_argument("--hmatch", type=inkex.Boolean, default=100, help="Match width of first selected object?");
         pars.add_argument("--vmatch", type=inkex.Boolean, default=100, help="Match height of first selected object?");
+        pars.add_argument("--figuremode", type=int, default=1, help="Scale by bounding box?");
         pars.add_argument("--hdrag2", type=int, default=1, help="Horizontal scaling");
         pars.add_argument("--vdrag2", type=int, default=1, help="Vertical scaling");
         
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
         pars.add_argument("--tickcorrect", type=inkex.Boolean, default=True,help="Auto tick correct?")
         pars.add_argument("--tickthreshold", type=int, default=10, help="Tick threshold");
-        pars.add_argument("--layerfix", type=str, default='None',help="Layer whose elements should not be scaled")
+        pars.add_argument("--layerfix", type=str, default='None',help="Layer whose elements should not be scaled");
+        
+        
+        pars.add_argument("--wholeplot1", type=inkex.Boolean, default=True, help="Treat whole selection as plot area?");
+        pars.add_argument("--wholeplot2", type=inkex.Boolean, default=True, help="Treat whole selection as plot area?");
+        pars.add_argument("--wholeplot3", type=inkex.Boolean, default=True, help="Treat whole selection as plot area?");
 
 
     def effect(self):
@@ -104,7 +110,6 @@ class ScalePlots(inkex.EffectExtension):
         #    sel = [v for el in self.svg.selection for v in dh.descendants2(el)];
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
         # sel = [v for el in sel for v in dh.descendants2(el)];
-           
         
         # starttime = time.time();
         # sel = self.svg.selection;                     # an ElementList
@@ -129,22 +134,32 @@ class ScalePlots(inkex.EffectExtension):
             scalex = hscale/100;
             scaley = vscale/100;
             matchingmode = False;
+            wholesel = self.options.wholeplot1;
         elif self.options.tab=='matching':
             hdrag = self.options.hdrag2
             vdrag = self.options.vdrag2
             hmatch = self.options.hmatch;
             vmatch = self.options.vmatch;
             matchingmode = True;
+            wholesel = self.options.wholeplot2;
         elif self.options.tab=='correction':
             hdrag = 1
             vdrag = 1
             scalex = 1;
             scaley = 1;
             matchingmode = False;
+            wholesel = self.options.wholeplot3;
+            if self.options.figuremode==1:
+                figuremode=False;
+            else:
+                figuremode=True;
             if not(all([isinstance(k,Group) for k in sel])):
                 inkex.utils.errormsg('Correction mode requires that every selected object be a group that has already been scaled.'); return
         else:
             inkex.utils.errormsg('Select Scaling, Matching, or Correction mode'); return;
+        
+        if wholesel:
+            tickcorrect = False;
             
         
         sfgs = []; sfels = [];    # all scale-free objects, whether or not they're selected
@@ -198,12 +213,10 @@ class ScalePlots(inkex.EffectExtension):
                         hl[el.get_id()]=bb[2];       # lines only
                         hels[el.get_id()]=bb[2];     # lines and rectangles
                     
-                    if len(xs)==5 and len(set(xs))==2 and len(set(ys))==2:
+                    if 3<=len(xs)<=5 and len(set(xs))==2 and len(set(ys))==2:
                         isrect = True;
                 if isrect or isinstance(el,(Rectangle)): #el.typename=='Rectangle':
-                    # strk = el.composed_style().get('stroke');
                     strk = dh.selected_style_local(el).get('stroke');
-                    # fill = el.composed_style().get('fill');
                     fill = dh.selected_style_local(el).get('fill');
                     nones = [None,'none','white','#ffffff'];
                     if not(fill in nones) and (strk in nones or strk==fill): # solid rectangle
@@ -212,49 +225,46 @@ class ScalePlots(inkex.EffectExtension):
                         boxes[el.get_id()]=[bb[2],bb[3]];
                         vels[el.get_id()]=bb[3];
                         hels[el.get_id()]=bb[2];
-            
-            # Display warning message            
-            if len(vels)==0 or len(hels)==0:
-                def appendInt(num):
-                    if num > 9:
-                        secondToLastDigit = str(num)[-2]
-                        if secondToLastDigit == '1':
-                            return 'th'
-                    lastDigit = num % 10
-                    if (lastDigit == 1):
-                        return 'st'
-                    elif (lastDigit == 2):
-                        return 'nd'
-                    elif (lastDigit == 3):
-                        return 'rd'
-                    else:
-                        return 'th'
-                numgroup = str(i0+1)+appendInt(i0+1);
-                inkex.utils.errormsg('A box-like plot area could not be automatically detected on the '+numgroup+   \
-                                     ' selected plot (group ID '+gsel[i0].get_id()+').\n\n Draw an outlined box to define the plot area.'+\
-                                     '\nScaling will still be performed, but the results will be less ideal.');
+                        
+            if len(vels)==0 or len(hels)==0 or wholesel:    
                 noplotarea = True;
                 lvl = None; lhl = None;
+                if len(vels)==0 or len(hels)==0:
+                    # Display warning message   
+                    def appendInt(num):
+                        if num > 9:
+                            secondToLastDigit = str(num)[-2]
+                            if secondToLastDigit == '1':
+                                return 'th'
+                        lastDigit = num % 10
+                        if (lastDigit == 1):          return 'st'
+                        elif (lastDigit == 2):        return 'nd'
+                        elif (lastDigit == 3):        return 'rd'
+                        else:                         return 'th'
+                    numgroup = str(i0+1)+appendInt(i0+1);
+                    inkex.utils.errormsg('A box-like plot area could not be automatically detected on the '+numgroup+   \
+                                         ' selected plot (group ID '+gsel[i0].get_id()+').\n\n Draw an outlined box to define the plot area.'+\
+                                         '\nScaling will still be performed, but the results will be less ideal.');
             else:
                 noplotarea = False;
                 lvl = max(vels, key=vels.get); # largest vertical
                 lhl = max(hels, key=hels.get); # largest horizontal
-            # if len(vels)==0:
-            #     inkex.utils.errormsg('No vertical lines detected in selection! Make a vertical line or box to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
-            # if len(hels)==0:
-            #     inkex.utils.errormsg('No horizontal lines detected in selection! Make a horizontal line or box to define the plot area. (If you think there is one, it may actually be a line-like rectangle.)\n');
-            # if len(vels)==0 or len(hels)==0:
-            #     return;
+
                 
             # Determine the bounding box of the whole selection and the plot area
-            minx = miny = minxp = minyp = fminxp = fminyp = float('inf');
-            maxx = maxy = maxxp = maxyp = fmaxxp = fmaxyp = float('-inf');
+            minx = miny = minxp = minyp = fminxp = fminyp = fminx = fminy = float('inf');
+            maxx = maxy = maxxp = maxyp = fmaxxp = fmaxyp = fmaxx = fmaxy = float('-inf');
             for el in sel:
                 bb=bbs[el.get_id()];
                 minx = min(minx,bb[0]);
                 miny = min(miny,bb[1]);
                 maxx = max(maxx,bb[0]+bb[2]);
                 maxy = max(maxy,bb[1]+bb[3]);
+                fbb=fbbs[el.get_id()];
+                fminx = min(fminx,fbb[0]);
+                fminy = min(fminy,fbb[1]);
+                fmaxx = max(fmaxx,fbb[0]+fbb[2]);
+                fmaxy = max(fmaxy,fbb[1]+fbb[3]);
                 if el.get_id() in [lvl,lhl] or noplotarea:
                     minyp = min(minyp,bb[1]);
                     maxyp = max(maxyp,bb[1]+bb[3]);
@@ -271,7 +281,10 @@ class ScalePlots(inkex.EffectExtension):
                 extr = trs[i0]; # existing transform
                 scalex = extr.a
                 scaley = extr.d
-                refx = (minxp+maxxp)/2; refy = (minyp+maxyp)/2;
+                if not(figuremode):
+                    refx = (minxp+maxxp)/2; refy = (minyp+maxyp)/2;
+                else:
+                    refx = fminx; refy = fminy;
                 trl = Transform('translate('+str(refx)+', '+str(refy)+')');
                 scl = Transform('scale('+str(1/scalex)+', '+str(1/scaley)+')');
                 iextr = trl*scl*(-trl); # invert existing transform
@@ -283,14 +296,23 @@ class ScalePlots(inkex.EffectExtension):
                     fbbs[elid] = bbox(fbbs[elid]).transform(iextr).sbb;
                 for elid in bbs.keys():
                     bbs[elid]  = bbox(bbs[elid] ).transform(iextr).sbb;
-                minx = miny = minxp = minyp = fminxp = fminyp = float('inf');
-                maxx = maxy = maxxp = maxyp = fmaxxp = fmaxyp = float('-inf');
+                ominx = minx; ominy = miny; omaxx = maxx; omaxy = maxy; # store for later for figure mode
+                ominyp = minyp; omaxyp = maxyp; ominxp = minxp; omaxxp = maxxp;
+                ofminyp = fminyp; ofmaxyp = fmaxyp; ofminxp = fminxp; ofmaxxp = fmaxxp;
+                ofminx = fminx; ofminy=fminy; ofmaxx = fmaxx; ofmaxy = fmaxy;
+                minx = miny = minxp = minyp = fminxp = fminyp = fminx = fminy = float('inf');
+                maxx = maxy = maxxp = maxyp = fmaxxp = fmaxyp = fmaxx = fmaxy = float('-inf');
                 for el in sel:
                     bb=bbs[el.get_id()];
                     minx = min(minx,bb[0]);
                     miny = min(miny,bb[1]);
                     maxx = max(maxx,bb[0]+bb[2]);
                     maxy = max(maxy,bb[1]+bb[3]);
+                    fbb=fbbs[el.get_id()];
+                    fminx = min(fminx,fbb[0]);
+                    fminy = min(fminy,fbb[1]);
+                    fmaxx = max(fmaxx,fbb[0]+fbb[2]);
+                    fmaxy = max(fmaxy,fbb[1]+fbb[3]);
                     if el.get_id() in [lvl,lhl] or noplotarea:
                         minyp = min(minyp,bb[1]);
                         maxyp = max(maxyp,bb[1]+bb[3]);
@@ -301,6 +323,27 @@ class ScalePlots(inkex.EffectExtension):
                         fmaxyp = max(fmaxyp,fbb[1]+fbb[3]);
                         fminxp = min(fminxp,fbb[0]);
                         fmaxxp = max(fmaxxp,fbb[0]+fbb[2]);
+                if figuremode:
+                    oscalex = scalex; oscaley = scaley;
+                    scalex = ((ofmaxx-ofminx) - (fmaxx-fminx-(maxxp-minxp)))/((maxxp-minxp));
+                    scaley = ((ofmaxy-ofminy) - (fmaxy-fminy-(maxyp-minyp)))/((maxyp-minyp));
+                    
+                    tlx = (ofminx-refx)/oscalex+refx; # where top left is now
+                    dxl = minxp - tlx;
+                    # tlx = (minxp-refx)*scalex+refx-dxl;    # where top-left will be after scaling
+                    if scalex!=1:
+                        refx = (ofminx+dxl-minxp*scalex)/(1-scalex); # what refx needs to be to maintain top-left
+                    else:
+                        refx = ofminx + dxl;
+                    
+                    tly = (ofminy-refy)/oscaley+refy; # where top left is now
+                    dyl = minyp - tly;
+                    # tlyp = (minyp-refy)*scaley+refy-dyl;    # where top-left of plot will be after scaling
+                    if scaley!=1:
+                        refy = (ofminy+dyl-minyp*scaley)/(1-scaley); # what refx needs to be to maintain top-left
+                    else:
+                        refy = ofminy + dyl
+                    
             
                     
             if self.options.tab=='matching':

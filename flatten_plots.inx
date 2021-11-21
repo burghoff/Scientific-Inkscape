@@ -4,10 +4,13 @@
     <id>burghoff.flatten_plots1</id>
     <param name="tab" type="notebook">
         <page name="Options" gui-text="Main options">
+        <label appearance="header">Recommended options</label>
             <param name="deepungroup" type="bool"  gui-text="Deep ungroup?">true</param>
             <param name="fixtext"  type="bool" gui-text="Apply text fixes?">true</param>
+        <label appearance="header">Other options</label>
             <param name="removerectw" type="bool" gui-text="Remove white-filled rectangles?">true</param>
-            <spacer/><label>By David Burghoff, University of Notre Dame</label>
+            <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+            <label>By David Burghoff, University of Notre Dame</label>
         </page>
         <page name="Options2" gui-text="Text fix options">
         <label appearance="header">Recommended options</label>
@@ -25,19 +28,8 @@
         <label appearance="header">Other options</label>
             <param name="setreplacement" type="bool" gui-text="Replace missing fonts">true</param>
             <param name="replacement" type="string" gui-text="Missing font replacement">Arial</param>
-            <spacer/><label>By David Burghoff, University of Notre Dame</label>
-        </page>
-        <page name="Help" gui-text="Help">
-        <label appearance="header">Main options</label>
-            <label  xml:space="preserve">A set of tools for plot cleanup. It will make the selected plots easier to edit, but should not change the actual graphic very much (if at all).
-Deep ungroup: Removes all groupings.
-Apply text fixes: Apply the fixes specified in the options.
-Remove white-filled rectangles: Removes background rectangles.
-            </label>
-            <label appearance="header">Text fix options</label>
-            <label  xml:space="preserve">Split distant text: Splits text within a single object that is far apart (common in PDFs).
-Repair shattered text: Letters in a word that have been individually positioned (common in PDFs) will be reflowed, allowing for editing. May cause text repositioning.
-Replace missing fonts: If a font is not on your machine, replace it with this font.</label>
+            <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+            <label>By David Burghoff, University of Notre Dame</label>
         </page>
     </param>
     <effect needs-live-preview="false">

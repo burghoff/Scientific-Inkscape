@@ -122,9 +122,10 @@ class LineList():
         elif isinstance(el,TextElement): tlvlno=0;
         else:                            tlvlno=None;
         
+        sprl = (nspr=='line');
         multiplepos = len(xv)>1 or len(yv)>1;           # multiple x or y values can disable sodipodi:role line
-        inheritx = (nspr=='line' and not(multiplepos)) or (xv[0] is None)
-        inherity = (nspr=='line' and not(multiplepos)) or (yv[0] is None)
+        inheritx = (sprl and not(multiplepos)) or (xv[0] is None)
+        inherity = (sprl and not(multiplepos)) or (yv[0] is None)
 
         # dh.debug(el.get_id())
         # dh.debug(inheritx)
@@ -137,7 +138,9 @@ class LineList():
         if isinstance(el,TextElement):
             newline = True
         elif toplevelTspan: # top level Tspans
-            if not(inheritx) or not(inherity) or not(myi==0):                                         # if the first Tspan inherits, continue previous line
+            if (sprl      and (not(inheritx) or not(inherity) or not(myi==0)))\
+            or (not(sprl) and (not(inheritx) or not(inherity))):   
+                # if not inheriting, continue previous line
                 newline = True
         elif isinstance(el,Tspan):                      # nested Tspans: become a new line with an explicit x or y
             if el.get('x') is not None:  
@@ -202,8 +205,12 @@ class LineList():
                     anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
             lns.append(tline(xv,yv,inheritx,nspr,anch,ct,ang,el,xsrc,ysrc,continuex,tlvlno,sty))
         
-        ctable = self.ctable    
-#        dh.debug('test')
+        # First line anchor should be the Tspan style if there are no characters in the text
+        if toplevelTspan and myi==0:
+            if len(lns)==1 and len(lns[0].cs)==0:
+                lns[0].anchor = sty.get('text-anchor');
+        
+        ctable = self.ctable  
         if tv is not None and tv!='' and len(tv)>0:
             for ii in range(len(tv)):
                 # if fs is None: return None # bail if there is text without font
@@ -845,7 +852,8 @@ class Character_Table():
             nt.text = c;
             nt.set('style',sty)
             self.caller.svg.append(nt);
-            nt.get_id(); # assign id now
+            # nt.get_id(); # assign id now
+            dh.get_id2(nt); # assign id now
             return nt
                             
         for s in list(ct.keys()):
@@ -902,8 +910,8 @@ class Character_Table():
         for a in Character_Table.textshapeatt:
             if a in stykeys:
                 styv = sty.get(a);
-                if styv is not None and styv.lower()=='none':
-                    styv=None
+                # if styv is not None and styv.lower()=='none':  
+                #     styv=None # actually don't do this because 'none' might be overriding inherited styles
                 if styv is not None:
                     sty2[a]=styv;
         

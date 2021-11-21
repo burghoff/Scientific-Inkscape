@@ -349,7 +349,10 @@ def inkscape_editable(el):
             el.set('xml:space','preserve')      
         elif isinstance(el,Tspan):
             myp = el.getparent();
-            if myp is not None and len(myp.getchildren())==1 and isinstance(myp,TextElement):  # only child, no nesting
+            sty = dh.selected_style_local(el);
+            if myp is not None and len(myp.getchildren())==1 \
+                and isinstance(myp,TextElement) \
+                and not(sty.get('baseline-shift') in ['sub','super']):  # only child, no nesting, not a sub/superscript
                 if el.get('sodipodi:role')!='line':
                     tx = el.get('x'); ty=el.get('y');
                     myp = el.getparent();

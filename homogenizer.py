@@ -38,16 +38,18 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
         pars.add_argument("--setfontsize", type=inkex.Boolean, default=True,help="Set font size?")
         pars.add_argument("--fontsize", type=float, default=8, help="New font size");
+        pars.add_argument("--fixtextdistortion", type=inkex.Boolean, default=False,help="Fix distorted text?")
+        pars.add_argument("--fontmodes", type=int, default=1, help="Font size options");
         
         pars.add_argument("--setfontfamily", type=inkex.Boolean, default=False,help="Set font family?")
         pars.add_argument("--fontfamily", type=str, default='', help="New font family");
-        pars.add_argument("--fixtextdistortion", type=inkex.Boolean, default=False,help="Fix distorted text?")
         
 #        pars.add_argument("--setreplacement", type=inkex.Boolean, default=False,help="Replace missing fonts?")
 #        pars.add_argument("--replacement", type=str, default='', help="Missing fon replacement");
         
         pars.add_argument("--setstroke", type=inkex.Boolean, default=True,help="Set stroke width?")
-        pars.add_argument("--setstrokew", type=float, default=1, help="New stroke width (px)");
+        pars.add_argument("--setstrokew", type=float, default=1, help="New stroke width");
+        pars.add_argument("--strokemodes", type=int, default=1, help="Stroke width options");
         pars.add_argument("--fusetransforms", type=inkex.Boolean, default=1, help="Fuse transforms to paths?");
 
     def effect(self):
@@ -56,15 +58,17 @@ class ScalePlots(inkex.EffectExtension):
             from pstats import SortKey
             pr = cProfile.Profile()
             pr.enable()
-        
+            
+            
         setfontsize = self.options.setfontsize
+        # setfontsize = (self.options.fontmodes>1);
+        
         fontsize = self.options.fontsize
         setfontfamily = self.options.setfontfamily
         fontfamily = self.options.fontfamily
         setstroke = self.options.setstroke;
         setstrokew = self.options.setstrokew;
         fixtextdistortion = self.options.fixtextdistortion;
-        setstrokeu = 'px';
         
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
         sel = [v for el in sel for v in dh.descendants2(el)];
@@ -75,19 +79,60 @@ class ScalePlots(inkex.EffectExtension):
         if setfontfamily or setfontsize or fixtextdistortion:
             bbs=dh.Get_Bounding_Boxes(self,False);
         
+        
         if setfontsize:
+            # Get all font sizes and scale factors
+            szd = dict(); sfd = dict();
             for el in sel:
-                newsize = self.svg.unittouu('1pt')*fontsize;
-                actualsize = dh.Get_Composed_Width(el,'font-size');
-                if actualsize is not None:
-                    scalef = newsize/actualsize
-                    fs = dh.Get_Style_Comp(el.style,'font-size');
-                    if fs is not None and not('%' in fs): # keep sub/superscripts relative size
-                        us = "".join(filter(      lambda a : not(str.isdigit(a) or a=='.'),fs)) # units
-                        fs = float("".join(filter(lambda a :    (str.isdigit(a) or a=='.'),fs)))
-                        dh.Set_Style_Comp(el,'font-size',str(fs*scalef)+us)
+                actualsize, sf, ct, ang = dh.Get_Composed_Width(el,'font-size',nargout=4);
+                elid = el.get_id();
+                szd[elid] = actualsize; sfd[elid] = sf;    
+            # Get font sizes of all root text elements (max size) and convert sub/superscripts to relative size
+            szs = []
+            for el in sel:
+                if isinstance(el,(TextElement,FlowRoot)):
+                    maxsz = float('-inf');
+                    for d in dh.descendants2(el):
+                        if (d.text is not None and len(d.text)>0) or (d.tail is not None and len(d.tail)>0):
+                            mysz = szd[d.get_id()];
+                            maxsz = max(maxsz,mysz)
+                    
+                            sty=dh.cascaded_style2(d);
+                            bshift = sty.get('baseline-shift')
+                            if bshift in ['sub','super']:
+                                psz  = szd[d.getparent().get_id()];
+                                pct = mysz/psz * 100;
+                                dh.Set_Style_Comp(d,'font-size',str(pct)+'%')
+                    maxsz = maxsz/self.svg.unittouu('1pt')
+                    szs.append(maxsz)
+            # Determine scale and/or size
+            fixedscale = False;
+            if self.options.fontmodes==3:
+                fixedscale = True;
+            elif self.options.fontmodes==4:
+                fixedscale = True;
+                fontsize = fontsize/max(szs)*100;
+            elif self.options.fontmodes==5:
+                from statistics import mean
+                fontsize = mean(szs)
+            elif self.options.fontmodes==6:
+                from statistics import median
+                fontsize = median(szs);
+            elif self.options.fontmodes==7:
+                fontsize = min(szs);
+            elif self.options.fontmodes==8:
+                fontsize = max(szs);
+            # Set the font sizes                
+            for el in sel:
+                elid = el.get_id();
+                actualsize = szd[elid]; sf = sfd[elid];
+                if not(fixedscale):
+                    newsize = self.svg.unittouu('1pt')*fontsize;
                 else:
-                    dh.Set_Style_Comp(el,'font-size',str(newsize))
+                    newsize = actualsize*(fontsize/100);
+                fs = dh.Get_Style_Comp(el.style,'font-size');
+                if fs is None or not('%' in fs): # keep sub/superscripts relative size
+                    dh.Set_Style_Comp(el,'font-size',str(newsize/sf)+'px')
         
         if fixtextdistortion:
             # make a new transform that removes bad scaling and shearing (see General_affine_transformation.nb)
@@ -136,23 +181,57 @@ class ScalePlots(inkex.EffectExtension):
         
                         
         if setstroke:
-            nw = self.svg.unittouu(str(setstrokew)+setstrokeu)
+            szd = dict(); sfd = dict(); szs=[];
             for el in sela:
-                strk = dh.Get_Style_Comp(el.style,'stroke')
-                if strk is not None:
-                    actw = dh.Get_Composed_Width(el,'stroke-width');
-                    nomw,u = dh.uparse(dh.Get_Style_Comp(el.style,'stroke-width'));
-                    if nomw is None or nomw==0 or actw is None or actw==0: # stroke width unassigned
-                        dh.Set_Style_Comp(el,'stroke-width','1')
-                        actw = dh.Get_Composed_Width(el,'stroke-width');
-                        nomw,u = dh.uparse(dh.Get_Style_Comp(el.style,'stroke-width'));
-                    sw = dh.urender(nw*nomw/actw,u)    
-                    dh.Set_Style_Comp(el,'stroke-width',sw)
+                sw,sf,ct,ang = dh.Get_Composed_Width(el,'stroke-width',nargout=4)
+                elid = el.get_id();
+                szd[elid] = sw; sfd[elid] = sf;    
+                if sw is not None:
+                    szs.append(sw);
+                    
+            fixedscale = False;
+            if self.options.strokemodes==2:
+                setstrokew = self.svg.unittouu(str(setstrokew)+'px');
+            elif self.options.strokemodes==3:
+                fixedscale = True;
+            elif self.options.strokemodes==5:
+                from statistics import mean
+                setstrokew = mean(szs)
+            elif self.options.strokemodes==6:
+                from statistics import median
+                setstrokew = median(szs);
+            elif self.options.strokemodes==7:
+                setstrokew = min(szs);
+            elif self.options.strokemodes==8:
+                setstrokew = max(szs);
+            
+            for el in sela:
+                elid = el.get_id();
+                if not(szd[elid] is None):
+                    if not(fixedscale):
+                        newsize = setstrokew;
+                    else:
+                        newsize = szd[elid]*(setstrokew/100);
+                    dh.Set_Style_Comp(el,'stroke-width',str(newsize/sfd[elid])+'px')
+            
+            # nw = self.svg.unittouu(str(setstrokew)+setstrokeu)
+            # for el in sela:
+            #     sty = dh.selected_style_local(el);
+            #     strk = sty.get('stroke');
+            #     if strk is not None:
+            #         actw = dh.Get_Composed_Width(el,'stroke-width');
+            #         nomw,u = dh.uparse(dh.Get_Style_Comp(el.style,'stroke-width'));
+            #         if nomw is None or nomw==0 or actw is None or actw==0: # stroke width unassigned
+            #             dh.Set_Style_Comp(el,'stroke-width','1')
+            #             actw = dh.Get_Composed_Width(el,'stroke-width');
+            #             nomw,u = dh.uparse(dh.Get_Style_Comp(el.style,'stroke-width'));
+            #         sw = dh.urender(nw*nomw/actw,u)    
+            #         dh.Set_Style_Comp(el,'stroke-width',sw)
                     
                     
         if self.options.fusetransforms:
             for el in sela:
-                 if not(isinstance(el, (TextElement,Image,Group,Tspan,FlowRoot,FlowPara,FlowRegion,FlowSpan))): # not(el.typename in ['TextElement','Image','Group']):
+                 if not(isinstance(el, (TextElement,Image,Group,Tspan,FlowRoot,FlowPara,FlowRegion,FlowSpan,Use))): # not(el.typename in ['TextElement','Image','Group']):
                      ApplyTransform().recursiveFuseTransform(el);
         
         if dispprofile:
