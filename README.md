@@ -7,8 +7,9 @@ Scientific Inkscape is a set of Inkscape extensions designed for editing scienti
 4. **Combine by Color**: An extension that fuses paths of the same color and style together into a single path. Handy for speeding up operations on plots with thousands of similar elements, like markers. 
 5. **Auto-Exporter**: Automatically exports SVG files in a directory and keeps them updated.
 6. **Text Ghoster**: Adds a semi-transparent background to text so that it can be overlayed with data.
+7. **Favorite Markers**: Lets you designate certain markers as favorites, mainly for convenience. 
 
-All were written by [David Burghoff](https://dburghoff.com) at the University of Notre Dame. If you find it useful, tell your collegaues!
+All were written by [David Burghoff](https://dburghoff.com) at the University of Notre Dame. If you find it useful, tell your collegaues! You may also find it helpful to map the extensions to hotkeys (done in the Edit > Preferences > Interface > Keyboard menu).
 
 # Installation
 You must have the latest release version of Inkscape (1.1), and the extensions should be installed using the instructions provided [here](https://inkscape.org/gallery/=extension/). Download all of these files, then copy them into the directory listed at Edit > Preferences > System: User extensions. After a restart of Inkscape, the group extensions will be available under Extensions > Scientific.
@@ -60,6 +61,9 @@ When you are saving figures, you would generally like to export them whenever yo
 Placing text labels can sometimes be difficult for dense or small plots. The Text Ghoster adds a blurry semi-transparent background to text, allowing it to be legible without obscuring the underlying data.
 
 <p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Ghoster.svg" alt="drawing" ></img></p>
+
+# Favorite Markers
+Always find yourself scrolling to select the *same* set of arrows in the Fill and Stroke menu? Use Favorite Markers! It lets you designate certain marker sets as favorites, allowing you to add them more conveniently. You can also adjust their size continuously.
 
 # Problems?
 These extensions are very well-tested on PDFs imported using Inkscape's internal importer. However, there is an ocean of potential issues that can arise when they are used with arbitrary SVGs, as every program that can generate them does so differently. If you encounter a bug, please make a new Issue and include (a) the SVG that caused it, (b) a copy of any error message, and (c) the debug information (found under Help > About Inkscape... > Bug icon). In the meantime, try converting the SVG to a PDF and importing it—that should fix many issues.
