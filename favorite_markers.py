@@ -28,25 +28,8 @@ from inkex import (
     Use, NamedView, Defs, Metadata, ForeignObject, Group, FontFace, StyleElement,\
         StyleSheets,SvgDocumentElement, ShapeElement,BaseElement,FlowSpan,Ellipse,Circle
 )
-from inkex.utils import FragmentError
-from inkex import StyleSheet
-
-import sys
-sys.path.append('G:\My Drive\Storage\Github\Academic-Inkscape')
     
 import dhelpers as dh
-import TextParser
-import copy
-import lxml
-from lxml import etree  
-
-import tkinter
-from tkinter import filedialog
-import subprocess, os
-import datetime
-import threading
-import platform
-
 import sys, os
 def get_script_path():
     return os.path.dirname(os.path.realpath(sys.argv[0]))
@@ -159,7 +142,7 @@ class ScalePlots(inkex.EffectExtension):
         # dh.debug(s)
         if self.options.tab=='addremove':
             if self.options.addt:
-                sel = [x for x in sel if isinstance(x,(inkex.PathElement,inkex.Line,inkex.Polyline))];      
+                sel = [x for x in sel if isinstance(x,(inkex.PathElement,inkex.Line,inkex.Polyline,inkex.Rectangle,inkex.Circle,inkex.Ellipse))];      
                 sty = dh.selected_style_local(sel[0]);
                 
                 ms = self.get_marker_props(sty.get('marker-start'));
@@ -198,7 +181,7 @@ class ScalePlots(inkex.EffectExtension):
             dh.debug('Templates successfully updated! Update will take effect when Inkscape is restarted.')
         else:
             for el in sel:
-                if isinstance(el, (inkex.PathElement,inkex.Line,inkex.Polyline)):
+                if isinstance(el, (inkex.PathElement,inkex.Line,inkex.Polyline,inkex.Rectangle,inkex.Circle,inkex.Ellipse)):
                     ts = list(s.keys());
                     tname = ts[self.options.template];
                     tval = s[tname];
