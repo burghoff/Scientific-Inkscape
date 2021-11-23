@@ -1,7 +1,10 @@
 #!/usr/bin/env python 
 # coding=utf-8
 #
-# Copyright (C) 2021 David Burghoff, dburghoff@nd.edu
+# Copyright (c) 2020 Martin Owens <doctormo@gmail.com>
+#                    Sergei Izmailov <sergei.a.izmailov@gmail.com>
+#                    Thomas Holder <thomas.holder@schrodinger.com>
+#                    David Burghoff <dburghoff@nd.edu>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,8 +19,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-#
-
 
 
 import inkex
@@ -492,7 +493,7 @@ def _merge_style(node, style):
         node.style = this_style
 
 # If an element has clipping/masking specified in a stylesheet, this will override any attributes
-# I think this is an Inkscape 
+# I think this is an Inkscape bug
 # Fix by creating a style specific to my id that includes the new clipping/masking
 def fix_css_clipmask(el,mask=False):
     if not(mask): cm = 'clip-path'
