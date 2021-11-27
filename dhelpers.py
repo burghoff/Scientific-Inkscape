@@ -4,6 +4,7 @@
 # Copyright (c) 2020 Martin Owens <doctormo@gmail.com>
 #                    Sergei Izmailov <sergei.a.izmailov@gmail.com>
 #                    Thomas Holder <thomas.holder@schrodinger.com>
+#                    Nikita Kitaev
 #                    David Burghoff <dburghoff@nd.edu>
 #
 # This program is free software; you can redistribute it and/or modify
@@ -143,17 +144,6 @@ def cascaded_style2(el):
         # Generate a dictionary of styles at least once so we don't have to do constant lookups
         # If elements change, will need to rerun by setting cssdict to None
         generate_cssdict(get_parent_svg(el));
-#        svg = get_parent_svg(el)
-#        cssdict= dict();
-#        for sheet in svg.root.stylesheets:
-#            for style in sheet:
-#                for elem in svg.xpath(style.to_xpath()):
-#                    elid = elem.get('id',None);
-#                    if elid is not None and style!=Style():
-#                        if cssdict.get(elid) is None:
-#                            cssdict[elid] = Style() + style;
-#                        else:
-#                            cssdict[elid] += style;
     csssty = cssdict.get(el.get_id());
     locsty = el.style;
     
@@ -333,7 +323,7 @@ global ncalls
 ncalls = 0
 def ungroup(groupnode):
     # Pops a node out of its group, unless it's already in a layer or the base
-    # Unlink any clones
+    # Unlink any clones that aren't glyphs
     # Remove any comments
     # Preserves style, clipping, and masking
     global tic
@@ -341,7 +331,8 @@ def ungroup(groupnode):
     ncalls+=1
         
     node_index = list(groupnode.getparent()).index(groupnode)   # parent's location in grandparent
-    node_transform = Transform(groupnode.get("transform")).matrix;
+    # node_transform = Transform(groupnode.get("transform")).matrix;
+    node_transform = groupnode.transform
     node_clippathurl = groupnode.get('clip-path')
     node_maskurl     = groupnode.get('mask')
             
@@ -367,25 +358,10 @@ def ungroup(groupnode):
         if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment))):
             recursive_merge_clipmask(el, node_clippathurl)          # transform applies to clip, so do clip first
             recursive_merge_clipmask(el, node_maskurl, mask=True)   # also mask
-            _merge_transform(el, node_transform)
+            # _merge_transform(el, node_transform)
+            el.transform = node_transform * el.transform
             el.style = shallow_composed_style(el)
             
-            # If the element had clipping/masking specified in a stylesheet, this will override any attributes
-            # Fix by creating a style specific to my id that includes the new clipping/masking
-#            global cssdict
-#            mycss = cssdict.get(el.get_id());
-#            if mycss is not None:
-#                if mycss.get('clip-path') is not None and mycss.get('clip-path')!=el.get('clip-path'):
-#                    get_parent_svg(el).stylesheet.add('#'+el.get_id(),'clip-path:'+el.get('clip-path'));
-#                    mycss['clip-path']=el.get('clip-path');
-#                if mycss.get('mask') is not None and mycss.get('mask')!=el.get('mask'):
-#                    get_parent_svg(el).stylesheet.add('#'+el.get_id(),'mask:'+el.get('mask'));
-#                    mycss.set['mask']=el.get('mask');
-#            if el.style.get('clip-path') is not None: # also clear local style
-#                Set_Style_Comp(el,'clip-path',None);
-#            if el.style.get('mask') is not None:
-#                Set_Style_Comp(el,'mask',None);
-#                
             fix_css_clipmask(el,mask=True);
             fix_css_clipmask(el,mask=False);
                 
@@ -407,90 +383,90 @@ def shallow_composed_style(el):
         return cascaded_style2(parent) + cascaded_style2(el)
     return cascaded_style2(el)
 
-def _merge_transform(node, transform):
-    # From Deep Ungroup
-    # Originally from https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
-    def _get_dimension(s="1024"):
-        """Convert an SVG length string from arbitrary units to pixels"""
-        if s == "":
-            return 0
-        try:               last = int(s[-1])
-        except:            last = None
+# def _merge_transform(node, transform):
+#     # From Deep Ungroup
+#     # Originally from https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
+#     def _get_dimension(s="1024"):
+#         """Convert an SVG length string from arbitrary units to pixels"""
+#         if s == "":
+#             return 0
+#         try:               last = int(s[-1])
+#         except:            last = None
 
-        if type(last) == int: return float(s)
-        elif s[-1] == "%":    return 1024
-        elif s[-2:] == "px":  return float(s[:-2])
-        elif s[-2:] == "pt":  return float(s[:-2]) * 1.25
-        elif s[-2:] == "em":  return float(s[:-2]) * 16
-        elif s[-2:] == "mm":  return float(s[:-2]) * 3.54
-        elif s[-2:] == "pc":  return float(s[:-2]) * 15
-        elif s[-2:] == "cm":  return float(s[:-2]) * 35.43
-        elif s[-2:] == "in":  return float(s[:-2]) * 90
-        else:                 return 1024
+#         if type(last) == int: return float(s)
+#         elif s[-1] == "%":    return 1024
+#         elif s[-2:] == "px":  return float(s[:-2])
+#         elif s[-2:] == "pt":  return float(s[:-2]) * 1.25
+#         elif s[-2:] == "em":  return float(s[:-2]) * 16
+#         elif s[-2:] == "mm":  return float(s[:-2]) * 3.54
+#         elif s[-2:] == "pc":  return float(s[:-2]) * 15
+#         elif s[-2:] == "cm":  return float(s[:-2]) * 35.43
+#         elif s[-2:] == "in":  return float(s[:-2]) * 90
+#         else:                 return 1024
 
-    # Compose the transformations
-    if node.tag == addNS("svg", "svg") and node.get("viewBox"):
-        vx, vy, vw, vh = [_get_dimension(x)
-            for x in node.get("viewBox").split()]
-        dw = _get_dimension(node.get("width", vw))
-        dh = _get_dimension(node.get("height", vh))
-        t = ("translate(%f, %f) scale(%f, %f)" %
-            (-vx, -vy, dw / vw, dh / vh))
-        this_transform = simpletransform.parseTransform(t, transform)
-        this_transform = simpletransform.parseTransform(node.get("transform"), this_transform)
-        del node.attrib["viewBox"]
-    else:
-        this_transform = Transform(transform)*Transform(node.get("transform"))
-#                this_transform = simpletransform.parseTransform(node.get("transform"), transform)    # deprecated, https://inkscape.gitlab.io/inkscape/doxygen-extensions/simpletransform_8py_source.html
+#     # Compose the transformations
+#     if node.tag == addNS("svg", "svg") and node.get("viewBox"):
+#         vx, vy, vw, vh = [_get_dimension(x)
+#             for x in node.get("viewBox").split()]
+#         dw = _get_dimension(node.get("width", vw))
+#         dh = _get_dimension(node.get("height", vh))
+#         t = ("translate(%f, %f) scale(%f, %f)" %
+#             (-vx, -vy, dw / vw, dh / vh))
+#         this_transform = simpletransform.parseTransform(t, transform)
+#         this_transform = simpletransform.parseTransform(node.get("transform"), this_transform)
+#         del node.attrib["viewBox"]
+#     else:
+#         this_transform = Transform(transform)*Transform(node.get("transform"))
+# #                this_transform = simpletransform.parseTransform(node.get("transform"), transform)    # deprecated, https://inkscape.gitlab.io/inkscape/doxygen-extensions/simpletransform_8py_source.html
 
-    # Set the node's transform attrib
-#            node.set("transform", simpletransform.formatTransform(this_transform)) # deprecated
-    # node.set("transform",str(this_transform))
-    node.transform = this_transform
+#     # Set the node's transform attrib
+# #            node.set("transform", simpletransform.formatTransform(this_transform)) # deprecated
+#     # node.set("transform",str(this_transform))
+#     node.transform = this_transform
 
 
-def _merge_style(node, style):
-    """Propagate style and transform to remove inheritance
-    # From Deep Ungroup
-    https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
-    """
-    # Compose the style attribs
-    this_style = node.style
-    remaining_style = {}  # Style attributes that are not propagated
+# def _merge_style(node, style):
+#     """Propagate style and transform to remove inheritance
+#     # From Deep Ungroup
+#     https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
+#     """
+#     # Compose the style attribs
+#     this_style = node.style
+#     remaining_style = {}  # Style attributes that are not propagated
 
-    # Filters should remain on the top ancestor
-    non_propagated = ["filter"]
-    for key in non_propagated:
-        if key in this_style.keys():
-            remaining_style[key] = this_style[key]
-            del this_style[key]
+#     # Filters should remain on the top ancestor
+#     non_propagated = ["filter"]
+#     for key in non_propagated:
+#         if key in this_style.keys():
+#             remaining_style[key] = this_style[key]
+#             del this_style[key]
 
-    # Create a copy of the parent style, and merge this style into it
-    parent_style_copy = style.copy()
-    parent_style_copy.update(this_style)
-    this_style = parent_style_copy
+#     # Create a copy of the parent style, and merge this style into it
+#     parent_style_copy = style.copy()
+#     parent_style_copy.update(this_style)
+#     this_style = parent_style_copy
 
-    # Merge in any attributes outside of the style
-    style_attribs = ["fill", "stroke"]
-    for attrib in style_attribs:
-        if node.get(attrib):
-            this_style[attrib] = node.get(attrib)
-            del node.attrib[attrib]
+#     # Merge in any attributes outside of the style
+#     style_attribs = ["fill", "stroke"]
+#     for attrib in style_attribs:
+#         if node.get(attrib):
+#             this_style[attrib] = node.get(attrib)
+#             del node.attrib[attrib]
 
-    if isinstance(node, (SvgDocumentElement, Anchor, Group, Switch)):
-        # Leave only non-propagating style attributes
-        if not remaining_style:
-            if "style" in node.keys():
-                del node.attrib["style"]
-        else:
-            node.style = remaining_style
+#     if isinstance(node, (SvgDocumentElement, Anchor, Group, Switch)):
+#         # Leave only non-propagating style attributes
+#         if not remaining_style:
+#             if "style" in node.keys():
+#                 del node.attrib["style"]
+#         else:
+#             node.style = remaining_style
 
-    else:
-        # This element is not a container
-        # Merge remaining_style into this_style
-        this_style.update(remaining_style)
-        # Set the element's style attribs
-        node.style = this_style
+#     else:
+#         # This element is not a container
+#         # Merge remaining_style into this_style
+#         this_style.update(remaining_style)
+#         # Set the element's style attribs
+#         node.style = this_style
 
 # If an element has clipping/masking specified in a stylesheet, this will override any attributes
 # I think this is an Inkscape bug
@@ -777,9 +753,11 @@ def global_transform(el,trnsfrm,irange=None,trange=None):
         if sw is not None:
 #            if Get_Style_Comp(el.get('style'),'stroke-width') is None:
 #                debug(el.get_id())
-            nw = float(Get_Style_Comp(el.get('style'),'stroke-width'))
-            sw = nw*sw/Get_Composed_Width(el,'stroke-width');
-            Set_Style_Comp(el,'stroke-width',str(sw)); # fix width
+            neww, sf, ct, ang = Get_Composed_Width(el,'stroke-width',nargout=4);
+            Set_Style_Comp(el,'stroke-width',str(sw/sf)); # fix width
+            # nw = float(Get_Style_Comp(el.get('style'),'stroke-width'))
+            # sw = nw*sw/Get_Composed_Width(el,'stroke-width');
+            # Set_Style_Comp(el,'stroke-width',str(sw)); # fix width
         if not(sd in [None,'none']): #not(sd==None) and not(sd=='none'):
             nd = Get_Style_Comp(el.get('style'),'stroke-dasharray').split(',');
             cd = Get_Composed_List(el,'stroke-dasharray');
@@ -789,7 +767,7 @@ def global_transform(el,trnsfrm,irange=None,trange=None):
             
 def get_path2(el):
 # Like get_path, but correctly calculates path for rectangles and ellipses
-    class MiniRect():
+    class MiniRect(): # mostly from inkex.elements._polygons
         def __init__(self,el):
             self.left = implicitpx(el.get('x', '0'))
             self.top = implicitpx(el.get('y', '0'))
@@ -810,7 +788,7 @@ def get_path2(el):
                        'L {0.left},{3}   A {0.rx},{0.ry} 0 0 1 {1},{0.top} z'\
                     .format(self, self.left + rx, self.right - rx, self.top + ry, self.bottom - ry)
             return 'M {0.left},{0.top} h{0.width}v{0.height}h{1} z'.format(self, -self.width)
-    class MiniEllipse():
+    class MiniEllipse():  # mostly from inkex.elements._polygons
         def __init__(self,el):
             self.cx = implicitpx(el.get('cx', '0'))
             self.cy = implicitpx(el.get('cy', '0'))
@@ -838,3 +816,9 @@ def object_to_path(el):
         pth = get_path2(el);
         el.tag = '{http://www.w3.org/2000/svg}path';
         el.set('d',str(pth));
+        
+        
+# Gets the caller's location
+import os, sys
+def get_script_path():
+    return os.path.dirname(os.path.realpath(sys.argv[0]))

@@ -35,6 +35,7 @@ import dhelpers as dh
 
 # Gets the location of the Inkscape binary
 # Functions copied from command.py
+# Copyright (C) 2019 Martin Owens
 def Get_Binary_Loc(fin):
     from lxml.etree import ElementTree
     INKSCAPE_EXECUTABLE_NAME = os.environ.get('INKSCAPE_COMMAND')
@@ -120,11 +121,7 @@ def Get_Binary_Loc(fin):
     def inkscape2(svg_file, *args, **kwargs):
         return call(INKSCAPE_EXECUTABLE_NAME, svg_file, *args, **kwargs)
     return inkscape2(fin)
-    
 
-# Gets the caller's location
-def get_script_path():
-    return os.path.dirname(os.path.realpath(sys.argv[0]))
         
 
 class ScalePlots(inkex.EffectExtension):
@@ -151,12 +148,12 @@ class ScalePlots(inkex.EffectExtension):
         bloc, bnm = os.path.split(bfn)
         pyloc,pybin = os.path.split(sys.executable)
         
-        aepy = os.path.abspath(os.path.join(get_script_path(),'autoexporter_script.py'))
+        aepy = os.path.abspath(os.path.join(dh.get_script_path(),'autoexporter_script.py'))
         
         # Pass settings using a config file. Include the current path so Inkex can be called if needed.
         import pickle
         s=[self.options.watchdir,self.options.writedir,bfn,formats,sys.path];
-        pickle.dump(s,open(os.path.join(get_script_path(),'ae_settings.p'),'wb'));
+        pickle.dump(s,open(os.path.join(dh.get_script_path(),'ae_settings.p'),'wb'));
                 
         
         def escp(x):
@@ -177,7 +174,7 @@ class ScalePlots(inkex.EffectExtension):
                 inkex.utils.errormsg('This appears to be an Snap installation of Inkscape, which the Autoexporter cannot support since Snap installations are sandboxed.');
                 return;
             else:
-                shpath = os.path.abspath(os.path.join(get_script_path(),'FindTerminal.sh'));
+                shpath = os.path.abspath(os.path.join(dh.get_script_path(),'FindTerminal.sh'));
                 os.system('sh '+escp(shpath));
                 f=open('tmp','rb'); terms=f.read(); f.close(); os.remove('tmp')
                 terms = terms.split();

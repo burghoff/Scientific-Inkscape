@@ -20,8 +20,8 @@
 
 import dhelpers as dh
 import copy
-from inkex import (
-    TextElement, FlowRoot, FlowPara, Tspan, TextPath ,Vector2d, Rectangle,Transform,Style)
+import inkex
+from inkex import (TextElement, Tspan ,Vector2d,Transform,Style)
 
 
 def GetXY(el,xy):
@@ -74,6 +74,9 @@ class LineList():
         if self.lns is not None:
             for ln in self.lns:
                 ln.ll = self;
+                
+        tlvllns = [ln for ln in self.lns if ln.tlvlno is not None and ln.tlvlno>0]; # top-level lines after 1st
+        self.isinkscape = all([ln.inheritx for ln in tlvllns]); # probably made in Inkscape
         # self.Get_Delta(el,'dx');
         # self.Get_Delta(el,'dy');
         # dh.debug([c.c for ln in self.lns for c in ln.cs])
@@ -123,7 +126,7 @@ class LineList():
         else:                            tlvlno=None;
         
         sprl = (nspr=='line');
-        multiplepos = len(xv)>1 or len(yv)>1;           # multiple x or y values can disable sodipodi:role line
+        multiplepos = len(xv)>1 or len(yv)>1;           # multiple x or y values disable sodipodi:role line
         inheritx = (sprl and not(multiplepos)) or (xv[0] is None)
         inherity = (sprl and not(multiplepos)) or (yv[0] is None)
 
@@ -276,7 +279,7 @@ class LineList():
                     # dh.debug(w.pts_ut[2][0])
                 
             for ii in range(len(xs)):
-                r = Rectangle();
+                r = inkex.Rectangle();
                 r.set('x',min(xs[ii],x2s[ii]))
                 r.set('y',min(ys[ii],y2s[ii]))
                 r.set('height',abs(ys[ii]-y2s[ii]))

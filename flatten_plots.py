@@ -24,9 +24,8 @@ from inkex import (TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle,\
 
 import lxml
 import dhelpers as dh
-import TextParser as tp
 import RemoveKerning
-import sys
+import os
 
 
 dispprofile = False;
@@ -42,7 +41,7 @@ class FlattenPlots(inkex.EffectExtension):
         pars.add_argument("--mergenearby", type=inkex.Boolean, default=True, help="Merge nearby text")
         pars.add_argument("--fixshattering", type=inkex.Boolean, default=True, help="Fix text shattering")
         pars.add_argument("--mergesubsuper", type=inkex.Boolean, default=True, help="Import superscripts and subscripts")
-        pars.add_argument("--setreplacement", type=inkex.Boolean, default=True, help="Replace missing fonts")
+        pars.add_argument("--setreplacement", type=inkex.Boolean, default=False, help="Replace missing fonts")
         pars.add_argument("--replacement", type=str, default='Arial', help="Missing font replacement");
         pars.add_argument("--justification", type=int, default=1, help="Text justification");
 
@@ -77,9 +76,9 @@ class FlattenPlots(inkex.EffectExtension):
         #     sel = [v for el in self.svg.selection for v in dh.descendants2(el)];
         
         gs = [el for el in sel if isinstance(el,Group)]
-        os = [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group)))]
+        obs = [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group)))]
         
-        if len(gs)==0 and len(os)==0:
+        if len(gs)==0 and len(obs)==0:
             inkex.utils.errormsg('No objects selected!'); return;
         
         if poprest:       
@@ -99,18 +98,18 @@ class FlattenPlots(inkex.EffectExtension):
             # dh.debug(len(self.svg.get_ids()))
             # x=asdf
 #        
-#        for el in os:
+#        for el in obs:
 #            dh.debug(el.get_id());
 #            dh.debug(el.get('clip-path'));
         
         if self.options.fixtext:
             # spd = dict()
-            # for el in list(reversed(os)):
+            # for el in list(reversed(obs)):
             #     if isinstance(el,(TextElement,Tspan)):
             #         spd[el.get_id()] = el.get('sodipodi:role');
                     # el.set('sodipodi:role',None);
             if setreplacement:
-                for el in os:
+                for el in obs:
                     if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
 #                        ff = dh.Get_Style_Comp(el.get('style'),'font-family');
                         ff = dh.selected_style_local(el).get('font-family');
@@ -134,11 +133,11 @@ class FlattenPlots(inkex.EffectExtension):
                     justification = 'end';
                 elif self.options.justification==4:
                     justification = None;
-                os = RemoveKerning.remove_kerning(self,os,fixshattering,mergesubsuper,splitdistant,mergenearby,justification) 
+                obs = RemoveKerning.remove_kerning(self,obs,fixshattering,mergesubsuper,splitdistant,mergenearby,justification) 
 
         
         if removerectw:
-            for el in os:
+            for el in obs:
                 if isinstance(el, (PathElement, Rectangle, Line)):
                     xs,ys = dh.get_points(el);
                     if len(xs)==5 and len(set(xs))==2 and len(set(ys))==2: # is a rectangle
@@ -155,26 +154,34 @@ class FlattenPlots(inkex.EffectExtension):
     
 #        dh.debug(time.time()-tic)
         
-        if dispprofile:                                   
+        if dispprofile:
             pr.disable()
             s = io.StringIO()
             sortby = SortKey.CUMULATIVE
             ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
             ps.print_stats()
-            dh.debug(s.getvalue())
+            ppath = os.path.abspath(os.path.join(dh.get_script_path(),'Profile.csv'))
+            result=s.getvalue()
+            prefix = result.split('ncalls')[0];
+            # chop the string into a csv-like buffer
+            result='ncalls'+result.split('ncalls')[-1]
+            result='\n'.join([','.join(line.rstrip().split(None,5)) for line in result.split('\n')])
+            result=prefix+'\n'+result;
+            f=open(ppath,'w');
+            f.write(result); f.close();
                             
             
         
-#        for el in os:
+#        for el in obs:
 #            dh.debug(el.get_id());
 #            dh.debug(el.get('clip-path'));
-#        self.svg.selection = inkex.elements._selected.ElementList([el for el in gs + os + newos \
+#        self.svg.selection = inkex.elements._selected.ElementList([el for el in gs + obs + newobs \
 #                                if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Tspan)))])
         # removedupes = True
         # if removedupes:
         #     dels=dict();
-        #     for ii in range(len(os)):
-        #         el = os[ii];
+        #     for ii in range(len(obs)):
+        #         el = obs[ii];
         #         dels[el.get_id()]=False
         #         elsty = el.composed_style()
         #         for jj in range(ii+1,len(os)):

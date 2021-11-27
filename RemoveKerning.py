@@ -244,7 +244,7 @@ def remove_kerning(caller,os,fixshattering,mergesupersub,splitdistant,mergenearb
             newlls = []; dellls = [];            
             for jj in range(len(lls)):
                 ll = lls[jj];
-                if ll.lns is not None and len(ll.lns)>1:
+                if ll.lns is not None and len(ll.lns)>1 and not(ll.isinkscape):
                     for il in reversed(range(1,len(ll.lns))):
                         # To split by line, duplicate the whole text el and delete all other lines
                         ln = ll.lns[il]; # line to be popped out
@@ -291,11 +291,12 @@ def remove_kerning(caller,os,fixshattering,mergesupersub,splitdistant,mergenearb
         if justification is not None:
             for ll in lls:
                 # ll.Position_Check()
-                for ln in ll.lns:
-                    ln.change_alignment(justification);
-                dh.Set_Style_Comp(ll.textel,'text-anchor',justification)
-                alignd = {'start': 'start', 'middle': 'center', 'end': 'end'}
-                dh.Set_Style_Comp(ll.textel,'text-align' ,alignd[justification])
+                if not(ll.isinkscape) or (ll.lns is not None and len(ll.lns)<2): # skip Inkscape-generated text
+                    for ln in ll.lns:
+                        ln.change_alignment(justification);
+                    dh.Set_Style_Comp(ll.textel,'text-anchor',justification)
+                    alignd = {'start': 'start', 'middle': 'center', 'end': 'end'}
+                    dh.Set_Style_Comp(ll.textel,'text-align' ,alignd[justification])
                         
     # Clean up empty elements and make editable
     for el in reversed(os):
