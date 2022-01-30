@@ -1,11 +1,13 @@
 #!/usr/bin/env python 
 # coding=utf-8
 #
-# Copyright (c) 2020 Martin Owens <doctormo@gmail.com>
+# Copyright (c) 2020 David Burghoff <dburghoff@nd.edu>
+#
+# Functions modified from Inkex were made by
+#                    Martin Owens <doctormo@gmail.com>
 #                    Sergei Izmailov <sergei.a.izmailov@gmail.com>
 #                    Thomas Holder <thomas.holder@schrodinger.com>
-#                    Nikita Kitaev
-#                    David Burghoff <dburghoff@nd.edu>
+# Functions modified from Deep_Ungroup made by Nikita Kitaev
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -29,15 +31,14 @@ from inkex import (
         Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command,\
         SvgDocumentElement,Image,Group,Polyline,Anchor,Switch,ShapeElement, BaseElement,FlowRegion)
 from applytransform_mod import ApplyTransform
-import TextParser as tp
-import lxml, simpletransform, math
+import lxml, math
 from lxml import etree  
 
 
 It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
 
 def descendants2(el):
-    # Like descendants(), but avoids recursion to avoid recursion depth issues
+    # Like Inkex's descendants(), but avoids recursion to avoid recursion depth issues
     cel = el;
     keepgoing = True; childrendone = False;
     descendants = [];
@@ -45,8 +46,6 @@ def descendants2(el):
         keepgoing = False;
         if not(childrendone):
             descendants.append(cel); 
-            # if isinstance(cel, (str)):
-            #     debug(type(cel))
             ks = cel.getchildren();
             if len(ks)>0: # try children
                 cel = ks[0];
@@ -55,13 +54,14 @@ def descendants2(el):
         if cel==el:
             keepgoing = False; continue;
         else:
-            sibs = cel.getparent().getchildren();
-            myi = [ii for ii in range(len(sibs)) if sibs[ii]==cel][0];
+            par  = cel.getparent();
+            sibs = par.getchildren();
+            myi = sibs.index(cel);
             if myi!=len(sibs)-1: # try younger siblings
                 cel = sibs[myi+1];
                 keepgoing = True; childrendone = False; continue;
             else:
-                cel = cel.getparent();
+                cel = par;
                 keepgoing = True; childrendone = True; continue;
     descendants = [v for v in descendants if isinstance(v, (BaseElement, str))]
     return descendants;
@@ -139,6 +139,7 @@ global cssdict
 cssdict = None;
 def cascaded_style2(el):
 # Object's style including any CSS
+# Modified from Inkex's cascaded_style
     global cssdict
     if cssdict is None:
         # Generate a dictionary of styles at least once so we don't have to do constant lookups
@@ -582,6 +583,7 @@ def add_to_iddict(el):
     
 # The built-in get_unique_id gets stuck if there are too many elements. Instead use an adaptive
 # size based on the current number of ids
+# Modified from Inkex's get_unique_id
 import random
 def get_unique_id2(svg, prefix):
     ids = svg.get_ids()
@@ -600,6 +602,7 @@ def set_random_id2(el, prefix=None, size=4, backlinks=False):
     el.set_id(get_unique_id2(el.root,prefix), backlinks=backlinks)
     
 # Like get_id(), but calls set_random_id2
+# Modified from Inkex's get_id
 def get_id2(el, as_url=0):
     """Get the id for the element, will set a new unique id if not set.
 
@@ -654,8 +657,10 @@ def get_parent_svg(el):
     else:
         return None
 
+
+# Modified from Inkex's get function
+# Does not fail on comments
 def get_mod(slf, *types):
-    """Originally from _selected.py in inkex, doesn't fail on comments"""
     def _recurse(elem):
         if (not types or isinstance(elem, types)):
             yield elem
@@ -764,9 +769,10 @@ def global_transform(el,trnsfrm,irange=None,trange=None):
             for ii in range(len(sd)):
                 sd[ii] = implicitpx(nd[ii])*sd[ii]/cd[ii];
             Set_Style_Comp(el,'stroke-dasharray',str(sd).strip('[').strip(']')); # fix width
-            
+
+# Modified from Inkex's get_path          
+# Correctly calculates path for rectangles and ellipses  
 def get_path2(el):
-# Like get_path, but correctly calculates path for rectangles and ellipses
     class MiniRect(): # mostly from inkex.elements._polygons
         def __init__(self,el):
             self.left = implicitpx(el.get('x', '0'))

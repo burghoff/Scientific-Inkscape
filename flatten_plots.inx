@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
-    <name>Flatten plots</name>
+    <name>Flattener</name>
     <id>burghoff.flatten_plots1</id>
     <param name="tab" type="notebook">
         <page name="Options" gui-text="Main options">

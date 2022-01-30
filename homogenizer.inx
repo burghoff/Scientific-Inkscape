@@ -5,7 +5,8 @@
     <param name="tab" type="notebook">
         
         <page name="scaling" gui-text="Options">
-            <label>Sets the properties of all selected objects without changing objects' center position.
+            <label>Sets the properties of all selected objects without changing objects' center position. For best results, imported PDFs should be Flattened before running.
+            
             </label>
             <label appearance="header">Text options</label>
             <param name="fixtextdistortion" type="bool" gui-text="Correct distorted text?">true</param>

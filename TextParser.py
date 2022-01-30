@@ -18,6 +18,8 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
+KERN_TABLE = False;   # if enabled, generates a kern table for each font (slower, but more accurate)
+
 import dhelpers as dh
 import copy
 import inkex
@@ -26,36 +28,15 @@ from inkex import (TextElement, Tspan ,Vector2d,Transform,Style)
 
 def GetXY(el,xy):
     val = el.get(xy)
-    # if xy=='y':
-    #     val = el.get('y');
-    # else:
-    #     val = el.get('x');
         
     if val is None:   
         val = [None]; # None forces inheritance
     else:             
-#        dh.debug(val);
-#        dh.debug(val.lower()=='None')
         tmp = [];
         for x in val.split():
             if x.lower()=='none':  tmp.append(0);
             else:                  tmp.append(float(x));
         val = tmp;
-        # val = [float(x) for x in val.split()];
-        # if dval is not None:
-        #     dval = [float(x) for x in dval.split()];
-        #     # dval2 = [dval[0]];
-        #     # for ii in range(1,len(dval)):
-        #     #     dval2.append(dval2[ii-1]+dval[ii]); # cumulative sum
-        #     # dh.debug(dval2)
-        #     if len(dval)<=len(val):
-        #         for ii in range(len(dval)):  # dx shorter than x
-        #             val[ii] = val[ii]+dval[ii];
-        #     else:
-        #         for ii in range(len(val)):  # x shorter than dx
-        #             dval[ii] = val[ii]+dval[ii];
-        #         val = dval;
-    # dh.debug(val)
     return val
 
 def GetdXY(el,xy):
@@ -438,6 +419,9 @@ class tline:
                 self.el.set('sodipodi:role',None);   
                 self.xsrc = self.el;
                 
+            if len(self.cs)>0 and self.cs[-1].c==' ':
+                self.cs[-1].delc(); # delete final space since it's never rendered
+                
             for w in self.ws:
                 minx = min([w.pts_ut[ii][0] for ii in range(4)]);
                 maxx = max([w.pts_ut[ii][0] for ii in range(4)]);
@@ -572,9 +556,11 @@ class tword:
         # br1 = (-self.transform).apply_to_point(self.premerge_br); self.premerge_br = nw.premerge_br
         br1 = self.pts_ut[3];                                      # this is usually more accurate than the premerge
         lc = self.cs[-1]; # last character
-        numsp = max(0,round((bl2.x-br1.x)/(lc.sw/self.sf)));
+        numsp = (bl2.x-br1.x)/(lc.sw/self.sf);
+        # numsp = numsp - (numsp%1) + (numsp % 1 >= 0.75) ;  # round down if under 75%
+        numsp = max(0,round(numsp));
         for ii in range(numsp):
-            self.appendc('\u00A0',lc.sw,osw=lc.sw)
+            self.appendc(' ',lc.sw,osw=lc.sw)
         for c in nw.cs:
             c.delc();
             ntype = copy.copy(type)
@@ -592,8 +578,14 @@ class tword:
         if len(dxl)==0: dxl=[0];
 #        dh.debug(w.txt())
 #        dh.debug(dxl)
+        wadj = [0 for c in self.cs];
+        if KERN_TABLE:
+            for ii in range(1,len(self.cs)):
+                wadj[ii] = self.cs[ii].dkerns[self.cs[ii-1].c,self.cs[ii].c];
         if len(w.cs)>0:
-            w.ww = sum([c.cw  for c in w.cs])+sum(dxl[1:])*w.sf
+            w.ww = sum([c.cw  for c in w.cs])+sum(dxl[1:])*w.sf + sum(wadj);
+            # if w.cs[-1].c==' ':
+            #     w.ww -= w.cs[-1].cw; # final space never rendered
             w.fs = max([c.fs          for c in w.cs])
             w.sw = max([c.sw for c in w.cs])
             w.ch = max([c.ch   for c in w.cs])
@@ -612,6 +604,8 @@ class tword:
             w.offx = -w.ww;
         else:
             w.offx = dxl[0]*w.sf;
+            
+        # dh.debug([self.txt(),sum(wadj)])
             
         w.pts_ut = [Vector2d(w.x + w.offx/w.sf,      ymax), Vector2d(w.x+ w.offx/w.sf,       ymin),\
                     Vector2d(w.x+(w.ww+w.offx)/w.sf, ymin), Vector2d(w.x+(w.ww+w.offx)/w.sf, ymax)];
@@ -649,6 +643,7 @@ class tchar:
         self.dy = 0;      # get later
         self.dxloc = None;      # get later
         self.dyloc = None;      # get later
+        self.dkerns = prop.dkerns;
         
     def delc(self): # deletes me from document (and from my word/line)
         # Delete from document
@@ -761,15 +756,19 @@ def del2(x,ind): # deletes an index from a list
 
 # A class representing the properties of a single character
 class cprop():
-    def __init__(self, char,cw,sw,xo,ch,dr):
+    def __init__(self, char,cw,sw,xo,ch,dr,dkerns):
         self.char = char;
         self.charw = cw;    # character width
         self.spacew = sw;   # space width
         self.xoffset = xo;  # x offset from anchor
         self.caph = ch;     # cap height
         self.descrh = dr;   # descender height
+        self.dkerns = dkerns# table of how much extra width a preceding character adds to me
     def __mul__(self, scl):
-        return cprop(self.char,self.charw*scl,self.spacew*scl,self.xoffset*scl,self.caph*scl,self.descrh*scl)
+        dkern2 = dict();
+        for c in self.dkerns.keys():
+            dkern2[c] = self.dkerns[c]*scl;
+        return cprop(self.char,self.charw*scl,self.spacew*scl,self.xoffset*scl,self.caph*scl,self.descrh*scl,dkern2)
 # A class indicating a single character's location in the SVG
 class cloc():
     def __init__(self, el,tt,ind):
@@ -790,15 +789,16 @@ class Character_Table():
         
     def get_prop(self,char,sty):
         if sty in list(self.ctable.keys()):
-            matches = [jj for jj in range(len(self.ctable[sty])) if self.ctable[sty][jj].char==char]
-            if len(matches)>0:
-                return self.ctable[sty][matches[0]]
-            else:
-                dh.debug('No character matches!');
-                dh.debug('Character: '+char)
-                dh.debug('Style: '+sty);
-                dh.debug('Existing characters: '+str(list([self.ctable[sty][jj].char for jj in range(len(self.ctable[sty]))])))
-                quit()
+            return self.ctable[sty][char]
+            # matches = [jj for jj in range(len(self.ctable[sty])) if self.ctable[sty][jj].char==char]
+            # if len(matches)>0:
+            #     return self.ctable[sty][matches[0]]
+            # else:
+            #     dh.debug('No character matches!');
+            #     dh.debug('Character: '+char)
+            #     dh.debug('Style: '+sty);
+            #     dh.debug('Existing characters: '+str(list([self.ctable[sty][jj].char for jj in range(len(self.ctable[sty]))])))
+            #     quit()
         else:
             dh.debug('No style matches!');
             dh.debug('Character: '+char)
@@ -839,7 +839,7 @@ class Character_Table():
                     else:
                         ctable[sty] = list(set(list(el.tail)));
         for sty in list(ctable.keys()): # make sure they have NBSPs
-            ctable[sty] = list(set(ctable[sty]+['\u00A0']))
+            ctable[sty] = list(set(ctable[sty]+[' ']))
         return ctable
     
     def measure_character_widths(self,els):
@@ -850,29 +850,62 @@ class Character_Table():
         ct = self.generate_character_table(els,None);
         docscale = self.caller.svg.scale;
         
+                            
+        pI1 = 'pI  ';        # pI with 2 spaces
+        pI2 = 'pI   ';       # pI with 3 spaces
+        # We add pI as test characters because p gives the font's descender (how much the tail descends)
+        # and I gives its cap height (how tall capital letters are).
+        
+        # txts = dict();
+        # for s in list(ct.keys()):
+        #     nt = TextElement();
+        #     nt.set('style',s)
+        #     nt.set('xml:space','preserve'); # needed to prevent spaces from collapsing
+        #     self.caller.svg.append(nt);
+        #     dh.get_id2(nt); # assign id now
+        #     txts[s] = nt;
+        # def Make_Character(c,sty):
+        #     nt = Tspan();
+        #     nt.text = c;
+        #     nt.set('x','0')
+        #     txts[sty].append(nt);
+        #     dh.get_id2(nt); # assign id now
+        #     return nt
+        
+        
         def Make_Character(c,sty):
             nt = TextElement();
             nt.text = c;
             nt.set('style',sty)
+            nt.set('xml:space','preserve'); # needed to prevent spaces from collapsing
             self.caller.svg.append(nt);
-            # nt.get_id(); # assign id now
             dh.get_id2(nt); # assign id now
             return nt
-                            
+                        
+        ct2 = dict();
         for s in list(ct.keys()):
+            ct2[s]=dict();
             for ii in range(len(ct[s])):
-                t = Make_Character(ct[s][ii]+'\u00A0\u00A0',s); # character with 2 nb spaces (last space not rendered)
-                ct[s][ii] = [ct[s][ii],t,t.get_id()]; 
-            t = Make_Character('pI\u00A0\u00A0',s);              # pI with 2 nb spaces
-            ct[s].append([ct[s][ii],t,t.get_id()]);             
-            t = Make_Character('pI\u00A0\u00A0\u00A0',s);        # pI with 3 nb spaces
-            ct[s].append([ct[s][ii],t,t.get_id()]); 
-            # We add pI as test characters because p gives the font's descender (how much the tail descends)
-            # and I gives its cap height (how tall capital letters are).
+                t = Make_Character(ct[s][ii]+'  ',s);    # character with 2 spaces (last space not rendered)
+                myc = ct[s][ii];
+                dkern = dict();
+                if KERN_TABLE:
+                    for jj in range(len(ct[s])):
+                        pc = ct[s][jj];
+                        t2 = Make_Character(pc+myc+'  ',s); # precede by all chars of the same style
+                        dkern[ct[s][jj]] = [ct[s][jj],t2,t2.get_id()];
+                ct2[s][myc]=[myc,t,t.get_id(),dkern];     
+            t = Make_Character(pI1,s);              
+            ct2[s][pI1]=[pI1,t,t.get_id(),dict()];             
+            t = Make_Character(pI2,s);        
+            ct2[s][pI2]=[pI2,t,t.get_id(),dict()]; 
+        ct = ct2;
+
             
         nbb = dh.Get_Bounding_Boxes(self.caller,True);  
+        dkern = dict();
         for s in list(ct.keys()):
-            for ii in range(len(ct[s])):
+            for ii in ct[s].keys():
                 # dh.debug(nbb)
                 bb=nbb[ct[s][ii][2]]
                 wdth = bb[0]+bb[2]
@@ -880,23 +913,61 @@ class Character_Table():
                 bbstrt = bb[0]
                 dscnd = bb[1]+bb[3]
                 ct[s][ii][1].delete();
-                ct[s][ii] = [ct[s][ii][0],wdth,bbstrt,caphgt,dscnd]
+                
+                if KERN_TABLE:
+                    precwidth = dict();
+                    for jj in ct[s][ii][-1].keys():
+                        bb=nbb[ct[s][ii][-1][jj][2]];
+                        wdth2 = bb[0]+bb[2];
+                        precwidth[jj] = wdth2;         # width including the preceding character and extra kerning
+                        ct[s][ii][-1][jj][1].delete();
+                    ct[s][ii] = [ct[s][ii][0],wdth,bbstrt,caphgt,dscnd,precwidth]
+                else:                        
+                    ct[s][ii] = [ct[s][ii][0],wdth,bbstrt,caphgt,dscnd]
+                    
+            if KERN_TABLE:
+                dkern[s] = dict();
+                for ii in ct[s].keys():
+                    sw = ct[s][pI2][1] - ct[s][pI1][1];
+                    mcw = ct[s][ii][1] - sw;      # my character width
+                    if ii==' ': mcw = sw;
+                    for jj in ct[s][ii][-1].keys():
+                        # myi = mycs.index(jj);
+                        pcw = ct[s][jj][1] - sw; # preceding char width
+                        if ct[s][jj][0]==' ': pcw = sw;
+                        bcw = ct[s][ii][-1][jj] - sw; # both char widths
+                        dkern[s][jj,ct[s][ii][0]] = bcw - pcw - mcw;          # preceding char, then next char
+                        
+                
         for s in list(ct.keys()):
-            Nl = len(ct[s])-2;
-            sw = ct[s][-1][1] - ct[s][-2][1] # space width is the difference in widths of the last two
-            ch = ct[s][-1][3]                # cap height
-            dr = ct[s][-1][4]                # descender
-            for ii in range(Nl):
+            sw = ct[s][pI2][1] - ct[s][pI1][1] # space width is the difference in widths of the last two
+            ch = ct[s][pI2][3]                # cap height
+            dr = ct[s][pI2][4]                # descender
+            for ii in ct[s].keys():
                 cw = ct[s][ii][1] - sw;  # character width (full, including extra space on each side)
                 xo = ct[s][ii][2]        # x offset: how far it starts from the left anchor
                 if ct[s][ii][0]==' ':
                     cw = sw;
                     xo = 0;
-                ct[s][ii] = cprop(ct[s][ii][0],cw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale);
+                    
+                # dh.debug([ii,cw,sw])
+                
+                dkernscl = dict();
+                if KERN_TABLE:    
+                    for k in dkern[s].keys():
+                        dkernscl[k] = dkern[s][k]/docscale;
+                # dh.debug([ct[s][ii][0],dkern])
+                ct[s][ii] = cprop(ct[s][ii][0],cw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale,dkernscl);
                 # Because a nominal 1 px font is docscale px tall, we need to divide by the docscale to get the true width
-            ct[s] = ct[s][0:Nl]
-            # ct[s].append(cprop(' ',sw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale));
-            # ct[s].append(cprop('\u00A0',sw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale));
+                
+            
+            # dh.debug(dkernscl)    
+            # ct[s] = ct[s][0:Nl]
+            
+        
+        # for s in list(ct.keys()):
+        #     txts[s].delete();
+        
         return ct, nbb
     
     

@@ -6,7 +6,7 @@
         
         <page name="scaling" gui-text="Scaling mode">
             <label>Scale the lines and data of a plot without affecting text and groups.
-            Select the plot and run Flatten Plots with the recommended options, then run Scale Plots.</label>
+            Select the plot and run the Flattener with the recommended options, then run Scale Plots.</label>
             <spacer/><label>To scale multiple plots at once, group each flattened plot's elements and select the groups.</label>
             
             <param name="hscale" type="float" precision="0" min="1" max="9999" gui-text="Horizontal scaling (%)">100</param>
