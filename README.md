@@ -32,18 +32,18 @@ Scale Plots has three modes. In Scaling Mode, the plot is scaled by a constant f
 2. If a layer name or group ID is put into the "Scale-free elements" option, any elements on that layer will remain unscaled. This is basically the same thing as putting an object in a group, but can be easier if there are many such objects (e.g, if your plot has markers).
 
 # The Flattener
-The Flattener makes it easier to edit plots imported into Inkscape (either from PDFs or from common plotting programs).
-1. *Deep ungroup*: The Scale Plots utility uses grouping to determine when objects are to be kept together, so a deep ungroup is typically needed to remove any existing groupings initially. It also unlinks any clones.
-2. *Apply text fixes*: Applies a series of fixes to text described below (particularly useful for PDF/EPS text).
+The Flattener removes unwanted structure from figures imported into Inkscape. Several of the other extensions require the figure be pre-Flattened, so it is recommended that you map it to a keyboard shortcut (e.g., Ctrl-Alt-F).
+1. *Deep ungroup*: Imported figures often have highly nested groupings. The Deep Ungroup removes these and unlinks any clones.
+2. *Apply text fixes*: Applies a series of fixes to text described below (particularly useful for text from PDFs).
 3. *Remove white rectangles*: Removes any rectangles that have white fill and no stroke. Mostly for removing a plot's background.
 
 ### Text fixes
 <ol>
-<li><i>Split distant text and lines</i>: It is often the case that the PDF/EPS printing process generates text implemented as a single text object. For example, all of the x-axis ticks might be one object, all of the y-axis ticks might be another, and the title and labels may be another. Internally, each letter is positioned independently. This looks fine, but causes issues when trying to scale or do anything nontrivial.</li>
+<li><i>Split distant text and lines</i>: It is often the case that PDF/EPS generation creates text strangely clumped into a single text object. For example, all of the x-axis ticks might be one object, all of the y-axis ticks might be another, and the title and labels may be another. Internally, each letter is positioned independently. This looks fine, but causes issues when trying to scale or do anything nontrivial.</li>
 <li><i>Merge nearby text</i>: The opposite can also occur: text that should be one line is split into multiple objects. This option reverses that.
 <li><i>Remove manual kerning</i>: Text in PDFs is typically kerned—its letters are positioned individually, so if you try to edit it you will get strange results. This option reverses that, although the tradeoff is that text may be slightly repositioned.</li>
 <li><i>Merge superscripts and subscripts</i>: Detect likely subscripts and superscripts, replacing them with native SVG versions.</li>
-<li><i>Replace missing fonts</i>: Useful for imported documents whose original fonts are not installed on the current machine.</li></ol>
+<li><i>Replace missing fonts</i>: Specifies a backup font for when the desired font is not installed on your machine.</li></ol>
 
 # The Homogenizer
 The Homogenizer is a utility that can set all fonts, font sizes, and stroke widths in a selection to the same value. It also removes any text or path distortions. This is most useful when assembling sub-figures, as it allows you to ensure that the whole figure has a uniform look. 
