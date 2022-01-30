@@ -32,7 +32,7 @@ Scale Plots has three modes. In Scaling Mode, the plot is scaled by a constant f
 2. If a layer name or group ID is put into the "Scale-free elements" option, any elements on that layer will remain unscaled. This is basically the same thing as putting an object in a group, but can be easier if there are many such objects (e.g, if your plot has markers).
 
 # The Flattener
-The Flattener removes unwanted structure from figures imported into Inkscape. Several of the other extensions require the figure be pre-Flattened, so it is recommended that you map it to a keyboard shortcut (e.g., Ctrl-Alt-F).
+The Flattener removes unwanted structure from figures imported into Inkscape. Several of the other extensions require the figure be pre-Flattened, so it is recommended that you map it to a keyboard shortcut for easy calling.
 1. *Deep ungroup*: Imported figures often have highly nested groupings. The Deep Ungroup removes these and unlinks any clones.
 2. *Apply text fixes*: Applies a series of fixes to text described below (particularly useful for text from PDFs).
 3. *Remove white rectangles*: Removes any rectangles that have white fill and no stroke. Mostly for removing a plot's background.
