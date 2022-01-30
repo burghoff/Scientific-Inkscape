@@ -32,7 +32,7 @@ Scale Plots has three modes. In Scaling Mode, the plot is scaled by a constant f
 2. If a layer name or group ID is put into the "Scale-free elements" option, any elements on that layer will remain unscaled. This is basically the same thing as putting an object in a group, but can be easier if there are many such objects (e.g, if your plot has markers).
 
 # The Flattener
-The Flattener is a utility that makes it easier to edit plots are exported from common plotting programs and imported into Inkscape, as well as figures imported from papers.
+The Flattener makes it easier to edit plots imported into Inkscape (either from PDFs or from common plotting programs).
 1. *Deep ungroup*: The Scale Plots utility uses grouping to determine when objects are to be kept together, so a deep ungroup is typically needed to remove any existing groupings initially. It also unlinks any clones.
 2. *Apply text fixes*: Applies a series of fixes to text described below (particularly useful for PDF/EPS text).
 3. *Remove white rectangles*: Removes any rectangles that have white fill and no stroke. Mostly for removing a plot's background.
