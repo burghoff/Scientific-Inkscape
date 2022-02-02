@@ -872,6 +872,8 @@ class Character_Table():
         #     dh.get_id2(nt); # assign id now
         #     return nt
         
+        global cnt
+        cnt = 0;
         
         def Make_Character(c,sty):
             nt = TextElement();
@@ -880,6 +882,8 @@ class Character_Table():
             nt.set('xml:space','preserve'); # needed to prevent spaces from collapsing
             self.caller.svg.append(nt);
             dh.get_id2(nt); # assign id now
+            global cnt
+            cnt += 1;
             return nt
                         
         ct2 = dict();
@@ -967,7 +971,7 @@ class Character_Table():
         
         # for s in list(ct.keys()):
         #     txts[s].delete();
-        
+        # dh.debug(cnt)
         return ct, nbb
     
     

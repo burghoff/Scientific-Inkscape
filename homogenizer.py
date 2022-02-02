@@ -22,12 +22,14 @@ import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, addNS, \
     Transform, Style, PathElement, Line, Rectangle, Path,Vector2d, \
-    Use, NamedView, Defs, Metadata, ForeignObject, Group, FontFace, FlowSpan, \
-    Image, FlowRegion
+    Use, Group, FontFace, FlowSpan, Image, FlowRegion
 )
 import dhelpers as dh
 from applytransform_mod import ApplyTransform
 import math
+
+badels = (inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.ForeignObject,\
+          inkex.SVGfont,inkex.FontFace,inkex.MissingGlyph);
 
 dispprofile = False
 class ScalePlots(inkex.EffectExtension):
@@ -73,7 +75,7 @@ class ScalePlots(inkex.EffectExtension):
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
         sel = [v for el in sel for v in dh.descendants2(el)];
         
-        sela= [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject)))];
+        sela= [el for el in sel if not(isinstance(el, badels))];
         sel = [el for el in sel if isinstance(el,(TextElement,Tspan,FlowRoot,FlowPara,FlowSpan))];
         
         if setfontfamily or setfontsize or fixtextdistortion:
