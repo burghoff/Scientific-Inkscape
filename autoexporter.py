@@ -154,6 +154,7 @@ class ScalePlots(inkex.EffectExtension):
         import pickle
         s=[self.options.watchdir,self.options.writedir,bfn,formats,sys.path];
         pickle.dump(s,open(os.path.join(dh.get_script_path(),'ae_settings.p'),'wb'));
+        # dh.debug([pybin,aepy])
                 
         
         def escp(x):
@@ -195,6 +196,7 @@ class ScalePlots(inkex.EffectExtension):
                         
         
 if __name__ == '__main__':
+    dh.Version_Check('Autoexporter')
     import warnings
     warnings.filterwarnings("ignore")
     ScalePlots().run()

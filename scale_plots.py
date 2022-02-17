@@ -513,6 +513,7 @@ class ScalePlots(inkex.EffectExtension):
                     
 
 if __name__ == '__main__':
+    dh.Version_Check('Scale plots')
     try:
         ScalePlots().run()
     except lxml.etree.XMLSyntaxError:

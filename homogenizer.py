@@ -244,7 +244,6 @@ class ScalePlots(inkex.EffectExtension):
             ps.print_stats()
             dh.debug(s.getvalue())
 
-if __name__ == '__main__':
-
-    
+if __name__ == '__main__':    
+    dh.Version_Check('Homogenizer')
     ScalePlots().run()

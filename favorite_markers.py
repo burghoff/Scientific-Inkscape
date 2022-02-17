@@ -219,6 +219,7 @@ class ScalePlots(inkex.EffectExtension):
                         
         
 if __name__ == '__main__':
+    dh.Version_Check('Favorite markers')
     import warnings
     warnings.filterwarnings("ignore")
     ScalePlots().run()

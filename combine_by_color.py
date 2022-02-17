@@ -121,4 +121,5 @@ def deleteup(el):
         
 
 if __name__ == '__main__':
+    dh.Version_Check('Combine by color')
     ScalePlots().run()

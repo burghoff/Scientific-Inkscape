@@ -35,6 +35,14 @@ import lxml, math
 from lxml import etree  
 
 
+try:
+    inkex_version = inkex.__version__;
+except:
+    inkex_version = '1.0.0';
+# inkex.utils.debug(inkex_version)
+
+
+
 It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
 
 def descendants2(el):
@@ -191,7 +199,7 @@ def Get_Composed_Width(el,comp,nargout=1):
     if nargout==4:
         ang = math.atan2(ct.c,ct.d)*180/math.pi;
     svg = get_parent_svg(el)
-    docscale = svg.scale;
+    docscale = vscale(svg);
     sc = Get_Style_Comp(cs,comp);
     # debug(sc)
     if sc is not None:
@@ -249,7 +257,7 @@ def Get_Composed_List(el,comp):
     cs = selected_style_local(el);
     ct = el.composed_transform();
     sc = Get_Style_Comp(cs,comp);
-    docscale = get_parent_svg(el).scale;
+    docscale = vscale(get_parent_svg(el));
     if sc=='none':
         return 'none'
     elif sc is not None:
@@ -280,7 +288,9 @@ def implicitpx(str):
     # Even if the size explicitly says '1mm' and the user units are mm, this will be
     # first converted to px and then interpreted to mean user units. (So '1mm' would
     # up being bigger than 1 mm). This returns the size as Inkscape will interpret it (in uu)
-    return inkex.units.convert_unit(str.lower().strip(), 'px', default='px')
+    return inkex.units.convert_unit(str.lower().strip(), 'px');
+#    return inkex.units.convert_unit(str.lower().strip(), 'px', default='px') # fails pre-1.1, default is px anyway
+        
 
 # Get points of a path, element, or rectangle in the global coordinate system
 def get_points(el,irange=None):
@@ -309,7 +319,11 @@ def get_points(el,irange=None):
         else:
             pts = [];
     ct = el.composed_transform();
-    docscale = get_parent_svg(el).scale;
+    mysvg = get_parent_svg(el);
+    if mysvg is not None:
+        docscale = vscale(get_parent_svg(el));
+    else:
+        docscale = 1;
     xs = []; ys = [];
     for p in pts:
         p = ct.apply_to_point(p);
@@ -352,7 +366,7 @@ def ungroup(groupnode):
             tx = el.get('x'); ty=el.get('y')
             if tx is None: tx = 0;
             if ty is None: ty = 0;
-            p.set('transform',Transform('translate('+str(tx)+','+str(ty)+')')*Transform(p.get('transform')))
+            p.set('transform',vmult(Transform('translate('+str(tx)+','+str(ty)+')'),Transform(p.get('transform'))))
             el.delete(); el=p; el.set('unlinked_clone',True); #wasuse=True;
         elif isinstance(el,lxml.etree._Comment): # remove comments
             groupnode.remove(el)
@@ -360,7 +374,8 @@ def ungroup(groupnode):
             recursive_merge_clipmask(el, node_clippathurl)          # transform applies to clip, so do clip first
             recursive_merge_clipmask(el, node_maskurl, mask=True)   # also mask
             # _merge_transform(el, node_transform)
-            el.transform = node_transform * el.transform
+            
+            el.transform = vmult(node_transform,el.transform)
             el.style = shallow_composed_style(el)
             
             fix_css_clipmask(el,mask=True);
@@ -619,20 +634,28 @@ def get_id2(el, as_url=0):
     return eid
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
-def Get_Bounding_Boxes(s,getnew):
-# Gets all of a document's bounding boxes (by ID)
+def Get_Bounding_Boxes(s=None,getnew=False,filename=None,pxinuu=None):
+# Gets all of a document's bounding boxes (by ID), in user units
 # Note that this uses a command line call, so by default it will only get the values from BEFORE the extension is called
-# Set getnew to True to make a temporary copy of the file that is then read. This gets the new boxes but is slower
+# Set getnew to True to make a temporary copy of the file that is then read. 
+    if filename is None:
+        filename = s.options.input_file;
+    if pxinuu is None:
+        pxinuu = s.svg.unittouu('1px');
+    
+    # Query Inkscape
+#    f = open("freezecheck.txt", "w"); f.write('Starting call...'); f.close();
     if not(getnew):
-        tFStR = command.inkscape(s.options.input_file,'--query-all');
+        tFStR = commandqueryall(filename);
     else:
-        tmpname = s.options.input_file+'_tmp';
+        tmpname = filename+'_tmp';
         command.write_svg(s.svg,tmpname);
-        tFStR = command.inkscape(tmpname,'--query-all');
-        import os; os.remove(tmpname)
+        tFStR = commandqueryall(tmpname);
+        import os; os.remove(tmpname);
+#    f = open("freezecheck.txt", "a"); f.write('finished!'); f.close();
 
+    # Parse the output
     tBBLi = tFStR.splitlines()
-#    x=[[float(x.strip('\'')) for x in str(d).split(',')[1:]] for d in tBBLi]
     bbs=dict();
     for d in tBBLi:
         key = str(d).split(',')[0];
@@ -640,9 +663,21 @@ def Get_Bounding_Boxes(s,getnew):
             key = key[2:];
         if str(d)[2:52]=='WARNING: Requested update while update in progress':
             continue;                       # skip warnings (version 1.0 only?)
-        data = [float(x.strip('\''))*s.svg.unittouu('1px') for x in str(d).split(',')[1:]]
+        data = [float(x.strip('\''))*pxinuu for x in str(d).split(',')[1:]]
         bbs[key] = data;
     return bbs
+
+# 2022.02.03: I think the occasional hangs come from the call to command.
+# I think this is more robust. Make a tally below if it freezes:
+def commandqueryall(fn):
+    import subprocess
+    bfn, tmp = Get_Binary_Loc(fn);
+    arg2 = [bfn, '--query-all',fn]
+    # p=subprocess.run(arg2, shell=False,stdout=subprocess.PIPE, stderr=subprocess.DEVNULL);
+    p=subprocess.run(arg2, shell=False,timeout=60,stdout=subprocess.PIPE, stderr=subprocess.DEVNULL);
+    tFStR = p.stdout
+    return tFStR
+    
 
 def debug(x):
     inkex.utils.debug(x);
@@ -736,7 +771,7 @@ def global_transform(el,trnsfrm,irange=None,trange=None):
         prt=Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
     else:
         prt=myp.composed_transform(); 
-    prt = Transform('scale('+str(get_parent_svg(el).scale)+')')*prt;  # also include document scaling
+    prt = Transform('scale('+str(vscale(get_parent_svg(el)))+')')*prt;  # also include document scaling
     
     myt = el.get('transform');
     if myt==None:
@@ -828,3 +863,159 @@ def object_to_path(el):
 import os, sys
 def get_script_path():
     return os.path.dirname(os.path.realpath(sys.argv[0]))
+
+
+# Gets the location of the Inkscape binary
+# Functions copied from command.py
+# Copyright (C) 2019 Martin Owens
+def Get_Binary_Loc(fin):
+    from lxml.etree import ElementTree
+    INKSCAPE_EXECUTABLE_NAME = os.environ.get('INKSCAPE_COMMAND')
+    if INKSCAPE_EXECUTABLE_NAME == None:
+        if sys.platform == 'win32':
+            # prefer inkscape.exe over inkscape.com which spawns a command window
+            INKSCAPE_EXECUTABLE_NAME = 'inkscape.exe'
+        else:
+            INKSCAPE_EXECUTABLE_NAME = 'inkscape'
+    class CommandNotFound(IOError):
+        pass
+    class ProgramRunError(ValueError):
+        pass
+    def which(program):
+        if os.path.isabs(program) and os.path.isfile(program):
+            return program
+        try:
+            # Python2 and python3, but must have distutils and may not always
+            # work on windows versions (depending on the version)
+            from distutils.spawn import find_executable
+            prog = find_executable(program)
+            if prog:
+                return prog
+        except ImportError:
+            pass
+        try:
+            # Python3 only version of which
+            from shutil import which as warlock
+            prog = warlock(program)
+            if prog:
+                return prog
+        except ImportError:
+            pass # python2
+        raise CommandNotFound(f"Can not find the command: '{program}'")
+    def write_svg(svg, *filename):
+        filename = os.path.join(*filename)
+        if os.path.isfile(filename):
+            return filename
+        with open(filename, 'wb') as fhl:
+            if isinstance(svg, SvgDocumentElement):
+                svg = ElementTree(svg)
+            if hasattr(svg, 'write'):
+                # XML document
+                svg.write(fhl)
+            elif isinstance(svg, bytes):
+                fhl.write(svg)
+            else:
+                raise ValueError("Not sure what type of SVG data this is.")
+        return filename
+    def to_arg(arg, oldie=False):
+        if isinstance(arg, (tuple, list)):
+            (arg, val) = arg
+            arg = '-' + arg
+            if len(arg) > 2 and not oldie:
+                arg = '-' + arg
+            if val is True:
+                return arg
+            if val is False:
+                return None
+            return f"{arg}={str(val)}"
+        return str(arg)
+    def to_args(prog, *positionals, **arguments):
+        args = [prog]
+        oldie = arguments.pop('oldie', False)
+        for arg, value in arguments.items():
+            arg = arg.replace('_', '-').strip()    
+            if isinstance(value, tuple):
+                value = list(value)
+            elif not isinstance(value, list):
+                value = [value]    
+            for val in value:
+                args.append(to_arg((arg, val), oldie))
+        args += [to_arg(pos, oldie) for pos in positionals if pos is not None]
+        # Filter out empty non-arguments
+        return [arg for arg in args if arg is not None]
+    def _call(program, *args, **kwargs):
+        stdin = kwargs.pop('stdin', None)
+        if isinstance(stdin, str):
+            stdin = stdin.encode('utf-8')
+        return to_args(which(program), *args, **kwargs)
+    def call(program, *args, **kwargs):
+        return _call(program, *args, **kwargs)
+    def inkscape2(svg_file, *args, **kwargs):
+        return call(INKSCAPE_EXECUTABLE_NAME, svg_file, *args, **kwargs)
+    return inkscape2(fin)
+
+# Version-specific document scale
+def vscale(svg):
+    return svg.scale
+    # if inkex_version[0:3] in ['1.0','1.1']:
+    #     debug(['scale: ',svg.scale])
+    #     return svg.scale
+    # else:
+    #     # debug(['scale: ',svg.scale])
+    #     # debug(['inkscape_scale: ',svg.inkscape_scale])
+    #     return svg.inkscape_scale
+    
+# Version-specific multiplication
+def vmult(A,B):
+    if inkex_version[0:3] in ['1.0','1.1']:
+        return A*B
+    else:
+        return A@B
+    
+def Version_Check(caller):
+    siv = 'v1.4.4'
+    logname = 'Log.txt'
+    NFORM = 200;
+    
+    try:
+        f = open(logname,'r');
+        d = f.readlines(); f.close();
+    except:
+        d = [];    
+    
+    displayedform = False;
+    if len(d)>0:
+        displayedform = d[-1]=='Displayed form screen'
+        if displayedform:
+            d=d[:len(d)-1];
+    
+    prevvs = [dv[-6:-3] for dv in d];
+    if inkex_version=='1.0.0' and not('1.0' in prevvs):
+        msg = 'Scientific Inkscape requires Inkscape version 1.1.2 or higher. '+\
+              'You are running a less-recent version—'\
+              'results may be unexpected. \n\nThis is a one-time message.';
+        inkex.utils.errormsg(msg);
+    
+    from datetime import datetime
+    dt = datetime.now().strftime("%Y.%m.%d, %H:%M:%S")
+    d.append(dt+' Running '+caller+' '+siv+', Inkscape v'+inkex_version+'\n');
+    
+    if len(d)>NFORM:
+        d = d[-NFORM:];
+        if not(displayedform):
+            sif3 = 'dt9mt3Br6';
+            sif1 = 'https://forms.gle/'
+            sif2 = 'RS6HythP';
+            msg = 'You have run Scientific Inkscape extensions over '+\
+                str(NFORM)+' times! Thank you for being such a dedicated user!'+\
+                '\n\nBuilding and maintaining Scientific Inkscape is a time-consuming job,'+\
+                ' and I have no real way of tracking the number of active users. For reporting purposes, I would greatly '+\
+                "appreciate it if you could sign my guestbook to indicate that you use Scientific Inkscape. "+\
+                'It is located at\n\n'+sif1+sif2+sif3+'\n\nPlease note that this is a one-time message. '+\
+                'You will never get this message again, so please copy the URL before you click OK.';
+            inkex.utils.errormsg(msg);
+        d.append('Displayed form screen')
+        
+    f = open(logname, 'w');
+    f.write(''.join(d));
+    f.close();

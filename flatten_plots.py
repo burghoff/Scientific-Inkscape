@@ -29,7 +29,7 @@ import os
 
 
 dispprofile = False;
-# dispprofile = True;
+#dispprofile = True;
 
 class FlattenPlots(inkex.EffectExtension):
     def add_arguments(self, pars):
@@ -224,6 +224,7 @@ class FlattenPlots(inkex.EffectExtension):
                 
 
 if __name__ == '__main__':
+    dh.Version_Check('Flattener')
     try:
         FlattenPlots().run()
     except lxml.etree.XMLSyntaxError:

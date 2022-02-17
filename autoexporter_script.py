@@ -7,7 +7,7 @@ BASE_TIMEOUT = 60;
 MAX_ATTEMPTS = 4;
 
 
-import sys, platform, subprocess, os, threading, datetime
+import sys, platform, subprocess, os, threading, datetime, time
 # Load the configuration
 import pickle
 mypath = os.path.dirname(os.path.realpath(sys.argv[0]));
@@ -42,6 +42,7 @@ def export_file(bfn,fin,fout,fformat,timeoutv):
     callstr = '"'+bfn+'"'+' --export-background=#ffffff --export-background-opacity=1.0 --export-dpi='\
             +str(PNG_DPI)+' --export-filename=' + '"'+myoutput+'"' + ' "'+fin+'"'
     print('    To '+fformat+'...',end=' ',flush=True)
+    timestart = time.time();
     try:
 #        arg2 = command.to_args(command.which('inkscape.exe'), export_background='#ffffff',\
 #                               export_background_opacity=1.0,export_dpi=PNG_DPI,export_filename=myoutput);
@@ -51,7 +52,10 @@ def export_file(bfn,fin,fout,fformat,timeoutv):
         p=subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 #        command.inkscape(fin,export_background='#ffffff',export_background_opacity=1.0,export_dpi=PNG_DPI,\
 #                             export_filename=myoutput) # doesn't work on macOS
-        print('done!'); return True
+        print('done! (' + str(round(1000*(time.time()-timestart))/1000) + ' s)');
+        
+        
+        return True
     except subprocess.TimeoutExpired:
         print('timed out after '+str(timeoutv)+' seconds'); return False
         
