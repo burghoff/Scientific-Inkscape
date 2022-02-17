@@ -69,7 +69,7 @@ def Split_Lines(lls,os):
     newlls = [];            
     for jj in range(len(lls)):
         ll = lls[jj];
-        if ll.lns is not None and len(ll.lns)>1 and not(ll.isinkscape):    
+        if ll.lns is not None and len(ll.lns)>1 and not(ll.isinkscape):
             for il in reversed(range(1,len(ll.lns))):
                 newtxt,nll = ll.Split_Off_Words(ll.lns[il].ws)
                 os.append(newtxt)

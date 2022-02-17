@@ -57,7 +57,9 @@ class LineList():
                 ln.ll = self;
                 
         tlvllns = [ln for ln in self.lns if ln.tlvlno is not None and ln.tlvlno>0]; # top-level lines after 1st
-        self.isinkscape = all([ln.inheritx for ln in tlvllns]); # probably made in Inkscape
+        self.isinkscape = all([ln.inheritx for ln in tlvllns]) and len(tlvllns)>0; # probably made in Inkscape
+        # if self.isinkscape:
+        #     dh.debug(tlvllns)
         self.dxs = [c.dx for ln in self.lns for c in ln.cs]; 
         self.dys = [c.dy for ln in self.lns for c in ln.cs]; self.flatdelta = False;
         
