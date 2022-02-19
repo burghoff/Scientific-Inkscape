@@ -186,6 +186,7 @@ class ScalePlots(inkex.EffectExtension):
             szd = dict(); sfd = dict(); szs=[];
             for el in sela:
                 sw,sf,ct,ang = dh.Get_Composed_Width(el,'stroke-width',nargout=4)
+                
                 elid = el.get_id();
                 szd[elid] = sw; sfd[elid] = sf;    
                 if sw is not None:
@@ -233,8 +234,7 @@ class ScalePlots(inkex.EffectExtension):
                     
         if self.options.fusetransforms:
             for el in sela:
-                 if not(isinstance(el, (TextElement,Image,Group,Tspan,FlowRoot,FlowPara,FlowRegion,FlowSpan,Use))): # not(el.typename in ['TextElement','Image','Group']):
-                     ApplyTransform().recursiveFuseTransform(el);
+                 ApplyTransform().recursiveFuseTransform(el);
         
         if dispprofile:
             pr.disable()

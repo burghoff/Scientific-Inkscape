@@ -34,14 +34,18 @@ def remove_kerning(caller,os,removemanual,mergesupersub,splitdistant,mergenearby
         if removemanual: lls, os = Remove_Manual_Kerning(lls,os,mergesupersub)
         if mergenearby or mergesupersub: lls, os = External_Merges(lls,os,mergenearby,mergesupersub)
         if splitdistant: lls, os = Split_Lines(lls,os);
+        # for ll in lls:
+        #     for ln in ll.lns:
+        #         dh.debug([ln.txt(),ln.xsrc.get_id(),ln.xsrc.get('x'),ln.x])
+        #     # ll.Position_Check()
         lls, os = Change_Justification(lls,os,justification)
         lls, os = Make_All_Editable(lls,os);
         lls, os = Final_Cleanup(lls,os);
     return os
 
 def Final_Cleanup(lls,os):
-    for el in os:
-        if isinstance(el,(TextElement)): deleteempty(el);
+    for ll in lls:
+        ll.Delete_Empty()
     return lls, os
 
 def Make_All_Editable(lls,os):
@@ -145,22 +149,23 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
                     if bbintersects: # so we don't waste time transforming, check if bboxes overlap
                         # calculate 2's coords in 1's system
                         # use the pre-merge bounds
-                        if w2.orig_pts_ut is not None:
-                            w2x = [p[0].x for p in w2.orig_pts_ut];
-                            min2 = min([ii for ii in range(len(w2x)) if min(w2x)==w2x[ii]]);
-                            bl2 = (-w.transform).apply_to_point(w2.orig_pts_t[min2][0])
-                            tl2 = (-w.transform).apply_to_point(w2.orig_pts_t[min2][1]);
-                        else:
-                            bl2 = (-w.transform).apply_to_point(w2.pts_t[0])
-                            tl2 = (-w.transform).apply_to_point(w2.pts_t[1]);
-                        if w.orig_pts_ut is not None:
-                            w1x = [p[3].x for p in w.orig_pts_ut];
-                            max1 = max([ii for ii in range(len(w1x)) if max(w1x)==w1x[ii]]);
-                            tr1 = w.orig_pts_ut[max1][2];
-                            br1 = w.orig_pts_ut[max1][3];
-                        else:
-                            tr1 = w.pts_ut[2];
-                            br1 = w.pts_ut[3];
+                        # if w2.orig_pts_ut is not None:
+                        #     w2x = [p[0].x for p in w2.orig_pts_ut];
+                        #     min2 = min([ii for ii in range(len(w2x)) if min(w2x)==w2x[ii]]);
+                        #     bl2 = (-w.transform).apply_to_point(w2.orig_pts_t[min2][0])
+                        #     tl2 = (-w.transform).apply_to_point(w2.orig_pts_t[min2][1]);
+                        # else:
+                        #     bl2 = (-w.transform).apply_to_point(w2.pts_t[0])
+                        #     tl2 = (-w.transform).apply_to_point(w2.pts_t[1]);
+                        # if w.orig_pts_ut is not None:
+                        #     w1x = [p[3].x for p in w.orig_pts_ut];
+                        #     max1 = max([ii for ii in range(len(w1x)) if max(w1x)==w1x[ii]]);
+                        #     tr1 = w.orig_pts_ut[max1][2];
+                        #     br1 = w.orig_pts_ut[max1][3];
+                        # else:
+                        #     tr1 = w.pts_ut[2];
+                        #     br1 = w.pts_ut[3];
+                        tr1, br1, tl2, bl2 = w.get_orig_pts(w2)
                         
                         xpenmatch = (br1.x-xtol <= bl2.x <= br1.x + dx/w.sf + xtol);
                         if xpenmatch:
@@ -393,10 +398,12 @@ def Remove_Manual_Kerning(lls,os,mergesupersub):
         w.orig_bb = w.bb;
         if len(w.merges)>0 and not(w.merged):
             for ii in range(len(w.merges)):
+                # import copy
+                # oldwd = copy.deepcopy([w.merges[ii].pts_t,w.merges[ii].pts_ut,w.merges[ii].bb]);
                 w.appendw(w.merges[ii],w.wtypes[ii+1]);
-                w.orig_pts_t.append(w.merges[ii].pts_t)      # store this info for future merges
-                w.orig_pts_ut.append(w.merges[ii].pts_ut)
-                w.orig_bb = w.orig_bb.union(w.merges[ii].bb)
+                # w.orig_pts_t.append(oldwd[0])      # store this info for future merges
+                # w.orig_pts_ut.append(oldwd[1])
+                # w.orig_bb = w.orig_bb.union(oldwd[2])
             for c in w.cs:
                 if c.pending_style is not None:
                     c.applypending();

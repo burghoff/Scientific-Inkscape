@@ -252,7 +252,7 @@ def Get_Composed_LineHeight(el):    # cs = el.composed_style();
     
 # For style components that are a list (stroke-dasharray), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms
-def Get_Composed_List(el,comp):
+def Get_Composed_List(el,comp,nargout=1):
     # cs = el.composed_style();
     cs = selected_style_local(el);
     ct = el.composed_transform();
@@ -261,11 +261,19 @@ def Get_Composed_List(el,comp):
     if sc=='none':
         return 'none'
     elif sc is not None:
-        sw = sc.strip().replace("px", "").split(',')
-        sw = [implicitpx(x)*math.sqrt(abs(ct.a*ct.d - ct.b*ct.c))*docscale for x in sw];
-        return sw
+        sw = sc.split(',')
+        # sw = sc.strip().replace("px", "").split(',')
+        sf = math.sqrt(abs(ct.a*ct.d - ct.b*ct.c))*docscale
+        sw = [implicitpx(x)*sf for x in sw];
+        if nargout==1:
+            return sw
+        else:
+            return sw,sf
     else:
-        return None
+        if nargout==1:
+            return None
+        else:
+            return None, None
 
 # Unit parser and renderer
 def uparse(str):
@@ -611,6 +619,17 @@ def get_unique_id2(svg, prefix):
         new_id = prefix + str(int(random.random() * _from - _to) + _to)
     svg.ids.add(new_id)
     return new_id
+# Version that is non-random, useful for debugging
+# global idcount
+# idcount = 1;
+# def get_unique_id2(svg, prefix):
+#     ids = svg.get_ids()
+#     new_id = None; global idcount
+#     while new_id is None or new_id in ids:
+#         # Do not use randint because py2/3 incompatibility
+#         new_id = prefix + str(idcount); idcount+=1
+#     svg.ids.add(new_id)
+#     return new_id
 def set_random_id2(el, prefix=None, size=4, backlinks=False):
     """Sets the id attribute if it is not already set."""
     prefix = str(el) if prefix is None else prefix
@@ -787,23 +806,37 @@ def global_transform(el,trnsfrm,irange=None,trange=None):
     
     sw = Get_Composed_Width(el,'stroke-width');
     sd = Get_Composed_List(el, 'stroke-dasharray');
+    
     el.set('transform',newtr); # Add the new transform
-    if not(isinstance(el, (TextElement,Image,Group,Tspan,FlowRoot,FlowPara,FlowRegion,FlowSpan))): # not(el.typename in ['TextElement','Image','Group']):
-        ApplyTransform().recursiveFuseTransform(el,irange=irange,trange=trange);
-        if sw is not None:
-#            if Get_Style_Comp(el.get('style'),'stroke-width') is None:
-#                debug(el.get_id())
-            neww, sf, ct, ang = Get_Composed_Width(el,'stroke-width',nargout=4);
-            Set_Style_Comp(el,'stroke-width',str(sw/sf)); # fix width
-            # nw = float(Get_Style_Comp(el.get('style'),'stroke-width'))
-            # sw = nw*sw/Get_Composed_Width(el,'stroke-width');
-            # Set_Style_Comp(el,'stroke-width',str(sw)); # fix width
-        if not(sd in [None,'none']): #not(sd==None) and not(sd=='none'):
-            nd = Get_Style_Comp(el.get('style'),'stroke-dasharray').split(',');
-            cd = Get_Composed_List(el,'stroke-dasharray');
-            for ii in range(len(sd)):
-                sd[ii] = implicitpx(nd[ii])*sd[ii]/cd[ii];
-            Set_Style_Comp(el,'stroke-dasharray',str(sd).strip('[').strip(']')); # fix width
+    ApplyTransform().recursiveFuseTransform(el,irange=irange,trange=trange);
+    
+    if sw is not None:
+        neww, sf, ct, ang = Get_Composed_Width(el,'stroke-width',nargout=4);
+        Set_Style_Comp(el,'stroke-width',str(sw/sf));                                            # fix width
+    if not(sd in [None,'none']):
+        nd,sf = Get_Composed_List(el,'stroke-dasharray',nargout=2);
+        Set_Style_Comp(el,'stroke-dasharray',str([sdv/sf for sdv in sd]).strip('[').strip(']')); # fix dash
+
+#     sw = Get_Composed_Width(el,'stroke-width');
+#     sd = Get_Composed_List(el, 'stroke-dasharray');
+#     el.set('transform',newtr); # Add the new transform
+#     if not(isinstance(el, (TextElement,Image,Group,Tspan,FlowRoot,FlowPara,FlowRegion,FlowSpan))): # not(el.typename in ['TextElement','Image','Group']):
+#         ApplyTransform().recursiveFuseTransform(el,irange=irange,trange=trange);
+#         if sw is not None:
+# #            if Get_Style_Comp(el.get('style'),'stroke-width') is None:
+# #                debug(el.get_id())
+#             neww, sf, ct, ang = Get_Composed_Width(el,'stroke-width',nargout=4);
+#             Set_Style_Comp(el,'stroke-width',str(sw/sf)); # fix width
+#             # nw = float(Get_Style_Comp(el.get('style'),'stroke-width'))
+#             # sw = nw*sw/Get_Composed_Width(el,'stroke-width');
+#             # Set_Style_Comp(el,'stroke-width',str(sw)); # fix width
+#         if not(sd in [None,'none']): #not(sd==None) and not(sd=='none'):
+#             nd = Get_Style_Comp(el.get('style'),'stroke-dasharray').split(',');
+#             cd = Get_Composed_List(el,'stroke-dasharray');
+#             for ii in range(len(sd)):
+#                 sd[ii] = implicitpx(nd[ii])*sd[ii]/cd[ii];
+#             Set_Style_Comp(el,'stroke-dasharray',str(sd).strip('[').strip(']')); # fix width
+
 
 # Modified from Inkex's get_path          
 # Correctly calculates path for rectangles and ellipses  
@@ -973,7 +1006,7 @@ def vmult(A,B):
         return A@B
     
 def Version_Check(caller):
-    siv = 'v1.4.4'
+    siv = 'v1.4.6'
     logname = 'Log.txt'
     NFORM = 200;
     
@@ -993,7 +1026,7 @@ def Version_Check(caller):
     if inkex_version=='1.0.0' and not('1.0' in prevvs):
         msg = 'Scientific Inkscape requires Inkscape version 1.1.2 or higher. '+\
               'You are running a less-recent version—'\
-              'results may be unexpected. \n\nThis is a one-time message.';
+              'results may be unexpected. \n\nThis is a one-time message.\n\n';
         inkex.utils.errormsg(msg);
     
     from datetime import datetime
@@ -1012,7 +1045,7 @@ def Version_Check(caller):
                 ' and I have no real way of tracking the number of active users. For reporting purposes, I would greatly '+\
                 "appreciate it if you could sign my guestbook to indicate that you use Scientific Inkscape. "+\
                 'It is located at\n\n'+sif1+sif2+sif3+'\n\nPlease note that this is a one-time message. '+\
-                'You will never get this message again, so please copy the URL before you click OK.';
+                'You will never get this message again, so please copy the URL before you click OK.\n\n';
             inkex.utils.errormsg(msg);
         d.append('Displayed form screen')
         
