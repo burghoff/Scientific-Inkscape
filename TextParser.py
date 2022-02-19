@@ -348,8 +348,8 @@ class LineList():
     def Make_Editable(self):
         el = self.textel
         el.set('xml:space','preserve')   
-        
-        if len(self.lns)==1 and self.lns[0].tlvlno==0: # only child, no nesting, not a sub/superscript
+        # if len(self.lns)==1 and self.lns[0].tlvlno==0: # only child, no nesting, not a sub/superscript
+        if len(self.lns)==1 and self.lns[0].tlvlno is not None: # only one line that is a top-level tspan
             ln = self.lns[0];
             olddx = self.dxs;
             olddy = self.dys;
@@ -362,7 +362,7 @@ class LineList():
             myp = ln.el.getparent();
             if tx is not None: myp.set('x',tx)      # enabling sodipodi causes it to move to the parent's x and y
             if ty is not None: myp.set('y',ty)      # enabling sodipodi causes it to move to the parent's x and y
-            ln.el.set('sodipodi:role','line'); # reenable sodipodi so we can insert returns
+            ln.el.set('sodipodi:role','line');      # reenable sodipodi so we can insert returns
             
             for ii in range(len(self.lns[0].cs)):
                 self.lns[0].cs[ii].dx = olddx[ii]

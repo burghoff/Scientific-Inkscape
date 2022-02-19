@@ -1006,7 +1006,7 @@ def vmult(A,B):
         return A@B
     
 def Version_Check(caller):
-    siv = 'v1.4.6'
+    siv = 'v1.4.7'
     logname = 'Log.txt'
     NFORM = 200;
     

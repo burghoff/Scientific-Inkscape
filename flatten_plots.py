@@ -29,7 +29,7 @@ import os
 
 
 dispprofile = False;
-#dispprofile = True;
+# dispprofile = True;
 
 class FlattenPlots(inkex.EffectExtension):
     def add_arguments(self, pars):
