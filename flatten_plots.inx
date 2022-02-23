@@ -9,6 +9,11 @@
             <param name="fixtext"  type="bool" gui-text="Apply text fixes?">true</param>
         <label appearance="header">Other options</label>
             <param name="removerectw" type="bool" gui-text="Remove white-filled rectangles?">true</param>
+            
+            
+            <label appearance="header">Note</label>
+            <label>For anyone using Inkscape to prepare figures, it is strongly recommended that you change the transformation preferences from Optimized to Preserved in Edit > Preferences > Behavior > Transforms. The Optimized setting can distort certain paths.</label>
+            
             <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>By David Burghoff, University of Notre Dame</label>
         </page>

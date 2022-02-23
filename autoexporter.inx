@@ -12,10 +12,13 @@
         <param name="usepng" type="bool" gui-text="PNG">true</param>    
         <param name="useemf" type="bool" gui-text="EMF">true</param>   
         <param name="useeps" type="bool" gui-text="EPS">true</param> 
+        <param name="dpi" type="float" precision="0" min="1" max="9999" gui-text="Rasterization DPI">600</param>
         
         <label appearance="header">Directories</label>   
         <param type="path" name="watchdir" gui-text="Watch directory" mode="folder"/>
         <param type="path" name="writedir" gui-text="Write directory" mode="folder"/>
+        
+        
         
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>By David Burghoff, University of Notre Dame</label>

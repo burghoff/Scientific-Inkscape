@@ -13,16 +13,17 @@ import pickle
 mypath = os.path.dirname(os.path.realpath(sys.argv[0]));
 f=open(os.path.join(mypath,'ae_settings.p'),'rb');
 s=pickle.load(f); f.close(); os.remove(os.path.join(mypath,'ae_settings.p'));
-watchdir = s[0]; writedir = s[1]; bfn = s[2]; fmts= s[3];
+watchdir = s[0]; writedir = s[1]; bfn = s[2]; fmts= s[3]; 
 sys.path += s[4];
+PNG_DPI = s[5]
 
 islinux = (platform.system().lower()=='linux')
 if not(islinux):
     import tkinter
     from tkinter import filedialog
-    promptstring = 'Enter D to change watch/write directories, A to export all now, and Q to quit: '
+    promptstring = 'Enter D to change watch/write directories, A to export all now, R to change DPI, and Q to quit: '
 else:
-    promptstring = 'Enter A to export all now and Q to quit: '
+    promptstring = 'Enter A to export all now, R to change DPI, and Q to quit: '
 
 fmts = [(v.lower()=='true') for v in fmts.split('_')];
 exp_fmts = []
@@ -143,6 +144,7 @@ class myThread(threading.Thread):
                 if self.nf:
 #                    print('Inkscape binary: '+self.bfn)
                     print('Export formats: '+', '.join([v.upper() for v in exp_fmts]))
+                    print('Rasterization DPI: '+str(PNG_DPI))
                     print('Watch directory: '+self.watchdir)
                     print('Write directory: '+self.writedir)
                     files = get_files(self.watchdir,None);
@@ -198,7 +200,9 @@ t1 = myThread(1);
 t1.bfn = bfn;
 t1.watchdir = watchdir;
 t1.writedir = writedir;
-t1.bfn = Validate_Binary(t1.bfn);
+# print('TEst')
+# t1.bfn = Validate_Binary(t1.bfn);
+# print('TEst')
 if t1.watchdir is None or t1.writedir is None:
     t1.watchdir, t1.writedir = Get_Directories()
 
@@ -217,6 +221,9 @@ while keeprunning:
             if not(islinux):
                 t1.watchdir, t1.writedir = Get_Directories()
                 t1.nf = True
+            t2 = myThread(2); t2.start();
+        elif t2.ui in ['R','r']:
+            PNG_DPI = int(input('Enter new rasterization DPI: '));
             t2 = myThread(2); t2.start();
         elif t2.ui in ['A','a']:
             t1.ea = True;

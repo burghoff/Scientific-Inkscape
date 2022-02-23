@@ -21,7 +21,7 @@
 import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, addNS, \
-    Transform, Style, PathElement, Line, Rectangle, Path,Vector2d, \
+    Transform, PathElement, Line, Rectangle, Path,Vector2d, \
     Use, NamedView, Defs, Metadata, ForeignObject, Group, FontFace, FlowSpan, MissingGlyph,Polyline
 )
 

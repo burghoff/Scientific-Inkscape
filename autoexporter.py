@@ -133,6 +133,7 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument("--usepng", help="Export PNG?")
         pars.add_argument("--useemf", help="Export EMF?")
         pars.add_argument("--useeps", help="Export EPS?")
+        pars.add_argument("--dpi", help="Rasterization DPI")
 
     def effect(self):   
         if dispprofile:
@@ -143,6 +144,7 @@ class ScalePlots(inkex.EffectExtension):
         
         formats = [self.options.usepdf,self.options.usepng,self.options.useemf,self.options.useeps]
         formats = '_'.join([str(v) for v in formats])
+        dpi = self.options.dpi;
         
         bfn, tmp = Get_Binary_Loc(self.options.input_file)
         bloc, bnm = os.path.split(bfn)
@@ -152,7 +154,7 @@ class ScalePlots(inkex.EffectExtension):
         
         # Pass settings using a config file. Include the current path so Inkex can be called if needed.
         import pickle
-        s=[self.options.watchdir,self.options.writedir,bfn,formats,sys.path];
+        s=[self.options.watchdir,self.options.writedir,bfn,formats,sys.path,dpi];
         pickle.dump(s,open(os.path.join(dh.get_script_path(),'ae_settings.p'),'wb'));
         # dh.debug([pybin,aepy])
                 

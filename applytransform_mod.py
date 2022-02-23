@@ -9,7 +9,7 @@ import inkex
 import math
 from inkex.paths import CubicSuperPath, Path
 from inkex.transforms import Transform
-from inkex.styles import Style
+from Style2 import Style2
 from inkex import (Line, Rectangle,Polygon,Polyline,Ellipse,Circle)
 import dhelpers as dh
 import copy
@@ -44,7 +44,7 @@ class ApplyTransform(inkex.EffectExtension):
     def applyToStrokes(self, node, transf):
         if 'style' in node.attrib:
             style = node.attrib.get('style')
-            style = dict(Style.parse_str(style))
+            style = dict(Style2.parse_str(style))
             update = False
             if 'stroke-width' in style:
                 try:
@@ -65,7 +65,7 @@ class ApplyTransform(inkex.EffectExtension):
                 except AttributeError:
                     pass
             if update:
-                node.attrib['style'] = Style(style).to_str()
+                node.attrib['style'] = Style2(style).to_str()
     
     
     def transform_clipmask(self,el,mask=False):
@@ -82,7 +82,7 @@ class ApplyTransform(inkex.EffectExtension):
                 dh.fix_css_clipmask(el,mask=mask);
                 for k in d.getchildren():
                     if k.get('transform') is not None:
-                        tr = Transform(el.get("transform"))*Transform(k.get('transform'));
+                        tr = dh.vmult(Transform(el.get("transform")),Transform(k.get('transform')));
                     else:
                         tr = Transform(el.get("transform"));
                     k.set('transform',tr);
@@ -100,7 +100,7 @@ class ApplyTransform(inkex.EffectExtension):
             self.transform_clipmask(node,mask=False);
             self.transform_clipmask(node,mask=True);
             
-            transf = Transform(transf) * Transform(node.get("transform", None))
+            transf = dh.vmult(Transform(transf) , Transform(node.get("transform", None)))
             if 'transform' in node.attrib:
                 del node.attrib['transform']
             node = ApplyTransform.remove_attrs(node)
@@ -119,7 +119,7 @@ class ApplyTransform(inkex.EffectExtension):
                     if irange is not None:
                         p = Path(p).to_absolute(); pnew=[]
                         for ii in range(len(irange)):
-                            xf = trange[ii] * Transform(node.get("transform", None))
+                            xf = dh.vmult(trange[ii] , Transform(node.get("transform", None)))
                             pnew += Path(p[irange[ii][0]:irange[ii][1]]).transform(xf, True)
                         p = pnew
                     node.set('d', str(Path(CubicSuperPath(p).to_path())))

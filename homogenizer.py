@@ -21,12 +21,13 @@
 import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, addNS, \
-    Transform, Style, PathElement, Line, Rectangle, Path,Vector2d, \
+    Transform, PathElement, Line, Rectangle, Path,Vector2d, \
     Use, Group, FontFace, FlowSpan, Image, FlowRegion
 )
 import dhelpers as dh
 from applytransform_mod import ApplyTransform
 import math
+from Style2 import Style2
 
 badels = (inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.ForeignObject,\
           inkex.SVGfont,inkex.FontFace,inkex.MissingGlyph);
@@ -132,7 +133,8 @@ class ScalePlots(inkex.EffectExtension):
                     newsize = self.svg.unittouu('1pt')*fontsize;
                 else:
                     newsize = actualsize*(fontsize/100);
-                fs = dh.Get_Style_Comp(el.style,'font-size');
+                # fs = dh.Get_Style_Comp(el.style,'font-size');
+                fs = dh.Get_Style_Comp(Style2(el.get('style')),'font-size');
                 if fs is None or not('%' in fs): # keep sub/superscripts relative size
                     dh.Set_Style_Comp(el,'font-size',str(newsize/sf)+'px')
         
@@ -146,7 +148,7 @@ class ScalePlots(inkex.EffectExtension):
                 magv = math.sqrt(ct.b**2 + ct.a**2);
                 ctnew = Transform([[ct.a*sqrtdet/magv, -ct.b*sqrtdet*signdet/magv, ct.e], \
                                    [ct.b*sqrtdet/magv,  ct.a*sqrtdet*signdet/magv, ct.f]]);
-                dh.global_transform(el,ctnew*(-ct)); 
+                dh.global_transform(el,dh.vmult(ctnew,(-ct))); 
                 
         if setfontfamily:
             for el in reversed(sel):

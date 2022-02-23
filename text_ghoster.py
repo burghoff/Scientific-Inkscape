@@ -68,7 +68,7 @@ class TextGhoster(inkex.EffectExtension):
             
             bb=bbs[el.get_id()]
             ct=el.composed_transform();
-            bb=[v/self.svg.scale for v in bb]
+            bb=[v/dh.vscale(self.svg) for v in bb]
             
             fss = [];
             for d in dh.descendants2(el):
@@ -80,7 +80,7 @@ class TextGhoster(inkex.EffectExtension):
                 fs = max(fss);
             else:
                 fs = 12;
-            border = fs*EXTENT/self.svg.scale;
+            border = fs*EXTENT/dh.vscale(self.svg);
             
             gb.set('stdDeviation',border*STDDEV)
             pts = [[bb[0]-border,bb[1]-border],\

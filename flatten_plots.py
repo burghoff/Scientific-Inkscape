@@ -17,19 +17,23 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
+
+
+
 import inkex
+import dhelpers as dh
 from inkex import (TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle,\
                    addNS, Transform, Style, PathElement, Line, Rectangle, Path,\
                    NamedView, Defs, Metadata, ForeignObject,Group,Use)
 
-import lxml
-import dhelpers as dh
+import lxml, os
 import RemoveKerning
-import os
 
 
-dispprofile = False;
 # dispprofile = True;
+dispprofile = False;
+# lprofile = True;
+lprofile = False;
 
 class FlattenPlots(inkex.EffectExtension):
     def add_arguments(self, pars):
@@ -45,16 +49,7 @@ class FlattenPlots(inkex.EffectExtension):
         pars.add_argument("--replacement", type=str, default='Arial', help="Missing font replacement");
         pars.add_argument("--justification", type=int, default=1, help="Text justification");
 
-    def effect(self):   
-        # import random
-        # random.seed(a=1)
-#        tic = time.time();
-        if dispprofile:
-            import cProfile, pstats, io
-            from pstats import SortKey
-            pr = cProfile.Profile()
-            pr.enable()
-        
+    def runflatten(self):
         poprest = self.options.deepungroup
         removerectw = self.options.removerectw
         splitdistant = self.options.splitdistant and self.options.fixtext
@@ -153,6 +148,50 @@ class FlattenPlots(inkex.EffectExtension):
                             el.delete()
     
 #        dh.debug(time.time()-tic)
+
+
+    def effect(self):   
+        # import random
+        # random.seed(a=1)
+#        tic = time.time();
+        if dispprofile:
+            import cProfile, pstats, io
+            from pstats import SortKey
+            pr = cProfile.Profile()
+            pr.enable()
+        
+        if lprofile:
+            from line_profiler import LineProfiler
+            import io
+            lp = LineProfiler()
+            lp.add_function(RemoveKerning.remove_kerning)
+            lp.add_function(RemoveKerning.Remove_Manual_Kerning)
+            lp.add_function(RemoveKerning.External_Merges)
+            
+            import TextParser
+            lp.add_function(TextParser.LineList.Parse_Lines)
+            lp.add_function(dh.Get_Composed_LineHeight)
+            lp.add_function(dh.Get_Composed_Width)
+            lp.add_function(dh.ungroup)
+            lp.add_function(TextParser.LineList.Split_Off_Words)
+            lp.add_function(inkex.elements._base.ShapeElement.composed_transform)
+            lpw = lp(self.runflatten)
+            lpw()
+            
+            stdouttrap = io.StringIO()
+            lp.print_stats(stdouttrap);
+            
+            ppath = os.path.abspath(os.path.join(dh.get_script_path(),'Profile.csv'))
+            result=stdouttrap.getvalue()
+    #        prefix = result.split('ncalls')[0];
+    #        # chop the string into a csv-like buffer
+    #        result='ncalls'+result.split('ncalls')[-1]
+    #        result='\n'.join([','.join(line.rstrip().split(None,5)) for line in result.split('\n')])
+    #        result=prefix+'\n'+result;
+            f=open(ppath,'w');
+            f.write(result); f.close();
+        else:
+            self.runflatten()
         
         if dispprofile:
             pr.disable()

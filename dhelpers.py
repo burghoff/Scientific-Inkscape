@@ -23,24 +23,28 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+TIMEOUT = 60;
+
 
 import inkex
 from inkex import (
     TextElement, FlowRoot, FlowPara, FlowSpan, Tspan, TextPath, Rectangle, \
-        addNS, Transform, Style, ClipPath, Use, NamedView, Defs, \
+        addNS, Transform, ClipPath, Use, NamedView, Defs, \
         Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command,\
         SvgDocumentElement,Image,Group,Polyline,Anchor,Switch,ShapeElement, BaseElement,FlowRegion)
 from applytransform_mod import ApplyTransform
 import lxml, math
 from lxml import etree  
-
+from Style2 import Style2
 
 try:
-    inkex_version = inkex.__version__;
+    inkex_version = inkex.__version__; # introduced in 1.1.2
 except:
-    inkex_version = '1.0.0';
-# inkex.utils.debug(inkex_version)
-
+    try:
+        tmp=inkex.BaseElement.unittouu # introduced in 1.1
+        inkex_version = '1.1.0'
+    except:
+        inkex_version = '1.0.0';
 
 
 It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
@@ -154,11 +158,12 @@ def cascaded_style2(el):
         # If elements change, will need to rerun by setting cssdict to None
         generate_cssdict(get_parent_svg(el));
     csssty = cssdict.get(el.get_id());
-    locsty = el.style;
+    # locsty = el.style;
+    locsty = Style2(el.get('style'));
     
     # Add any presentation attributes to local style
     attr = list(el.keys());
-    attsty = Style('');
+    attsty = Style2('');
     for a in attr:
         if a in svgpres and not(a in excludes) and locsty.get(a) is None and el.get(a) is not None:
             attsty[a] = el.get(a)
@@ -184,18 +189,24 @@ def generate_cssdict(svg):
         for style in sheet:
             for elem in svg.xpath(style.to_xpath()):
                 elid = elem.get('id',None);
-                if elid is not None and style!=Style():
+                if elid is not None and style!=inkex.Style():  # still using Inkex's Style here since from stylesheets
                     if cssdict.get(elid) is None:
-                        cssdict[elid] = Style() + style;
+                        cssdict[elid] = Style2() + style;
                     else:
                         cssdict[elid] += style;
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
-def Get_Composed_Width(el,comp,nargout=1):
+def Get_Composed_Width(el,comp,nargout=1,styin=None,ctin=None):
     # cs = el.composed_style();
-    cs = selected_style_local(el);
-    ct = el.composed_transform();
+    if styin is None:                   # can pass styin to reduce extra style gets
+        cs = selected_style_local(el);
+    else:
+        cs = styin;
+    if ctin is None:                    # can pass ctin to reduce extra composed_transforms
+        ct = el.composed_transform();
+    else:
+        ct = ctin;
     if nargout==4:
         ang = math.atan2(ct.c,ct.d)*180/math.pi;
     svg = get_parent_svg(el)
@@ -235,8 +246,11 @@ def Get_Composed_Width(el,comp,nargout=1):
             return returnval
     
 # Get line-height in user units
-def Get_Composed_LineHeight(el):    # cs = el.composed_style();
-    cs = selected_style_local(el);
+def Get_Composed_LineHeight(el,styin=None,ctin=None):    # cs = el.composed_style();
+    if styin is None:
+        cs = selected_style_local(el);
+    else:
+        cs = styin;
     sc = Get_Style_Comp(cs,'line-height');
     if sc is not None:
         if '%' in sc: # relative width, get parent width
@@ -247,7 +261,7 @@ def Get_Composed_LineHeight(el):    # cs = el.composed_style();
             sc = float(sc);
     if sc is None:
         sc = 1.25;   # default line-height is 12 uu
-    fs = Get_Composed_Width(el,'font-size')
+    fs = Get_Composed_Width(el,'font-size',styin=styin,ctin=ctin)
     return sc*fs
     
 # For style components that are a list (stroke-dasharray), calculate
@@ -337,6 +351,9 @@ def get_points(el,irange=None):
         p = ct.apply_to_point(p);
         xs.append(p.x*docscale)
         ys.append(p.y*docscale)
+    # if el.get_id()=='path109379':
+    #     debug(pts)
+    #     debug(el.root.scale)
     return xs, ys
 
 import time
@@ -693,7 +710,12 @@ def commandqueryall(fn):
     bfn, tmp = Get_Binary_Loc(fn);
     arg2 = [bfn, '--query-all',fn]
     # p=subprocess.run(arg2, shell=False,stdout=subprocess.PIPE, stderr=subprocess.DEVNULL);
-    p=subprocess.run(arg2, shell=False,timeout=60,stdout=subprocess.PIPE, stderr=subprocess.DEVNULL);
+    try:
+        p=subprocess.run(arg2, shell=False,timeout=TIMEOUT,stdout=subprocess.PIPE, stderr=subprocess.DEVNULL);
+    except subprocess.TimeoutExpired:
+        inkex.utils.errormsg('Error: The call to the Inkscape binary timed out after '+str(TIMEOUT)+' seconds.\n\n'+\
+                             'This is usually a temporary issue; try running the extension again.');
+        quit()
     tFStR = p.stdout
     return tFStR
     
@@ -790,19 +812,19 @@ def global_transform(el,trnsfrm,irange=None,trange=None):
         prt=Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
     else:
         prt=myp.composed_transform(); 
-    prt = Transform('scale('+str(vscale(get_parent_svg(el)))+')')*prt;  # also include document scaling
+    prt = vmult(Transform('scale('+str(vscale(get_parent_svg(el)))+')'),prt);  # also include document scaling
     
     myt = el.get('transform');
     if myt==None:
-        newtr=(-prt)*trnsfrm*prt;
+        newtr=vmult((-prt),trnsfrm,prt);
         if trange is not None:
             for ii in range(len(trange)):
-                trange[ii] = (-prt)*trange[ii]*prt
+                trange[ii] = vmult((-prt),trange[ii],prt)
     else:
-        newtr=(-prt)*trnsfrm*prt*Transform(myt)
+        newtr=vmult((-prt),trnsfrm,prt,Transform(myt))
         if trange is not None:
             for ii in range(len(trange)):
-                trange[ii] = (-prt)*trange[ii]*prt*Transform(myt)
+                trange[ii] = vmult((-prt),trange[ii],prt,Transform(myt))
     
     sw = Get_Composed_Width(el,'stroke-width');
     sd = Get_Composed_List(el, 'stroke-dasharray');
@@ -989,24 +1011,30 @@ def Get_Binary_Loc(fin):
 
 # Version-specific document scale
 def vscale(svg):
-    return svg.scale
-    # if inkex_version[0:3] in ['1.0','1.1']:
-    #     debug(['scale: ',svg.scale])
-    #     return svg.scale
-    # else:
-    #     # debug(['scale: ',svg.scale])
-    #     # debug(['inkscape_scale: ',svg.inkscape_scale])
-    #     return svg.inkscape_scale
+    if inkex_version[0:3] in ['1.0','1.1']:
+        return svg.scale
+    else:
+        try:
+            return svg.oldscale
+        except: # get the old scale. Hopefully they fix this
+            scale_x = float(svg.unittouu(svg.get('width')))/ float(svg.get_viewbox()[2])
+            scale_y = float(svg.unittouu(svg.get('height'))) / float(svg.get_viewbox()[3])
+            svg.oldscale = max([scale_x, scale_y])
+            return svg.oldscale
     
 # Version-specific multiplication
-def vmult(A,B):
-    if inkex_version[0:3] in ['1.0','1.1']:
-        return A*B
-    else:
-        return A@B
+def vmult(*args):
+    outval = args[-1];
+    for ii in reversed(range(0,len(args)-1)):
+        if inkex_version[0:3] in ['1.0','1.1']:
+            outval = args[ii]*outval;
+        else:
+            outval = args[ii]@outval;
+    return outval
+
     
 def Version_Check(caller):
-    siv = 'v1.4.7'
+    siv = 'v1.4.8'
     logname = 'Log.txt'
     NFORM = 200;
     
@@ -1026,7 +1054,7 @@ def Version_Check(caller):
     if inkex_version=='1.0.0' and not('1.0' in prevvs):
         msg = 'Scientific Inkscape requires Inkscape version 1.1.2 or higher. '+\
               'You are running a less-recent version—'\
-              'results may be unexpected. \n\nThis is a one-time message.\n\n';
+              'results may be unexpected. It might work, it might not.\n\nThis is a one-time message.\n\n';
         inkex.utils.errormsg(msg);
     
     from datetime import datetime
@@ -1052,3 +1080,4 @@ def Version_Check(caller):
     f = open(logname, 'w');
     f.write(''.join(d));
     f.close();
+    

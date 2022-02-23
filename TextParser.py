@@ -30,36 +30,104 @@ KERN_TABLE = False;   # if enabled, generates a kern table for each font (slower
 import dhelpers as dh
 import copy
 import inkex
-from inkex import (TextElement, Tspan ,Vector2d,Transform,Style)
+from inkex import (TextElement, Tspan ,Vector2d,Transform)
+from Style2 import Style2
 
+global debug
+debug = False;
 
+#def deepcopy(x,d1,d2,prntisll=False,prntln=None):
+#    y = None
+#    if x is None or isinstance(x,(int,float,str,Character_Table,bool,Style2)):
+#        y = x;
+#    elif isinstance(x,(list)):
+#        y = copy.copy(x);
+#        for ii in range(len(y)):
+#            y[ii] = deepcopy(x[ii],d1,d2,prntln=prntln);
+#    elif isinstance(x,(TextElement,Tspan)):
+#        myi = d1.index(x);
+#        y = d2[myi]
+#    elif isinstance(x,(tline)) and not(prntln is None):
+#        y = prntln;
+#    elif isinstance(x,(LineList,tword,tchar,cprop,cloc,tline)):
+#        y = copy.copy(x);
+#        xvrs = vars(x)
+#        for k in xvrs.keys():
+##            dh.debug(type(y).__name__ + ' '+k)
+#            if prntln is None and isinstance(x,(tline)):
+#                setattr(y,k,deepcopy(xvrs[k],d1,d2,prntln=y))
+#            else:
+#                setattr(y,k,deepcopy(xvrs[k],d1,d2,prntln=prntln))
+#    elif isinstance(x,(dict)):
+#        y = copy.copy(x);
+#        for k in x.keys():
+#            setattr(y,k,deepcopy(x[k],d1,d2,prntln=prntln))
+#    else:
+#        inkex.utils.errormsg('Unknown copy error! '+str(x));
+#    return y
 
 # A text element that has been parsed into a list of lines
 class LineList():
     def __init__(self, el, ctable,debug=False):
         self.ctable = ctable
-        self.lns = self.Parse_Lines(el,debug=debug);
         self.textel = el;
-        if self.lns is not None:
-            for ln in self.lns:
-                ln.ll = self;
-                
+        self.inittextel = el;                           # prior to any merging/splitting/etc
+        self.lns = self.Parse_Lines(el,debug=debug);
+        self.Finish_Lines();
+        
         tlvllns = [ln for ln in self.lns if ln.tlvlno is not None and ln.tlvlno>0]; # top-level lines after 1st
         self.isinkscape = all([ln.inheritx for ln in tlvllns]) and len(tlvllns)>0 and\
                           all([ln.style.get('-inkscape-font-specification') is not None \
                                for ln in self.lns]); # probably made in Inkscape
-                          
         self.dxs = [c.dx for ln in self.lns for c in ln.cs]; 
         self.dys = [c.dy for ln in self.lns for c in ln.cs]; self.flatdelta = False;
+
+    def duplicate(self):
+        # Duplicates a LL and its text
+        ret = copy.copy(self);
+        ret.textel = dh.duplicate2(self.textel);
+        ret.inittextel = self.textel;
+        d1 = dh.descendants2(self.textel);
+        d2 = dh.descendants2(ret.textel);
+        ret.ctable = self.ctable
+        ret.lns = []
+        for ln in self.lns:
+            eli = d1.index(ln.el);
+            xsi = d1.index(ln.xsrc);
+            ysi = d1.index(ln.ysrc);
+            ret.lns.append(tline(copy.copy(ln.x), copy.copy(ln.y), ln.inheritx, ln.nsodipodirole, ln.anchor, \
+                                  ln.transform,ln.angle,\
+                                  d2[eli],d2[xsi],d2[ysi],ln.continuex,ln.tlvlno,ln.style));
+            ret.lns[-1].anchor = ln.anchor;
+            ret.lns[-1].cs = []
+            for c in ln.cs:
+                myi = d1.index(c.loc.el);
+                newloc = cloc(d2[myi],c.loc.tt,c.loc.ind);
+                prop = copy.copy(c.prop); prop.charw = c.cw;
+#                    prop = self.ctable.get_prop(' ',c.nsty)*c.fs # cannot just use old one for some reason???
+                ret.lns[-1].addc(tchar(c.c,c.fs,c.sf,prop,c.sty,c.nsty,newloc));
+        ret.Finish_Lines();                              # generates the new words
+        for ii in range(len(self.lns)):
+            for jj in range(len(self.lns[ii].ws)):
+                ret.lns[ii].ws[jj].orig_pts_ut = copy.deepcopy(self.lns[ii].ws[jj].orig_pts_ut)
+                ret.lns[ii].ws[jj].orig_pts_t  = copy.deepcopy(self.lns[ii].ws[jj].orig_pts_t )
+                ret.lns[ii].ws[jj].orig_bb     = copy.deepcopy(self.lns[ii].ws[jj].orig_bb    )
+        ret.isinkscape = self.isinkscape;
+        ret.dxs = copy.copy(self.dxs);
+        ret.dys = copy.copy(self.dys);
+        ret.flatdelta = self.flatdelta;
+        return ret
+
+            
     def txt(self):
         return [v.txt() for v in self.lns]
         
     # Seperate a text element into a group of lines
     def Parse_Lines(self,el,lns=None,debug=False):
-        tlvlcall = (lns is None);
         sty = dh.selected_style_local(el);
-        fs,sf,ct,ang = dh.Get_Composed_Width(el,'font-size',4); #dh.debug(el.get_id()); dh.debug(el.composed_transform())
-        lh = dh.Get_Composed_LineHeight(el);
+        ct = el.composed_transform();
+        fs,sf,ct,ang = dh.Get_Composed_Width(el,'font-size',4,styin=sty,ctin=ct); #dh.debug(el.get_id()); dh.debug(el.composed_transform())
+        lh = dh.Get_Composed_LineHeight(el,styin=sty,ctin=ct);
         nsty=Character_Table.normalize_style(sty);
         tv = el.text;
         
@@ -185,25 +253,28 @@ class LineList():
                     prop = ctable.get_prop(tv[ii],nsty)*fs;
                     lns[-1].addc(tchar(tv[ii],fs,sf,prop,sty,nsty,cloc(k,'tail',ii)));
                     
-        if tlvlcall: # finished recursing, finish lines
-            if lns is not None:
-                self.Get_Delta(lns,el,'dx');
-                self.Get_Delta(lns,el,'dy');
-                for ii in range(len(lns)):
-                    ln = lns[ii];
-                    if ln.x[0] is None: # no x ever assigned
-                        if ln.continuex and ii>0 and len(lns[ii-1].ws)>0:
-                            lns[ii-1].ws[-1].calcprops();
-                            ln.x[0] = lns[ii-1].ws[-1].pts_ut[3].x
-                        else:
-                            ln.x[0] = 0;
-                    if ln.y[0] is None: # no y ever assigned
-                        ln.y[0] = 0;
-                    ln.parse_words()
-                for ln in reversed(lns): 
-                    if len(ln.cs)==0:
-                        lns.remove(ln); # prune empty lines
         return lns
+    
+    def Finish_Lines(self):
+        if self.lns is not None:
+            self.Get_Delta(self.lns,self.textel,'dx');
+            self.Get_Delta(self.lns,self.textel,'dy');
+            for ii in range(len(self.lns)):
+                ln = self.lns[ii];
+                if ln.x[0] is None: # no x ever assigned
+                    if ln.continuex and ii>0 and len(self.lns[ii-1].ws)>0:
+                        self.lns[ii-1].ws[-1].calcprops();
+                        ln.x[0] = self.lns[ii-1].ws[-1].pts_ut[3].x
+                    else:
+                        ln.x[0] = 0;
+                if ln.y[0] is None: # no y ever assigned
+                    ln.y[0] = 0;
+                ln.parse_words()
+            for ln in reversed(self.lns): 
+                if len(ln.cs)==0:
+                    self.lns.remove(ln); # prune empty lines
+            for ln in self.lns:
+                ln.ll = self;
     
     @staticmethod
     def GetXY(el,xy):
@@ -368,12 +439,13 @@ class LineList():
                 self.lns[0].cs[ii].dx = olddx[ii]
                 self.lns[0].cs[ii].dy = olddy[ii];
             self.Update_Delta(forceupdate=True)
-            
+    
             
     def Split_Off_Words(self,ws):
-        # newtxt = dh.duplicate2(ws[0].cs[0].loc.textel);
-        newtxt = dh.duplicate2(ws[0].ln.ll.textel);
-        nll = LineList(newtxt,self.ctable);
+        # newtxt = dh.duplicate2(ws[0].ln.ll.textel);
+        # nll = LineList(newtxt,self.ctable);
+        nll = self.duplicate();
+        newtxt = nll.textel; 
         
         il = self.lns.index(ws[0].ln);              # words' line index
         wiis =  [w.ln.ws.index(w) for w in ws]  # indexs of words in line
@@ -382,8 +454,13 @@ class LineList():
         dxl = [c.dx for w in ws for c in w.cs];
         dyl = [c.dy for w in ws for c in w.cs];
         
+        global debug
+        debug = True;
+        
         for w in reversed(ws):
             w.delw();
+        debug = False;
+        
         for il2 in reversed(range(len(nll.lns))):
             if il2!=il:
                 nll.lns[il2].dell();
@@ -392,12 +469,13 @@ class LineList():
                 for jj in reversed(range(len(nln.ws))):
                     if not(jj in wiis):
                         nln.ws[jj].delw();
-                    
+
         cnt=0;
         for l2 in nll.lns:
             for c in l2.cs:
                 c.dx = dxl[cnt];  c.dy = dyl[cnt]; cnt+=1
         nll.Update_Delta();
+        
         return newtxt,nll
     
     # Deletes empty elements from the doc. Generally this is done last
@@ -466,6 +544,10 @@ class tline:
                 w.addc(ii);                  # add to existing word
         if w is not None:
             self.addw(w)
+            
+#        for w in self.ws:
+#            for c in w.cs:
+#                dh.debug(c.ln==w.ln)
             
         if len(self.x)>1:
             # sws = self.ws; # FIX ME LATER FOR NONES!!!!
@@ -600,10 +682,13 @@ class tword:
     
     # Deletes me from everywhere
     def delw(self):
+#        global debug;
+#        if debug: dh.debug(self.ln.x)
         for c in reversed(self.cs):
             c.delc();
         if self in self.ln.ws:
             self.ln.ws.remove(self)
+#        if debug: dh.debug(self.ln.x)
             
     # Gets all text
     def txt(self):   
@@ -728,9 +813,9 @@ class tword:
             
             if ntype in ['super','sub']:
                 if newsty is None:
-                    newsty = Style('');
+                    newsty = Style2('');
                 else:
-                    newsty = Style(newsty)
+                    newsty = Style2(newsty)
                 sz = round(c.sw/newc.sw*100)
                 
                 # Nativize super/subscripts                
@@ -824,6 +909,8 @@ class tword:
             
         w.pts_ut = [Vector2d(w.x + w.offx/w.sf,      ymax), Vector2d(w.x+ w.offx/w.sf,       ymin),\
                     Vector2d(w.x+(w.ww+w.offx)/w.sf, ymin), Vector2d(w.x+(w.ww+w.offx)/w.sf, ymax)];
+#        if w.txt()=='Optical Power [a.u.]':
+#            dh.debug(w.pts_ut)
             # untransformed pts: bottom-left, top-left (cap height), top-right, bottom right
         w.pts_t=[];
         for p in w.pts_ut:
@@ -841,7 +928,7 @@ class tchar:
         self.c = c;
         self.fs = fs;     # nominal font size
         self.sf = sf;     # how much it is scaled to get to the actual width
-        # self.prop = prop;
+        self.prop = prop;
         self.cw = prop.charw;     # actual character width in user units
         self.sty  = sty;  # actual style
         self.nsty = nsty; # normalized style
@@ -873,6 +960,7 @@ class tchar:
             nnii = [ii for ii in range(len(self.ln.x)) if self.ln.x[ii] is not None]; # non-None
             newx[nnii[self.ln.ws.index(self.w)]] -= deltax;
             
+#            dh.debug(self.ln.x)
             self.ln.change_pos(newx)
             self.w.x -= deltax
     
@@ -1369,8 +1457,8 @@ class Character_Table():
     # 'stroke','stroke-width' do not affect kerning at all
     @staticmethod
     def normalize_style(sty):
-        sty  = Style(sty); stykeys = list(sty.keys());
-        sty2 = Style('')
+        sty  = Style2(sty); stykeys = list(sty.keys());
+        sty2 = Style2('')
         for a in Character_Table.textshapeatt:
             if a in stykeys:
                 styv = sty.get(a);
@@ -1386,7 +1474,7 @@ class Character_Table():
         # if sty2.get('font-style').lower()=='normal':
         #     sty2['font-style']=None;
 
-        tmp = Style('');
+        tmp = Style2('');
         for k in sorted(sty2.keys()): # be sure key order is alphabetical
             tmp[k]=sty2[k];
         sty2 = tmp;

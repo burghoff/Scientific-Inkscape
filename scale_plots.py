@@ -28,7 +28,7 @@ except:
 
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, addNS, \
-    Transform, Style, PathElement, Line, Rectangle, Path,Vector2d, \
+    Transform, PathElement, Line, Rectangle, Path,Vector2d, \
     Use, NamedView, Defs, Metadata, ForeignObject, Group, SvgDocumentElement, \
     Image,Polyline
 )
@@ -49,11 +49,6 @@ def geometric_bbox(el,vis_bbox,irange=None):
         maxx = min(max(xs),vis_bbox[0]+vis_bbox[2])
         miny = max(min(ys),vis_bbox[1])
         maxy = min(max(ys),vis_bbox[1]+vis_bbox[3])
-        # if el.get_id()=='path207':
-        #     # dh.debug([min(xs),max(xs),min(ys),max(ys)])
-        #     # dh.debug([vis_bbox[0],vis_bbox[0]+vis_bbox[2],vis_bbox[1],vis_bbox[1]+vis_bbox[3]])
-        #     dh.debug([min(xs),max(xs),min(ys),max(ys)])
-        #     dh.debug([vis_bbox[0],vis_bbox[0]+vis_bbox[2],vis_bbox[1],vis_bbox[1]+vis_bbox[3]])
         gbb = [minx,miny,maxx-minx,maxy-miny] # geometric bounding box
     return bbox(gbb)
 
@@ -250,6 +245,13 @@ class ScalePlots(inkex.EffectExtension):
                 lvl = max(vels, key=vels.get); # largest vertical
                 lhl = max(hels, key=hels.get); # largest horizontal
 
+            
+            # dh.debug(lvl)
+            # dh.debug(lhl)
+            # for el in sel:
+            #     if el.get_id()=='path109379':
+            #         dh.debug(geometric_bbox(el,fbbs[el.get_id()]).sbb)
+            
                 
             # Determine the bounding box of the whole selection and the plot area
             minx = miny = minxp = minyp = fminxp = fminyp = fminx = fminy = float('inf');
@@ -287,7 +289,7 @@ class ScalePlots(inkex.EffectExtension):
                     refx = fminx; refy = fminy;
                 trl = Transform('translate('+str(refx)+', '+str(refy)+')');
                 scl = Transform('scale('+str(1/scalex)+', '+str(1/scaley)+')');
-                iextr = trl*scl*(-trl); # invert existing transform
+                iextr = dh.vmult(trl,scl,(-trl)); # invert existing transform
                 dh.global_transform(gsel[i0],iextr);
                 # Invert the transform on the bounding boxes (fix later)
                 import copy
@@ -371,7 +373,7 @@ class ScalePlots(inkex.EffectExtension):
             trl = Transform('translate('+str(refx)+', '+str(refy)+')');
             scl = Transform('scale('+str(scalex)+', '+str(scaley)+')');
             
-            gtr = trl*scl*(-trl); # global transformation
+            gtr = dh.vmult(trl,scl,(-trl)); # global transformation
             iscl = Transform('scale('+str(1/scalex)+', '+str(1/scaley)+')');
             trul = gtr.apply_to_point([minxp,minyp]) # transformed upper-left
             trbr = gtr.apply_to_point([maxxp,maxyp]) # transformed bottom-right
@@ -443,7 +445,7 @@ class ScalePlots(inkex.EffectExtension):
                     elif htickr:
                         if cx<trbr[0]: trl = Transform('translate('+str(bb_tr.x2)+', '+str(cy)+')'); # inner tick
                         else:          trl = Transform('translate('+str(bb_tr.x1)+', '+str(cy)+')'); # outer tick
-                    tr1 = trl*iscl*(-trl);
+                    tr1 = dh.vmult(trl,iscl,(-trl));
                     dh.global_transform(el,tr1)
                 elif isalwayscorr or isoutsideplot or issf: 
                     # Invert the transformation for text/groups, anything outside the plot, scale-free
@@ -452,7 +454,7 @@ class ScalePlots(inkex.EffectExtension):
                         bb_tr = bbox(bb).transform(gtr);
                         cx = bb_tr.xc; cy = bb_tr.yc;
                         trl = Transform('translate('+str(cx)+', '+str(cy)+')');
-                        tr1 = trl*iscl*(-trl);
+                        tr1 = dh.vmult(trl,iscl,(-trl));
                         
                         # For elements outside the plot area, adjust position to maintain 
                         # the distance to the plot area
@@ -470,7 +472,7 @@ class ScalePlots(inkex.EffectExtension):
                             oy = bb[1]+bb[3]/2 - maxyp;
                             dy = oy - (cy-trbr[1]);
                         tr2 = Transform('translate('+str(dx)+', '+str(dy)+')');
-                        dh.global_transform(el,tr2*tr1);
+                        dh.global_transform(el,dh.vmult(tr2,tr1));
                     else: # If previously combined, apply to subpaths instead
                         cbc = [int(v) for v in cbc.split()];
                         fbb_tr = bbox(fbb).transform(gtr).sbb
@@ -480,7 +482,7 @@ class ScalePlots(inkex.EffectExtension):
                             bb = bb_tr.transform(-gtr).sbb
                             cx = bb_tr.xc; cy = bb_tr.yc;
                             trl = Transform('translate('+str(cx)+', '+str(cy)+')');
-                            tr1 = trl*iscl*(-trl);
+                            tr1 = dh.vmult(trl,iscl,(-trl));
                             dx = 0; dy = 0;
                             if cx < trul[0]:
                                 ox = bb[0]+bb[2]/2 - minxp;
@@ -496,7 +498,7 @@ class ScalePlots(inkex.EffectExtension):
                                   dy = oy - (cy-trbr[1]);
                             tr2 = Transform('translate('+str(dx)+', '+str(dy)+')');
                             irng.append([cbc[ii],cbc[ii+1]])
-                            trng.append(tr2*tr1)
+                            trng.append(dh.vmult(tr2,tr1))
                         dh.global_transform(el,It,irange=irng,trange=trng);
             
 
