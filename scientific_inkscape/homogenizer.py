@@ -24,7 +24,10 @@ from inkex import (
     Transform, PathElement, Line, Rectangle, Path,Vector2d, \
     Use, Group, FontFace, FlowSpan, Image, FlowRegion
 )
+import os,sys
+sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
 import dhelpers as dh
+
 from applytransform_mod import ApplyTransform
 import math
 from Style2 import Style2

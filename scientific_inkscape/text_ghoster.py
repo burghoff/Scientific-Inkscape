@@ -22,6 +22,8 @@ OPACITY = 0.75;      # how opaque it is (0.0-1.0)
 STDDEV  = 0.5;      # standard deviation of the Gaussian blur as fraction of EXTENT
 
 import inkex
+import os,sys
+sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
 import dhelpers as dh
 dispprofile = False;
 

@@ -13,6 +13,9 @@ SUBSUPER_YTHR = 1/3; # superscripts must be at least 1/3 of the way above the ba
 
 import inkex
 import TextParser
+
+import os,sys
+sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
 import dhelpers as dh
 
 def remove_kerning(caller,os,removemanual,mergesupersub,splitdistant,mergenearby,justification=None):    

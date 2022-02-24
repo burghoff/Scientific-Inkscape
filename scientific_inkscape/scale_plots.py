@@ -20,12 +20,6 @@
 
 import inkex
 
-try:
-    from inkex.paths import Path, CubicSuperPath
-    ver = 1.0 
-except:
-    ver = 0.92
-
 from inkex import (
     TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, addNS, \
     Transform, PathElement, Line, Rectangle, Path,Vector2d, \
@@ -34,7 +28,11 @@ from inkex import (
 )
 
 import lxml
+
+import os,sys
+sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
 import dhelpers as dh
+
 import copy
 It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 

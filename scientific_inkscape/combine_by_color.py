@@ -25,6 +25,8 @@ from inkex import (
     Use, NamedView, Defs, Metadata, ForeignObject, Group, FontFace, FlowSpan, MissingGlyph,Polyline
 )
 
+import os,sys
+sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
 import dhelpers as dh
 
 

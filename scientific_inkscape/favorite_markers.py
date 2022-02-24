@@ -29,11 +29,12 @@ from inkex import (
         StyleSheets,SvgDocumentElement, ShapeElement,BaseElement,FlowSpan,Ellipse,Circle
 )
     
+import os,sys
+sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
 import dhelpers as dh
-import sys, os
+
 def get_script_path():
     return os.path.dirname(os.path.realpath(sys.argv[0]))
-
         
 dispprofile = False;
 class ScalePlots(inkex.EffectExtension):

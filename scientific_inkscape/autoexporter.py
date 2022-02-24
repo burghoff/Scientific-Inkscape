@@ -21,8 +21,6 @@
 
 dispprofile = False;
 
-import os
-import sys
 import subprocess
 import inkex
 from inkex import (
@@ -31,6 +29,9 @@ from inkex import (
     Use, NamedView, Defs, Metadata, ForeignObject, Group, FontFace, StyleElement,\
         StyleSheets,SvgDocumentElement, ShapeElement,BaseElement,FlowSpan,Ellipse,Circle
 )
+
+import os,sys
+sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
 import dhelpers as dh
 
 # Gets the location of the Inkscape binary

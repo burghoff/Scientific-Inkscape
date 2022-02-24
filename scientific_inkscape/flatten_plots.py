@@ -21,10 +21,13 @@
 
 
 import inkex
-import dhelpers as dh
 from inkex import (TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle,\
-                   addNS, Transform, Style, PathElement, Line, Rectangle, Path,\
+                   addNS, Transform, Style, PathElement, Line, Path,\
                    NamedView, Defs, Metadata, ForeignObject,Group,Use)
+
+import os,sys
+sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
+import dhelpers as dh
 
 import lxml, os
 import RemoveKerning

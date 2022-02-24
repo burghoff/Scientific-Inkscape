@@ -37,14 +37,6 @@ import lxml, math
 from lxml import etree  
 from Style2 import Style2
 
-try:
-    inkex_version = inkex.__version__; # introduced in 1.1.2
-except:
-    try:
-        tmp=inkex.BaseElement.unittouu # introduced in 1.1
-        inkex_version = '1.1.0'
-    except:
-        inkex_version = '1.0.0';
 
 
 It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
@@ -1009,9 +1001,27 @@ def Get_Binary_Loc(fin):
         return call(INKSCAPE_EXECUTABLE_NAME, svg_file, *args, **kwargs)
     return inkscape2(fin)
 
+# Version checking
+try:
+    inkex_version = inkex.__version__; # introduced in 1.1.2
+except:
+    try:
+        tmp=inkex.BaseElement.unittouu # introduced in 1.1
+        inkex_version = '1.1.0'
+    except:
+        try:
+            from inkex.paths import Path, CubicSuperPath
+            inkex_version = '1.0.0';
+        except:
+            inkex_version = '0.92.4';
+
+def vparse(vstr):
+    return [int(v) for v in vstr.split('.')]
+ivp = vparse(inkex_version);
+
 # Version-specific document scale
 def vscale(svg):
-    if inkex_version[0:3] in ['1.0','1.1']:
+    if ivp[0]<=1 and ivp[1]<2:          # pre-1.2: return scale
         return svg.scale
     else:
         try:
@@ -1026,17 +1036,24 @@ def vscale(svg):
 def vmult(*args):
     outval = args[-1];
     for ii in reversed(range(0,len(args)-1)):
-        if inkex_version[0:3] in ['1.0','1.1']:
+        if ivp[0]<=1 and ivp[1]<2:      # pre-1.2: use asterisk
             outval = args[ii]*outval;
         else:
             outval = args[ii]@outval;
     return outval
 
+
     
 def Version_Check(caller):
-    siv = 'v1.4.8'
+    siv = 'v1.4.8'         # Scientific Inkscape version
+    maxsupport = '1.2.0';
+    minsupport = '1.1.0';
+    
     logname = 'Log.txt'
     NFORM = 200;
+    
+    maxsupp = vparse(maxsupport);
+    minsupp = vparse(minsupport);
     
     try:
         f = open(logname,'r');
@@ -1050,11 +1067,15 @@ def Version_Check(caller):
         if displayedform:
             d=d[:len(d)-1];
     
-    prevvs = [dv[-6:-3] for dv in d];
-    if inkex_version=='1.0.0' and not('1.0' in prevvs):
-        msg = 'Scientific Inkscape requires Inkscape version 1.1.2 or higher. '+\
-              'You are running a less-recent version—'\
-              'results may be unexpected. It might work, it might not.\n\nThis is a one-time message.\n\n';
+    prevvp = [vparse(dv[-6:]) for dv in d]
+    if (ivp[0]<minsupp[0] or ivp[1]<minsupp[1]) and not(ivp in prevvp):
+        msg = 'Scientific Inkscape requires Inkscape version '+minsupport+' or higher. '+\
+              'You are running a less-recent version—it might work, it might not.\n\nThis is a one-time message.\n\n';
+        inkex.utils.errormsg(msg);
+    if (ivp[0]>maxsupp[0] or ivp[1]>maxsupp[1]) and not(ivp in prevvp):
+        msg = 'Scientific Inkscape requires Inkscape version '+maxsupport+' or lower. '+\
+              'You are running a more-recent version—you must be from the future!\n\n'+\
+              'It might work, it might not. Check if there is a more recent version of Scientific Inkscape available. \n\nThis is a one-time message.\n\n';
         inkex.utils.errormsg(msg);
     
     from datetime import datetime

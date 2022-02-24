@@ -27,7 +27,10 @@
 
 KERN_TABLE = False;   # if enabled, generates a kern table for each font (slower, but more accurate)
 
+import os,sys
+sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
 import dhelpers as dh
+
 import copy
 import inkex
 from inkex import (TextElement, Tspan ,Vector2d,Transform)

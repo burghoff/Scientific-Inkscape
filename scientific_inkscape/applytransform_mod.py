@@ -11,11 +11,12 @@ from inkex.paths import CubicSuperPath, Path
 from inkex.transforms import Transform
 from Style2 import Style2
 from inkex import (Line, Rectangle,Polygon,Polyline,Ellipse,Circle)
+
+import os,sys
+sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
 import dhelpers as dh
-import copy
 
 NULL_TRANSFORM = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
-from lxml import etree
 
 class ApplyTransform(inkex.EffectExtension):
     def __init__(self):
