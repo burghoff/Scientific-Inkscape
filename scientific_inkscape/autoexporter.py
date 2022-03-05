@@ -134,7 +134,12 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument("--usepng", help="Export PNG?")
         pars.add_argument("--useemf", help="Export EMF?")
         pars.add_argument("--useeps", help="Export EPS?")
+        pars.add_argument("--usesvg", help="Export SVG?")
         pars.add_argument("--dpi", help="Rasterization DPI")
+        pars.add_argument("--dpi_im", help="Resampling DPI")
+        pars.add_argument("--imagemode",  type=int, default=1, help="Embedded image handling");
+        pars.add_argument("--thinline",   type=inkex.Boolean, help="Prevent thin line enhancement")
+        pars.add_argument("--texttopath", type=inkex.Boolean, help="Prevent thin line enhancement")
 
     def effect(self):   
         if dispprofile:
@@ -143,9 +148,16 @@ class ScalePlots(inkex.EffectExtension):
             pr = cProfile.Profile()
             pr.enable()
         
-        formats = [self.options.usepdf,self.options.usepng,self.options.useemf,self.options.useeps]
+        formats = [self.options.usepdf,self.options.usepng,self.options.useemf,self.options.useeps,self.options.usesvg]
         formats = '_'.join([str(v) for v in formats])
         dpi = self.options.dpi;
+        
+        imagedpi = self.options.dpi_im
+        reduce_images = self.options.imagemode==1 or self.options.imagemode==2
+        tojpg = self.options.imagemode==2
+        text_to_paths = self.options.texttopath
+        thinline_dehancement = self.options.thinline;
+        
         
         bfn, tmp = Get_Binary_Loc(self.options.input_file)
         bloc, bnm = os.path.split(bfn)
@@ -155,7 +167,8 @@ class ScalePlots(inkex.EffectExtension):
         
         # Pass settings using a config file. Include the current path so Inkex can be called if needed.
         import pickle
-        s=[self.options.watchdir,self.options.writedir,bfn,formats,sys.path,dpi];
+        s=[self.options.watchdir,self.options.writedir,bfn,formats,sys.path,dpi,\
+           imagedpi,reduce_images,tojpg,text_to_paths,thinline_dehancement];
         pickle.dump(s,open(os.path.join(dh.get_script_path(),'ae_settings.p'),'wb'));
         # dh.debug([pybin,aepy])
                 

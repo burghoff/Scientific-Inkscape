@@ -35,8 +35,8 @@ import RemoveKerning
 
 # dispprofile = True;
 dispprofile = False;
-# lprofile = True;
 lprofile = False;
+#lprofile = True;
 
 class FlattenPlots(inkex.EffectExtension):
     def add_arguments(self, pars):
@@ -64,14 +64,6 @@ class FlattenPlots(inkex.EffectExtension):
         
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
         sel = [v for el in sel for v in dh.descendants2(el)];
-        # v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
-        # if v1:
-        #     inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
-        #     # return
-        #     gpe= dh.get_mod(self.svg.selection)
-        #     sel =[gpe[k] for k in gpe.id_dict().keys()];
-        # else:
-        #     sel = [v for el in self.svg.selection for v in dh.descendants2(el)];
         
         gs = [el for el in sel if isinstance(el,Group)]
         obs = [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group)))]
@@ -167,17 +159,16 @@ class FlattenPlots(inkex.EffectExtension):
             from line_profiler import LineProfiler
             import io
             lp = LineProfiler()
-            lp.add_function(RemoveKerning.remove_kerning)
-            lp.add_function(RemoveKerning.Remove_Manual_Kerning)
-            lp.add_function(RemoveKerning.External_Merges)
+            
             
             import TextParser
-            lp.add_function(TextParser.LineList.Parse_Lines)
-            lp.add_function(dh.Get_Composed_LineHeight)
-            lp.add_function(dh.Get_Composed_Width)
-            lp.add_function(dh.ungroup)
-            lp.add_function(TextParser.LineList.Split_Off_Words)
-            lp.add_function(inkex.elements._base.ShapeElement.composed_transform)
+            fns = [RemoveKerning.remove_kerning,RemoveKerning.Remove_Manual_Kerning,\
+                   RemoveKerning.External_Merges,TextParser.LineList.Parse_Lines,TextParser.LineList.Split_Off_Words,\
+                   dh.Get_Composed_LineHeight,dh.Get_Composed_Width,dh.ungroup,dh.selected_style_local,\
+                   dh.cascaded_style2,dh.shallow_composed_style,dh.generate_cssdict,dh.descendants2,\
+                   inkex.elements._base.ShapeElement.composed_transform,inkex.elements._use.Use.unlink]
+            for fn in fns:
+                lp.add_function(fn)
             lpw = lp(self.runflatten)
             lpw()
             

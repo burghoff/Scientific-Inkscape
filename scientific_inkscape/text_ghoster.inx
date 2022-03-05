@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
     <name>Text ghoster</name>
-    <id>burghoff.text_ghoster</id>
+    <id>burghoff.textghoster</id>
     <param name="tab" type="notebook">
         <page name="scaling" gui-text="Options">
             <label>Adds a blurred semi-transparent rectangle behind selected text.

@@ -935,7 +935,7 @@ class tchar:
         self.cw = prop.charw;     # actual character width in user units
         self.sty  = sty;  # actual style
         self.nsty = nsty; # normalized style
-        self.nstyc = dh.Set_Style_Comp2(nsty,'fill',dh.Get_Style_Comp(sty,'fill')) # with color
+        self.nstyc = dh.Set_Style_Comp(nsty,'fill',dh.Get_Style_Comp(sty,'fill')) # with color
         self.loc = loc;   # true location: [parent, 'text' or 'tail', index]
         self.ch = prop.caph;     # cap height (height of flat capitals like T)
         # self.dr = dr;     # descender (length of p/q descender))

@@ -46,11 +46,27 @@ def descendants2(el):
     cel = el;
     keepgoing = True; childrendone = False;
     descendants = [];
+    
+    # To avoid repeated lookups of each element's children and index, make dicts
+    # that store them once they've been looked up
+    children_dict = dict();
+    index_dict = dict();
+    def getchildren_dict(eli):
+        if not(eli in children_dict):
+            children_dict[eli] = list(eli)               # getchildren deprecated
+            for ii in range(len(children_dict[eli])):
+                index_dict[children_dict[eli][ii]] = ii; # store index for later
+        return children_dict[eli]
+    def myindex(eli):   # index amongst siblings
+        if not(eli in index_dict):
+            index_dict[eli] = getchildren_dict(eli.getparent()).index(eli); # shouldn't need, just in case
+        return index_dict[eli]
+    
     while keepgoing:
         keepgoing = False;
         if not(childrendone):
             descendants.append(cel); 
-            ks = cel.getchildren();
+            ks = getchildren_dict(cel);
             if len(ks)>0: # try children
                 cel = ks[0];
                 keepgoing = True; childrendone = False; continue;
@@ -59,8 +75,8 @@ def descendants2(el):
             keepgoing = False; continue;
         else:
             par  = cel.getparent();
-            sibs = par.getchildren();
-            myi = sibs.index(cel);
+            sibs = getchildren_dict(par)
+            myi = myindex(cel)
             if myi!=len(sibs)-1: # try younger siblings
                 cel = sibs[myi+1];
                 keepgoing = True; childrendone = False; continue;
@@ -70,58 +86,73 @@ def descendants2(el):
     descendants = [v for v in descendants if isinstance(v, (BaseElement, str))]
     return descendants;
 
-# sets a style property (of an element)  
-def Set_Style_Comp(el,comp,val):
-    sty = el.get('style');
-    if sty is not None:#not(sty==None):
+# Sets a style property  
+def Set_Style_Comp(el_or_sty,comp,val):
+    isel = isinstance(el_or_sty,(BaseElement))  # is element
+    if isel:
+        sty = el_or_sty.get('style');
+    else:
+        isstr = isinstance(el_or_sty,(str))
+        if not(isstr):                          # is style string
+            sty = str(el_or_sty)
+        else:                                   # is Style element
+            sty = el_or_sty
+
+    if sty is not None:
         sty = sty.split(';');
-        fillfound=False;
+        compfound=False;
         for ii in range(len(sty)):
             if comp in sty[ii]:
                 if val is not None:
                     sty[ii] = comp+':'+val;
                 else:
                     sty[ii] = ''
-                fillfound=True;
-        if not(fillfound):
+                compfound=True;
+        if not(compfound):
             if val is not None:
                 sty.append(comp+':'+val);
             else: pass
         sty = [v.strip(';') for v in sty if v!=''];
         sty = ';'.join(sty)
-        el.set('style',sty);
     else:
         if val is not None:
             sty = comp+':'+val
-    el.set('style',sty);
+    
+    if isel:
+        el_or_sty.set('style',sty);             # set element style
+    else:
+        if isstr:
+            return sty                          # return style string
+        else:
+            return Style2(sty)                  # convert back to Style
     
 # sets a style property (of a style string) 
-def Set_Style_Comp2(sty,comp,val):
-    if sty is not None:#not(sty==None):
-        sty = sty.split(';');
-        fillfound=False;
-        for ii in range(len(sty)):
-            if comp in sty[ii]:
-                if val is not None:
-                    sty[ii] = comp+':'+val;
-                else:
-                    sty[ii] = ''
-                fillfound=True;
-        if not(fillfound):
-            if val is not None:
-                sty.append(comp+':'+val);
-            else: pass
-        sty = [v.strip(';') for v in sty if v!=''];
-        sty = ';'.join(sty)
-    else:
-        sty = comp+':'+val
-    return sty
+# def Set_Style_Comp2(sty,comp,val):
+#     if sty is not None:#not(sty==None):
+#         sty = sty.split(';');
+#         compfound=False;
+#         for ii in range(len(sty)):
+#             if comp in sty[ii]:
+#                 if val is not None:
+#                     sty[ii] = comp+':'+val;
+#                 else:
+#                     sty[ii] = ''
+#                 compfound=True;
+#         if not(compfound):
+#             if val is not None:
+#                 sty.append(comp+':'+val);
+#             else: pass
+#         sty = [v.strip(';') for v in sty if v!=''];
+#         sty = ';'.join(sty)
+#     else:
+#         sty = comp+':'+val
+#     return sty
 
 # gets a style property (return None if none)
 def Get_Style_Comp(sty,comp):
     sty=str(sty);
     val=None;
-    if sty is not None:#not(sty==None):
+    if sty is not None:
         sty = sty.split(';');
         for ii in range(len(sty)):
             a=sty[ii].split(':');
@@ -297,12 +328,15 @@ def urender(v,u):
     else:
         return None
     
-def implicitpx(str):
+def implicitpx(strin):
     # For many properties, a size specification of '1px' actually means '1uu'
     # Even if the size explicitly says '1mm' and the user units are mm, this will be
     # first converted to px and then interpreted to mean user units. (So '1mm' would
     # up being bigger than 1 mm). This returns the size as Inkscape will interpret it (in uu)
-    return inkex.units.convert_unit(str.lower().strip(), 'px');
+    if strin is None:
+        return None
+    else:
+        return inkex.units.convert_unit(strin.lower().strip(), 'px');
 #    return inkex.units.convert_unit(str.lower().strip(), 'px', default='px') # fails pre-1.1, default is px anyway
         
 
@@ -348,25 +382,19 @@ def get_points(el,irange=None):
     #     debug(el.root.scale)
     return xs, ys
 
-import time
-global tic
-tic = time.time();
-global ncalls
-ncalls = 0
+
+
 def ungroup(groupnode):
     # Pops a node out of its group, unless it's already in a layer or the base
     # Unlink any clones that aren't glyphs
     # Remove any comments
     # Preserves style, clipping, and masking
-    global tic
-    global ncalls
-    ncalls+=1
-        
-    node_index = list(groupnode.getparent()).index(groupnode)   # parent's location in grandparent
-    # node_transform = Transform(groupnode.get("transform")).matrix;
-    node_transform = groupnode.transform
-    node_clippathurl = groupnode.get('clip-path')
-    node_maskurl     = groupnode.get('mask')
+    
+    gparent = groupnode.getparent()
+    gindex  = list(gparent).index(groupnode)   # group's location in parent
+    gtransform = groupnode.transform
+    gclipurl   = groupnode.get('clip-path')
+    gmaskurl   = groupnode.get('mask')
             
     els = groupnode.getchildren();
     for el in list(reversed(els)):
@@ -388,17 +416,16 @@ def ungroup(groupnode):
         elif isinstance(el,lxml.etree._Comment): # remove comments
             groupnode.remove(el)
         if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment))):
-            recursive_merge_clipmask(el, node_clippathurl)          # transform applies to clip, so do clip first
-            recursive_merge_clipmask(el, node_maskurl, mask=True)   # also mask
-            # _merge_transform(el, node_transform)
+            recursive_merge_clipmask(el, gclipurl)              # transform applies to clip, so do clip first
+            recursive_merge_clipmask(el, gmaskurl, mask=True)   # also mask
             
-            el.transform = vmult(node_transform,el.transform)
+            el.transform = vmult(gtransform,el.transform)
             el.style = shallow_composed_style(el)
             
             fix_css_clipmask(el,mask=True);
             fix_css_clipmask(el,mask=False);
                 
-            groupnode.getparent().insert(node_index+1,el); # places above
+            gparent.insert(gindex+1,el); # places above
         if isinstance(el, Group) and unlinkclone: # if Use was a group, ungroup it
             ungroup(el)
     if len(groupnode.getchildren())==0:
@@ -416,90 +443,6 @@ def shallow_composed_style(el):
         return cascaded_style2(parent) + cascaded_style2(el)
     return cascaded_style2(el)
 
-# def _merge_transform(node, transform):
-#     # From Deep Ungroup
-#     # Originally from https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
-#     def _get_dimension(s="1024"):
-#         """Convert an SVG length string from arbitrary units to pixels"""
-#         if s == "":
-#             return 0
-#         try:               last = int(s[-1])
-#         except:            last = None
-
-#         if type(last) == int: return float(s)
-#         elif s[-1] == "%":    return 1024
-#         elif s[-2:] == "px":  return float(s[:-2])
-#         elif s[-2:] == "pt":  return float(s[:-2]) * 1.25
-#         elif s[-2:] == "em":  return float(s[:-2]) * 16
-#         elif s[-2:] == "mm":  return float(s[:-2]) * 3.54
-#         elif s[-2:] == "pc":  return float(s[:-2]) * 15
-#         elif s[-2:] == "cm":  return float(s[:-2]) * 35.43
-#         elif s[-2:] == "in":  return float(s[:-2]) * 90
-#         else:                 return 1024
-
-#     # Compose the transformations
-#     if node.tag == addNS("svg", "svg") and node.get("viewBox"):
-#         vx, vy, vw, vh = [_get_dimension(x)
-#             for x in node.get("viewBox").split()]
-#         dw = _get_dimension(node.get("width", vw))
-#         dh = _get_dimension(node.get("height", vh))
-#         t = ("translate(%f, %f) scale(%f, %f)" %
-#             (-vx, -vy, dw / vw, dh / vh))
-#         this_transform = simpletransform.parseTransform(t, transform)
-#         this_transform = simpletransform.parseTransform(node.get("transform"), this_transform)
-#         del node.attrib["viewBox"]
-#     else:
-#         this_transform = Transform(transform)*Transform(node.get("transform"))
-# #                this_transform = simpletransform.parseTransform(node.get("transform"), transform)    # deprecated, https://inkscape.gitlab.io/inkscape/doxygen-extensions/simpletransform_8py_source.html
-
-#     # Set the node's transform attrib
-# #            node.set("transform", simpletransform.formatTransform(this_transform)) # deprecated
-#     # node.set("transform",str(this_transform))
-#     node.transform = this_transform
-
-
-# def _merge_style(node, style):
-#     """Propagate style and transform to remove inheritance
-#     # From Deep Ungroup
-#     https://github.com/nikitakit/svg2sif/blob/master/synfig_prepare.py#L370
-#     """
-#     # Compose the style attribs
-#     this_style = node.style
-#     remaining_style = {}  # Style attributes that are not propagated
-
-#     # Filters should remain on the top ancestor
-#     non_propagated = ["filter"]
-#     for key in non_propagated:
-#         if key in this_style.keys():
-#             remaining_style[key] = this_style[key]
-#             del this_style[key]
-
-#     # Create a copy of the parent style, and merge this style into it
-#     parent_style_copy = style.copy()
-#     parent_style_copy.update(this_style)
-#     this_style = parent_style_copy
-
-#     # Merge in any attributes outside of the style
-#     style_attribs = ["fill", "stroke"]
-#     for attrib in style_attribs:
-#         if node.get(attrib):
-#             this_style[attrib] = node.get(attrib)
-#             del node.attrib[attrib]
-
-#     if isinstance(node, (SvgDocumentElement, Anchor, Group, Switch)):
-#         # Leave only non-propagating style attributes
-#         if not remaining_style:
-#             if "style" in node.keys():
-#                 del node.attrib["style"]
-#         else:
-#             node.style = remaining_style
-
-#     else:
-#         # This element is not a container
-#         # Merge remaining_style into this_style
-#         this_style.update(remaining_style)
-#         # Set the element's style attribs
-#         node.style = this_style
 
 # If an element has clipping/masking specified in a stylesheet, this will override any attributes
 # I think this is an Inkscape bug
@@ -588,10 +531,7 @@ def recursive_merge_clipmask(node,clippathurl,mask=False):
                 recursive_merge_clipmask(k,clippathurl);
         else:
             node.set(cmstr2,clippathurl)
-#            debug(node.get_id())
-#            debug(cmstr2)
-#            debug(clippathurl)
-#            debug(node.get(cmstr2))
+
 
 # Repeated getElementById lookups can be really slow, so instead create a dict that can be used to 
 # speed this up. When an element is created that may be needed later, it MUST be added. 
@@ -612,6 +552,11 @@ def add_to_iddict(el):
     if iddict is None:
         generate_iddict(get_parent_svg(el))
     iddict[el.get("id")] = el;
+def new_element(typein):
+    ret = typein();
+    get_id2(ret);
+    add_to_iddict(ret)
+    return ret
     
 # The built-in get_unique_id gets stuck if there are too many elements. Instead use an adaptive
 # size based on the current number of ids
@@ -662,7 +607,7 @@ def get_id2(el, as_url=0):
     return eid
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
-def Get_Bounding_Boxes(s=None,getnew=False,filename=None,pxinuu=None):
+def Get_Bounding_Boxes(s=None,getnew=False,filename=None,pxinuu=None,inkscape_binary=None):
 # Gets all of a document's bounding boxes (by ID), in user units
 # Note that this uses a command line call, so by default it will only get the values from BEFORE the extension is called
 # Set getnew to True to make a temporary copy of the file that is then read. 
@@ -673,13 +618,19 @@ def Get_Bounding_Boxes(s=None,getnew=False,filename=None,pxinuu=None):
     
     # Query Inkscape
 #    f = open("freezecheck.txt", "w"); f.write('Starting call...'); f.close();
+#    import time
+#    tic=time.time()
     if not(getnew):
-        tFStR = commandqueryall(filename);
+        tFStR = commandqueryall(filename,inkscape_binary=inkscape_binary);
     else:
         tmpname = filename+'_tmp';
         command.write_svg(s.svg,tmpname);
-        tFStR = commandqueryall(tmpname);
+        tFStR = commandqueryall(tmpname,inkscape_binary=inkscape_binary);
         import os; os.remove(tmpname);
+        
+#    print(time.time()-tic)
+#    tFStR = commandqueryall(filename);
+#    print(time.time()-tic)
 #    f = open("freezecheck.txt", "a"); f.write('finished!'); f.close();
 
     # Parse the output
@@ -693,13 +644,18 @@ def Get_Bounding_Boxes(s=None,getnew=False,filename=None,pxinuu=None):
             continue;                       # skip warnings (version 1.0 only?)
         data = [float(x.strip('\''))*pxinuu for x in str(d).split(',')[1:]]
         bbs[key] = data;
+    
+#    print(time.time()-tic)
     return bbs
 
 # 2022.02.03: I think the occasional hangs come from the call to command.
 # I think this is more robust. Make a tally below if it freezes:
-def commandqueryall(fn):
+def commandqueryall(fn,inkscape_binary=None):
     import subprocess
-    bfn, tmp = Get_Binary_Loc(fn);
+    if inkscape_binary is None:
+        bfn, tmp = Get_Binary_Loc(fn);
+    else:
+        bfn = inkscape_binary
     arg2 = [bfn, '--query-all',fn]
     # p=subprocess.run(arg2, shell=False,stdout=subprocess.PIPE, stderr=subprocess.DEVNULL);
     try:
@@ -898,9 +854,9 @@ def get_path2(el):
     else:
         pth = el.get_path();
     return pth
-
+otp_support = (inkex.Rectangle,inkex.Ellipse,inkex.Circle,inkex.Polygon,inkex.Polyline,inkex.Line);
 def object_to_path(el):
-    if not(isinstance(el,inkex.PathElement)):
+    if not(isinstance(el,(inkex.PathElement,inkex.TextElement))):
         pth = get_path2(el);
         el.tag = '{http://www.w3.org/2000/svg}path';
         el.set('d',str(pth));
@@ -1021,16 +977,17 @@ ivp = vparse(inkex_version);
 
 # Version-specific document scale
 def vscale(svg):
-    if ivp[0]<=1 and ivp[1]<2:          # pre-1.2: return scale
-        return svg.scale
-    else:
-        try:
-            return svg.oldscale
-        except: # get the old scale. Hopefully they fix this
+    try:
+        return svg.oldscale                 # I never change doc size, so it's fine to store it for unnecessary lookups
+    except:
+        if ivp[0]<=1 and ivp[1]<2:          # pre-1.2: return scale
+            svg.oldscale = svg.scale
+        else:                               # post-1.2: return old scale
             scale_x = float(svg.unittouu(svg.get('width')))/ float(svg.get_viewbox()[2])
             scale_y = float(svg.unittouu(svg.get('height'))) / float(svg.get_viewbox()[3])
             svg.oldscale = max([scale_x, scale_y])
             return svg.oldscale
+        return svg.oldscale
     
 # Version-specific multiplication
 def vmult(*args):
@@ -1038,7 +995,7 @@ def vmult(*args):
     for ii in reversed(range(0,len(args)-1)):
         if ivp[0]<=1 and ivp[1]<2:      # pre-1.2: use asterisk
             outval = args[ii]*outval;
-        else:
+        else:                           # post-1.2: use @
             outval = args[ii]@outval;
     return outval
 

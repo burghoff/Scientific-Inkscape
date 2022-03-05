@@ -142,94 +142,75 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
     intersects =  np.logical_and((abs(xc1.reshape(-1,1) - xc2) * 2 < (wd1.reshape(-1,1) + wd2)), \
                                  (abs(yc1.reshape(-1,1) - yc2) * 2 < (ht1.reshape(-1,1) + ht2))); # reshape(-1,1) is a transpose
     potentials = np.logical_and(sameangle,intersects)
+    potentials = np.logical_and(potentials,np.identity(len(ws))==0) #off-diagonal only
     goodl = np.argwhere(potentials)
          
     
     for ii in range(goodl.shape[0]):
         w = ws[goodl[ii,0]]
         w2= ws[goodl[ii,1]]
-    # for w in ws:
-        # mw = [];
-        dx = w.sw*NUM_SPACES
-        xtol  = XTOL*w.sw/w.sf;
+
+        dx   = w.sw*NUM_SPACES/w.sf
+        xtol = XTOL*w.sw/w.sf;
         ytol = YTOL*w.sw/w.sf;
-        # for w2 in ws:
-        if w2 is not w:
-            # sameangle=samenstyc=False;
-            # sameangle   = abs(w2.angle-w.angle)<.001;
-            # if sameangle:
-            if True:
-                # if w2.orig_bb is not None:
-                #     bbintersects = w.bb_big.intersect(w2.orig_bb);
-                # else:
-                #     bbintersects = w.bb_big.intersect(w2.bb);
-                # samenstyc   = w2.cs[0].nstyc==w.cs[-1].nstyc;
-                # allgood.append(bbintersects==intersects[sameanglel[ii,0],sameanglel[ii,1]])
-                # if bbintersects: # so we don't waste time transforming, check if bboxes overlap
-                if True: # so we don't waste time transforming, check if bboxes overlap
-                    # calculate 2's coords in 1's system
-                    tr1, br1, tl2, bl2 = w.get_orig_pts(w2)
-                    
-                    xpenmatch = (br1.x-xtol <= bl2.x <= br1.x + dx/w.sf + xtol);
-                    neitherempty = len(wstrip(w.txt()))>0 and len(wstrip(w2.txt()))>0
-                    if xpenmatch and neitherempty:
-                        type = None;
-                        # samecolor = Style2(w2.cs[0].nstyc).get('fill')==Style2(w.cs[-1].nstyc).get('fill')
-                        if abs(bl2.y-br1.y)<ytol and abs(w.fs-w2.fs)<.001 and mergenearby:
-                            if not(isnumeric(w.ln.txt())) or not(isnumeric(w2.ln.txt())) \
-                               or w.ln.ll.inittextel==w2.ln.ll.inittextel: # don't merge two numbers (may be ticks)
-                                type = 'same';
-                            # dh.debug(w.txt()+' '+w2.txt())
-                        elif br1.y+ytol >= bl2.y >= tr1.y-ytol and mergesupersub: # above baseline
-                            aboveline = br1.y*(1-SUBSUPER_YTHR)+tr1.y*SUBSUPER_YTHR+ytol >= bl2.y;
-                            if w2.fs<w.fs*SUBSUPER_THR-.01: # new smaller, expect super
-                                if aboveline: 
-                                    type = 'super';
-                            elif w.fs<w2.fs*SUBSUPER_THR-.01: # old smaller, expect reutrn
-                                    type = 'subreturn';
-                            else:
-                                if aboveline: 
-                                    type = 'superorsubreturn'; # could be either, decide later
-                                else:
-                                    type = 'subreturn';
-                        elif br1.y+ytol >= tl2.y >= tr1.y-ytol and mergesupersub:
-                            belowline = tl2.y >= br1.y*SUBSUPER_YTHR+tr1.y*(1-SUBSUPER_YTHR)-ytol;
-                            if w2.fs<w.fs*SUBSUPER_THR-.01: # new smaller, expect sub
-                                if  belowline:
-                                    type = 'sub';
-                            elif w.fs<w2.fs*SUBSUPER_THR+.01: # old smaller, expect superreturn
-                                    type = 'superreturn'
-                            else:
-                                if  belowline:
-                                    type = 'suborsuperreturn'; # could be either, decide later
-                                else:
-                                    type = 'superreturn';
-                        if type is not None:
-                            w.mw.append([w2,type,br1,bl2])
+
+        # calculate 2's coords in 1's system
+        tr1, br1, tl2, bl2 = w.get_orig_pts(w2)
+        xpenmatch = (br1.x-xtol <= bl2.x <= br1.x + dx + xtol);
+        neitherempty = len(wstrip(w.txt()))>0 and len(wstrip(w2.txt()))>0
+        if xpenmatch and neitherempty:
+            type = None;
+            # samecolor = Style2(w2.cs[0].nstyc).get('fill')==Style2(w.cs[-1].nstyc).get('fill')
+            if abs(bl2.y-br1.y)<ytol and abs(w.fs-w2.fs)<.001 and mergenearby:
+                if not(isnumeric(w.ln.txt())) or not(isnumeric(w2.ln.txt())) \
+                   or w.ln.ll.inittextel==w2.ln.ll.inittextel: # don't merge two numbers (may be ticks)
+                    type = 'same';
+                # dh.debug(w.txt()+' '+w2.txt())
+            elif br1.y+ytol >= bl2.y >= tr1.y-ytol and mergesupersub: # above baseline
+                aboveline = br1.y*(1-SUBSUPER_YTHR)+tr1.y*SUBSUPER_YTHR+ytol >= bl2.y;
+                if w2.fs<w.fs*SUBSUPER_THR-.01: # new smaller, expect super
+                    if aboveline: 
+                        type = 'super';
+                elif w.fs<w2.fs*SUBSUPER_THR-.01: # old smaller, expect reutrn
+                        type = 'subreturn';
+                else:
+                    if aboveline: 
+                        type = 'superorsubreturn'; # could be either, decide later
+                    else:
+                        type = 'subreturn';
+            elif br1.y+ytol >= tl2.y >= tr1.y-ytol and mergesupersub:
+                belowline = tl2.y >= br1.y*SUBSUPER_YTHR+tr1.y*(1-SUBSUPER_YTHR)-ytol;
+                if w2.fs<w.fs*SUBSUPER_THR-.01: # new smaller, expect sub
+                    if  belowline:
+                        type = 'sub';
+                elif w.fs<w2.fs*SUBSUPER_THR+.01: # old smaller, expect superreturn
+                        type = 'superreturn'
+                else:
+                    if  belowline:
+                        type = 'suborsuperreturn'; # could be either, decide later
+                    else:
+                        type = 'superreturn';
+            if type is not None:
+                w.mw.append([w2,type,br1,bl2])
 #                            dh.debug(w.txt+' to '+w2.txt+' as '+type)
 
-            if DEBUG_MERGE:
-                dh.debug('\nMerging '+w.txt() + ' and ' + w2.txt())
-                if not(sameangle): dh.debug('Aborted, diff angles: '+str([w.angle,w2.angle]))
-                elif not(samenstyc): dh.debug('Aborted, diff styles: '+str([w.cs[-1].nstyc,w2.cs[0].nstyc]))
-                if sameangle and samenstyc:
-                    if not(bbintersects): dh.debug('Aborted, bounding box too far');
-                    else:
-                        if not(xpenmatch):
-                            dh.debug('Aborted, x pen too far: '+str([br1.x,bl2.x]))
-                        elif not(neitherempty):
-                            dh.debug('Aborted, one empty')
-                        else:
-                            if type is None:
-                                if not(abs(bl2.y-br1.y)<ytol):
-                                    dh.debug('Aborted, y pen too far: '+str([bl2.y,br1.y]))
-                                elif not(abs(w.fs-w2.fs)<.001):
-                                    dh.debug('Aborted, fonts too different: '+str([w.fs,w2.fs]))
-                                elif not(not(isnumeric(w.ln.txt())) or not(isnumeric(w2.ln.txt()))):
-                                    dh.debug('Aborted, both numbers')
-                            else:
-                                dh.debug('Merged as '+type)
-        # w.mw = mw;
+        if DEBUG_MERGE:
+            dh.debug('\nMerging '+w.txt() + ' and ' + w2.txt())
+            if not(xpenmatch):
+                dh.debug('Aborted, x pen too far: '+str([br1.x,bl2.x]))
+            elif not(neitherempty):
+                dh.debug('Aborted, one empty')
+            else:
+                if type is None:
+                    if not(abs(bl2.y-br1.y)<ytol):
+                        dh.debug('Aborted, y pen too far: '+str([bl2.y,br1.y]))
+                    elif not(abs(w.fs-w2.fs)<.001):
+                        dh.debug('Aborted, fonts too different: '+str([w.fs,w2.fs]))
+                    elif not(not(isnumeric(w.ln.txt())) or not(isnumeric(w2.ln.txt()))):
+                        dh.debug('Aborted, both numbers')
+                else:
+                    dh.debug('Merged as '+type)
+
     Perform_Merges(ws)
     return lls,os
 
@@ -248,22 +229,14 @@ def Remove_Manual_Kerning(lls,os,mergesupersub):
     #         w.nextw = w.nextw.nextw;
     for w in ws:
         mw = [];
-        dx = w.sw*NUM_SPACES
+        dx = w.sw*NUM_SPACES/w.sf
         xtol2 = XTOLMK*w.sw/w.sf;
-        # for w2 in ws:
-        #     if w2 is not w:
-        #         if w2==w.nextw:       # part of the same line, so same transform and y
-        #             bl2 = w2.pts_ut[0];
-        #             br1 = w.pts_ut[3];
-        #             if br1.x-xtol2 <= bl2.x <= br1.x + dx/w.sf + xtol2:
-        #                 mw.append([w2,'same',br1,bl2])
-        #                 # dh.debug(w.txt() +' in '+w.cs[0].loc.el.get_id()   + ' to ' \
-        #                 #         +w2.txt() +' in '+w2.cs[0].loc.el.get_id())
+
         w2=w.nextw       # part of the same line, so same transform and y
         if w2 is not None and w2 in ws:
             bl2 = w2.pts_ut[0];
             br1 = w.pts_ut[3];
-            if br1.x-xtol2 <= bl2.x <= br1.x + dx/w.sf + xtol2:
+            if br1.x-xtol2 <= bl2.x <= br1.x + dx + xtol2:
                 mw.append([w2,'same',br1,bl2])
         w.mw = mw;
         
@@ -365,14 +338,14 @@ def Perform_Merges(ws):
                     c.applypending();
 
 # Check if text represents a number
-ncs = ['0','1','2','3','4','5','6','7','8','9','.','e','E','-'];
+ncs = ['0','1','2','3','4','5','6','7','8','9','.','e','E','-','−',','];
 def isnumeric(s):
-    s = s.replace('−','-');
     allnum = all([sv in ncs for sv in s]);
     isnum=False
     if allnum:
         try:
-            s2=float(s);
+            s = s.replace('−','-').replace(',',''); # replace minus signs with -, remove commas
+            float(s);
             isnum = True
         except:
             isnum = False
@@ -381,6 +354,29 @@ def isnumeric(s):
 # Strip whitespaces
 def wstrip(txt): 
      return txt.translate({ord(c):None for c in ' \n\t\r'}); 
+
+
+## for w in ws:
+#    # mw = [];
+#    dx = w.sw*NUM_SPACES
+#    xtol  = XTOL*w.sw/w.sf;
+#    ytol = YTOL*w.sw/w.sf;
+#    # for w2 in ws:
+#    if w2 is not w:
+#        # sameangle=samenstyc=False;
+#        # sameangle   = abs(w2.angle-w.angle)<.001;
+#        # if sameangle:
+#        if True:
+#            # if w2.orig_bb is not None:
+#            #     bbintersects = w.bb_big.intersect(w2.orig_bb);
+#            # else:
+#            #     bbintersects = w.bb_big.intersect(w2.bb);
+#            # samenstyc   = w2.cs[0].nstyc==w.cs[-1].nstyc;
+#            # allgood.append(bbintersects==intersects[sameanglel[ii,0],sameanglel[ii,1]])
+#            # if bbintersects: # so we don't waste time transforming, check if bboxes overlap
+#            if True: # so we don't waste time transforming, check if bboxes overlap
+#                # calculate 2's coords in 1's system
+
     
 # Recursively delete empty elements
 # Tspans are deleted if they're totally empty, TextElements are deleted if they contain only whitespace

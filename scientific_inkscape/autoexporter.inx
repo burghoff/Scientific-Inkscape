@@ -4,14 +4,15 @@
     <id>burghoff.autoexporter</id>
     <param name="tab" type="notebook">        
         <page name="scaling" gui-text="Options">
-        <label>Runs the Autoexporter, which watches a directory for changes to any SVG and then exports copies in the selected formats. Any rasterization is done at 600 DPI.</label>
+        <label>Runs the Autoexporter, which watches a directory for changes to any SVG and then exports copies in the selected formats.</label>
         <label>Mac users: You may get a security prompt asking whether to allow Inkscape to open a Terminal. Make sure you allow it.</label>
         <label>Linux users: This extension cannot run as an AppImage or as a Snap installation.</label>
         <label appearance="header">Formats to export</label>
         <param name="usepdf" type="bool" gui-text="PDF">true</param>   
         <param name="usepng" type="bool" gui-text="PNG">true</param>    
         <param name="useemf" type="bool" gui-text="EMF">true</param>   
-        <param name="useeps" type="bool" gui-text="EPS">true</param> 
+        <param name="useeps" type="bool" gui-text="EPS">true</param>  
+        <param name="usesvg" type="bool" gui-text="SVG (smaller)">true</param> 
         <param name="dpi" type="float" precision="0" min="1" max="9999" gui-text="Rasterization DPI">600</param>
         
         <label appearance="header">Directories</label>   
@@ -19,6 +20,27 @@
         <param type="path" name="writedir" gui-text="Write directory" mode="folder"/>
         
         
+        
+        <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+        <label>By David Burghoff, University of Notre Dame</label>
+        </page>
+    
+        <page name="advanced" gui-text="Advanced">
+
+        <label appearance="header">Embedded image handling</label> 
+        <label>Embedded images can be resampled and cropped to reduce output sizes.</label>           
+        <param name="imagemode" type="optiongroup" appearance="combo"
+                gui-text="Store images as">
+                   <option value="1">Cropped and resampled PNG</option>
+                   <option value="2">Cropped and resampled JPG</option>
+                   <option value="3">Do not change</option>
+                </param>
+        <param name="dpi_im" type="float" precision="0" min="1" max="9999" gui-text="Resampling DPI">300</param>
+        
+        <label appearance="header">Other options</label>
+        <param name="texttopath" type="bool" gui-text="Convert text to paths">false</param>    
+        <param name="thinline" type="bool" gui-text="Prevent thin line enhancement">true</param>  
+        <label>(Certain PDF renderers make thin lines look thicker at certain zooms.)</label>   
         
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>By David Burghoff, University of Notre Dame</label>
