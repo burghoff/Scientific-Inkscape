@@ -86,7 +86,7 @@ def export_file(bfn,fin,fout,fformat,timeoutv):
                            '; export-filename:'+tmpimg2+'; export-background-opacity:1.0; export-do; ' # export all w/background
                 arg2 = [bfn, '--actions',acts,fin]
                 subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
-                if tojpg:
+                if tojpg and ih.hasPIL:
                     arg2 = [bfn, '--actions',acts2,fin]
                     subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
                 
@@ -145,7 +145,7 @@ def export_file(bfn,fin,fout,fformat,timeoutv):
                         T = 'matrix('+','.join([str(v[0]) for v in T])+')';
                         el.set('transform',T)
                         
-                        # For JPGs, need to modify location according to jpg bbox
+                        # If we cropped, need to modify location according to bbox
                         if ih.hasPIL and bbox is not None:
                             el.set('x',str(myx + bbox[0]*myw));
                             el.set('y',str(myy + bbox[1]*myh));
