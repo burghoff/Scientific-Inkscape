@@ -118,14 +118,19 @@ class ScalePlots(inkex.EffectExtension):
                 pnew.append(p)
         si.append(len(pnew))
         if fp is not None:
-            # if el.get('d') is not None:
-            if isinstance(els[fp],(PathElement)):
+            if els[fp].get('d') is not None:
                 els[fp].set_path(pnew.transform(-els[fp].composed_transform()));
             else:
                 # Polylines and lines have to be replaced with a new path
                 dh.object_to_path(els[fp])
                 els[fp].set('d',str(pnew.transform(-els[fp].composed_transform())));
-            els[fp].set('clip-path','None'); # release any clips
+                
+            # Release clips/masks    
+            els[fp].set('clip-path','none'); # release any clips
+            els[fp].set('mask'     ,'none'); # release any masks
+            dh.fix_css_clipmask(els[fp],mask=False) # fix CSS bug
+            dh.fix_css_clipmask(els[fp],mask=True)
+            
             els[fp].set('inkscape-academic-combined-by-color',' '.join([str(v) for v in si]))
             for s in sp:
                 deleteup(els[s])

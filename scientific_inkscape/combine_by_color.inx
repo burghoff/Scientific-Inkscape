@@ -5,7 +5,7 @@
     <param name="tab" type="notebook">
         
         <page name="scaling" gui-text="Options">
-            <label>Combines all selected paths of the same color (and style) into a single path, ignoring lines that are darker than a certain threshold.
+            <label>Combines all selected paths of the same color (and style) into a single path, ignoring lines that are darker than a certain threshold. Clips and masks will be released.
             </label>
             <label>Useful when:</label>
 <label indent="1">1. You would like to reduce the number of elements, improving responsivity and shrinking the file size.</label>
