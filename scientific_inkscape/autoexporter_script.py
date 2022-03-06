@@ -227,8 +227,8 @@ def overwrite_svg(svg,fn):
 from inkex import load_svg
 def load_svg_clear_dict(fin):
     svg = load_svg(fin).getroot();
-    # print(dh.iddict)  
-    dh.iddict = None # only valid one svg at a time
+    # print(svg.iddict)  
+    # dh.iddict = None # only valid one svg at a time
     return svg
 def get_defs(svg):
     for k in list(svg):

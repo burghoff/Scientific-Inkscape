@@ -166,6 +166,7 @@ class FlattenPlots(inkex.EffectExtension):
                    RemoveKerning.External_Merges,TextParser.LineList.Parse_Lines,TextParser.LineList.Split_Off_Words,\
                    dh.Get_Composed_LineHeight,dh.Get_Composed_Width,dh.ungroup,dh.selected_style_local,\
                    dh.cascaded_style2,dh.shallow_composed_style,dh.generate_cssdict,dh.descendants2,\
+                   dh.getElementById2,dh.add_to_iddict,dh.get_id2,\
                    inkex.elements._base.ShapeElement.composed_transform,inkex.elements._use.Use.unlink]
             for fn in fns:
                 lp.add_function(fn)

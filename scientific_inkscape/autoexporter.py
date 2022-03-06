@@ -33,96 +33,6 @@ from inkex import (
 import os,sys
 sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
 import dhelpers as dh
-
-# Gets the location of the Inkscape binary
-# Functions copied from command.py
-# Copyright (C) 2019 Martin Owens
-def Get_Binary_Loc(fin):
-    from lxml.etree import ElementTree
-    INKSCAPE_EXECUTABLE_NAME = os.environ.get('INKSCAPE_COMMAND')
-    if INKSCAPE_EXECUTABLE_NAME == None:
-        if sys.platform == 'win32':
-            # prefer inkscape.exe over inkscape.com which spawns a command window
-            INKSCAPE_EXECUTABLE_NAME = 'inkscape.exe'
-        else:
-            INKSCAPE_EXECUTABLE_NAME = 'inkscape'
-    class CommandNotFound(IOError):
-        pass
-    class ProgramRunError(ValueError):
-        pass
-    def which(program):
-        if os.path.isabs(program) and os.path.isfile(program):
-            return program
-        try:
-            # Python2 and python3, but must have distutils and may not always
-            # work on windows versions (depending on the version)
-            from distutils.spawn import find_executable
-            prog = find_executable(program)
-            if prog:
-                return prog
-        except ImportError:
-            pass
-        try:
-            # Python3 only version of which
-            from shutil import which as warlock
-            prog = warlock(program)
-            if prog:
-                return prog
-        except ImportError:
-            pass # python2
-        raise CommandNotFound(f"Can not find the command: '{program}'")
-    def write_svg(svg, *filename):
-        filename = os.path.join(*filename)
-        if os.path.isfile(filename):
-            return filename
-        with open(filename, 'wb') as fhl:
-            if isinstance(svg, SvgDocumentElement):
-                svg = ElementTree(svg)
-            if hasattr(svg, 'write'):
-                # XML document
-                svg.write(fhl)
-            elif isinstance(svg, bytes):
-                fhl.write(svg)
-            else:
-                raise ValueError("Not sure what type of SVG data this is.")
-        return filename
-    def to_arg(arg, oldie=False):
-        if isinstance(arg, (tuple, list)):
-            (arg, val) = arg
-            arg = '-' + arg
-            if len(arg) > 2 and not oldie:
-                arg = '-' + arg
-            if val is True:
-                return arg
-            if val is False:
-                return None
-            return f"{arg}={str(val)}"
-        return str(arg)
-    def to_args(prog, *positionals, **arguments):
-        args = [prog]
-        oldie = arguments.pop('oldie', False)
-        for arg, value in arguments.items():
-            arg = arg.replace('_', '-').strip()    
-            if isinstance(value, tuple):
-                value = list(value)
-            elif not isinstance(value, list):
-                value = [value]    
-            for val in value:
-                args.append(to_arg((arg, val), oldie))
-        args += [to_arg(pos, oldie) for pos in positionals if pos is not None]
-        # Filter out empty non-arguments
-        return [arg for arg in args if arg is not None]
-    def _call(program, *args, **kwargs):
-        stdin = kwargs.pop('stdin', None)
-        if isinstance(stdin, str):
-            stdin = stdin.encode('utf-8')
-        return to_args(which(program), *args, **kwargs)
-    def call(program, *args, **kwargs):
-        return _call(program, *args, **kwargs)
-    def inkscape2(svg_file, *args, **kwargs):
-        return call(INKSCAPE_EXECUTABLE_NAME, svg_file, *args, **kwargs)
-    return inkscape2(fin)
-
         
 
 class ScalePlots(inkex.EffectExtension):
@@ -159,7 +69,7 @@ class ScalePlots(inkex.EffectExtension):
         thinline_dehancement = self.options.thinline;
         
         
-        bfn, tmp = Get_Binary_Loc(self.options.input_file)
+        bfn, tmp = dh.Get_Binary_Loc(self.options.input_file)
         bloc, bnm = os.path.split(bfn)
         pyloc,pybin = os.path.split(sys.executable)
         

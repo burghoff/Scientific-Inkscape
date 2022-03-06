@@ -39,8 +39,6 @@ from Style2 import Style2
 
 
 
-It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
-
 def descendants2(el):
     # Like Inkex's descendants(), but avoids recursion to avoid recursion depth issues
     cel = el;
@@ -126,27 +124,6 @@ def Set_Style_Comp(el_or_sty,comp,val):
         else:
             return Style2(sty)                  # convert back to Style
     
-# sets a style property (of a style string) 
-# def Set_Style_Comp2(sty,comp,val):
-#     if sty is not None:#not(sty==None):
-#         sty = sty.split(';');
-#         compfound=False;
-#         for ii in range(len(sty)):
-#             if comp in sty[ii]:
-#                 if val is not None:
-#                     sty[ii] = comp+':'+val;
-#                 else:
-#                     sty[ii] = ''
-#                 compfound=True;
-#         if not(compfound):
-#             if val is not None:
-#                 sty.append(comp+':'+val);
-#             else: pass
-#         sty = [v.strip(';') for v in sty if v!=''];
-#         sty = ';'.join(sty)
-#     else:
-#         sty = comp+':'+val
-#     return sty
 
 # gets a style property (return None if none)
 def Get_Style_Comp(sty,comp):
@@ -245,10 +222,7 @@ def Get_Composed_Width(el,comp,nargout=1,styin=None,ctin=None):
                 return fs*sc,sf,ct,ang
             else:
                 return fs*sc
-            # sc = sc*Get_Composed_Width(el.getparent(),comp)
-            # sc = str(sc)+'px'
         else:
-            # sw = float(sc.strip().replace("px", ""))
             sw = implicitpx(sc)
             sf = math.sqrt(abs(ct.a*ct.d - ct.b*ct.c))*docscale # scale factor
             if nargout==4:
@@ -380,9 +354,6 @@ def get_points(el,irange=None):
         p = ct.apply_to_point(p);
         xs.append(p.x*docscale)
         ys.append(p.y*docscale)
-    # if el.get_id()=='path109379':
-    #     debug(pts)
-    #     debug(el.root.scale)
     return xs, ys
 
 
@@ -390,8 +361,7 @@ def get_points(el,irange=None):
 def ungroup(groupnode):
     # Pops a node out of its group, unless it's already in a layer or the base
     # Unlink any clones that aren't glyphs
-    # Remove any comments
-    # Preserves style, clipping, and masking
+    # Remove any comments, Preserves style, clipping, and masking
     
     gparent = groupnode.getparent()
     gindex  = list(gparent).index(groupnode)   # group's location in parent
@@ -499,7 +469,6 @@ def recursive_merge_clipmask(node,clippathurl,mask=False):
         else:
             cmstr1 = cmstr2 = 'mask'
             
-            
         if node.transform is not None:
             # Clip-paths on nodes with a transform have the transform
             # applied to the clipPath as well, which we don't want.  So, we
@@ -538,26 +507,27 @@ def recursive_merge_clipmask(node,clippathurl,mask=False):
 
 # Repeated getElementById lookups can be really slow, so instead create a dict that can be used to 
 # speed this up. When an element is created that may be needed later, it MUST be added. 
-global iddict
-iddict = None;
 def getElementById2(svg,elid):
-    global iddict
-    if iddict is None:
-        generate_iddict(svg)
-    return iddict.get(elid);
+    if hasattr(svg,'iddict'):
+        iddict = svg.iddict
+    else:
+        generate_iddict(svg);
+        iddict = svg.iddict
+    return iddict.get(elid);    
 def generate_iddict(svg):
-    global iddict
-    iddict = dict();
+    svg.iddict = dict();
     for el in descendants2(svg):
-        iddict[el.get_id()] = el;
+        svg.iddict[get_id2(el)] = el;
 def add_to_iddict(el):
-    global iddict
-    if iddict is None:
-        generate_iddict(get_parent_svg(el))
-    iddict[el.get("id")] = el;
+    svg = get_parent_svg(el);
+    if hasattr(svg,'iddict'):
+        iddict = svg.iddict
+    else:
+        generate_iddict(svg)
+        iddict = svg.iddict
+    iddict[get_id2(el)] = el;
 def new_element(typein):
     ret = typein();
-    get_id2(ret);
     add_to_iddict(ret)
     return ret
     
@@ -596,7 +566,6 @@ def set_random_id2(el, prefix=None, size=4, backlinks=False):
 # Modified from Inkex's get_id
 def get_id2(el, as_url=0):
     """Get the id for the element, will set a new unique id if not set.
-
     as_url - If set to 1, returns #{id} as a string
              If set to 2, returns url(#{id}) as a string
     """
@@ -620,9 +589,6 @@ def Get_Bounding_Boxes(s=None,getnew=False,filename=None,pxinuu=None,inkscape_bi
         pxinuu = s.svg.unittouu('1px');
     
     # Query Inkscape
-#    f = open("freezecheck.txt", "w"); f.write('Starting call...'); f.close();
-#    import time
-#    tic=time.time()
     if not(getnew):
         tFStR = commandqueryall(filename,inkscape_binary=inkscape_binary);
     else:
@@ -630,11 +596,6 @@ def Get_Bounding_Boxes(s=None,getnew=False,filename=None,pxinuu=None,inkscape_bi
         command.write_svg(s.svg,tmpname);
         tFStR = commandqueryall(tmpname,inkscape_binary=inkscape_binary);
         import os; os.remove(tmpname);
-        
-#    print(time.time()-tic)
-#    tFStR = commandqueryall(filename);
-#    print(time.time()-tic)
-#    f = open("freezecheck.txt", "a"); f.write('finished!'); f.close();
 
     # Parse the output
     tBBLi = tFStR.splitlines()
@@ -647,8 +608,6 @@ def Get_Bounding_Boxes(s=None,getnew=False,filename=None,pxinuu=None,inkscape_bi
             continue;                       # skip warnings (version 1.0 only?)
         data = [float(x.strip('\''))*pxinuu for x in str(d).split(',')[1:]]
         bbs[key] = data;
-    
-#    print(time.time()-tic)
     return bbs
 
 # 2022.02.03: I think the occasional hangs come from the call to command.
@@ -660,7 +619,6 @@ def commandqueryall(fn,inkscape_binary=None):
     else:
         bfn = inkscape_binary
     arg2 = [bfn, '--query-all',fn]
-    # p=subprocess.run(arg2, shell=False,stdout=subprocess.PIPE, stderr=subprocess.DEVNULL);
     try:
         p=subprocess.run(arg2, shell=False,timeout=TIMEOUT,stdout=subprocess.PIPE, stderr=subprocess.DEVNULL);
     except subprocess.TimeoutExpired:
@@ -789,26 +747,6 @@ def global_transform(el,trnsfrm,irange=None,trange=None):
     if not(sd in [None,'none']):
         nd,sf = Get_Composed_List(el,'stroke-dasharray',nargout=2);
         Set_Style_Comp(el,'stroke-dasharray',str([sdv/sf for sdv in sd]).strip('[').strip(']')); # fix dash
-
-#     sw = Get_Composed_Width(el,'stroke-width');
-#     sd = Get_Composed_List(el, 'stroke-dasharray');
-#     el.set('transform',newtr); # Add the new transform
-#     if not(isinstance(el, (TextElement,Image,Group,Tspan,FlowRoot,FlowPara,FlowRegion,FlowSpan))): # not(el.typename in ['TextElement','Image','Group']):
-#         ApplyTransform().recursiveFuseTransform(el,irange=irange,trange=trange);
-#         if sw is not None:
-# #            if Get_Style_Comp(el.get('style'),'stroke-width') is None:
-# #                debug(el.get_id())
-#             neww, sf, ct, ang = Get_Composed_Width(el,'stroke-width',nargout=4);
-#             Set_Style_Comp(el,'stroke-width',str(sw/sf)); # fix width
-#             # nw = float(Get_Style_Comp(el.get('style'),'stroke-width'))
-#             # sw = nw*sw/Get_Composed_Width(el,'stroke-width');
-#             # Set_Style_Comp(el,'stroke-width',str(sw)); # fix width
-#         if not(sd in [None,'none']): #not(sd==None) and not(sd=='none'):
-#             nd = Get_Style_Comp(el.get('style'),'stroke-dasharray').split(',');
-#             cd = Get_Composed_List(el,'stroke-dasharray');
-#             for ii in range(len(sd)):
-#                 sd[ii] = implicitpx(nd[ii])*sd[ii]/cd[ii];
-#             Set_Style_Comp(el,'stroke-dasharray',str(sd).strip('[').strip(']')); # fix width
 
 
 # Modified from Inkex's get_path          

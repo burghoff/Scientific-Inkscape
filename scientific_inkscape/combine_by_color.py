@@ -20,11 +20,10 @@
 
 import inkex
 from inkex import (
-    TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle, addNS, \
-    Transform, PathElement, Line, Rectangle, Path,Vector2d, \
-    Use, NamedView, Defs, Metadata, ForeignObject, Group, FontFace, FlowSpan, MissingGlyph,Polyline
+    Path,\
+    NamedView, Defs, Metadata, ForeignObject, Group, MissingGlyph
 )
-
+import math
 import os,sys
 sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
 import dhelpers as dh
@@ -49,13 +48,13 @@ class ScalePlots(inkex.EffectExtension):
         #     els = [v for el in self.svg.selection for v in dh.descendants2(el)];
         lightness_threshold = self.options.lightnessth/100;
         
+        
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
         sel = [v for el in sel for v in dh.descendants2(el)];
-            
-        # sel = self.svg.selection;                     # an ElementList
-        # sel = dh.get_mod(sel)
-        # els = [sel[k] for k in sel.id_dict().keys()];
-        # els = [v for el in self.svg.selection for v in dh.descendants2(el)]
+        
+        allel = [v for v in dh.descendants2(self.svg)];
+        elord = [allel.index(v) for v in sel];                      # order of selected elements in svg
+
         
         els = [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, \
                ForeignObject,Group,MissingGlyph))) and (el.get('d') is not None or \
@@ -67,14 +66,10 @@ class ScalePlots(inkex.EffectExtension):
         sfs  = [stroke_fill_prop(els[ii],stys[ii]) for ii in range(len(els))]
         # dh.debug(lightness_threshold)
         for ii in reversed(range(len(els))): # reversed so that order is preserved
-            el1 = els[ii];
-            # strk = stys[ii].get('stroke');
-            # if strk is not None and not(strk.lower() in ['#000000','#262626']):
             strk1,fill1,sw1,sd1,sl1,fl1,ms1,mm1,me1 = sfs[ii]
             if strk1 is not None and sl1>=lightness_threshold:
-                merges = [el1]; merged[ii]=True
+                merges = [ii]; merged[ii]=True
                 for jj in range(ii):
-                    el2 = els[jj];
                     if not(merged[jj]):
                         strk2,fill2,sw2,sd2,sl2,fl2,ms2,mm2,me2 = sfs[jj]
                         samesw   = (sw1 is None and sw2 is None) or \
@@ -89,24 +84,18 @@ class ScalePlots(inkex.EffectExtension):
                                     fill1.green==fill2.green and abs(fill1.alpha-fill2.alpha)<.001)
                         if samestrk and samefill and samesw and sd1==sd2 and \
                            ms1==ms2 and mm1==mm2 and me1==me2:
-                            merges.append(el2); merged[jj]=True
+                            merges.append(jj); merged[jj]=True
                 if len(merges)>1:
-                    self.combine_paths(merges)
-                    # dh.debug(merges[0].get('clip-path'))
-                    # dh.debug(merges)
+                    ords = [elord[kk] for kk in merges]; ords.sort()
+                    medord = ords[math.floor((len(ords)-1)/2)]
+                    mergeii = [kk for kk in range(len(merges)) if elord[merges[kk]]==medord][0] # use the median
+                    self.combine_paths([els[kk] for kk in merges],mergeii)
         
         # dh.debug(len(els))
-    def combine_paths(self,els):
+    def combine_paths(self,els,mergeii):
         pnew = Path();
-        fp = None; # first path
-        sp = [];   # subsequent paths
         si = [];  # start indices
-        for ii in range(len(els)):
-            el = els[ii];
-            if fp is None:
-                fp=ii;
-            else:
-                sp.append(ii)
+        for el in els:
             pth = Path(el.get_path()).to_absolute().transform(el.composed_transform());
             if el.get('inkscape-academic-combined-by-color') is None:
                 si.append(len(pnew))
@@ -117,22 +106,22 @@ class ScalePlots(inkex.EffectExtension):
             for p in pth:
                 pnew.append(p)
         si.append(len(pnew))
-        if fp is not None:
-            if els[fp].get('d') is not None:
-                els[fp].set_path(pnew.transform(-els[fp].composed_transform()));
-            else:
-                # Polylines and lines have to be replaced with a new path
-                dh.object_to_path(els[fp])
-                els[fp].set('d',str(pnew.transform(-els[fp].composed_transform())));
-                
-            # Release clips/masks    
-            els[fp].set('clip-path','none'); # release any clips
-            els[fp].set('mask'     ,'none'); # release any masks
-            dh.fix_css_clipmask(els[fp],mask=False) # fix CSS bug
-            dh.fix_css_clipmask(els[fp],mask=True)
-            
-            els[fp].set('inkscape-academic-combined-by-color',' '.join([str(v) for v in si]))
-            for s in sp:
+        
+        # Set the path
+        mel  = els[mergeii]
+        if mel.get('d') is None: # Polylines and lines have to be converted to a path
+            dh.object_to_path(mel)
+        mel.set('d',str(pnew.transform(-mel.composed_transform())));
+        
+        # Release clips/masks    
+        mel.set('clip-path','none'); # release any clips
+        mel.set('mask'     ,'none'); # release any masks
+        dh.fix_css_clipmask(mel,mask=False) # fix CSS bug
+        dh.fix_css_clipmask(mel,mask=True)
+        
+        mel.set('inkscape-academic-combined-by-color',' '.join([str(v) for v in si]))
+        for s in range(len(els)):
+            if s!=mergeii:
                 deleteup(els[s])
 
 # Delete and prune empty ancestor groups       
