@@ -289,9 +289,12 @@ def Get_Composed_LineHeight(el,styin=None,ctin=None):    # cs = el.composed_styl
     
 # For style components that are a list (stroke-dasharray), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms
-def Get_Composed_List(el,comp,nargout=1):
+def Get_Composed_List(el,comp,nargout=1,styin=None):
     # cs = el.composed_style();
-    cs = selected_style_local(el);
+    if styin is None:
+        cs = selected_style_local(el);
+    else:
+        cs = styin
     ct = el.composed_transform();
     sc = Get_Style_Comp(cs,comp);
     docscale = vscale(get_parent_svg(el));

@@ -5,12 +5,16 @@
     <param name="tab" type="notebook">
         
         <page name="scaling" gui-text="Options">
-            <label>Combines all selected paths of the same color (and style) into a single path, ignoring black lines.
+            <label>Combines all selected paths of the same color (and style) into a single path, ignoring lines that are darker than a certain threshold.
             </label>
             <label>Useful when:</label>
 <label indent="1">1. You would like to reduce the number of elements, improving responsivity and shrinking the file size.</label>
 <label indent="1">2. Your plot rendering program has split your data into multiple paths.</label>
 <label>Note: Inkscape may freeze if you try to pass thousands of elements to an extension. If necessary, temporarily group them.</label>
+
+            <label appearance="header">Lightness threshold</label>   
+            <label>If the stroke Lightness is less than the Lightness threshold, combining will not occur. This can be used to exclude axes and ticks, which are usually black.</label>
+            <param name="lightnessth" type="float" precision="0" min="0" max="100" gui-text="Lightness threshold (%)">15</param>
 
             <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>By David Burghoff, University of Notre Dame</label> 
