@@ -1012,7 +1012,7 @@ def vmult(*args):
 
     
 def Version_Check(caller):
-    siv = 'v1.4.8'         # Scientific Inkscape version
+    siv = 'v1.4.9'         # Scientific Inkscape version
     maxsupport = '1.2.0';
     minsupport = '1.1.0';
     
