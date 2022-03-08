@@ -29,11 +29,11 @@ import dhelpers as dh
 try:
     import tkinter
     from tkinter import filedialog
-    promptstring = 'Enter D to change watch/write directories, A to export all now, R to change DPI, and Q to quit: '
-    validtkinter = True
+    promptstring = '\nEnter D to change directories, R to change DPI, F to export a file, A to export all now, and Q to quit: '
+    hastkinter = True
 except:
-    promptstring = 'Enter A to export all now, R to change DPI, and Q to quit: '
-    validtkinter = False
+    promptstring = '\nEnter A to export all now, R to change DPI, and Q to quit: '
+    hastkinter = False
 
 fmts = [(v.lower()=='true') for v in fmts.split('_')];
 exp_fmts = []
@@ -57,30 +57,73 @@ else:
 
 
 # Use the Inkscape binary to export the file
-def export_file(bfn,fin,fout,fformat,timeoutv):
+def export_file(bfn,fin,fout,fformat,ppoutput=None):
     import os; 
     myoutput = fout[0:-4] + '.' + fformat
     print('    To '+fformat+'...',end=' ',flush=True)
     timestart = time.time();
     
+    if ppoutput is not None:
+        fin, tmpoutputs, tempdir = ppoutput
+    else:
+        tmpoutputs = []; tempdir = None
+    
     try:
-        outputs = [];
         smallsvg = (fformat=='svg')
         notpng = not(fformat=='png')
-        
-        if (reduce_images or text_to_paths or thinline_dehancement or smallsvg) and notpng:
-            import tempfile
-            tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
+        if (thinline_dehancement or smallsvg) and notpng:
+            if tempdir is None:
+                import tempfile
+                tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
+                if DEBUG:
+                    print('\n    '+joinmod(tempdir,''))
             basetemp = joinmod(tempdir,'tmp.svg');
-            if DEBUG:
-                print('\n    '+basetemp)
+#            print(basetemp)
         
-        if reduce_images and notpng:
+        
+        if thinline_dehancement and notpng:
+            svg = load_svg_clear_dict(fin);
+            Thinline_Dehancement(svg,fformat)
+            tmp1 = basetemp.replace('.svg','_tld'+fformat[0]+'.svg');
+            overwrite_svg(svg,tmp1);
+            fin = copy.copy(tmp1);  tmpoutputs.append(tmp1)
+        
+        if smallsvg: # Convert to pdf, then to a smaller SVG
+            tmp3 = basetemp.replace('.svg','_tmp_small.pdf')
+            arg2 = [bfn, '--export-background','#ffffff','--export-background-opacity','1.0','--export-dpi',\
+                                    str(PNG_DPI),'--export-filename',tmp3,fin]
+            dh.subprocess_repeat(arg2);
+            fin = copy.copy(tmp3);  tmpoutputs.append(tmp3)
+            myoutput = myoutput.replace('.svg','_smaller.svg')
+            
+        try: os.remove(myoutput);
+        except: pass
+        arg2 = [bfn, '--export-background','#ffffff','--export-background-opacity','1.0','--export-dpi',\
+                                str(PNG_DPI),'--export-filename',myoutput,fin]
+        dh.subprocess_repeat(arg2);
+            
+        print('done! (' + str(round(1000*(time.time()-timestart))/1000) + ' s)');
+        return True, tmpoutputs, myoutput
+    except:
+        print('Error writing to file')
+        return False, tmpoutputs, None
+
+def preprocessing(bfn,fin,fout):
+    import os; 
+    print('    Preprocessing...',end=' ',flush=True); timestart = time.time();
+    try:
+        tmpoutputs = [];
+        import tempfile
+        tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
+        if DEBUG:
+            print('\n    '+joinmod(tempdir,''))
+        basetemp = joinmod(tempdir,'tmp.svg');
+        
+        if reduce_images:
             import image_helpers as ih
             # print(ih.hasPIL)
             svg = load_svg_clear_dict(fin);
             els = [el for el in dh.visible_descendants(svg) if isinstance(el,(inkex.Image))]
-            # print([el.get_id() for el in els])
             if len(els)>0:     
                 bbs = dh.Get_Bounding_Boxes(filename=fin,pxinuu=svg.unittouu('1px'),inkscape_binary=bfn)
                 imgtype = 'png';
@@ -94,24 +137,22 @@ def export_file(bfn,fin,fout,fformat,timeoutv):
                     acts2+='export-id:'+el.get_id()+'; export-dpi:'+str(imagedpi)+\
                            '; export-filename:'+tmpimg2+'; export-background-opacity:1.0; export-do; ' # export all w/background
                 arg2 = [bfn, '--actions',acts,fin]
-                # subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
                 dh.subprocess_repeat(arg2);
                 if tojpg and ih.hasPIL:
                     arg2 = [bfn, '--actions',acts2,fin]
-                    # subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
                     dh.subprocess_repeat(arg2);
                 
                 for ii in range(len(els)):
                     el = els[ii]; tmpimg = tis[ii]; tmpimg2= ti2s[ii];
                     if os.path.exists(tmpimg):
-                        outputs.append(tmpimg);
+                        tmpoutputs.append(tmpimg);
                         if ih.hasPIL:
                             if tojpg:
-                                outputs.append(tmpimg2)
+                                tmpoutputs.append(tmpimg2)
                                 tmpjpg = tmpimg.replace('.png','.jpg')
                                 ret, bbox = ih.to_jpeg(tmpimg,tmpimg2,tmpjpg);
                                 
-                                outputs.append(tmpjpg)
+                                tmpoutputs.append(tmpjpg)
                                 tmpimg = copy.copy(tmpjpg);
                             else:
                                 tmpimg, bbox = ih.crop_image(tmpimg);
@@ -166,23 +207,23 @@ def export_file(bfn,fin,fout,fformat,timeoutv):
                 
                 tmp4 = basetemp.replace('.svg','_eimg.svg');
                 overwrite_svg(svg,tmp4);
-                fin = copy.copy(tmp4);  outputs.append(tmp4)
+                fin = copy.copy(tmp4);  tmpoutputs.append(tmp4)
 
-        if (text_to_paths or thinline_dehancement) and notpng:
+        # if (text_to_paths or thinline_dehancement) and notpng:
+        if text_to_paths:
             svg = load_svg_clear_dict(fin);
             ds = dh.visible_descendants(svg)
             
             tels = [el.get_id() for el in ds if isinstance(el,(inkex.TextElement))]                       # text-like
-            pels = [el.get_id() for el in ds if isinstance(el,dh.otp_support) or el.get('d') is not None] # path-like
-            pels = [];                                      # stroke to path too buggy for now, don't convert strokes
+            # pels = [el.get_id() for el in ds if isinstance(el,dh.otp_support) or el.get('d') is not None] # path-like
+            # stroke to path too buggy for now, don't convert strokes
             convert_els=[];
             if text_to_paths:         convert_els+=tels
-            if thinline_dehancement:  convert_els+=pels
+            # if thinline_dehancement:  convert_els+=pels
             
             celsj = ','.join(convert_els);
             tmp2= basetemp.replace('.svg','_stp.svg');
             arg2 = [bfn, '--actions','select:'+celsj+'; object-stroke-to-path; export-filename:'+tmp2+'; export-do',fin]
-            # subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             dh.subprocess_repeat(arg2);
             
             if text_to_paths:
@@ -192,60 +233,32 @@ def export_file(bfn,fin,fout,fformat,timeoutv):
                     el = dh.getElementById2(svg, elid)
                     if el is not None and len(list(el))>0:
                         dh.combine_paths(list(el))
-                        # print(el.get_id())
                         # dh.ungroup(el)
                 overwrite_svg(svg,tmp2);
-            fin = copy.copy(tmp2);  outputs.append(tmp2)
-        
-        if thinline_dehancement and notpng:
-            svg = load_svg_clear_dict(fin);
-            Thinline_Dehancement(svg,fformat)
-            tmp1 = basetemp.replace('.svg','_tld.svg');
-            overwrite_svg(svg,tmp1);
-            fin = copy.copy(tmp1);  outputs.append(tmp1)
-        
-        if smallsvg: # Convert to pdf, then to a smaller SVG
-            tmp3 = basetemp.replace('.svg','_tmp_small.pdf')
-            arg2 = [bfn, '--export-background','#ffffff','--export-background-opacity','1.0','--export-dpi',\
-                                    str(PNG_DPI),'--export-filename',tmp3,fin]
-            # subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            dh.subprocess_repeat(arg2);
-            fin = copy.copy(tmp3);  outputs.append(tmp3)
-            myoutput = myoutput.replace('.svg','_smaller.svg')
-            
-        try: os.remove(myoutput);
-        except: pass
-        arg2 = [bfn, '--export-background','#ffffff','--export-background-opacity','1.0','--export-dpi',\
-                                str(PNG_DPI),'--export-filename',myoutput,fin]
-        # subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
-        dh.subprocess_repeat(arg2);
-        outputs.append(myoutput)
-        
-        if not(DEBUG):
-            for t in reversed(outputs[:-1]):
-                os.remove(t);
-                outputs.remove(t);
-            os.rmdir(tempdir);
-            
+            fin = copy.copy(tmp2);  tmpoutputs.append(tmp2)       
         print('done! (' + str(round(1000*(time.time()-timestart))/1000) + ' s)');
-        return True, outputs
-    except subprocess.TimeoutExpired:
-        print('timed out after '+str(timeoutv)+' seconds'); return False, None
-        
+        return (fin, tmpoutputs, tempdir)
+    except:
+        pass        
 
 def Get_Directories():
     root = tkinter.Tk(); root.geometry("1x1"); root.lift(); root.overrideredirect(1); 
-    print('Select a directory to watch (includes subdirectories)');
-    watchdir = tkinter.filedialog.askdirectory(title='Select a directory to watch (includes subdirectories)'); root.destroy(); 
-    if watchdir=='':
-        print('Cancelled!'); raise     
+    print('Select a directory to watch');
+    watchdir = tkinter.filedialog.askdirectory(title='Select a directory to watch'); root.destroy();    
+    if watchdir=='': raise  
     root = tkinter.Tk(); root.geometry("1x1"); root.lift(); root.overrideredirect(1); 
     print('Select a directory to write to');
     writedir = tkinter.filedialog.askdirectory(title='Select a directory to write to'); root.destroy();
-    if writedir=='':
-        print('Cancelled!'); raise
-#    Write_Config(None,watchdir,writedir)
+    if writedir=='': raise  
     return watchdir,writedir
+
+
+def Get_File(initdir):
+    root = tkinter.Tk(); root.geometry("1x1"); root.lift(); root.overrideredirect(1); 
+    print('Select a file to export');
+    selectedfile = tkinter.filedialog.askopenfile(title='Select a file'); root.destroy();
+    selectedfile.close()   
+    return selectedfile.name
         
 # Convenience functions
 def joinmod(dirc,f):
@@ -355,6 +368,7 @@ class myThread(threading.Thread):
         self.ui = None  # user input
         self.nf = True;  # new folder
         self.ea = False; # export all
+        self.es = False; # export selected
         self.dm = False; # debug mode
     def run(self):
         if self.threadID==1:
@@ -363,7 +377,6 @@ class myThread(threading.Thread):
             genfiles = [];
             while not(self.stopped):
                 if self.nf:
-#                    print('Inkscape binary: '+self.bfn)
                     print('Export formats: '+', '.join([v.upper() for v in exp_fmts]))
                     print('Rasterization DPI: '+str(PNG_DPI))
                     print('Watch directory: '+self.watchdir)
@@ -395,6 +408,9 @@ class myThread(threading.Thread):
                     if self.ea:  # export all
                         self.ea = False;
                         updatefiles = files
+                    elif self.es:
+                        self.es = False;
+                        updatefiles = [self.selectedfile];
                     
                     # Exclude any files I made
                     for fn in genfiles:
@@ -406,18 +422,29 @@ class myThread(threading.Thread):
                         for f in updatefiles:
                             # while not(self.stopped):
                             print('\nExporting '+f+'')
+                            
+                            outfile = joinmod(self.writedir,os.path.split(f)[1]);
+                            if (reduce_images or text_to_paths) and any([f in exp_fmts for f in ['svg','pdf','emf','eps']]):
+                                ppoutput = preprocessing(self.bfn,f,outfile)
+                                tempoutputs = ppoutput[1]; tempdir = ppoutput[2];
+                            else:
+                                ppoutput = None
+                                tempoutputs = []; tempdir = None;
+                            
                             for fmt in exp_fmts:
-                                finished = False;
-                                natt = 0;
-                                while not(finished) and not(self.stopped) and natt<MAX_ATTEMPTS:
-                                    natt+=1;
-                                    finished, gf = export_file(self.bfn,f,\
-                                                                    joinmod(self.writedir,os.path.split(f)[1]),\
-                                                                    fmt,BASE_TIMEOUT*natt);
+                                finished, tf, myo = export_file(self.bfn,f,outfile,fmt,ppoutput=ppoutput);
                                 if finished:
-                                    genfiles += gf
+                                    genfiles.append(myo)
                                     genfiles = list(set(genfiles)); # unique values
                                     genfiles = [v for v in genfiles if v[-3:]=='svg']
+                                tempoutputs += tf
+                            
+                            if not(DEBUG):
+                                for t in list(set(tempoutputs)):
+                                    os.remove(t);
+                                if tempdir is not None:
+                                    os.rmdir(tempdir);        
+                            
                         loopme = (len(updatefiles)>0 and self.dm);
                     if len(updatefiles)>0:
                         print(promptstring)
@@ -450,15 +477,26 @@ while keeprunning:
             t1.stop();
             keeprunning = False
         elif t2.ui in ['D','d']:
-            if validtkinter:
-                t1.watchdir, t1.writedir = Get_Directories()
-                t1.nf = True
+            if hastkinter:
+                try:
+                    t1.watchdir, t1.writedir = Get_Directories()
+                    t1.nf = True
+                except:
+                    pass
             t2 = myThread(2); t2.start();
         elif t2.ui in ['R','r']:
             PNG_DPI = int(input('Enter new rasterization DPI: '));
             t2 = myThread(2); t2.start();
         elif t2.ui in ['A','a']:
             t1.ea = True;
+            t2 = myThread(2); t2.start();
+        elif t2.ui in ['F','f']:
+            if hastkinter:
+                try:
+                    t1.selectedfile = Get_File(t1.watchdir)
+                    t1.es = True
+                except:
+                    pass
             t2 = myThread(2); t2.start();
         elif t2.ui in ['#']:
             t1.dm = True; # entering # starts an infinite export loop in the current dir
