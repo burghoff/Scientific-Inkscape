@@ -88,50 +88,12 @@ class ScalePlots(inkex.EffectExtension):
                 if len(merges)>1:
                     ords = [elord[kk] for kk in merges]; ords.sort()
                     medord = ords[math.floor((len(ords)-1)/2)]
-                    mergeii = [kk for kk in range(len(merges)) if elord[merges[kk]]==medord][0] # use the median
-                    self.combine_paths([els[kk] for kk in merges],mergeii)
+                    topord = ords[-1]
+                    mergeii = [kk for kk in range(len(merges)) if elord[merges[kk]]==topord][0] # use the median
+                    dh.combine_paths([els[kk] for kk in merges],mergeii)
         
         # dh.debug(len(els))
-    def combine_paths(self,els,mergeii):
-        pnew = Path();
-        si = [];  # start indices
-        for el in els:
-            pth = Path(el.get_path()).to_absolute().transform(el.composed_transform());
-            if el.get('inkscape-academic-combined-by-color') is None:
-                si.append(len(pnew))
-            else:
-                cbc = el.get('inkscape-academic-combined-by-color') # take existing ones and weld them
-                cbc = [int(v) for v in cbc.split()]
-                si += [v+len(pnew) for v in cbc[0:-1]]
-            for p in pth:
-                pnew.append(p)
-        si.append(len(pnew))
-        
-        # Set the path
-        mel  = els[mergeii]
-        if mel.get('d') is None: # Polylines and lines have to be converted to a path
-            dh.object_to_path(mel)
-        mel.set('d',str(pnew.transform(-mel.composed_transform())));
-        
-        # Release clips/masks    
-        mel.set('clip-path','none'); # release any clips
-        mel.set('mask'     ,'none'); # release any masks
-        dh.fix_css_clipmask(mel,mask=False) # fix CSS bug
-        dh.fix_css_clipmask(mel,mask=True)
-        
-        mel.set('inkscape-academic-combined-by-color',' '.join([str(v) for v in si]))
-        for s in range(len(els)):
-            if s!=mergeii:
-                deleteup(els[s])
 
-# Delete and prune empty ancestor groups       
-def deleteup(el):
-    myp = el.getparent();
-    el.delete()
-    if myp is not None:
-        myc = myp.getchildren();
-        if myc is not None and len(myc)==0:
-            deleteup(myp)
 
 def stroke_fill_prop(el,sty):
     strk = sty.get('stroke',None)

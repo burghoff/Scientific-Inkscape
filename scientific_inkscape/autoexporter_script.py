@@ -47,7 +47,15 @@ if fmts[4]: exp_fmts.append('svg')
 if platform.system().lower()=='darwin': print(' ')
 print('Scientific Inkscape Autoexporter')
 print('\nPython interpreter: '+sys.executable)
-print('Inkscape binary: '+bfn+'\n')
+print('Inkscape binary: '+bfn+'')
+
+import image_helpers as ih
+if not(ih.hasPIL):
+    print('Python does not have PIL, images will not be cropped or converted to JPG\n')
+else:
+    print('Python has PIL\n')
+
+
 # Use the Inkscape binary to export the file
 def export_file(bfn,fin,fout,fformat,timeoutv):
     import os; 
@@ -58,37 +66,40 @@ def export_file(bfn,fin,fout,fformat,timeoutv):
     try:
         outputs = [];
         smallsvg = (fformat=='svg')
+        notpng = not(fformat=='png')
         
-        if reduce_images or text_to_paths or thinline_dehancement or smallsvg:
+        if (reduce_images or text_to_paths or thinline_dehancement or smallsvg) and notpng:
             import tempfile
-            tempdir = os.path.realpath(tempfile.mkdtemp(prefix="autoexporter-"));
-            basetemp = joinmod(tempdir,os.path.split(fin)[1]);
+            tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
+            basetemp = joinmod(tempdir,'tmp.svg');
             if DEBUG:
                 print('\n    '+basetemp)
         
-        if reduce_images:
+        if reduce_images and notpng:
             import image_helpers as ih
+            # print(ih.hasPIL)
             svg = load_svg_clear_dict(fin);
-            ndefs = [el for el in list(svg) if not(isinstance(el,((inkex.NamedView, inkex.Defs, \
-                                                                   inkex.Metadata, inkex.ForeignObject))))]; 
-            els = [v for el in ndefs for v in dh.descendants2(el) if isinstance(v,(inkex.Image))];
+            els = [el for el in dh.visible_descendants(svg) if isinstance(el,(inkex.Image))]
+            # print([el.get_id() for el in els])
             if len(els)>0:     
                 bbs = dh.Get_Bounding_Boxes(filename=fin,pxinuu=svg.unittouu('1px'),inkscape_binary=bfn)
                 imgtype = 'png';
                 acts = ''; acts2=''
                 tis = []; ti2s = [];
                 for el in els:
-                    tmpimg = basetemp.replace('.svg','_tmp_'  +el.get_id()+'.'+imgtype);  tis.append(tmpimg )
-                    tmpimg2= basetemp.replace('.svg','_tmpbg_'+el.get_id()+'.'+imgtype); ti2s.append(tmpimg2)
+                    tmpimg = basetemp.replace('.svg','_im_'  +el.get_id()+'.'+imgtype);  tis.append(tmpimg )
+                    tmpimg2= basetemp.replace('.svg','_imbg_'+el.get_id()+'.'+imgtype); ti2s.append(tmpimg2)
                     acts+= 'export-id:'+el.get_id()+'; export-id-only; export-dpi:'+str(imagedpi)+\
                            '; export-filename:'+tmpimg+'; export-do; '  # export item only
                     acts2+='export-id:'+el.get_id()+'; export-dpi:'+str(imagedpi)+\
                            '; export-filename:'+tmpimg2+'; export-background-opacity:1.0; export-do; ' # export all w/background
                 arg2 = [bfn, '--actions',acts,fin]
-                subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
+                # subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
+                dh.subprocess_repeat(arg2);
                 if tojpg and ih.hasPIL:
                     arg2 = [bfn, '--actions',acts2,fin]
-                    subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
+                    # subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
+                    dh.subprocess_repeat(arg2);
                 
                 for ii in range(len(els)):
                     el = els[ii]; tmpimg = tis[ii]; tmpimg2= ti2s[ii];
@@ -153,23 +164,43 @@ def export_file(bfn,fin,fout,fformat,timeoutv):
                             el.set('height',str((bbox[3]-bbox[1])*myh));
                         dh.ungroup(g)
                 
-                tmp4 = basetemp.replace('.svg','_tmp_rimages.svg');
+                tmp4 = basetemp.replace('.svg','_eimg.svg');
                 overwrite_svg(svg,tmp4);
                 fin = copy.copy(tmp4);  outputs.append(tmp4)
 
-        if text_to_paths:
+        if (text_to_paths or thinline_dehancement) and notpng:
             svg = load_svg_clear_dict(fin);
-            els = [el for el in dh.descendants2(svg) if isinstance(el,(inkex.TextElement))]
-            els = ','.join([el.get_id() for el in els]);
-            tmp2= basetemp.replace('.svg','_tmp_ttp.svg');
-            arg2 = [bfn, '--actions','select:'+els+'; object-to-path; export-filename:'+tmp2+'; export-do',fin]
-            subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            ds = dh.visible_descendants(svg)
+            
+            tels = [el.get_id() for el in ds if isinstance(el,(inkex.TextElement))]                       # text-like
+            pels = [el.get_id() for el in ds if isinstance(el,dh.otp_support) or el.get('d') is not None] # path-like
+            pels = [];                                      # stroke to path too buggy for now, don't convert strokes
+            convert_els=[];
+            if text_to_paths:         convert_els+=tels
+            if thinline_dehancement:  convert_els+=pels
+            
+            celsj = ','.join(convert_els);
+            tmp2= basetemp.replace('.svg','_stp.svg');
+            arg2 = [bfn, '--actions','select:'+celsj+'; object-stroke-to-path; export-filename:'+tmp2+'; export-do',fin]
+            # subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            dh.subprocess_repeat(arg2);
+            
+            if text_to_paths:
+                # Text converted to paths are a group of characters. Combine them all
+                svg = load_svg_clear_dict(tmp2);
+                for elid in tels:
+                    el = dh.getElementById2(svg, elid)
+                    if el is not None and len(list(el))>0:
+                        dh.combine_paths(list(el))
+                        # print(el.get_id())
+                        # dh.ungroup(el)
+                overwrite_svg(svg,tmp2);
             fin = copy.copy(tmp2);  outputs.append(tmp2)
         
-        if thinline_dehancement:
+        if thinline_dehancement and notpng:
             svg = load_svg_clear_dict(fin);
-            Thinline_Dehancement(svg)
-            tmp1 = basetemp.replace('.svg','_tmp_linedehance.svg');
+            Thinline_Dehancement(svg,fformat)
+            tmp1 = basetemp.replace('.svg','_tld.svg');
             overwrite_svg(svg,tmp1);
             fin = copy.copy(tmp1);  outputs.append(tmp1)
         
@@ -177,7 +208,8 @@ def export_file(bfn,fin,fout,fformat,timeoutv):
             tmp3 = basetemp.replace('.svg','_tmp_small.pdf')
             arg2 = [bfn, '--export-background','#ffffff','--export-background-opacity','1.0','--export-dpi',\
                                     str(PNG_DPI),'--export-filename',tmp3,fin]
-            subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            dh.subprocess_repeat(arg2);
             fin = copy.copy(tmp3);  outputs.append(tmp3)
             myoutput = myoutput.replace('.svg','_smaller.svg')
             
@@ -185,7 +217,8 @@ def export_file(bfn,fin,fout,fformat,timeoutv):
         except: pass
         arg2 = [bfn, '--export-background','#ffffff','--export-background-opacity','1.0','--export-dpi',\
                                 str(PNG_DPI),'--export-filename',myoutput,fin]
-        subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
+        # subprocess.run(arg2, shell=False,timeout=timeoutv,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL);
+        dh.subprocess_repeat(arg2);
         outputs.append(myoutput)
         
         if not(DEBUG):
@@ -252,9 +285,11 @@ def get_files(dirin,direxclude):
             fs.append(os.path.join(os.path.abspath(dirin),f.name))
     return fs
 
-def Thinline_Dehancement(svg):
+def Thinline_Dehancement(svg,fformat):
 # Prevents thin-line enhancement in certain bad PDF renderers (*cough* Adobe Acrobat *cough*)
-# Turns any path with straight lines into a Bezier curve
+# For PDFs, turn any straight lines into a Bezier curve
+# For EMFs, add an extra node to straight lines (only works for fills, not strokes currently)
+# Doing both doesn't work: extra nodes removes the Bezier on conversion to PDF, Beziers removed on EMF
     pth_commands = ['M', 'm', 'L', 'l', 'H', 'h', 'V', 'v', 'C', 'c', 'S', 's', 'Q', 'q', 'T', 't', 'A', 'a', 'Z', 'z'];
     for el in dh.descendants2(svg):
         if isinstance(el,dh.otp_support):
@@ -280,11 +315,30 @@ def Thinline_Dehancement(svg):
                     nextv = False; nexth = False; nextl = False;
                 else:
                     if nexth:
-                        ds[ii] = 'c '+ds[ii]+',0 '+ds[ii]+',0 '+ds[ii]+',0'
+                        if fformat=='emf':
+                            hval = float(ds[ii]);
+                            ds[ii] = 'h '+str(hval/2)+' '+str(hval/2)
+                            # ds[ii] = 'c '+str(hval/2)+',0 '+str(hval/2)+',0 '+str(hval/2)+',0'
+                            # ds[ii] = ds[ii]+' '+ds[ii]
+                        else:
+                            ds[ii] = 'c '+ds[ii]+',0 '+ds[ii]+',0 '+ds[ii]+',0'
                     elif nextv:
-                        ds[ii] = 'c 0,'+ds[ii]+' 0,'+ds[ii]+' 0,'+ds[ii]
+                        if fformat=='emf':
+                            vval = float(ds[ii]);
+                            ds[ii] = 'v '+str(vval/2)+' '+str(vval/2)
+                            # ds[ii] = 'c 0,'+str(vval/2)+' 0,'+str(vval/2)+' 0,'+str(vval/2)
+                            # ds[ii] = ds[ii]+' '+ds[ii]
+                        else:
+                            ds[ii] = 'c 0,'+ds[ii]+' 0,'+ds[ii]+' 0,'+ds[ii]
                     elif nextl:
-                        ds[ii] = 'c '+ds[ii]+','+ds[ii+1]+' '+ds[ii]+','+ds[ii+1]+' '+ds[ii]+','+ds[ii+1];
+                        if fformat=='emf':
+                            lx = float(ds[ii]);
+                            ly = float(ds[ii+1]);
+                            ds[ii] = 'l '+str(lx/2)+','+str(ly/2)+' '+str(lx/2)+','+str(ly/2)
+                            # ds[ii] = 'c '+str(lx/2)+','+str(ly/2)+' '+str(lx/2)+','+str(ly/2)+' '+str(lx/2)+','+str(ly/2);
+                            # ds[ii] = ds[ii]+' '+ds[ii]
+                        else:
+                            ds[ii] = 'c '+ds[ii]+','+ds[ii+1]+' '+ds[ii]+','+ds[ii+1]+' '+ds[ii]+','+ds[ii+1];
                         ds[ii+1] = ''; ii+=1
                 ii+=1
             newd = ' '.join(ds);

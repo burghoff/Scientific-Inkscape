@@ -619,16 +619,38 @@ def commandqueryall(fn,inkscape_binary=None):
     else:
         bfn = inkscape_binary
     arg2 = [bfn, '--query-all',fn]
-    try:
-        p=subprocess.run(arg2, shell=False,timeout=TIMEOUT,stdout=subprocess.PIPE, stderr=subprocess.DEVNULL);
-    except subprocess.TimeoutExpired:
-        inkex.utils.errormsg('Error: The call to the Inkscape binary timed out after '+str(TIMEOUT)+' seconds.\n\n'+\
-                             'This is usually a temporary issue; try running the extension again.');
-        quit()
+    # try:
+    #     p=subprocess.run(arg2, shell=False,timeout=TIMEOUT,stdout=subprocess.PIPE, stderr=subprocess.DEVNULL);
+    # except subprocess.TimeoutExpired:
+    #     inkex.utils.errormsg('Error: The call to the Inkscape binary timed out after '+str(TIMEOUT)+' seconds.\n\n'+\
+    #                          'This is usually a temporary issue; try running the extension again.');
+    #     quit()
+    p=subprocess_repeat(arg2);
     tFStR = p.stdout
     return tFStR
-    
 
+# In the event of a timeout, repeat subprocess call several times    
+def subprocess_repeat(argin):
+    BASE_TIMEOUT = 60
+    NATTEMPTS = 4
+    
+    import subprocess
+    nfails = 0; ntime = 0;
+    for ii in range(NATTEMPTS):
+        timeout = BASE_TIMEOUT*(ii+1);
+        try:
+            p=subprocess.run(argin, shell=False,timeout=timeout,stdout=subprocess.PIPE, stderr=subprocess.DEVNULL);
+            break;
+        except subprocess.TimeoutExpired:
+            nfails+=1; ntime+=timeout;
+    if nfails==NATTEMPTS:
+        inkex.utils.errormsg('Error: The call to the Inkscape binary timed out '+str(NATTEMPTS)+\
+                             ' times in '+str(ntime)+' seconds.\n\n'+\
+                             'This may be a temporary issue; try running the extension again.');
+        quit()
+    else:
+        return p
+        
 def debug(x):
     inkex.utils.debug(x);
 
@@ -801,13 +823,60 @@ def object_to_path(el):
         pth = get_path2(el);
         el.tag = '{http://www.w3.org/2000/svg}path';
         el.set('d',str(pth));
-        
+
+
+# Combines a group of path-like elements
+def combine_paths(els,mergeii=0):
+    # Delete and prune empty ancestor groups       
+    def deleteup(el):
+        myp = el.getparent();
+        el.delete()
+        if myp is not None:
+            myc = myp.getchildren();
+            if myc is not None and len(myc)==0:
+                deleteup(myp)
+                
+    pnew = Path();
+    si = [];  # start indices
+    for el in els:
+        pth = Path(el.get_path()).to_absolute().transform(el.composed_transform());
+        if el.get('inkscape-academic-combined-by-color') is None:
+            si.append(len(pnew))
+        else:
+            cbc = el.get('inkscape-academic-combined-by-color') # take existing ones and weld them
+            cbc = [int(v) for v in cbc.split()]
+            si += [v+len(pnew) for v in cbc[0:-1]]
+        for p in pth:
+            pnew.append(p)
+    si.append(len(pnew))
+    
+    # Set the path on the mergeiith element
+    mel  = els[mergeii]
+    if mel.get('d') is None: # Polylines and lines have to be converted to a path
+        object_to_path(mel)
+    mel.set('d',str(pnew.transform(-mel.composed_transform())));
+    
+    # Release clips/masks    
+    mel.set('clip-path','none'); # release any clips
+    mel.set('mask'     ,'none'); # release any masks
+    fix_css_clipmask(mel,mask=False) # fix CSS bug
+    fix_css_clipmask(mel,mask=True)
+    
+    mel.set('inkscape-academic-combined-by-color',' '.join([str(v) for v in si]))
+    for s in range(len(els)):
+        if s!=mergeii:
+            deleteup(els[s])        
         
 # Gets the caller's location
 import os, sys
 def get_script_path():
     return os.path.dirname(os.path.realpath(sys.argv[0]))
 
+# Return a document's visible descendants not in Defs/Metadata/etc
+def visible_descendants(svg):
+    ndefs = [el for el in list(svg) if not(isinstance(el,((inkex.NamedView, inkex.Defs, \
+                                                           inkex.Metadata,  inkex.ForeignObject))))]; 
+    return [v for el in ndefs for v in descendants2(el)];
 
 # Gets the location of the Inkscape binary
 # Functions copied from command.py

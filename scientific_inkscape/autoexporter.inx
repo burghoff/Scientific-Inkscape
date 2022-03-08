@@ -38,9 +38,10 @@
         <param name="dpi_im" type="float" precision="0" min="1" max="9999" gui-text="Resampling DPI">300</param>
         
         <label appearance="header">Other options</label>
-        <param name="texttopath" type="bool" gui-text="Convert text to paths">false</param>    
+        <param name="texttopath" type="bool" gui-text="Convert text to paths">false</param> 
+        <label>Conversion of text to paths is recommended for EMFs.</label>      
         <param name="thinline" type="bool" gui-text="Prevent thin line enhancement">true</param>  
-        <label>(Certain PDF renderers make thin lines look thicker at certain zooms.)</label>   
+        <label>Some PDF renderers thicken lines at certain zooms; this option makes your lines invisible to this feature.</label>   
         
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>By David Burghoff, University of Notre Dame</label>
