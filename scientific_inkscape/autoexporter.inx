@@ -4,7 +4,7 @@
     <id>burghoff.autoexporter</id>
     <param name="tab" type="notebook">        
         <page name="scaling" gui-text="Options">
-        <label>Runs the Autoexporter, which watches a directory for changes to any SVG and then exports copies in the selected formats.</label>
+        <label>Runs the Autoexporter, an external program that watches a directory for changes to any SVG and then exports copies in the selected formats.</label>
         <label>Mac users: You may get a security prompt asking whether to allow Inkscape to open a Terminal. Make sure you allow it.</label>
         <label>Linux users: This extension cannot run as an AppImage or as a Snap installation.</label>
         <label appearance="header">Formats to export</label>
@@ -44,8 +44,8 @@
         <label>Some PDF renderers thicken lines at certain zooms; this option makes your lines impervious to this feature.</label>
         
         <label appearance="header">Single export</label>   
-        <param name="exportnow" type="bool" gui-text="Just export this document now">false</param>  
-        <label>Export this document as it is right now, without running the Autoexporter program. The current document will be saved, and exports will be placed in the same folder as the original.</label>   
+        <param name="exportnow" type="bool" gui-text="Export this document now">false</param>  
+        <label>Export the current document without running the Autoexporter program. The current document will be saved, and exports will be placed in the same folder as the original.</label>   
         
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>By David Burghoff, University of Notre Dame</label>
