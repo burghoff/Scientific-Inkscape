@@ -36,12 +36,12 @@ except:
     hastkinter = False
 
 # fmts = [(v.lower()=='true') for v in fmts.split('_')];
-exp_fmts = []
-if fmts[0]: exp_fmts.append('pdf')
-if fmts[1]: exp_fmts.append('png')
-if fmts[2]: exp_fmts.append('emf')
-if fmts[3]: exp_fmts.append('eps')
-if fmts[4]: exp_fmts.append('svg')
+#exp_fmts = []
+#if fmts[0]: exp_fmts.append('pdf')
+#if fmts[1]: exp_fmts.append('png')
+#if fmts[2]: exp_fmts.append('emf')
+#if fmts[3]: exp_fmts.append('eps')
+#if fmts[4]: exp_fmts.append('svg')
 
 
 if platform.system().lower()=='darwin': print(' ')
@@ -118,7 +118,7 @@ class myThread(threading.Thread):
             genfiles = [];
             while not(self.stopped):
                 if self.nf:
-                    print('Export formats: '+', '.join([v.upper() for v in exp_fmts]))
+                    print('Export formats: '+', '.join([v.upper() for v in fmts]))
                     print('Rasterization DPI: '+str(PNG_DPI))
                     print('Watch directory: '+self.watchdir)
                     print('Write directory: '+self.writedir)
@@ -164,10 +164,12 @@ class myThread(threading.Thread):
                             # while not(self.stopped):
                             print('\nExporting '+f+'')
                             
+                            import autoexporter
                             from autoexporter import AutoExporter;
                             options = (DEBUG,PNG_DPI,imagedpi,reduce_images,tojpg,text_to_paths,thinline_dehancement,True)
                             
-                            nfs = AutoExporter().export_all(self.bfn,self.writedir,f,exp_fmts,options);
+                            outtemplate = autoexporter.joinmod(self.writedir,os.path.split(f)[1]);
+                            nfs = AutoExporter().export_all(self.bfn,f,outtemplate,fmts,options);
                             genfiles += nfs;       
                             
                         loopme = (len(updatefiles)>0 and self.dm);

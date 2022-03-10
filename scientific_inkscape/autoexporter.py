@@ -77,8 +77,9 @@ class AutoExporter(inkex.EffectExtension):
             pr.enable()
         
         formats = [self.options.usepdf,self.options.usepng,self.options.useemf,self.options.useeps,self.options.usesvg]
-        dpi = self.options.dpi;
+        formats = [['pdf','png','emf','eps','svg'][ii] for ii in range(len(formats)) if formats[ii]]
         
+        dpi = self.options.dpi;
         imagedpi = self.options.dpi_im
         reduce_images = self.options.imagemode==1 or self.options.imagemode==2
         tojpg = self.options.imagemode==2
@@ -133,15 +134,9 @@ class AutoExporter(inkex.EffectExtension):
         else:
             pth = dh.Get_Current_File(self)
             options = (False,dpi,imagedpi,reduce_images,tojpg,text_to_paths,thinline_dehancement,False)
-            
-            exp_fmts = []
-            if formats[0]: exp_fmts.append('pdf')
-            if formats[1]: exp_fmts.append('png')
-            if formats[2]: exp_fmts.append('emf')
-            if formats[3]: exp_fmts.append('eps')
-            if formats[4]: exp_fmts.append('svg')
-                            
-            AutoExporter().export_all(bfn,pth[0],os.path.join(pth[0],pth[1]),exp_fmts,options);
+     
+            AutoExporter().export_all(bfn,self.options.input_file,pth,formats,options);
+            overwrite_svg(self.svg,pth)     
 
         if dispprofile:
             pr.disable()
@@ -150,12 +145,11 @@ class AutoExporter(inkex.EffectExtension):
             ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
             ps.print_stats()
             dh.debug(s.getvalue())
-            
-    def export_all(self,bfn,dirin,svgfnin,exp_fmts,options):
+                                
+    def export_all(self,bfn,svgfnin,outtemplate,exp_fmts,options):
         (DEBUG,PNG_DPI,imagedpi,reduce_images,tojpg,text_to_paths,thinline_dehancement,prints)=options
-        outfile = joinmod(dirin,os.path.split(svgfnin)[1]);
         if (reduce_images or text_to_paths) and any([svgfnin in exp_fmts for svgfnin in ['svg','pdf','emf','eps']]):
-            ppoutput = self.preprocessing(bfn,svgfnin,outfile,options)
+            ppoutput = self.preprocessing(bfn,svgfnin,outtemplate,options)
             tempoutputs = ppoutput[1]; tempdir = ppoutput[2];
         else:
             ppoutput = None
@@ -163,7 +157,7 @@ class AutoExporter(inkex.EffectExtension):
         
         newfiles = [];
         for fmt in exp_fmts:
-            finished, tf, myo = AutoExporter().export_file(bfn,svgfnin,outfile,fmt,ppoutput,options);
+            finished, tf, myo = AutoExporter().export_file(bfn,svgfnin,outtemplate,fmt,ppoutput,options);
             if finished:
                 newfiles.append(myo)
             tempoutputs += tf

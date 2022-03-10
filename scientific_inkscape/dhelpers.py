@@ -986,7 +986,7 @@ def Get_Current_File(ext):
         return None
     else:
         import os
-        return os.path.split(myfile)
+        return myfile
 
 
 # Version checking
