@@ -41,7 +41,11 @@
         <param name="texttopath" type="bool" gui-text="Convert text to paths">false</param> 
         <label>Conversion of text to paths is recommended for EMFs.</label>      
         <param name="thinline" type="bool" gui-text="Prevent thin line enhancement (recommended)">true</param>  
-        <label>Some PDF renderers thicken lines at certain zooms; this option makes your lines impervious to this feature.</label>   
+        <label>Some PDF renderers thicken lines at certain zooms; this option makes your lines impervious to this feature.</label>
+        
+        <label appearance="header">Single export</label>   
+        <param name="exportnow" type="bool" gui-text="Just export this document now">false</param>  
+        <label>Export this document without running the Autoexporter program.</label>   
         
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>By David Burghoff, University of Notre Dame</label>

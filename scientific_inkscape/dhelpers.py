@@ -967,6 +967,28 @@ def Get_Binary_Loc(fin):
         return call(INKSCAPE_EXECUTABLE_NAME, svg_file, *args, **kwargs)
     return inkscape2(fin)
 
+
+# Get document location or prompt
+def Get_Current_File(ext):
+    tooearly = (ivp[0]<=1 and ivp[1]<1);
+    if not(tooearly):
+        myfile = ext.document_path()
+    else:
+        myfile = None
+        
+    if myfile is None or myfile=='':
+        if tooearly:
+            msg = 'Direct export requires version 1.1.0 of Inkscape or higher.'
+        else:
+            msg = 'Direct export requires the SVG be saved first. Please save and retry.'
+        inkex.utils.errormsg(msg);
+        quit()
+        return None
+    else:
+        import os
+        return os.path.split(myfile)
+
+
 # Version checking
 try:
     inkex_version = inkex.__version__; # introduced in 1.1.2
