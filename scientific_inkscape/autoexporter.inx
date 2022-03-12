@@ -28,7 +28,7 @@
         <page name="advanced" gui-text="Advanced">
 
         <label appearance="header">Embedded image handling</label> 
-        <label>Embedded images can be resampled and cropped to reduce output sizes.</label>           
+        <label>Embedded images can be resampled and cropped when doing so reduces output file sizes.</label>           
         <param name="imagemode" type="optiongroup" appearance="combo"
                 gui-text="Store images as">
                    <option value="1">Cropped and resampled PNG</option>

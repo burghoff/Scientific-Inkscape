@@ -143,6 +143,10 @@ class myThread(threading.Thread):
                         updatefiles += [n for n in newfiles if not(n in files)]; # new files
                     elif any([newlastmod[ii]>lastmod[ii]+1 for ii in range(len(files))]): #updated files
                         updatefiles += [newfiles[ii] for ii in range(len(files)) if not(lastmod[ii]==newlastmod[ii])];
+                        # for ii in range(len(files)):
+                            # if newlastmod[ii]>lastmod[ii]+1:
+                                # print(newlastmod[ii]-lastmod[ii])
+                                # print(files[ii])
                     files = newfiles
                     lastmod = newlastmod
                     

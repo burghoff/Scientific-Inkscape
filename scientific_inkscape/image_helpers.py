@@ -161,6 +161,24 @@ def embed_external_image(node,path):
             inkex.errormsg(_("%s is not of type image/png, image/jpeg, "\
                 "image/bmp, image/gif, image/tiff, or image/x-icon") % path)
 
+# Check if image is linked or embedded. If linked, check if path is valid                
+def check_linked(node,svg_path):
+    """Embed the data of the selected Image Tag element"""
+    xlink = node.get('xlink:href')
+    if (xlink is not None and xlink[:5] == 'data:'):
+        return False, None
+    url = urlparse.urlparse(xlink)
+    href = urllib.url2pathname(url.path)
+    path = absolute_href(href or '',svg_path)
+    if not os.path.isfile(path):
+        path = node.get('sodipodi:absref', path)
+    fileexists = os.path.isfile(path)
+    if not(fileexists):
+        return True, None
+    else:
+        return True, path
+
+
 # Gets the type of an image element
 def get_image_type(node,svg_path):
     xlink = node.get('xlink:href')
@@ -295,3 +313,20 @@ def crop_image(imin):
             bbox = [bbox[0]/im.size[0],bbox[1]/im.size[1],bbox[2]/im.size[0],bbox[3]/im.size[1]]; # normalized to original size
             cropim.save(imin);
         return imin, bbox
+    
+    
+def extract_image_simple(node,save_to):
+    """Extract the node as if it were an image."""
+    xlink = node.get('xlink:href')
+    data = xlink[5:]
+    try:
+        data = xlink[5:]
+        (mimetype, data) = data.split(';', 1)
+        (base, data) = data.split(',', 1)
+    except ValueError:
+        return None
+    file_ext = mime_to_ext(mimetype)
+    pathwext = save_to + file_ext
+    with open(pathwext, 'wb') as fhl:
+        fhl.write(decodebytes(data.encode('utf-8')))
+    return pathwext

@@ -228,53 +228,73 @@ class AutoExporter(inkex.EffectExtension):
         (DEBUG,PNG_DPI,imagedpi,reduce_images,tojpg,text_to_paths,thinline_dehancement,prints)=options
         import os, time, copy; 
         if prints: print('    Preprocessing...',end=' ',flush=True); timestart = time.time();
-        try:
-            tmpoutputs = [];
-            import tempfile
-            tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
-            if DEBUG:
-                if prints: print('\n    '+joinmod(tempdir,''))
-            basetemp = joinmod(tempdir,'tmp.svg');
-            
-            if reduce_images:
-                import image_helpers as ih
-                # print(ih.hasPIL)
-                svg = load_svg_clear_dict(fin);
-                els = [el for el in dh.visible_descendants(svg) if isinstance(el,(inkex.Image))]
-                if len(els)>0:     
-                    bbs = dh.Get_Bounding_Boxes(filename=fin,pxinuu=svg.unittouu('1px'),inkscape_binary=bfn)
-                    imgtype = 'png';
-                    acts = ''; acts2=''
-                    tis = []; ti2s = [];
-                    for el in els:
-                        tmpimg = basetemp.replace('.svg','_im_'  +el.get_id()+'.'+imgtype);  tis.append(tmpimg )
-                        tmpimg2= basetemp.replace('.svg','_imbg_'+el.get_id()+'.'+imgtype); ti2s.append(tmpimg2)
-                        acts+= 'export-id:'+el.get_id()+'; export-id-only; export-dpi:'+str(imagedpi)+\
-                               '; export-filename:'+tmpimg+'; export-do; '  # export item only
-                        acts2+='export-id:'+el.get_id()+'; export-dpi:'+str(imagedpi)+\
-                               '; export-filename:'+tmpimg2+'; export-background-opacity:1.0; export-do; ' # export all w/background
-                    arg2 = [bfn, '--actions',acts,fin]
+        # try:
+        tmpoutputs = [];
+        import tempfile
+        tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
+        if DEBUG:
+            if prints: print('\n    '+joinmod(tempdir,''))
+        basetemp = joinmod(tempdir,'tmp.svg');
+        
+        if reduce_images:
+            import image_helpers as ih
+            # print(ih.hasPIL)
+            svg = load_svg_clear_dict(fin);
+            els = [el for el in dh.visible_descendants(svg) if isinstance(el,(inkex.Image))]
+            if len(els)>0:     
+                bbs = dh.Get_Bounding_Boxes(filename=fin,pxinuu=svg.unittouu('1px'),inkscape_binary=bfn)
+                imgtype = 'png';
+                acts = ''; acts2=''
+                tis = []; ti2s = [];
+                for el in els:
+                    tmpimg = basetemp.replace('.svg','_im_'  +el.get_id()+'.'+imgtype);  tis.append(tmpimg )
+                    tmpimg2= basetemp.replace('.svg','_imbg_'+el.get_id()+'.'+imgtype); ti2s.append(tmpimg2)
+                    acts+= 'export-id:'+el.get_id()+'; export-id-only; export-dpi:'+str(imagedpi)+\
+                           '; export-filename:'+tmpimg+'; export-do; '  # export item only
+                    acts2+='export-id:'+el.get_id()+'; export-dpi:'+str(imagedpi)+\
+                           '; export-filename:'+tmpimg2+'; export-background-opacity:1.0; export-do; ' # export all w/background
+                arg2 = [bfn, '--actions',acts,fin]
+                dh.subprocess_repeat(arg2);
+                if tojpg and ih.hasPIL:
+                    arg2 = [bfn, '--actions',acts2,fin]
                     dh.subprocess_repeat(arg2);
-                    if tojpg and ih.hasPIL:
-                        arg2 = [bfn, '--actions',acts2,fin]
-                        dh.subprocess_repeat(arg2);
-                    
-                    for ii in range(len(els)):
-                        el = els[ii]; tmpimg = tis[ii]; tmpimg2= ti2s[ii];
-                        if os.path.exists(tmpimg):
-                            tmpoutputs.append(tmpimg);
-                            if ih.hasPIL:
-                                if tojpg:
-                                    tmpoutputs.append(tmpimg2)
-                                    tmpjpg = tmpimg.replace('.png','.jpg')
-                                    ret, bbox = ih.to_jpeg(tmpimg,tmpimg2,tmpjpg);
-                                    
-                                    tmpoutputs.append(tmpjpg)
-                                    tmpimg = copy.copy(tmpjpg);
-                                else:
-                                    tmpimg, bbox = ih.crop_image(tmpimg);
-                            ih.embed_external_image(el,tmpimg); 
+                
+                for ii in range(len(els)):
+                    el = els[ii]; tmpimg = tis[ii]; tmpimg2= ti2s[ii];
+                    if os.path.exists(tmpimg):
+                        tmpoutputs.append(tmpimg);
+                        if ih.hasPIL:
+                            if tojpg:
+                                tmpoutputs.append(tmpimg2)
+                                tmpjpg = tmpimg.replace('.png','.jpg')
+                                ret, bbox = ih.to_jpeg(tmpimg,tmpimg2,tmpjpg);
+                                
+                                tmpoutputs.append(tmpjpg)
+                                tmpimg = copy.copy(tmpjpg);
+                            else:
+                                tmpimg, bbox = ih.crop_image(tmpimg);
+                        
+                        # Compare size of old and new images
+                        islinked, validpath = ih.check_linked(el,os.path.split(fin)[0])
+                        if islinked and validpath is not None:
+                            osz = os.path.getsize(validpath)
+                        else:
+                            chkimg = tmpimg.replace('.png','').replace('.jpg','').replace('_im_','_imo_') 
+                            chkimg = ih.extract_image_simple(el,chkimg);
+                            if chkimg is not None:
+                                tmpoutputs.append(chkimg)
+                                osz = os.path.getsize(chkimg)
+                            else:
+                                osz = float('inf');
+                        nsz = os.path.getsize(tmpimg)
+                        if islinked:
+                            embedimg = True;      # always embed linked
+                        else:
+                            embedimg = (nsz<osz)  # embed new image if smaller than the old
                             
+                        if embedimg:
+                            ih.embed_external_image(el,tmpimg);
+
                             # The exported image has a different size and shape than the original
                             # Correct by putting transform/clip/mask on a new parent group, then fix location, then ungroup
                             g = inkex.Group()
@@ -321,42 +341,42 @@ class AutoExporter(inkex.EffectExtension):
                                 el.set('width',str((bbox[2]-bbox[0])*myw));
                                 el.set('height',str((bbox[3]-bbox[1])*myh));
                             dh.ungroup(g)
-                    
-                    tmp4 = basetemp.replace('.svg','_eimg.svg');
-                    overwrite_svg(svg,tmp4);
-                    fin = copy.copy(tmp4);  tmpoutputs.append(tmp4)
-    
-            # if (text_to_paths or thinline_dehancement) and notpng:
+                
+                tmp4 = basetemp.replace('.svg','_eimg.svg');
+                overwrite_svg(svg,tmp4);
+                fin = copy.copy(tmp4);  tmpoutputs.append(tmp4)
+
+        # if (text_to_paths or thinline_dehancement) and notpng:
+        if text_to_paths:
+            svg = load_svg_clear_dict(fin);
+            ds = dh.visible_descendants(svg)
+            
+            tels = [el.get_id() for el in ds if isinstance(el,(inkex.TextElement))]                       # text-like
+            # pels = [el.get_id() for el in ds if isinstance(el,dh.otp_support) or el.get('d') is not None] # path-like
+            # stroke to path too buggy for now, don't convert strokes
+            convert_els=[];
+            if text_to_paths:         convert_els+=tels
+            # if thinline_dehancement:  convert_els+=pels
+            
+            celsj = ','.join(convert_els);
+            tmp2= basetemp.replace('.svg','_stp.svg');
+            arg2 = [bfn, '--actions','select:'+celsj+'; object-stroke-to-path; export-filename:'+tmp2+'; export-do',fin]
+            dh.subprocess_repeat(arg2);
+            
             if text_to_paths:
-                svg = load_svg_clear_dict(fin);
-                ds = dh.visible_descendants(svg)
-                
-                tels = [el.get_id() for el in ds if isinstance(el,(inkex.TextElement))]                       # text-like
-                # pels = [el.get_id() for el in ds if isinstance(el,dh.otp_support) or el.get('d') is not None] # path-like
-                # stroke to path too buggy for now, don't convert strokes
-                convert_els=[];
-                if text_to_paths:         convert_els+=tels
-                # if thinline_dehancement:  convert_els+=pels
-                
-                celsj = ','.join(convert_els);
-                tmp2= basetemp.replace('.svg','_stp.svg');
-                arg2 = [bfn, '--actions','select:'+celsj+'; object-stroke-to-path; export-filename:'+tmp2+'; export-do',fin]
-                dh.subprocess_repeat(arg2);
-                
-                if text_to_paths:
-                    # Text converted to paths are a group of characters. Combine them all
-                    svg = load_svg_clear_dict(tmp2);
-                    for elid in tels:
-                        el = dh.getElementById2(svg, elid)
-                        if el is not None and len(list(el))>0:
-                            dh.combine_paths(list(el))
-                            # dh.ungroup(el)
-                    overwrite_svg(svg,tmp2);
-                fin = copy.copy(tmp2);  tmpoutputs.append(tmp2)       
-            if prints: print('done! (' + str(round(1000*(time.time()-timestart))/1000) + ' s)');
-            return (fin, tmpoutputs, tempdir)
-        except:
-            pass       
+                # Text converted to paths are a group of characters. Combine them all
+                svg = load_svg_clear_dict(tmp2);
+                for elid in tels:
+                    el = dh.getElementById2(svg, elid)
+                    if el is not None and len(list(el))>0:
+                        dh.combine_paths(list(el))
+                        # dh.ungroup(el)
+                overwrite_svg(svg,tmp2);
+            fin = copy.copy(tmp2);  tmpoutputs.append(tmp2)       
+        if prints: print('done! (' + str(round(1000*(time.time()-timestart))/1000) + ' s)');
+        return (fin, tmpoutputs, tempdir)
+        # except:
+        #     pass       
         
         
     def Thinline_Dehancement(self,svg,fformat):
