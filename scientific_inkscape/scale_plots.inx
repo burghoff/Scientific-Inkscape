@@ -41,7 +41,7 @@
             
             <label appearance="header">Note</label>
             <label>It is important that you scale the plot after grouping it, because the extension infers the scale from the group's properties. In addition, when scaling the default scale options should be selected, as shown below:</label>
-            <image>examples/scale_options.png</image>
+            <image>../examples/scale_options.png</image>
             <label>Otherwise, the final stroke widths may change.</label>
             <spacer/><param name="wholeplot3" type="bool" gui-text="Selection has no well-defined plot area (scale only)">false</param>
             <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
