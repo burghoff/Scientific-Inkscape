@@ -187,13 +187,16 @@ def generate_cssdict(svg):
     cssdict= dict();
     for sheet in svg.root.stylesheets:
         for style in sheet:
-            for elem in svg.xpath(style.to_xpath()):
-                elid = elem.get('id',None);
-                if elid is not None and style!=inkex.Style():  # still using Inkex's Style here since from stylesheets
-                    if cssdict.get(elid) is None:
-                        cssdict[elid] = Style2() + style;
-                    else:
-                        cssdict[elid] += style;
+            try:
+                for elem in svg.xpath(style.to_xpath()):
+                    elid = elem.get('id',None);
+                    if elid is not None and style!=inkex.Style():  # still using Inkex's Style here since from stylesheets
+                        if cssdict.get(elid) is None:
+                            cssdict[elid] = Style2() + style;
+                        else:
+                            cssdict[elid] += style;
+            except (lxml.etree.XPathEvalError,TypeError):
+                pass
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
@@ -368,6 +371,7 @@ def ungroup(groupnode):
     gtransform = groupnode.transform
     gclipurl   = groupnode.get('clip-path')
     gmaskurl   = groupnode.get('mask')
+    gstyle =  cascaded_style2(groupnode)
             
     els = groupnode.getchildren();
     for el in list(reversed(els)):
@@ -389,14 +393,16 @@ def ungroup(groupnode):
         elif isinstance(el,lxml.etree._Comment): # remove comments
             groupnode.remove(el)
         if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment))):
-            recursive_merge_clipmask(el, gclipurl)              # transform applies to clip, so do clip first
-            recursive_merge_clipmask(el, gmaskurl, mask=True)   # also mask
+            # recursive_merge_clipmask(el, gclipurl)              # transform applies to clip, so do clip first
+            # recursive_merge_clipmask(el, gmaskurl, mask=True)   # also mask
             
-            el.transform = vmult(gtransform,el.transform)
-            el.style = shallow_composed_style(el)
+            # el.transform = vmult(gtransform,el.transform)
+            # el.style = shallow_composed_style(el)
             
-            fix_css_clipmask(el,mask=True);
-            fix_css_clipmask(el,mask=False);
+            # fix_css_clipmask(el,mask=True);
+            # fix_css_clipmask(el,mask=False);
+            
+            compose_all(el,gclipurl,gmaskurl,gtransform,gstyle)
                 
             gparent.insert(gindex+1,el); # places above
         if isinstance(el, Group) and unlinkclone: # if Use was a group, ungroup it
@@ -404,6 +410,16 @@ def ungroup(groupnode):
     if len(groupnode.getchildren())==0:
         groupnode.delete();
         
+def compose_all(el,clipurl,maskurl,transform,style):
+    if style is not None:     el.style     = style + cascaded_style2(el)         # style must go first since we may change it with CSS
+    
+    if clipurl is not None:   recursive_merge_clipmask(el, clipurl)              # clip applied before transform, fix first
+    if maskurl is not None:   recursive_merge_clipmask(el, maskurl, mask=True)
+    if clipurl is not None:   fix_css_clipmask(el);
+    if maskurl is not None:   fix_css_clipmask(el,mask=True);
+    
+    if transform is not None: el.transform = vmult(transform,el.transform)
+
          
 # Same as composed_style(), but no recursion and with some tweaks
 def shallow_composed_style(el):
@@ -459,9 +475,9 @@ def duplicate_fixed(el): # fixes duplicate's set_random_id
     set_random_id2(elem)
     return elem
 
-def recursive_merge_clipmask(node,clippathurl,mask=False):
+def recursive_merge_clipmask(node,newclipurl,mask=False):
     # Modified from Deep Ungroup
-    if clippathurl is not None:
+    if newclipurl is not None:
         svg = get_parent_svg(node);
         if not(mask):
             cmstr1 = 'clipPath'
@@ -474,36 +490,49 @@ def recursive_merge_clipmask(node,clippathurl,mask=False):
             # applied to the clipPath as well, which we don't want.  So, we
             # create new clipPath element with references to all existing
             # clippath subelements, but with the inverse transform applied 
-            new_clippath = etree.SubElement(
-                svg.getElement('//svg:defs'), cmstr1,
-                {cmstr1+'Units': 'userSpaceOnUse',
-                  'id': get_unique_id2(svg,cmstr1)})
-            add_to_iddict(new_clippath);
+            # new_clippath = etree.SubElement(
+            #     svg.getElement('//svg:defs'), cmstr1,
+            #     {cmstr1+'Units': 'userSpaceOnUse',
+            #       'id': get_unique_id2(svg,cmstr1)})
+            # add_to_iddict(new_clippath);
+            # clippath = getElementById2(svg,newclipurl[5:-1])
+            # if clippath is not None:
+            #     for c in clippath.iterchildren():
+            #         # Clone the clip contents (smaller files but hard to release later)
+            #         newuse = etree.SubElement(
+            #                 new_clippath, 'use',
+            #                 {inkex.addNS('href', 'xlink'): '#' + c.get("id"),
+            #                   'transform': str(-node.transform),
+            #                   'id': get_unique_id2(svg,"use")})
+            #         add_to_iddict(newuse);
+            #     newclipurl = "url(#" + new_clippath.get("id") + ")"
             
-            clippath = getElementById2(svg,clippathurl[5:-1])
-            if clippath is not None:
-                for c in clippath.iterchildren():
-                    newuse = etree.SubElement(
-                            new_clippath, 'use',
-                            {inkex.addNS('href', 'xlink'): '#' + c.get("id"),
-                              'transform': str(-node.transform),
-                              'id': get_unique_id2(svg,"use")})
-                    add_to_iddict(newuse);
-                clippathurl = "url(#" + new_clippath.get("id") + ")"
-        myclip = node.get(cmstr2);
-        if myclip is not None:
+            # Clip-paths on nodes with a transform have the transform
+            # applied to the clipPath as well, which we don't want. 
+            # Duplicate the new clip and apply node's inverse transform to its children.
+            clippath = getElementById2(svg,newclipurl[5:-1])
+            if clippath is not None:    
+                d = duplicate2(clippath);
+                svg.defs.append(d)
+                for k in list(d):
+                    compose_all(k,None,None,-node.transform,None)
+                newclipurl = "url(#" + get_id2(d) + ")"
+                
+            
+        oldclipurl = node.get(cmstr2);
+        if oldclipurl is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
-            # clipnode = svg.getElementById(myclip[5:-1]);
-            clipnode = getElementById2(svg,myclip[5:-1]);
+            clipnode = getElementById2(svg,oldclipurl[5:-1]);
             d = duplicate2(clipnode); # very important to use dup2 here
             node.set(cmstr2,"url(#" + d.get("id") + ")");
-#            add_to_iddict(d);
+            # set_clipmask(node,svg,"url(#" + d.get("id") + ")",mask)
             ks = d.getchildren();
             for k in ks:
-                recursive_merge_clipmask(k,clippathurl);
+                recursive_merge_clipmask(k,newclipurl);
         else:
-            node.set(cmstr2,clippathurl)
-
+            node.set(cmstr2,newclipurl)
+            # set_clipmask(node,svg,newclipurl,mask)
+ 
 
 # Repeated getElementById lookups can be really slow, so instead create a dict that can be used to 
 # speed this up. When an element is created that may be needed later, it MUST be added. 
@@ -530,7 +559,113 @@ def new_element(typein):
     ret = typein();
     add_to_iddict(ret)
     return ret
+
+
+
+# class clipmaskdict():
+#     def __init__(self,svg,mask):
+#         self.svg   = svg;
+#         self.fdict = dict();      # looking up the clip/mask corresponding to an element
+#         self.idict = dict();      # looking up the elements corresponding to a clip
+        
+#         self.mask  = mask;
+#         self.cm    =  'clip-path'
+#         if mask: self.cm = 'mask'
+        
+#         for el in descendants2(svg):
+#             self.assign_clipmaskdict(el)
     
+#     def assign_clipmaskdict(self,el):
+#         curl = el.get(self.cm)
+#         if curl is not None:
+#             cid = curl[5:-1];
+#             self.idictappend(cid,el)
+#             cel = getElementById2(self.svg, cid);
+#             self.fdictappend(el.get_id(),cel)
+            
+#     def idictappend(self,nid,el): # initialize if no entry, otherwise append
+#         cels = self.idict.get(nid);
+#         if cels is None:
+#             self.idict[nid]=[el]
+#         else:
+#             self.idict[nid]=list(set(cels+[el]))
+#     def fdictappend(self,nid,el):
+#         self.fdict[nid]=el
+#     def set_new(self,el,newurl):
+#         elid=el.get_id();
+        
+#         oldclip = self.fdict.get(elid)
+#         if oldclip is not None:
+#             oldid = oldclip.get_id();
+#             self.idict[oldid].remove(el); # remove from old clip's inverse dict
+        
+#         newid = newurl[5:-1];
+#         el.set(self.cm,newurl);
+#         self.idictappend(newid,el)    # add to new clip's inverse dict
+        
+#         cel = getElementById2(self.svg, newid);
+#         self.fdictappend(elid,cel)
+#     def dupe_item(self,orig,dup):
+#         myclip = self.fdict.get(orig.get_id());
+#         self.fdictappend(dup.get_id(),myclip)
+#         if myclip is not None:
+#             self.idictappend(myclip.get_id(),dup)
+        
+# # Generate a dictionary for inverse lookups of clipping/masking
+# def generate_clipmaskdict(svg):
+#     svg.clipdict = clipmaskdict(svg,False)
+#     svg.maskdict = clipmaskdict(svg,True)
+# def set_clipmask(el,svg,newurl,mask=False):
+#     if not(hasattr(svg,'clipdict')):
+#         generate_clipmaskdict(svg)
+#     thedict = svg.clipdict;
+#     if mask:  thedict = svg.maskdict;
+#     thedict.set_new(el,newurl)
+# def dupe_in_cmdict(el,dup):
+#     svg = get_parent_svg(el)
+#     if not(hasattr(svg,'clipdict')):
+#         generate_clipmaskdict(svg)
+#     d1 = descendants2(el)
+#     d2 = descendants2(dup)
+#     for ii in range(len(d1)):
+#         svg.clipdict.dupe_item(d1[ii],d2[ii])
+#         svg.maskdict.dupe_item(d1[ii],d2[ii])
+
+# def prune_clips(svg):
+#     if not(hasattr(svg,'clipdict')):
+#         generate_clipmaskdict(svg)
+#     for d in reversed(descendants2(svg.defs)):
+#         did = d.get_id();
+#         cps = svg.clipdict.idict.get(did);
+#         mks = svg.maskdict.idict.get(did);
+#         if cps is not None and mks is not None:
+#             if (cps==[] and mks is None) or (mks==[] and cps is None) or (mks==[] and cps==[]):
+#                 d.remove()
+        
+# def delete2(el):
+#     svg = get_parent_svg(el)
+#     if not(hasattr(svg,'clipdict')):
+#         generate_clipmaskdict(svg)
+#     elid = el.get_id();
+#     if elid in svg.clipdict.fdict.keys():
+#         cpid = getElementById2(svg, svg.clipdict.fdict[elid]).get_id();
+#         svg.clipdict.idict[cpid].remove(el)
+#     if elid in svg.maskdict.fdict.keys():
+#         mkid = getElementById2(svg, svg.maskdict.fdict[elid]).get_id();
+#         svg.maskdict.idict[cpid].remove(el)
+#     el.delete();
+    
+    
+ 
+# def dupe_in_clipmaskdict(oldid,newid):
+#     # duplicate a style in clipmask dicts
+#     global cssdict
+#     if cssdict is not None:
+#         csssty = cssdict.get(oldid);
+#         if csssty is not None:
+#             cssdict[newid]=csssty;
+
+
 # The built-in get_unique_id gets stuck if there are too many elements. Instead use an adaptive
 # size based on the current number of ids
 # Modified from Inkex's get_unique_id

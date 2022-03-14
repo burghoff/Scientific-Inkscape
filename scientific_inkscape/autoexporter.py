@@ -136,7 +136,7 @@ class AutoExporter(inkex.EffectExtension):
             options = (False,dpi,imagedpi,reduce_images,tojpg,text_to_paths,thinline_dehancement,False)
      
             AutoExporter().export_all(bfn,self.options.input_file,pth,formats,options);
-            overwrite_svg(self.svg,pth)     
+            # overwrite_svg(self.svg,pth)     
 
         if dispprofile:
             pr.disable()
