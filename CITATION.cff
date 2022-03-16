@@ -1,0 +1,12 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: Scientific Inkscape
+message: Please cite this software using these metadata.
+type: software
+authors:
+  - given-names: David Burghoff
+    email: dburghoff@nd.edu
+    affiliation: University of Notre Dame
+    orcid: 'https://orcid.org/0000-0001-5848-2389'
