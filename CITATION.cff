@@ -6,7 +6,10 @@ title: Scientific Inkscape
 message: Please cite this software using these metadata.
 type: software
 authors:
-  - given-names: David Burghoff
+  - given-names: David
+    family-names: Burghoff
     email: dburghoff@nd.edu
     affiliation: University of Notre Dame
     orcid: 'https://orcid.org/0000-0001-5848-2389'
+version: 1.4.10
+date-released: '2022-03-08'
