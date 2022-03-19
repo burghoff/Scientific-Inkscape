@@ -23,7 +23,6 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-TIMEOUT = 60;
 
 
 import inkex
@@ -383,7 +382,7 @@ def get_points(el,irange=None):
 #             isrect = True;
 #     return isrect
 
-# Unlinks clones and composes transform/clips/etc
+# Unlinks clones and composes transform/clips/etc, along with descendants
 def unlink2(el):
     if isinstance(el,(Use)):
         useid = el.get('xlink:href');
@@ -398,28 +397,17 @@ def unlink2(el):
             # order: x,y translation, then clip/mask, then transform
             compose_all(d,None,None,Transform('translate('+str(tx)+','+str(ty)+')'),None)
             compose_all(d,el.get('clip-path'),el.get('mask'),Transform(el.get('transform')),cascaded_style2(el))
-            replace_element(el, d)
-            
+            replace_element(el, d);
+            d.set('unlinked_clone',True);
+            for k in descendants2(d)[1:]:
+                unlink2(k)
             return d
         else:
             return el
     else:
         return el
     
-# Recursively unlink all clones in the clip/mask chain
-def unlink_clips(el,svg,mask=False):
-    cm   = 'clip-path'
-    if mask: cm='mask'
-    clipurl = el.get(cm);
-    if clipurl is not None:
-        clipel = getElementById2(svg,clipurl[5:-1]);
-        if clipel is not None:
-            for k in list(clipel):
-                if isinstance(k,(Use)):
-                    unlink2(k)
-                unlink_clips(k,svg,mask)
-    
-
+unungroupable = (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment)
 def ungroup(groupnode):
     # Pops a node out of its group, unless it's already in a layer or the base
     # Unlink any clones that aren't glyphs
@@ -432,7 +420,7 @@ def ungroup(groupnode):
     gmaskurl   = groupnode.get('mask')
     gstyle =  cascaded_style2(groupnode)
             
-    els = groupnode.getchildren();
+    els = list(groupnode);
     for el in list(reversed(els)):
         
         unlinkclone = False;
@@ -443,18 +431,17 @@ def ungroup(groupnode):
                 unlinkclone = not(isinstance(useel,(inkex.Symbol)));
         
         if unlinkclone:                                         # unlink clones
-            el = unlink2(el); el.set('unlinked_clone',True);
+            el = unlink2(el);
         elif isinstance(el,lxml.etree._Comment):                # remove comments
             groupnode.remove(el)
-        elif isinstance(el,(Defs,ClipPath)) or isMask(el):      # move clips/masks/defs to global defs
-            get_parent_svg(el).defs.append(el)
             
-        if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment,ClipPath)) or isMask(el)):
+        if not(isinstance(el, unungroupable)): 
             clippedout = compose_all(el,gclipurl,gmaskurl,gtransform,gstyle)
             if clippedout:
                 el.delete()
             else:
                 gparent.insert(gindex+1,el); # places above
+                
         if isinstance(el, Group) and unlinkclone: # if Use was a group, ungroup it
             ungroup(el)
     if len(groupnode.getchildren())==0:
@@ -468,8 +455,8 @@ def compose_all(el,clipurl,maskurl,transform,style):
         compsty['opacity']=str(float(mysty.get('opacity','1'))*float(style.get('opacity','1')))  # opacity accumulates at each layer
         el.style = compsty;                                                       
     
-    if clipurl is not None:   cout = recursive_merge_clipmask(el, clipurl)        # clip applied before transform, fix first
-    if maskurl is not None:   recursive_merge_clipmask(el, maskurl, mask=True)
+    if clipurl is not None:   cout = merge_clipmask(el, clipurl)        # clip applied before transform, fix first
+    if maskurl is not None:   merge_clipmask(el, maskurl, mask=True)
     if clipurl is not None:   fix_css_clipmask(el);
     if maskurl is not None:   fix_css_clipmask(el,mask=True);
     
@@ -598,7 +585,7 @@ def uniquetol(A,tol):
     ret = Aa[~(np.triu(np.abs(Aa[:,None] - Aa) <= tol,1)).any(0)]
     return type(A)(ret)
 
-def recursive_merge_clipmask(node,newclipurl,mask=False):
+def merge_clipmask(node,newclipurl,mask=False):
 # Modified from Deep Ungroup
     def isrectangle(el):
         isrect = False;
@@ -629,8 +616,7 @@ def recursive_merge_clipmask(node,newclipurl,mask=False):
             p.set('d',newpath);
         el.delete()
         return isempty # if clipped out, safe to delete element
-        
-    newclipel = False; newclipapplies=[]
+
     if newclipurl is not None:
         svg = get_parent_svg(node);
         cmstr   = 'clip-path'
@@ -649,7 +635,7 @@ def recursive_merge_clipmask(node,newclipurl,mask=False):
                 svg.newclips.append(d)            # for later cleanup
                 for k in list(d):
                     compose_all(k,None,None,-node.transform,None)
-                newclipurl = "url(#" + get_id2(d) + ")"
+                newclipurl = get_id2(d,2)
         
         newclipnode = getElementById2(svg,newclipurl[5:-1]);
         if newclipnode is not None:
@@ -666,9 +652,9 @@ def recursive_merge_clipmask(node,newclipurl,mask=False):
             d = duplicate2(oldclipnode); # very important to use dup2 here
             if not(hasattr(svg,'newclips')):
                 svg.newclips = []
-            svg.newclips.append(d)               # for later cleanup
-            svg.defs.append(d);          # move to defs
-            node.set(cmstr,"url(#" + d.get("id") + ")");
+            svg.newclips.append(d)            # for later cleanup
+            svg.defs.append(d);               # move to defs
+            node.set(cmstr,get_id2(d,2));
             
             newclipisrect = False
             if len(list(newclipnode))==1:
@@ -679,17 +665,16 @@ def recursive_merge_clipmask(node,newclipurl,mask=False):
                 oldclipisrect,oldclippth = isrectangle(k)
                 if newclipisrect and oldclipisrect and mask==False:
                     # For rectangular clips, we can compose them easily
-                    # Most clips are rectangles, so this mostly fixes the PDF clip export bug 
+                    # Since most clips are rectangles this semi-fixes the PDF clip export bug 
                     cout = compose_clips(k,newclippth,oldclippth); 
                 else:
-                    cout = recursive_merge_clipmask(k,newclipurl);
+                    cout = merge_clipmask(k,newclipurl);
                 couts.append(cout)
             cout = all(couts)
         else:
             node.set(cmstr,newclipurl)
             cout = False
-    
-                               
+                
         return cout
 
 
@@ -899,18 +884,12 @@ def Get_Bounding_Boxes(s=None,getnew=False,filename=None,pxinuu=None,inkscape_bi
 # 2022.02.03: I think the occasional hangs come from the call to command.
 # I think this is more robust. Make a tally below if it freezes:
 def commandqueryall(fn,inkscape_binary=None):
-    import subprocess
     if inkscape_binary is None:
         bfn, tmp = Get_Binary_Loc(fn);
     else:
         bfn = inkscape_binary
     arg2 = [bfn, '--query-all',fn]
-    # try:
-    #     p=subprocess.run(arg2, shell=False,timeout=TIMEOUT,stdout=subprocess.PIPE, stderr=subprocess.DEVNULL);
-    # except subprocess.TimeoutExpired:
-    #     inkex.utils.errormsg('Error: The call to the Inkscape binary timed out after '+str(TIMEOUT)+' seconds.\n\n'+\
-    #                          'This is usually a temporary issue; try running the extension again.');
-    #     quit()
+
     p=subprocess_repeat(arg2);
     tFStR = p.stdout
     return tFStR
@@ -1164,7 +1143,7 @@ def get_strokefill(el,styin=None):
     op     = float(sty.get('opacity',1.0))
     nones = [None,'none','None'];
     if not(strk in nones):    
-        strk   = inkex.Color(strk)
+        strk   = inkex.Color(strk).to_rgb()
         strkl  = strk.lightness
         strkop = float(sty.get('stroke-opacity',1.0))
         strk.alpha = strkop*op
@@ -1174,7 +1153,7 @@ def get_strokefill(el,styin=None):
         strk = None
         strkl = None
     if not(fill in nones):
-        fill   = inkex.Color(fill)
+        fill   = inkex.Color(fill).to_rgb()
         filll  = fill.lightness
         fillop = float(sty.get('fill-opacity',1.0))
         fill.alpha = fillop*op

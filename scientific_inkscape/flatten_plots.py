@@ -63,15 +63,30 @@ class FlattenPlots(inkex.EffectExtension):
         replacement = self.options.replacement
         
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
-        sel = [v for el in sel for v in dh.descendants2(el)];
+        seld = [v for el in sel for v in dh.descendants2(el)];
         
-        gs = [el for el in sel if isinstance(el,Group)]
-        obs = [el for el in sel if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group)))]
+        
+        # Move selected defs/clips/mask into global defs
+        if poprest:
+            seldefs = [el for el in seld if isinstance(el,Defs)];
+            for el in seldefs:
+                self.svg.defs.append(el)
+                for d in dh.descendants2(el):
+                    seld.remove(d)
+            selcm = [el for el in seld if isinstance(el, (inkex.ClipPath)) or dh.isMask(el)];
+            for el in selcm:
+                self.svg.defs.append(el)
+                for d in dh.descendants2(el):
+                    seld.remove(d)
+        
+        
+        gs = [el for el in seld if isinstance(el,Group)]
+        obs = [el for el in seld if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Group)))]
         
         if len(gs)==0 and len(obs)==0:
             inkex.utils.errormsg('No objects selected!'); return;
         
-        if poprest:       
+        if poprest:
             for g in list(reversed(gs)):
                 ks = g.getchildren()
                 if any([isinstance(k,lxml.etree._Comment) for k in ks]) and \
@@ -85,40 +100,11 @@ class FlattenPlots(inkex.EffectExtension):
                     dh.ungroup(g);
             dh.flush_stylesheet_entries(self.svg)
             
-         
-            # for el in obs:
-            #     dh.unlink_clips(el,self.svg,mask=False)
-            #     dh.unlink_clips(el,self.svg,mask=True)
-#        
-            # for el in reversed(obs):
-            #     clipurl = el.get('clip-path');
-            #     deleteme = False;
-            #     if clipurl is not None:
-            #         clipel = dh.getElementById2(self.svg,clipurl[5:-1]);
-            #         if isinstance(el,(PathElement)) or isinstance(el,dh.otp_support):
-            #             if len(list(clipel))==1:
-            #                 finalclipisrect,finalclippth = dh.isrectangle(list(clipel)[0])
-            #                 if finalclipisrect:
-            #                     pth  = Path(dh.get_path2(el)).to_absolute()
-            #                     pts  = list(pth.end_points);
-            #                     ptsc = list(finalclippth.end_points);
-            #                     if min([p.x for p in pts])>max([p.x for p in ptsc]) or max([p.x for p in pts])<min([p.x for p in ptsc]) or \
-            #                        min([p.y for p in pts])>max([p.y for p in ptsc]) or max([p.y for p in pts])<min([p.y for p in ptsc]):
-            #                             deleteme=True;
-            #     if deleteme:
-            #         el.delete();
-            #         obs.remove(el);
         
         if self.options.fixtext:
-            # spd = dict()
-            # for el in list(reversed(obs)):
-            #     if isinstance(el,(TextElement,Tspan)):
-            #         spd[el.get_id()] = el.get('sodipodi:role');
-                    # el.set('sodipodi:role',None);
             if setreplacement:
                 for el in obs:
                     if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
-#                        ff = dh.Get_Style_Comp(el.get('style'),'font-family');
                         ff = dh.selected_style_local(el).get('font-family');
                         dh.Set_Style_Comp(el,'-inkscape-font-specification',None)
                         if ff==None or ff=='none' or ff=='':
@@ -149,7 +135,6 @@ class FlattenPlots(inkex.EffectExtension):
                     xs,ys = dh.get_points(el);
                     if isinstance(el, (Rectangle)) or \
                         len(xs)==5 and len(set(xs))==2 and len(set(ys))==2: # is a rectangle
-                        
                         sf  = dh.get_strokefill(el)
                         if sf.stroke is None and sf.fill is not None and tuple(sf.fill)==(255,255,255,1):
                             dh.deleteup(el)
@@ -224,11 +209,6 @@ class FlattenPlots(inkex.EffectExtension):
             
             ppath = os.path.abspath(os.path.join(dh.get_script_path(),'Profile.csv'))
             result=stdouttrap.getvalue()
-    #        prefix = result.split('ncalls')[0];
-    #        # chop the string into a csv-like buffer
-    #        result='ncalls'+result.split('ncalls')[-1]
-    #        result='\n'.join([','.join(line.rstrip().split(None,5)) for line in result.split('\n')])
-    #        result=prefix+'\n'+result;
             f=open(ppath,'w');
             f.write(result); f.close();
         else:
