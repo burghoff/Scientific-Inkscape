@@ -187,7 +187,9 @@ def generate_cssdict(svg):
     for sheet in svg.root.stylesheets:
         for style in sheet:
             try:
-                for elem in svg.xpath(style.to_xpath()):
+                # debug(style)
+                els = svg.xpath(style.to_xpath())
+                for elem in els:
                     elid = elem.get('id',None);
                     if elid is not None and style!=inkex.Style():  # still using Inkex's Style here since from stylesheets
                         if cssdict.get(elid) is None:
@@ -442,7 +444,7 @@ def ungroup(groupnode):
             else:
                 gparent.insert(gindex+1,el); # places above
                 
-        if isinstance(el, Group) and unlinkclone: # if Use was a group, ungroup it
+        if isinstance(el, Group) and unlinkclone: # if was a clone, may need to ungroup
             ungroup(el)
     if len(groupnode.getchildren())==0:
         groupnode.delete();

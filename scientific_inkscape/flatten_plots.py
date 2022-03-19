@@ -132,9 +132,13 @@ class FlattenPlots(inkex.EffectExtension):
         if removerectw:
             for el in obs:
                 if isinstance(el, (PathElement, Rectangle, Line)):
-                    xs,ys = dh.get_points(el);
+                    pts=list(Path(dh.get_path2(el)).end_points);
+                    xs = [p.x for p in pts]; ys = [p.y for p in pts]
+                    
+                    maxsz = max(max(xs)-min(xs),max(ys)-min(ys))
+                    tol=1e-3*maxsz;
                     if isinstance(el, (Rectangle)) or \
-                        len(xs)==5 and len(set(xs))==2 and len(set(ys))==2: # is a rectangle
+                        4<=len(xs)<=5 and len(dh.uniquetol(xs,tol))==2 and len(dh.uniquetol(ys,tol))==2: # is a rectangle
                         sf  = dh.get_strokefill(el)
                         if sf.stroke is None and sf.fill is not None and tuple(sf.fill)==(255,255,255,1):
                             dh.deleteup(el)
@@ -196,9 +200,9 @@ class FlattenPlots(inkex.EffectExtension):
                    RemoveKerning.External_Merges,TextParser.LineList.Parse_Lines,TextParser.LineList.Split_Off_Words,\
                    dh.Get_Composed_LineHeight,dh.Get_Composed_Width,dh.ungroup,dh.selected_style_local,\
                    dh.cascaded_style2,dh.shallow_composed_style,dh.generate_cssdict,dh.descendants2,\
-                   dh.getElementById2,dh.add_to_iddict,dh.get_id2,dh.compose_all,dh.unlink2,dh.recursive_merge_clipmask,\
+                   dh.getElementById2,dh.add_to_iddict,dh.get_id2,dh.compose_all,dh.unlink2,dh.merge_clipmask,\
                    inkex.elements._base.ShapeElement.composed_transform,dh.fix_css_clipmask,\
-                   TextParser.Character_Table.measure_character_widths2]
+                   TextParser.Character_Table.measure_character_widths2,dh.get_points]
             for fn in fns:
                 lp.add_function(fn)
             lpw = lp(self.runflatten)
