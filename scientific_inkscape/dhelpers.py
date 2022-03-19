@@ -388,21 +388,7 @@ def unlink2(el):
     if isinstance(el,(Use)):
         useid = el.get('xlink:href');
         useel = getElementById2(get_parent_svg(el),useid[1:]);
-        if useel is not None:
-            # d = duplicate2(useel)
-            # myp = el.getparent();
-            # myi = list(myp).index(el);
-            # myp.insert(myi+1,d);
-            
-            # # clones see their ref's x and y but not transform
-            # tx = el.get('x'); ty=el.get('y')
-            # if tx is None: tx = 0;
-            # if ty is None: ty = 0;
-            # # order: x,y translation, then clip/mask, then transform
-            # compose_all(d,None,None,Transform('translate('+str(tx)+','+str(ty)+')'),None)
-            # compose_all(d,el.get('clip-path'),el.get('mask'),Transform(el.get('transform')),cascaded_style2(el))
-            # el.delete(); d.set('id',el.get_id())
-            
+        if useel is not None:         
             d = duplicate2(useel)
 
             # xy translation treated as a transform (applied first, then clip/mask, then full xform)
@@ -473,8 +459,6 @@ def ungroup(groupnode):
             ungroup(el)
     if len(groupnode.getchildren())==0:
         groupnode.delete();
-    # if groupnode.tail is not None:
-    #     groupnode.tail = None
 
 # For composing a group's properties onto its children (also group-like objects like Uses)        
 def compose_all(el,clipurl,maskurl,transform,style):
@@ -701,26 +685,10 @@ def recursive_merge_clipmask(node,newclipurl,mask=False):
                     cout = recursive_merge_clipmask(k,newclipurl);
                 couts.append(cout)
             cout = all(couts)
-            finalclipnode = d;
         else:
             node.set(cmstr,newclipurl)
             cout = False
-            finalclipnode = getElementById2(svg,newclipurl[5:-1]);
-        
-        
-        # if isinstance(node,(PathElement)) or isinstance(node,otp_support) and mask==False:
-        #     if len(list(finalclipnode))==1:
-        #         finalclipisrect,finalclippth = isrectangle(list(finalclipnode)[0])
-        #         if finalclipisrect:
-        #             pth  = Path(get_path2(node)).to_absolute()
-        #             pts  = list(pth.end_points);
-        #             ptsc = list(finalclippth.end_points);
-        #             # debug(node.get_id())
-        #             # debug(pts)
-        #             # debug(ptsc)
-        #             if min([p.x for p in pts])>max([p.x for p in ptsc]) or max([p.x for p in pts])<min([p.x for p in ptsc]) or \
-        #                min([p.y for p in pts])>max([p.y for p in ptsc]) or max([p.y for p in pts])<min([p.y for p in ptsc]):
-        #                     cout=True
+    
                                
         return cout
 
