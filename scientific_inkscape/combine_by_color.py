@@ -63,27 +63,29 @@ class ScalePlots(inkex.EffectExtension):
         
         merged = [False for el in els]
         stys = [dh.selected_style_local(el) for el in els]
-        sfs  = [stroke_fill_prop(els[ii],stys[ii]) for ii in range(len(els))]
+        sfs  = [dh.get_strokefill(els[ii],stys[ii]) for ii in range(len(els))]
         # dh.debug(lightness_threshold)
         for ii in reversed(range(len(els))): # reversed so that order is preserved
-            strk1,fill1,sw1,sd1,sl1,fl1,ms1,mm1,me1 = sfs[ii]
-            if strk1 is not None and sl1>=lightness_threshold:
+            sf1 =  sfs[ii];
+            if sf1.stroke is not None and sf1.stroke.efflightness>=lightness_threshold:
                 merges = [ii]; merged[ii]=True
                 for jj in range(ii):
                     if not(merged[jj]):
-                        strk2,fill2,sw2,sd2,sl2,fl2,ms2,mm2,me2 = sfs[jj]
-                        samesw   = (sw1 is None and sw2 is None) or \
-                                   (sw1 is not None and sw2 is not None and abs(sw1-sw2)<.001);
-                        samestrk = (strk1 is None and strk2 is None) or \
-                                   (strk1 is not None and strk2 is not None and \
-                                    strk1.red==strk2.red and strk1.blue==strk2.blue and \
-                                    strk1.green==strk2.green and abs(strk1.alpha-strk2.alpha)<.001); # RGB are 0-255, alpha are 0-1
-                        samefill = (fill1 is None and fill2 is None) or \
-                                   (fill1 is not None and fill2 is not None and \
-                                    fill1.red==fill2.red and fill1.blue==fill2.blue and \
-                                    fill1.green==fill2.green and abs(fill1.alpha-fill2.alpha)<.001)
-                        if samestrk and samefill and samesw and sd1==sd2 and \
-                           ms1==ms2 and mm1==mm2 and me1==me2:
+                        sf2 = sfs[jj];
+                        samesw   = (sf1.strokewidth is None and sf2.strokewidth is None) or \
+                                   (sf1.strokewidth is not None and sf2.strokewidth is not None \
+                                    and abs(sf1.strokewidth-sf2.strokewidth)<.001);
+                        samestrk = (sf1.stroke is None and sf2.stroke is None) or \
+                                   (sf1.stroke is not None and sf2.stroke is not None and \
+                                    sf1.stroke.red==sf2.stroke.red and sf1.stroke.blue==sf2.stroke.blue and \
+                                    sf1.stroke.green==sf2.stroke.green and \
+                                     abs(sf1.stroke.alpha-sf2.stroke.alpha)<.001); # RGB are 0-255, alpha are 0-1
+                        samefill = (sf1.fill is None and sf2.fill is None) or \
+                                   (sf1.fill is not None and sf2.fill is not None and \
+                                    sf1.fill.red==sf2.fill.red and sf1.fill.blue==sf2.fill.blue and \
+                                    sf1.fill.green==sf2.fill.green and abs(sf1.fill.alpha-sf2.fill.alpha)<.001)
+                        if samestrk and samefill and samesw and sf1.strokedasharray==sf2.strokedasharray and \
+                           sf1.markerstart==sf2.markerstart and sf1.markermid==sf2.markermid and sf1.markerend==sf2.markerend:
                             merges.append(jj); merged[jj]=True
                 if len(merges)>1:
                     ords = [elord[kk] for kk in merges]; ords.sort()
@@ -91,47 +93,8 @@ class ScalePlots(inkex.EffectExtension):
                     topord = ords[-1]
                     mergeii = [kk for kk in range(len(merges)) if elord[merges[kk]]==topord][0] # use the median
                     dh.combine_paths([els[kk] for kk in merges],mergeii)
-        
-        # dh.debug(len(els))
+        dh.flush_stylesheet_entries(self.svg)  # since we removed clips
 
-
-def stroke_fill_prop(el,sty):
-    strk = sty.get('stroke',None)
-    fill = sty.get('fill',None)
-    op     = float(sty.get('opacity',1.0))
-    nones = [None,'none','None'];
-    if not(strk in nones):    
-        strk   = inkex.Color(strk)
-        strkl  = strk.lightness
-        strkop = float(sty.get('stroke-opacity',1.0))
-        strk.alpha = strkop*op
-        strkl  = strk.alpha * strkl/255 + (1-strk.alpha)*1; # effective lightness frac with a white bg
-    else:
-        strk = None
-        strkl = None
-    if not(fill in nones):
-        fill   = inkex.Color(fill)
-        filll  = fill.lightness
-        fillop = float(sty.get('fill-opacity',1.0))
-        fill.alpha = fillop*op
-        filll  = fill.alpha * filll/255 + (1-fill.alpha)*1;  # effective lightness frac with a white bg
-    else:
-        fill = None
-        filll = None
-        
-    sw = dh.Get_Composed_Width(el, 'stroke-width',styin=sty)
-    sd = dh.Get_Composed_List(el, 'stroke-dasharray',styin=sty)
-    if sd in nones: sd = None
-    if sw in nones or sw==0 or strk is None:
-        sw  = None;
-        strk= None;
-        sd  = None;
-        
-    ms = sty.get('marker-start',None);
-    mm = sty.get('marker-mid',None);
-    me = sty.get('marker-end',None);
-    
-    return (strk,fill,sw,sd,strkl,filll,ms,mm,me)
 
 if __name__ == '__main__':
     dh.Version_Check('Combine by color')

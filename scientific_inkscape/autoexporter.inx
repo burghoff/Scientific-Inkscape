@@ -45,7 +45,7 @@
         
         <label appearance="header">Single export</label>   
         <param name="exportnow" type="bool" gui-text="Export this document now">false</param>  
-        <label>Export the current document as it is now without running the Autoexporter program (equivalent to Save a Copy). Exports will be placed in the same folder as the original.</label>   
+        <label>Export the current document as it is now without running the Autoexporter program (like Save a Copy). Exports will be placed in the same folder as the original.</label>   
         
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>By David Burghoff, University of Notre Dame</label>

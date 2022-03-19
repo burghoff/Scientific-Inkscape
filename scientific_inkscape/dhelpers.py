@@ -197,6 +197,7 @@ def generate_cssdict(svg):
                             cssdict[elid] += style;
             except (lxml.etree.XPathEvalError,TypeError):
                 pass
+            
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
@@ -213,7 +214,9 @@ def Get_Composed_Width(el,comp,nargout=1,styin=None,ctin=None):
     if nargout==4:
         ang = math.atan2(ct.c,ct.d)*180/math.pi;
     svg = get_parent_svg(el)
-    docscale = vscale(svg);
+    docscale = 1;
+    if svg is not None:
+        docscale = vscale(svg);
     sc = Get_Style_Comp(cs,comp);
     # debug(sc)
     if sc is not None:
@@ -274,7 +277,10 @@ def Get_Composed_List(el,comp,nargout=1,styin=None):
         cs = styin
     ct = el.composed_transform();
     sc = Get_Style_Comp(cs,comp);
-    docscale = vscale(get_parent_svg(el));
+    svg = get_parent_svg(el);
+    docscale = 1;
+    if svg is not None:
+        docscale = vscale(svg);
     if sc=='none':
         return 'none'
     elif sc is not None:
@@ -322,36 +328,45 @@ def implicitpx(strin):
 
 # Get points of a path, element, or rectangle in the global coordinate system
 def get_points(el,irange=None):
-    if isinstance(el,Line): #el.typename=='Line':
-        pts = [Vector2d(el.get('x1'),el.get('y1')),\
-               Vector2d(el.get('x2'),el.get('y2'))];
-    elif isinstance(el,(PathElement,Polyline)): # el.typename=='PathElement':
-        pth=Path(el.get_path()).to_absolute();
-        if irange is not None:
-            pnew = Path();
-            for ii in range(irange[0],irange[1]):
-                pnew.append(pth[ii])
-            pth = pnew
-        pts = list(pth.control_points);
-    elif isinstance(el,Rectangle):  # el.typename=='Rectangle':
-        x = (el.get('x'));
-        y = (el.get('y'));
-        w = (el.get('width'));
-        h = (el.get('height'));
-        if x is not None and y is not None and w is not None and h is not None:
-            x = float(x);
-            y = float(y);
-            w = float(w);
-            h = float(h);
-            pts = [Vector2d(x,y),Vector2d(x+w,y),Vector2d(x+w,y+h),Vector2d(x,y+h),Vector2d(x,y)];
-        else:
-            pts = [];
+    # if isinstance(el,Line): #el.typename=='Line':
+    #     pts = [Vector2d(el.get('x1'),el.get('y1')),\
+    #            Vector2d(el.get('x2'),el.get('y2'))];
+    # elif isinstance(el,(PathElement,Polyline)): # el.typename=='PathElement':
+    #     pth=Path(el.get_path()).to_absolute();
+    #     if irange is not None:
+    #         pnew = Path();
+    #         for ii in range(irange[0],irange[1]):
+    #             pnew.append(pth[ii])
+    #         pth = pnew
+    #     pts = list(pth.control_points);
+    # elif isinstance(el,Rectangle):  # el.typename=='Rectangle':
+    #     x = (el.get('x'));
+    #     y = (el.get('y'));
+    #     w = (el.get('width'));
+    #     h = (el.get('height'));
+    #     if x is not None and y is not None and w is not None and h is not None:
+    #         x = float(x);
+    #         y = float(y);
+    #         w = float(w);
+    #         h = float(h);
+    #         pts = [Vector2d(x,y),Vector2d(x+w,y),Vector2d(x+w,y+h),Vector2d(x,y+h),Vector2d(x,y)];
+    #     else:
+    #         pts = [];
+    pth=Path(get_path2(el)).to_absolute();
+    if irange is not None:
+        pnew = Path();
+        for ii in range(irange[0],irange[1]):
+            pnew.append(pth[ii])
+        pth = pnew
+    pts = list(pth.end_points);
+            
     ct = el.composed_transform();
+    
     mysvg = get_parent_svg(el);
+    docscale = 1;
     if mysvg is not None:
-        docscale = vscale(get_parent_svg(el));
-    else:
-        docscale = 1;
+        docscale = vscale(mysvg);
+        
     xs = []; ys = [];
     for p in pts:
         p = ct.apply_to_point(p);
@@ -359,7 +374,65 @@ def get_points(el,irange=None):
         ys.append(p.y*docscale)
     return xs, ys
 
+# def isRectanglePath(el):
+#     isrect = False;
+#     if isinstance(el,(PathElement,Rectangle,Line,Polyline)): 
+#         xs, ys = get_points(el);
+        
+#         if 3<=len(xs)<=5 and len(set(xs))==2 and len(set(ys))==2:
+#             isrect = True;
+#     return isrect
 
+# Unlinks clones and composes transform/clips/etc
+def unlink2(el):
+    if isinstance(el,(Use)):
+        useid = el.get('xlink:href');
+        useel = getElementById2(get_parent_svg(el),useid[1:]);
+        if useel is not None:
+            # d = duplicate2(useel)
+            # myp = el.getparent();
+            # myi = list(myp).index(el);
+            # myp.insert(myi+1,d);
+            
+            # # clones see their ref's x and y but not transform
+            # tx = el.get('x'); ty=el.get('y')
+            # if tx is None: tx = 0;
+            # if ty is None: ty = 0;
+            # # order: x,y translation, then clip/mask, then transform
+            # compose_all(d,None,None,Transform('translate('+str(tx)+','+str(ty)+')'),None)
+            # compose_all(d,el.get('clip-path'),el.get('mask'),Transform(el.get('transform')),cascaded_style2(el))
+            # el.delete(); d.set('id',el.get_id())
+            
+            d = duplicate2(useel)
+
+            # xy translation treated as a transform (applied first, then clip/mask, then full xform)
+            tx = el.get('x'); ty=el.get('y')
+            if tx is None: tx = 0;
+            if ty is None: ty = 0;
+            # order: x,y translation, then clip/mask, then transform
+            compose_all(d,None,None,Transform('translate('+str(tx)+','+str(ty)+')'),None)
+            compose_all(d,el.get('clip-path'),el.get('mask'),Transform(el.get('transform')),cascaded_style2(el))
+            replace_element(el, d)
+            
+            return d
+        else:
+            return el
+    else:
+        return el
+    
+# Recursively unlink all clones in the clip/mask chain
+def unlink_clips(el,svg,mask=False):
+    cm   = 'clip-path'
+    if mask: cm='mask'
+    clipurl = el.get(cm);
+    if clipurl is not None:
+        clipel = getElementById2(svg,clipurl[5:-1]);
+        if clipel is not None:
+            for k in list(clipel):
+                if isinstance(k,(Use)):
+                    unlink2(k)
+                unlink_clips(k,svg,mask)
+    
 
 def ungroup(groupnode):
     # Pops a node out of its group, unless it's already in a layer or the base
@@ -383,42 +456,45 @@ def ungroup(groupnode):
                 useel = getElementById2(get_parent_svg(el),useid[1:]);
                 unlinkclone = not(isinstance(useel,(inkex.Symbol)));
         
-        if unlinkclone:                   # unlink clones
-            p=el.unlink();
-            tx = el.get('x'); ty=el.get('y')
-            if tx is None: tx = 0;
-            if ty is None: ty = 0;
-            p.set('transform',vmult(Transform('translate('+str(tx)+','+str(ty)+')'),Transform(p.get('transform'))))
-            el.delete(); el=p; el.set('unlinked_clone',True); #wasuse=True;
-        elif isinstance(el,lxml.etree._Comment): # remove comments
+        if unlinkclone:                                         # unlink clones
+            el = unlink2(el); el.set('unlinked_clone',True);
+        elif isinstance(el,lxml.etree._Comment):                # remove comments
             groupnode.remove(el)
-        if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment))):
-            # recursive_merge_clipmask(el, gclipurl)              # transform applies to clip, so do clip first
-            # recursive_merge_clipmask(el, gmaskurl, mask=True)   # also mask
+        elif isinstance(el,(Defs,ClipPath)) or isMask(el):      # move clips/masks/defs to global defs
+            get_parent_svg(el).defs.append(el)
             
-            # el.transform = vmult(gtransform,el.transform)
-            # el.style = shallow_composed_style(el)
-            
-            # fix_css_clipmask(el,mask=True);
-            # fix_css_clipmask(el,mask=False);
-            
-            compose_all(el,gclipurl,gmaskurl,gtransform,gstyle)
-                
-            gparent.insert(gindex+1,el); # places above
+        if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment,ClipPath)) or isMask(el)):
+            clippedout = compose_all(el,gclipurl,gmaskurl,gtransform,gstyle)
+            if clippedout:
+                el.delete()
+            else:
+                gparent.insert(gindex+1,el); # places above
         if isinstance(el, Group) and unlinkclone: # if Use was a group, ungroup it
             ungroup(el)
     if len(groupnode.getchildren())==0:
         groupnode.delete();
-        
+    # if groupnode.tail is not None:
+    #     groupnode.tail = None
+
+# For composing a group's properties onto its children (also group-like objects like Uses)        
 def compose_all(el,clipurl,maskurl,transform,style):
-    if style is not None:     el.style     = style + cascaded_style2(el)         # style must go first since we may change it with CSS
+    if style is not None:                                                         # style must go first since we may change it with CSS
+        mysty = cascaded_style2(el);
+        compsty = style + mysty                
+        compsty['opacity']=str(float(mysty.get('opacity','1'))*float(style.get('opacity','1')))  # opacity accumulates at each layer
+        el.style = compsty;                                                       
     
-    if clipurl is not None:   recursive_merge_clipmask(el, clipurl)              # clip applied before transform, fix first
+    if clipurl is not None:   cout = recursive_merge_clipmask(el, clipurl)        # clip applied before transform, fix first
     if maskurl is not None:   recursive_merge_clipmask(el, maskurl, mask=True)
     if clipurl is not None:   fix_css_clipmask(el);
     if maskurl is not None:   fix_css_clipmask(el,mask=True);
     
     if transform is not None: el.transform = vmult(transform,el.transform)
+    
+    if clipurl is None:
+        return False
+    else:
+        return cout
 
          
 # Same as composed_style(), but no recursion and with some tweaks
@@ -445,10 +521,27 @@ def fix_css_clipmask(el,mask=False):
     mycss = cssdict.get(el.get_id());
     if mycss is not None:
         if mycss.get(cm) is not None and mycss.get(cm)!=el.get(cm):
-            get_parent_svg(el).stylesheet.add('#'+el.get_id(),cm+':'+el.get(cm));
+            # get_parent_svg(el).stylesheet.add('#'+el.get_id(),cm+':'+el.get(cm));
+            svg = get_parent_svg(el)
+            if not(hasattr(svg,'stylesheet_entries')):
+                svg.stylesheet_entries = dict();
+            svg.stylesheet_entries['#'+el.get_id()]=cm+':'+el.get(cm);
             mycss[cm]=el.get(cm);
     if el.style.get(cm) is not None: # also clear local style
         Set_Style_Comp(el,cm,None);
+
+# Adding to the stylesheet is slow, so as a workaround we only do this once
+# There is no good way to do many entries at once, so we do it after we're finished 
+def flush_stylesheet_entries(svg):
+    if hasattr(svg,'stylesheet_entries'):
+        ss = ''
+        for k in svg.stylesheet_entries.keys():
+            ss += k + '{'+svg.stylesheet_entries[k]+'}\n';
+        svg.stylesheet_entries = dict()
+        
+        stys = svg.xpath('svg:style')
+        if len(stys)>0:
+            stys[0].text +='\n'+ss+'\n'
 
 # Like duplicate, but randomly sets the id of all descendants also
 # Normal duplicate does not
@@ -475,73 +568,169 @@ def duplicate_fixed(el): # fixes duplicate's set_random_id
     set_random_id2(elem)
     return elem
 
+# Makes a new object and adds it to the dicts, inheriting CSS dict entry from another element
+def new_element(genin,inheritfrom):
+    g = genin();                            # e.g Rectangle
+    inheritfrom.root.append(g);             # add to the SVG so we can assign an id
+    dupe_in_cssdict(get_id2(inheritfrom),get_id2(g))
+    add_to_iddict(g);
+    return g
+
+# Replace an element with another one
+# Puts it in the same location, update the ID dicts
+def replace_element(el1,el2):
+    # replace el1 with el2
+    myp = el1.getparent();
+    myi = list(myp).index(el1);
+    myp.insert(myi+1,el2);
+    
+    newid = get_id2(el1);
+    oldid = get_id2(el2);
+    
+    el1.delete();
+    el2.set_id(newid)
+    add_to_iddict(el2)
+    dupe_in_cssdict(oldid,newid)
+
+def intersect_paths(ptha,pthb):
+    # Intersect two rectangular paths. Could be generalized later
+    ptsa = list(ptha.end_points);
+    ptsb = list(pthb.end_points);
+    x1c = max(min([p.x for p in ptsa]),min([p.x for p in ptsb]))
+    x2c = min(max([p.x for p in ptsa]),max([p.x for p in ptsb]))
+    y1c = max(min([p.y for p in ptsa]),min([p.y for p in ptsb]))
+    y2c = min(max([p.y for p in ptsa]),max([p.y for p in ptsb]))
+    w = x2c-x1c; h=y2c-y1c;
+    
+    if w>0 and h>0:
+        return Path('M '+str(x1c)+','+str(y1c)+' h '+str(w)+' v '+str(h)+' h '+str(-w)+' Z');
+    else:
+        return Path('')
+
+# Like uniquetol in Matlab
+import numpy as np
+def uniquetol(A,tol):
+    Aa = np.array(A);
+    ret = Aa[~(np.triu(np.abs(Aa[:,None] - Aa) <= tol,1)).any(0)]
+    return type(A)(ret)
+
 def recursive_merge_clipmask(node,newclipurl,mask=False):
-    # Modified from Deep Ungroup
+# Modified from Deep Ungroup
+    def isrectangle(el):
+        isrect = False;
+        if isinstance(el,(PathElement,Rectangle,Line,Polyline)):
+            pth = Path(get_path2(el)).to_absolute();
+            pth = pth.transform(el.transform)
+            
+            pts = list(pth.control_points);
+            xs = []; ys = [];
+            for p in pts:
+                xs.append(p.x); ys.append(p.y)
+                
+            maxsz = max(max(xs)-min(xs),max(ys)-min(ys))
+            tol=1e-3*maxsz;
+            if 4<=len(xs)<=5 and len(uniquetol(xs,tol))==2 and len(uniquetol(ys,tol))==2:
+                isrect = True;
+        if isrect:
+            return True,pth
+        else:
+            return False,None
+    def compose_clips(el,ptha,pthb):
+        newpath = intersect_paths(ptha,pthb);
+        isempty = (str(newpath)=='');
+        
+        if not(isempty):
+            myp = el.getparent();
+            p=new_element(PathElement,el); myp.append(p)
+            p.set('d',newpath);
+        el.delete()
+        return isempty # if clipped out, safe to delete element
+        
+    newclipel = False; newclipapplies=[]
     if newclipurl is not None:
         svg = get_parent_svg(node);
-        if not(mask):
-            cmstr1 = 'clipPath'
-            cmstr2 = 'clip-path'
-        else:
-            cmstr1 = cmstr2 = 'mask'
+        cmstr   = 'clip-path'
+        if mask: cmstr='mask'
             
         if node.transform is not None:
-            # Clip-paths on nodes with a transform have the transform
-            # applied to the clipPath as well, which we don't want.  So, we
-            # create new clipPath element with references to all existing
-            # clippath subelements, but with the inverse transform applied 
-            # new_clippath = etree.SubElement(
-            #     svg.getElement('//svg:defs'), cmstr1,
-            #     {cmstr1+'Units': 'userSpaceOnUse',
-            #       'id': get_unique_id2(svg,cmstr1)})
-            # add_to_iddict(new_clippath);
-            # clippath = getElementById2(svg,newclipurl[5:-1])
-            # if clippath is not None:
-            #     for c in clippath.iterchildren():
-            #         # Clone the clip contents (smaller files but hard to release later)
-            #         newuse = etree.SubElement(
-            #                 new_clippath, 'use',
-            #                 {inkex.addNS('href', 'xlink'): '#' + c.get("id"),
-            #                   'transform': str(-node.transform),
-            #                   'id': get_unique_id2(svg,"use")})
-            #         add_to_iddict(newuse);
-            #     newclipurl = "url(#" + new_clippath.get("id") + ")"
-            
             # Clip-paths on nodes with a transform have the transform
             # applied to the clipPath as well, which we don't want. 
             # Duplicate the new clip and apply node's inverse transform to its children.
             clippath = getElementById2(svg,newclipurl[5:-1])
             if clippath is not None:    
-                d = duplicate2(clippath);
+                d = duplicate2(clippath); 
                 svg.defs.append(d)
+                if not(hasattr(svg,'newclips')):
+                    svg.newclips = []
+                svg.newclips.append(d)            # for later cleanup
                 for k in list(d):
                     compose_all(k,None,None,-node.transform,None)
                 newclipurl = "url(#" + get_id2(d) + ")"
-                
-            
-        oldclipurl = node.get(cmstr2);
+        
+        newclipnode = getElementById2(svg,newclipurl[5:-1]);
+        if newclipnode is not None:
+            for k in list(newclipnode):
+                if isinstance(k,(Use)): k = unlink2(k)
+
+        oldclipurl = node.get(cmstr);
         if oldclipurl is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
-            clipnode = getElementById2(svg,oldclipurl[5:-1]);
-            d = duplicate2(clipnode); # very important to use dup2 here
-            node.set(cmstr2,"url(#" + d.get("id") + ")");
-            # set_clipmask(node,svg,"url(#" + d.get("id") + ")",mask)
-            ks = d.getchildren();
-            for k in ks:
-                recursive_merge_clipmask(k,newclipurl);
+            oldclipnode = getElementById2(svg,oldclipurl[5:-1]);
+            for k in list(oldclipnode):
+                if isinstance(k,(Use)): k = unlink2(k)
+                
+            d = duplicate2(oldclipnode); # very important to use dup2 here
+            if not(hasattr(svg,'newclips')):
+                svg.newclips = []
+            svg.newclips.append(d)               # for later cleanup
+            svg.defs.append(d);          # move to defs
+            node.set(cmstr,"url(#" + d.get("id") + ")");
+            
+            newclipisrect = False
+            if len(list(newclipnode))==1:
+                newclipisrect,newclippth = isrectangle(list(newclipnode)[0])
+            
+            couts = [];
+            for k in reversed(list(d)): # may be deleting, so reverse
+                oldclipisrect,oldclippth = isrectangle(k)
+                if newclipisrect and oldclipisrect and mask==False:
+                    # For rectangular clips, we can compose them easily
+                    # Most clips are rectangles, so this mostly fixes the PDF clip export bug 
+                    cout = compose_clips(k,newclippth,oldclippth); 
+                else:
+                    cout = recursive_merge_clipmask(k,newclipurl);
+                couts.append(cout)
+            cout = all(couts)
+            finalclipnode = d;
         else:
-            node.set(cmstr2,newclipurl)
-            # set_clipmask(node,svg,newclipurl,mask)
- 
+            node.set(cmstr,newclipurl)
+            cout = False
+            finalclipnode = getElementById2(svg,newclipurl[5:-1]);
+        
+        
+        # if isinstance(node,(PathElement)) or isinstance(node,otp_support) and mask==False:
+        #     if len(list(finalclipnode))==1:
+        #         finalclipisrect,finalclippth = isrectangle(list(finalclipnode)[0])
+        #         if finalclipisrect:
+        #             pth  = Path(get_path2(node)).to_absolute()
+        #             pts  = list(pth.end_points);
+        #             ptsc = list(finalclippth.end_points);
+        #             # debug(node.get_id())
+        #             # debug(pts)
+        #             # debug(ptsc)
+        #             if min([p.x for p in pts])>max([p.x for p in ptsc]) or max([p.x for p in pts])<min([p.x for p in ptsc]) or \
+        #                min([p.y for p in pts])>max([p.y for p in ptsc]) or max([p.y for p in pts])<min([p.y for p in ptsc]):
+        #                     cout=True
+                               
+        return cout
+
 
 # Repeated getElementById lookups can be really slow, so instead create a dict that can be used to 
 # speed this up. When an element is created that may be needed later, it MUST be added. 
 def getElementById2(svg,elid):
-    if hasattr(svg,'iddict'):
-        iddict = svg.iddict
-    else:
+    if not(hasattr(svg,'iddict')):
         generate_iddict(svg);
-        iddict = svg.iddict
+    iddict = svg.iddict
     return iddict.get(elid);    
 def generate_iddict(svg):
     svg.iddict = dict();
@@ -549,16 +738,10 @@ def generate_iddict(svg):
         svg.iddict[get_id2(el)] = el;
 def add_to_iddict(el):
     svg = get_parent_svg(el);
-    if hasattr(svg,'iddict'):
-        iddict = svg.iddict
-    else:
-        generate_iddict(svg)
-        iddict = svg.iddict
+    if not(hasattr(svg,'iddict')):
+        generate_iddict(svg);
+    iddict = svg.iddict
     iddict[get_id2(el)] = el;
-def new_element(typein):
-    ret = typein();
-    add_to_iddict(ret)
-    return ret
 
 
 
@@ -960,17 +1143,17 @@ def object_to_path(el):
         el.set('d',str(pth));
 
 
+# Delete and prune empty ancestor groups       
+def deleteup(el):
+    myp = el.getparent();
+    el.delete()
+    if myp is not None:
+        myc = myp.getchildren();
+        if myc is not None and len(myc)==0:
+            deleteup(myp)
+
 # Combines a group of path-like elements
 def combine_paths(els,mergeii=0):
-    # Delete and prune empty ancestor groups       
-    def deleteup(el):
-        myp = el.getparent();
-        el.delete()
-        if myp is not None:
-            myc = myp.getchildren();
-            if myc is not None and len(myc)==0:
-                deleteup(myp)
-                
     pnew = Path();
     si = [];  # start indices
     for el in els:
@@ -1000,7 +1183,56 @@ def combine_paths(els,mergeii=0):
     mel.set('inkscape-academic-combined-by-color',' '.join([str(v) for v in si]))
     for s in range(len(els)):
         if s!=mergeii:
-            deleteup(els[s])        
+            deleteup(els[s])    
+            
+# Gets all of the stroke and fill properties from a style
+def get_strokefill(el,styin=None):
+    if styin is None:
+        sty = selected_style_local(el)
+    else:
+        sty = styin
+    strk = sty.get('stroke',None)
+    fill = sty.get('fill',None)
+    op     = float(sty.get('opacity',1.0))
+    nones = [None,'none','None'];
+    if not(strk in nones):    
+        strk   = inkex.Color(strk)
+        strkl  = strk.lightness
+        strkop = float(sty.get('stroke-opacity',1.0))
+        strk.alpha = strkop*op
+        strkl  = strk.alpha * strkl/255 + (1-strk.alpha)*1; # effective lightness frac with a white bg
+        strk.efflightness = strkl
+    else:
+        strk = None
+        strkl = None
+    if not(fill in nones):
+        fill   = inkex.Color(fill)
+        filll  = fill.lightness
+        fillop = float(sty.get('fill-opacity',1.0))
+        fill.alpha = fillop*op
+        filll  = fill.alpha * filll/255 + (1-fill.alpha)*1;  # effective lightness frac with a white bg
+        fill.efflightness = filll
+    else:
+        fill = None
+        filll = None
+        
+    sw = Get_Composed_Width(el, 'stroke-width'   ,styin=sty)
+    sd = Get_Composed_List(el, 'stroke-dasharray',styin=sty)
+    if sd in nones: sd = None
+    if sw in nones or sw==0 or strk is None:
+        sw  = None;
+        strk= None;
+        sd  = None;
+        
+    ms = sty.get('marker-start',None);
+    mm = sty.get('marker-mid',None);
+    me = sty.get('marker-end',None);
+    
+    class StrokeFill():
+        def __init__(self,*args):
+            (self.stroke,self.fill,self.strokewidth,self.strokedasharray,\
+             self.markerstart,self.markermid,self.markerend)=args
+    return StrokeFill(strk,fill,sw,sd,ms,mm,me)
         
 # Gets the caller's location
 import os, sys
@@ -1166,7 +1398,11 @@ def vmult(*args):
             outval = args[ii]@outval;
     return outval
 
-
+def isMask(el):
+    if ivp[0]<=1 and ivp[1]<2:          # pre-1.2: check tag
+        return (el.tag[-4:]=='mask')
+    else:               
+        return isinstance(el, (inkex.Mask))
     
 def Version_Check(caller):
     siv = 'v1.4.10'         # Scientific Inkscape version
@@ -1221,8 +1457,15 @@ def Version_Check(caller):
                 'You will never get this message again, so please copy the URL before you click OK.\n\n';
             inkex.utils.errormsg(msg);
         d.append('Displayed form screen')
-        
-    f = open(logname, 'w');
-    f.write(''.join(d));
-    f.close();
+
+    try:        
+        f = open(logname, 'w');
+        f.write(''.join(d));
+        f.close();
+    except:
+        inkex.utils.errormsg('Error: You do not have write access to the directory where the Scientific Inkscape '+\
+                             'extensions are installed. You may have not installed them in the correct location. '+\
+                             '\n\nMake sure you install them in the User Extensions directory, not the Inkscape Extensions '+\
+                             'directory.');
+        quit();
     

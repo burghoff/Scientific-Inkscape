@@ -21,8 +21,8 @@
 
 
 import inkex
-from inkex import (TextElement, FlowRoot, FlowPara, Tspan, TextPath, Rectangle,\
-                   addNS, Transform, Style, PathElement, Line, Path,\
+from inkex import (TextElement, FlowRoot, FlowPara, FlowRegion, Tspan, TextPath, Rectangle,\
+                   addNS, Transform, Style, PathElement, Line, Path,StyleElement,\
                    NamedView, Defs, Metadata, ForeignObject,Group,Use)
 
 import os,sys
@@ -33,10 +33,10 @@ import lxml, os
 import RemoveKerning
 
 
-# dispprofile = True;
+dispprofile = True;
 dispprofile = False;
+lprofile = True;
 lprofile = False;
-#lprofile = True;
 
 class FlattenPlots(inkex.EffectExtension):
     def add_arguments(self, pars):
@@ -82,15 +82,32 @@ class FlattenPlots(inkex.EffectExtension):
                     [g.remove(k) for k in ks if isinstance(k,lxml.etree._Comment)]; # remove comment, but leave grouped
                 elif g.get('mpl_comment') is not None: pass
                 else:
-                    dh.ungroup(g);    
-                    
-            # dh.debug(self.svg.get_ids())
-            # dh.debug(len(self.svg.get_ids()))
-            # x=asdf
+                    dh.ungroup(g);
+            dh.flush_stylesheet_entries(self.svg)
+            
+         
+            # for el in obs:
+            #     dh.unlink_clips(el,self.svg,mask=False)
+            #     dh.unlink_clips(el,self.svg,mask=True)
 #        
-#        for el in obs:
-#            dh.debug(el.get_id());
-#            dh.debug(el.get('clip-path'));
+            # for el in reversed(obs):
+            #     clipurl = el.get('clip-path');
+            #     deleteme = False;
+            #     if clipurl is not None:
+            #         clipel = dh.getElementById2(self.svg,clipurl[5:-1]);
+            #         if isinstance(el,(PathElement)) or isinstance(el,dh.otp_support):
+            #             if len(list(clipel))==1:
+            #                 finalclipisrect,finalclippth = dh.isrectangle(list(clipel)[0])
+            #                 if finalclipisrect:
+            #                     pth  = Path(dh.get_path2(el)).to_absolute()
+            #                     pts  = list(pth.end_points);
+            #                     ptsc = list(finalclippth.end_points);
+            #                     if min([p.x for p in pts])>max([p.x for p in ptsc]) or max([p.x for p in pts])<min([p.x for p in ptsc]) or \
+            #                        min([p.y for p in pts])>max([p.y for p in ptsc]) or max([p.y for p in pts])<min([p.y for p in ptsc]):
+            #                             deleteme=True;
+            #     if deleteme:
+            #         el.delete();
+            #         obs.remove(el);
         
         if self.options.fixtext:
             # spd = dict()
@@ -130,19 +147,47 @@ class FlattenPlots(inkex.EffectExtension):
             for el in obs:
                 if isinstance(el, (PathElement, Rectangle, Line)):
                     xs,ys = dh.get_points(el);
-                    if len(xs)==5 and len(set(xs))==2 and len(set(ys))==2: # is a rectangle
-                        # sty=el.composed_style();
-                        sty=dh.selected_style_local(el);
-                        fill = sty.get('fill');
-                        strk = sty.get('stroke');
-                        opacity = sty.get('opacity')
-                        if opacity is None: opacity = 1;
-                        if (removerectw and fill in ['#ffffff','white'] and \
-                            strk in [None,'none'] and \
-                            opacity==1):
-                            el.delete()
+                    if isinstance(el, (Rectangle)) or \
+                        len(xs)==5 and len(set(xs))==2 and len(set(ys))==2: # is a rectangle
+                        
+                        sf  = dh.get_strokefill(el)
+                        if sf.stroke is None and sf.fill is not None and tuple(sf.fill)==(255,255,255,1):
+                            dh.deleteup(el)
+                        
+                        # sty=dh.selected_style_local(el);
+                        # fill = sty.get('fill');
+                        # strk = sty.get('stroke');
+                        # opacity = sty.get('opacity')
+                        # if opacity is None: opacity = 1;
+                        # if (fill in ['#ffffff','white'] and \
+                        #     strk in [None,'none'] and \
+                        #     opacity==1):
+                        #     el.delete()
     
-#        dh.debug(time.time()-tic)
+    
+        # Remove any unused clips we made, unnecessary white space in document
+        # import time
+        # tic = time.time();
+        ds = dh.descendants2(self.svg);
+        clips = [el.get('clip-path') for el in ds]; 
+        masks = [el.get('mask')      for el in ds]; 
+        clips = [url[5:-1] for url in clips if url is not None];
+        masks = [url[5:-1] for url in masks if url is not None];
+        if hasattr(self.svg,'newclips'):
+            for el in self.svg.newclips:
+                if isinstance(el,(inkex.ClipPath)) and not(dh.get_id2(el) in clips):
+                    dh.deleteup(el)
+                elif dh.isMask(el) and not(dh.get_id2(el) in masks):
+                    dh.deleteup(el)
+
+        for el in reversed(ds):
+            if not(isinstance(el,(Tspan, FlowPara, FlowRegion, TextPath))):
+                if el.tail is not None: el.tail = None
+            if not(isinstance(el,(StyleElement,TextElement,Tspan,\
+                                  FlowRoot,FlowPara,FlowRegion,TextPath))):
+                if el.text is not None: el.text = None
+
+        # dh.debug(time.time()-tic)
 
 
     def effect(self):   
@@ -166,8 +211,9 @@ class FlattenPlots(inkex.EffectExtension):
                    RemoveKerning.External_Merges,TextParser.LineList.Parse_Lines,TextParser.LineList.Split_Off_Words,\
                    dh.Get_Composed_LineHeight,dh.Get_Composed_Width,dh.ungroup,dh.selected_style_local,\
                    dh.cascaded_style2,dh.shallow_composed_style,dh.generate_cssdict,dh.descendants2,\
-                   dh.getElementById2,dh.add_to_iddict,dh.get_id2,\
-                   inkex.elements._base.ShapeElement.composed_transform,inkex.elements._use.Use.unlink]
+                   dh.getElementById2,dh.add_to_iddict,dh.get_id2,dh.compose_all,dh.unlink2,dh.recursive_merge_clipmask,\
+                   inkex.elements._base.ShapeElement.composed_transform,dh.fix_css_clipmask,\
+                   TextParser.Character_Table.measure_character_widths2]
             for fn in fns:
                 lp.add_function(fn)
             lpw = lp(self.runflatten)
@@ -260,6 +306,6 @@ class FlattenPlots(inkex.EffectExtension):
 if __name__ == '__main__':
     dh.Version_Check('Flattener')
     try:
-        FlattenPlots().run()
+        s=FlattenPlots().run()
     except lxml.etree.XMLSyntaxError:
         inkex.utils.errormsg('Error parsing XML! Extensions can only run on SVG files. If this is a file imported from another format, try saving as an SVG or pasting the contents into a new SVG.');

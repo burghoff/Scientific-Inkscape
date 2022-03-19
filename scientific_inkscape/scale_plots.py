@@ -209,8 +209,10 @@ class ScalePlots(inkex.EffectExtension):
                     if 3<=len(xs)<=5 and len(set(xs))==2 and len(set(ys))==2:
                         isrect = True;
                 if isrect or isinstance(el,(Rectangle)): #el.typename=='Rectangle':
-                    strk = dh.selected_style_local(el).get('stroke');
-                    fill = dh.selected_style_local(el).get('fill');
+                    sty = dh.selected_style_local(el);
+                    strk = sty.get('stroke');
+                    fill = sty.get('fill');
+                    
                     nones = [None,'none','white','#ffffff'];
                     if not(fill in nones) and (strk in nones or strk==fill): # solid rectangle
                         solids[el.get_id()]=[bb[2],bb[3]];
