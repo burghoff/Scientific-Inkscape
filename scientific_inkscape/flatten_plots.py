@@ -72,12 +72,12 @@ class FlattenPlots(inkex.EffectExtension):
             for el in seldefs:
                 self.svg.defs.append(el)
                 for d in dh.descendants2(el):
-                    seld.remove(d)
+                    if d in seld: seld.remove(d)
             selcm = [el for el in seld if isinstance(el, (inkex.ClipPath)) or dh.isMask(el)];
             for el in selcm:
                 self.svg.defs.append(el)
                 for d in dh.descendants2(el):
-                    seld.remove(d)
+                    if d in seld: seld.remove(d)
         
         
         gs = [el for el in seld if isinstance(el,Group)]

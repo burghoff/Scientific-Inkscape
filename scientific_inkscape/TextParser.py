@@ -278,6 +278,16 @@ class LineList():
                     self.lns.remove(ln); # prune empty lines
             for ln in self.lns:
                 ln.ll = self;
+            
+            # Assign nextw for single-word lines sharing a y (Illustrator SVGs usually have one Tspan per character)
+            ys = [ln.y[0] for ln in self.lns if ln.y is not None and len(ln.y)>0]
+            for uy in list(set(ys)):
+                samey = [self.lns[ii] for ii in range(len(self.lns)) if ys[ii]==uy];
+                xs = [ln.x for ln in samey]
+                slns = [x for _, x in sorted(zip(xs, samey), key=lambda pair: pair[0])] # words sorted in ascending x
+                for ii in range(len(slns)-1):
+                    if len(slns[ii].ws)==1 and len(slns[ii+1].ws)==1:
+                        slns[ii].ws[-1].nextw = slns[ii+1].ws[0]
     
     @staticmethod
     def GetXY(el,xy):
@@ -548,16 +558,7 @@ class tline:
         if w is not None:
             self.addw(w)
             
-#        for w in self.ws:
-#            for c in w.cs:
-#                dh.debug(c.ln==w.ln)
-            
         if len(self.x)>1:
-            # sws = self.ws; # FIX ME LATER FOR NONES!!!!
-            # sws = [x for _, x in sorted(zip(self.x, self.ws), key=lambda pair: pair[0])] # words sorted in ascending x
-            # for ii in range(len(sws)-1):
-            #     sws[ii].nextw = sws[ii+1]
-            
             xn = [self.x[ii] for ii in range(len(self.x)) if self.x[ii] is not None]; # non-None
             sws = [x for _, x in sorted(zip(xn, self.ws), key=lambda pair: pair[0])] # words sorted in ascending x
             for ii in range(len(sws)-1):

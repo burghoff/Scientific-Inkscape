@@ -158,7 +158,7 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
         tr1, br1, tl2, bl2 = w.get_orig_pts(w2)
         xpenmatch = (br1.x-xtol <= bl2.x <= br1.x + dx + xtol);
         neitherempty = len(wstrip(w.txt()))>0 and len(wstrip(w2.txt()))>0
-        if xpenmatch and neitherempty:
+        if xpenmatch and neitherempty and not(badspaces(w, w2)):
             type = None;
             # samecolor = Style2(w2.cs[0].nstyc).get('fill')==Style2(w.cs[-1].nstyc).get('fill')
             if abs(bl2.y-br1.y)<ytol and abs(w.fs-w2.fs)<.001 and mergenearby:
@@ -232,9 +232,9 @@ def Remove_Manual_Kerning(lls,os,mergesupersub):
         dx = w.sw*NUM_SPACES/w.sf
         xtol2 = XTOLMK*w.sw/w.sf;
 
-        w2=w.nextw       # part of the same line, so same transform and y
-        if w2 is not None and w2 in ws:
-            bl2 = w2.pts_ut[0];
+        w2=w.nextw      
+        if w2 is not None and w2 in ws and not(badspaces(w, w2)):
+            bl2 = w2.pts_ut[0];  # part of the same line, so same transform and y
             br1 = w.pts_ut[3];
             if br1.x-xtol2 <= bl2.x <= br1.x + dx + xtol2:
                 mw.append([w2,'same',br1,bl2])
@@ -256,13 +256,15 @@ def Remove_Manual_Kerning(lls,os,mergesupersub):
 def Perform_Merges(ws):
     for w in ws:
         mw = w.mw;
-        # Amongst all candidate merges, pick the one whose starting pen best matches the stop of the previous one
         minx = float('inf');
         for ii in range(len(mw)):
             w2=mw[ii][0]; type=mw[ii][1]; br1=mw[ii][2]; bl2=mw[ii][3];
             if abs(bl2.x-br1.x) < minx:
-                minx = abs(bl2.x-br1.x);
+                minx = abs(bl2.x-br1.x); # starting pen best matches the stop of the previous one
                 mi   = ii
+            # if bl2.x < minx:
+            #     minx = bl2.x;
+            #     mi   = ii
         w.merges = [];
         w.mergetypes = [];
         w.merged = False;
@@ -355,6 +357,18 @@ def isnumeric(s):
 def wstrip(txt): 
      return txt.translate({ord(c):None for c in ' \n\t\r'}); 
 
+def badspaces(w1,w2):
+    if w1 is not None:
+        if wstrip(w1.txt())=='':
+            return True                           # first word is whitespace
+    if w2 is not None:
+        w1txt = w1.txt();
+        w2txt = w2.txt();
+        if (w1txt is not None and len(w1txt)>1 and w1txt[-2:]=='  ') or \
+           (w1txt is not None and len(w1txt)>0 and w1txt[-1:]==' ' and \
+            w2txt is not None and len(w2txt)>0 and w2txt[0]  ==' '):
+               return True                        # resultant word has two spaces
+    return False
 
 ## for w in ws:
 #    # mw = [];
