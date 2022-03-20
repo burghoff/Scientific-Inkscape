@@ -30,18 +30,32 @@ def remove_kerning(caller,os,removemanual,mergesupersub,splitdistant,mergenearby
     if not(DEBUG_PARSER):
         if splitdistant: lls, os = Split_Distant_Manual_Kerning(lls,os)
         if removemanual: lls, os = Remove_Manual_Kerning(lls,os,mergesupersub)
-        # # for ll in lls: ll.Position_Check()
         # # for ll in lls: dh.debug(ll.txt())
         if mergenearby or mergesupersub: lls, os = External_Merges(lls,os,mergenearby,mergesupersub)
         if splitdistant: lls, os = Split_Lines(lls,os);
         lls, os = Change_Justification(lls,os,justification)
+        lls, os = Remove_Trailing_Spaces(lls,os);
+        # for ll in lls: ll.Position_Check()
         lls, os = Make_All_Editable(lls,os);
         lls, os = Final_Cleanup(lls,os);
     return os
 
+
 def Final_Cleanup(lls,os):
     for ll in lls:
+        # ll.Position_Check()
         ll.Delete_Empty()
+    return lls, os
+
+
+def Remove_Trailing_Spaces(lls,os):
+    for ll in lls:
+        for ln in ll.lns:
+            mtxt = ln.txt();
+            ii=len(mtxt)-1
+            while ii>=0 and mtxt[ii]==' ':
+                ln.cs[ii].delc()
+                ii-=1
     return lls, os
 
 def Make_All_Editable(lls,os):
@@ -112,6 +126,51 @@ def Split_Distant_Manual_Kerning(lls,os):
     lls+=newlls;    
     return lls,os    
 
+
+
+def Remove_Manual_Kerning(lls,os,mergesupersub):
+    # Generate list of merges     
+    ws = [];
+    for ll in lls:           
+        if ll.lns is not None:
+            ws += [w for ln in ll.lns for w in ln.ws];
+        # ll.Position_Check()
+    for w in ws:
+        dx = w.sw*(NUM_SPACES+1*XTOL) # a big bounding box that includes the extra space
+        w.bb_big = TextParser.bbox([w.bb.x1-dx,w.bb.y1-dx,w.bb.w+2*dx,w.bb.h+2*dx])
+    # for w in ws:
+    #     while w.nextw is not None and w.txt()[-1]==' ' and w.nextw.txt()==' ':
+    #         w.nextw = w.nextw.nextw;
+    for w in ws:
+        mw = [];
+        dx = w.sw*NUM_SPACES/w.sf
+        xtol2 = XTOLMK*w.sw/w.sf;
+
+        w2=w.nextw      
+        if w2 is not None and w2 in ws and not(badspaces(w, w2)):
+            bl2 = w2.pts_ut[0];  # part of the same line, so same transform and y
+            br1 = w.pts_ut[3];
+            
+            if isnumeric(w.txt()) and isnumeric(w2.txt(),True):
+                dx = w.sw*0/w.sf
+            
+            if br1.x-xtol2 <= bl2.x <= br1.x + dx + xtol2:
+                mw.append([w2,'same',br1,bl2])
+        w.mw = mw;
+        
+    Perform_Merges(ws)    
+                    
+    # Following manual kerning removal, lines with multiple words need to be split out into new text els
+    newlls=[];
+    for ll in lls:
+        for ln in ll.lns:
+            while len(ln.ws)>1:
+                newtxt,nll = ll.Split_Off_Words([ln.ws[-1]])
+                os.append(newtxt)
+                newlls.append(nll)
+    lls+=newlls
+    return lls,os
+
 import numpy as np
 def External_Merges(lls,os,mergenearby,mergesupersub):
     # Generate list of merges     
@@ -153,6 +212,7 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
         dx   = w.sw*NUM_SPACES/w.sf
         xtol = XTOL*w.sw/w.sf;
         ytol = YTOL*w.sw/w.sf;
+        
 
         # calculate 2's coords in 1's system
         tr1, br1, tl2, bl2 = w.get_orig_pts(w2)
@@ -162,8 +222,8 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
             type = None;
             # samecolor = Style2(w2.cs[0].nstyc).get('fill')==Style2(w.cs[-1].nstyc).get('fill')
             if abs(bl2.y-br1.y)<ytol and abs(w.fs-w2.fs)<.001 and mergenearby:
-                if not(isnumeric(w.ln.txt())) or not(isnumeric(w2.ln.txt())) \
-                   or w.ln.ll.inittextel==w2.ln.ll.inittextel: # don't merge two numbers (may be ticks)
+                if not(isnumeric(w.ln.txt())) or not(isnumeric(w2.ln.txt(),True)): \
+                   # or w.ln.ll.inittextel==w2.ln.ll.inittextel: # don't merge two numbers (may be ticks)
                     type = 'same';
                 # dh.debug(w.txt()+' '+w2.txt())
             elif br1.y+ytol >= bl2.y >= tr1.y-ytol and mergesupersub: # above baseline
@@ -195,7 +255,7 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
 #                            dh.debug(w.txt+' to '+w2.txt+' as '+type)
 
         if DEBUG_MERGE:
-            dh.debug('\nMerging '+w.txt() + ' and ' + w2.txt())
+            dh.debug('\nMerging "'+w.txt() + '" and "' + w2.txt()+'"')
             if not(xpenmatch):
                 dh.debug('Aborted, x pen too far: '+str([br1.x,bl2.x]))
             elif not(neitherempty):
@@ -214,44 +274,7 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
     Perform_Merges(ws)
     return lls,os
 
-def Remove_Manual_Kerning(lls,os,mergesupersub):
-    # Generate list of merges     
-    ws = [];
-    for ll in lls:           
-        if ll.lns is not None:
-            ws += [w for ln in ll.lns for w in ln.ws];
-        # ll.Position_Check()
-    for w in ws:
-        dx = w.sw*(NUM_SPACES+1*XTOL) # a big bounding box that includes the extra space
-        w.bb_big = TextParser.bbox([w.bb.x1-dx,w.bb.y1-dx,w.bb.w+2*dx,w.bb.h+2*dx])
-    # for w in ws:
-    #     while w.nextw is not None and w.txt()[-1]==' ' and w.nextw.txt()==' ':
-    #         w.nextw = w.nextw.nextw;
-    for w in ws:
-        mw = [];
-        dx = w.sw*NUM_SPACES/w.sf
-        xtol2 = XTOLMK*w.sw/w.sf;
 
-        w2=w.nextw      
-        if w2 is not None and w2 in ws and not(badspaces(w, w2)):
-            bl2 = w2.pts_ut[0];  # part of the same line, so same transform and y
-            br1 = w.pts_ut[3];
-            if br1.x-xtol2 <= bl2.x <= br1.x + dx + xtol2:
-                mw.append([w2,'same',br1,bl2])
-        w.mw = mw;
-        
-    Perform_Merges(ws)    
-                    
-    # Following manual kerning removal, lines with multiple words need to be split out into new text els
-    newlls=[];
-    for ll in lls:
-        for ln in ll.lns:
-            while len(ln.ws)>1:
-                newtxt,nll = ll.Split_Off_Words([ln.ws[-1]])
-                os.append(newtxt)
-                newlls.append(nll)
-    lls+=newlls
-    return lls,os
 
 def Perform_Merges(ws):
     for w in ws:
@@ -333,7 +356,17 @@ def Perform_Merges(ws):
     # Execute the merge plan
     for w in ws:
         if len(w.merges)>0 and not(w.merged):
-            for ii in range(len(w.merges)):
+            # mtxt = [w.merges[ii].txt() for ii in range(len(w.merges))]
+            # mtxt = [w.merges[ii].txt() for ii in range(len(w.merges))]
+            # ftxt = [''.join(mtxt[ii:]) for ii in range(len(w.merges))]
+            # nwhite = [ii for ii in range(len(w.merges)) if wstrip(ftxt[ii])!='']
+            # if len(nwhite)==0:
+            #     maxii = len(w.merges)
+            # else:
+            #     maxii = max(nwhite)+1
+            maxii = len(w.merges);
+            
+            for ii in range(maxii):
                 w.appendw(w.merges[ii],w.wtypes[ii+1]);
             for c in w.cs:
                 if c.pending_style is not None:
@@ -341,16 +374,18 @@ def Perform_Merges(ws):
 
 # Check if text represents a number
 ncs = ['0','1','2','3','4','5','6','7','8','9','.','e','E','-','−',','];
-def isnumeric(s):
+def isnumeric(s,countminus=False):
+    s = wstrip(s.replace('−','-').replace(',','')) # replace minus signs with -, remove commas
     allnum = all([sv in ncs for sv in s]);
     isnum=False
     if allnum:
         try:
-            s = s.replace('−','-').replace(',',''); # replace minus signs with -, remove commas
             float(s);
             isnum = True
         except:
             isnum = False
+    if not(isnum) and countminus and s=='-': 
+        isnum = True    # count a minus sign as a number
     return isnum
                 
 # Strip whitespaces
@@ -366,7 +401,8 @@ def badspaces(w1,w2):
         w2txt = w2.txt();
         if (w1txt is not None and len(w1txt)>1 and w1txt[-2:]=='  ') or \
            (w1txt is not None and len(w1txt)>0 and w1txt[-1:]==' ' and \
-            w2txt is not None and len(w2txt)>0 and w2txt[0]  ==' '):
+            w2txt is not None and len(w2txt)>0 and w2txt[0]  ==' ') or \
+           (w2txt is not None and len(w2txt)>1 and w2txt[:1] =='  ') :
                return True                        # resultant word has two spaces
     return False
 

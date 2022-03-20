@@ -429,6 +429,7 @@ class LineList():
         self.dys = dys;
 
     # Text is hard to edit unless xml:space is set to preserve and sodipodi:role is set to line
+    # Should usually be called last
     def Make_Editable(self):
         el = self.textel
         el.set('xml:space','preserve')   
@@ -582,12 +583,16 @@ class tline:
                 ln.disablesodipodi()     # Disable sprl for all lines sharing our src, including us
                                          # Note that it's impossible to change one line without affecting the others
                 
-            if len(self.cs)>0 and self.cs[-1].c==' ':
-                self.cs[-1].delc(); # delete final space since it's never rendered
+            # if len(self.cs)>0 and self.cs[-1].c==' ':
+            #     self.cs[-1].delc(); # can delete final space since it's never rendered
+            # hasunrenderedspace = (len(self.cs)>0 and self.cs[-1].c==' ')
                 
             for w in self.ws:
                 minx = min([w.pts_ut[ii][0] for ii in range(4)]);
                 maxx = max([w.pts_ut[ii][0] for ii in range(4)]);
+                
+                if w.unrenderedspace and self.cs[-1] in w.cs:
+                    maxx -= w.cs[-1].cw/w.cs[-1].sf;
                 
                 dxl = [c.dx for c in self.cs];
                 if len(dxl)==0: dxl=[0];
@@ -676,6 +681,7 @@ class tword:
         self.ln = ln;
         self.transform = ln.transform
         c.w = self;
+        self.unrenderedspace = False;
         self.nextw = None;
         self.orig_pts_t = None; self.orig_pts_ut = None; self.orig_bb = None; # for merging later
     def addc(self,ii):
@@ -901,11 +907,17 @@ class tword:
             ymax = max([w.y+c.dy             for c in w.cs]);
         else:
             ymin = w.y-w.ch/w.sf; ymax = w.y;
+            
+        # If last char of a multichar line is a space, is not rendered
+        wwo = w.ww;
+        w.unrenderedspace =len(w.cs)>1 and w.cs[-1]==self.ln.cs[-1] and w.cs[-1].c==' '
+        if w.unrenderedspace:
+            wwo -= w.cs[-1].cw;           # ww for offset calculations  
         
         if self.ln.anchor=='middle':
-            w.offx = dxl[0]*w.sf/2-w.ww/2;
+            w.offx = dxl[0]*w.sf/2-wwo/2;
         elif self.ln.anchor=='end':
-            w.offx = -w.ww;
+            w.offx = -wwo;
         else:
             w.offx = dxl[0]*w.sf;
             
@@ -953,10 +965,15 @@ class tchar:
         
     def delc(self): # deletes me from document (and from my word/line)
         # Deleting a character causes the word to move if it's center- or right-justified. Adjust position to fix
+        cwo = self.cw;
+        if self.w.unrenderedspace and self.w.cs[-1]==self:
+            if len(self.w.cs)>1 and self.w.cs[-2].c!=' ':
+                cwo = 0; # deletion will not affect position
+            
         if self.ln.anchor=='middle':
-            deltax = self.cw/self.sf / 2;
+            deltax = cwo/self.sf / 2;
         elif self.ln.anchor=='end':
-            deltax = self.cw/self.sf;
+            deltax = cwo/self.sf;
         else:
             deltax = 0;
         if deltax!=0:
