@@ -31,11 +31,14 @@ def remove_kerning(caller,os,removemanual,mergesupersub,splitdistant,mergenearby
         if splitdistant: lls, os = Split_Distant_Manual_Kerning(lls,os)
         if removemanual: lls, os = Remove_Manual_Kerning(lls,os,mergesupersub)
         # # for ll in lls: dh.debug(ll.txt())
+        # for ll in lls: ll.Position_Check()
         if mergenearby or mergesupersub: lls, os = External_Merges(lls,os,mergenearby,mergesupersub)
+        # for ll in lls: ll.Position_Check()
         if splitdistant: lls, os = Split_Lines(lls,os);
         lls, os = Change_Justification(lls,os,justification)
+        if removemanual or mergenearby or mergesupersub: lls, os = Fix_Merge_Positions(lls,os)
         lls, os = Remove_Trailing_Spaces(lls,os);
-        # for ll in lls: ll.Position_Check()
+        # # for ll in lls: ll.Position_Check()
         lls, os = Make_All_Editable(lls,os);
         lls, os = Final_Cleanup(lls,os);
     return os
@@ -45,6 +48,14 @@ def Final_Cleanup(lls,os):
     for ll in lls:
         # ll.Position_Check()
         ll.Delete_Empty()
+    return lls, os
+
+
+def Fix_Merge_Positions(lls,os):
+    for ll in lls:
+        for ln in ll.lns:
+            for w in ln.ws:
+                w.fix_merged_position()
     return lls, os
 
 

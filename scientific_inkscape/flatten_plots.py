@@ -135,13 +135,14 @@ class FlattenPlots(inkex.EffectExtension):
                     pts=list(Path(dh.get_path2(el)).end_points);
                     xs = [p.x for p in pts]; ys = [p.y for p in pts]
                     
-                    maxsz = max(max(xs)-min(xs),max(ys)-min(ys))
-                    tol=1e-3*maxsz;
-                    if isinstance(el, (Rectangle)) or \
-                        4<=len(xs)<=5 and len(dh.uniquetol(xs,tol))==2 and len(dh.uniquetol(ys,tol))==2: # is a rectangle
-                        sf  = dh.get_strokefill(el)
-                        if sf.stroke is None and sf.fill is not None and tuple(sf.fill)==(255,255,255,1):
-                            dh.deleteup(el)
+                    if len(xs)>0:
+                        maxsz = max(max(xs)-min(xs),max(ys)-min(ys))
+                        tol=1e-3*maxsz;
+                        if isinstance(el, (Rectangle)) or \
+                            4<=len(xs)<=5 and len(dh.uniquetol(xs,tol))==2 and len(dh.uniquetol(ys,tol))==2: # is a rectangle
+                            sf  = dh.get_strokefill(el)
+                            if sf.stroke is None and sf.fill is not None and tuple(sf.fill)==(255,255,255,1):
+                                dh.deleteup(el)
                         
                         # sty=dh.selected_style_local(el);
                         # fill = sty.get('fill');
@@ -197,7 +198,8 @@ class FlattenPlots(inkex.EffectExtension):
             
             import TextParser
             fns = [RemoveKerning.remove_kerning,RemoveKerning.Remove_Manual_Kerning,\
-                   RemoveKerning.External_Merges,TextParser.LineList.Parse_Lines,TextParser.LineList.Split_Off_Words,\
+                   RemoveKerning.External_Merges,TextParser.LineList.Parse_Lines,\
+                   TextParser.LineList.Parse_Lines2,TextParser.LineList.Split_Off_Words,\
                    dh.Get_Composed_LineHeight,dh.Get_Composed_Width,dh.ungroup,dh.selected_style_local,\
                    dh.cascaded_style2,dh.shallow_composed_style,dh.generate_cssdict,dh.descendants2,\
                    dh.getElementById2,dh.add_to_iddict,dh.get_id2,dh.compose_all,dh.unlink2,dh.merge_clipmask,\
@@ -291,5 +293,6 @@ if __name__ == '__main__':
     dh.Version_Check('Flattener')
     try:
         s=FlattenPlots().run()
+        dh.write_debug();
     except lxml.etree.XMLSyntaxError:
         inkex.utils.errormsg('Error parsing XML! Extensions can only run on SVG files. If this is a file imported from another format, try saving as an SVG or pasting the contents into a new SVG.');

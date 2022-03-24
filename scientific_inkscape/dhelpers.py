@@ -37,17 +37,20 @@ from lxml import etree
 from Style2 import Style2
 
 
-
-def descendants2(el):
+import copy
+def descendants2(el,return_tails=False):
     # Like Inkex's descendants(), but avoids recursion to avoid recursion depth issues
     cel = el;
     keepgoing = True; childrendone = False;
     descendants = [];
+    precedingtails = [];
     
     # To avoid repeated lookups of each element's children and index, make dicts
     # that store them once they've been looked up
     children_dict = dict();
+    parent_dict   = dict();
     index_dict = dict();
+    pendingtails = [];
     def getchildren_dict(eli):
         if not(eli in children_dict):
             children_dict[eli] = list(eli)               # getchildren deprecated
@@ -56,22 +59,32 @@ def descendants2(el):
         return children_dict[eli]
     def myindex(eli):   # index amongst siblings
         if not(eli in index_dict):
-            index_dict[eli] = getchildren_dict(eli.getparent()).index(eli); # shouldn't need, just in case
+            index_dict[eli] = getchildren_dict(getparent_dict(eli)).index(eli); # shouldn't need, just in case
         return index_dict[eli]
+    def getparent_dict(eli):
+        if not(eli in parent_dict):
+            parent_dict[eli] = eli.getparent()               
+        return parent_dict[eli]
+        
     
     while keepgoing:
         keepgoing = False;
         if not(childrendone):
-            descendants.append(cel); 
+            descendants.append(cel);
+            precedingtails.append(copy.copy(pendingtails))
+            pendingtails = [];
+
             ks = getchildren_dict(cel);
             if len(ks)>0: # try children
                 cel = ks[0];
                 keepgoing = True; childrendone = False; continue;
+            else:
+                pendingtails.append(cel);
         
         if cel==el:
-            keepgoing = False; continue;
+            keepgoing = False; continue;   # we're finished
         else:
-            par  = cel.getparent();
+            par  = getparent_dict(cel);
             sibs = getchildren_dict(par)
             myi = myindex(cel)
             if myi!=len(sibs)-1: # try younger siblings
@@ -79,9 +92,16 @@ def descendants2(el):
                 keepgoing = True; childrendone = False; continue;
             else:
                 cel = par;
+                pendingtails.append(cel); 
                 keepgoing = True; childrendone = True; continue;
     descendants = [v for v in descendants if isinstance(v, (BaseElement, str))]
-    return descendants;
+    
+    if not(return_tails):
+        return descendants;
+    else:
+        # For each descendants return a list of what element we expect our tails to precede
+        precedingtails.append(pendingtails);  # will be one longer than descendants because of the last one
+        return descendants, precedingtails, children_dict, parent_dict
 
 # Sets a style property  
 def Set_Style_Comp(el_or_sty,comp,val):
@@ -918,7 +938,21 @@ def subprocess_repeat(argin):
     else:
         return p
         
+global debugs
+debugs = ''
 def debug(x):
+    # inkex.utils.debug(x);
+    global debugs
+    if debugs!='': debugs += '\n'
+    debugs += str(x)
+def write_debug():
+    global debugs
+    if debugs!='':
+        debugname = 'Debug.txt'
+        f = open(debugname, 'w',encoding="utf-8");
+        f.write(debugs);
+        f.close();
+def idebug(x):
     inkex.utils.debug(x);
 
 def get_parent_svg(el):
