@@ -1388,7 +1388,7 @@ def isMask(el):
         return isinstance(el, (inkex.Mask))
     
 def Version_Check(caller):
-    siv = 'v1.4.12'         # Scientific Inkscape version
+    siv = 'v1.4.13'         # Scientific Inkscape version
     maxsupport = '1.2.0';
     minsupport = '1.1.0';
     
