@@ -1035,8 +1035,8 @@ class tword:
         tr1, br1, tl2, bl2 = self.get_orig_pts(nw)
         lc = self.cs[-1]; # last character
         numsp = (bl2.x-br1.x)/(lc.sw/self.sf);
-        # dh.debug(numsp)
-        # numsp = numsp - (numsp%1) + (numsp % 1 >= 0.75) ;  # round down if under 75%
+#        if 0.6<=numsp<=0.9: dh.debug([self.txt(),nw.txt(),numsp])
+#        numsp = numsp - (numsp%1) + (numsp % 1 >= 0.75) ;  # round down if under 75%
         numsp = max(0,round(numsp));
         for ii in range(numsp):
             self.appendc(' ',lc.sw,0,0)

@@ -690,7 +690,7 @@ def merge_clipmask(node,newclipurl,mask=False):
                     # Since most clips are rectangles this semi-fixes the PDF clip export bug 
                     cout = compose_clips(k,newclippth,oldclippth); 
                 else:
-                    cout = merge_clipmask(k,newclipurl);
+                    cout = merge_clipmask(k,newclipurl,mask);
                 couts.append(cout)
             cout = all(couts)
         else:
