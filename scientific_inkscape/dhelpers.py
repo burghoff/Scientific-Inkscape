@@ -665,35 +665,39 @@ def merge_clipmask(node,newclipurl,mask=False):
                 if isinstance(k,(Use)): k = unlink2(k)
 
         oldclipurl = node.get(cmstr);
+        clipinvalid = True;
         if oldclipurl is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
             oldclipnode = getElementById2(svg,oldclipurl[5:-1]);
-            for k in list(oldclipnode):
-                if isinstance(k,(Use)): k = unlink2(k)
+            if oldclipnode is not None:
+                clipinvalid = False;
+                for k in list(oldclipnode):
+                    if isinstance(k,(Use)): k = unlink2(k)
+                    
+                d = duplicate2(oldclipnode); # very important to use dup2 here
+                if not(hasattr(svg,'newclips')):
+                    svg.newclips = []
+                svg.newclips.append(d)            # for later cleanup
+                svg.defs.append(d);               # move to defs
+                node.set(cmstr,get_id2(d,2));
                 
-            d = duplicate2(oldclipnode); # very important to use dup2 here
-            if not(hasattr(svg,'newclips')):
-                svg.newclips = []
-            svg.newclips.append(d)            # for later cleanup
-            svg.defs.append(d);               # move to defs
-            node.set(cmstr,get_id2(d,2));
-            
-            newclipisrect = False
-            if len(list(newclipnode))==1:
-                newclipisrect,newclippth = isrectangle(list(newclipnode)[0])
-            
-            couts = [];
-            for k in reversed(list(d)): # may be deleting, so reverse
-                oldclipisrect,oldclippth = isrectangle(k)
-                if newclipisrect and oldclipisrect and mask==False:
-                    # For rectangular clips, we can compose them easily
-                    # Since most clips are rectangles this semi-fixes the PDF clip export bug 
-                    cout = compose_clips(k,newclippth,oldclippth); 
-                else:
-                    cout = merge_clipmask(k,newclipurl,mask);
-                couts.append(cout)
-            cout = all(couts)
-        else:
+                newclipisrect = False
+                if len(list(newclipnode))==1:
+                    newclipisrect,newclippth = isrectangle(list(newclipnode)[0])
+                
+                couts = [];
+                for k in reversed(list(d)): # may be deleting, so reverse
+                    oldclipisrect,oldclippth = isrectangle(k)
+                    if newclipisrect and oldclipisrect and mask==False:
+                        # For rectangular clips, we can compose them easily
+                        # Since most clips are rectangles this semi-fixes the PDF clip export bug 
+                        cout = compose_clips(k,newclippth,oldclippth); 
+                    else:
+                        cout = merge_clipmask(k,newclipurl,mask);
+                    couts.append(cout)
+                cout = all(couts)
+        
+        if clipinvalid:
             node.set(cmstr,newclipurl)
             cout = False
                 

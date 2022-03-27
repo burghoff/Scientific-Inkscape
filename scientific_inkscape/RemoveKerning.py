@@ -61,12 +61,13 @@ def Fix_Merge_Positions(lls,os):
 
 def Remove_Trailing_Spaces(lls,os):
     for ll in lls:
-        for ln in ll.lns:
-            mtxt = ln.txt();
-            ii=len(mtxt)-1
-            while ii>=0 and mtxt[ii]==' ':
-                ln.cs[ii].delc()
-                ii-=1
+        if not(ll.isinkscape) or (ll.lns is not None and len(ll.lns)<2): # skip Inkscape-generated text
+            for ln in ll.lns:
+                mtxt = ln.txt();
+                ii=len(mtxt)-1
+                while ii>=0 and mtxt[ii]==' ':
+                    ln.cs[ii].delc()
+                    ii-=1
     return lls, os
 
 def Make_All_Editable(lls,os):
@@ -115,7 +116,7 @@ def Split_Distant_Manual_Kerning(lls,os):
                     w = sws[ii-1]
                     w2= sws[ii]
                     dx = w.sw*NUM_SPACES
-                    xtol = XTOL*w.sw/w.sf;
+                    xtol = XTOLMK*w.sw/w.sf;
                     
                     bl2 = w2.pts_ut[0];
                     br1 = w.pts_ut[3];      
@@ -192,8 +193,8 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
         # ll.Position_Check()
     for w in ws:
         dx = w.sw*(NUM_SPACES+1*XTOL) # a big bounding box that includes the extra space
-        if w.orig_bb is not None:
-            w.bb_big = TextParser.bbox([w.orig_bb.x1-dx,w.orig_bb.y1-dx,w.orig_bb.w+2*dx,w.orig_bb.h+2*dx])
+        if w.parsed_bb is not None:
+            w.bb_big = TextParser.bbox([w.parsed_bb.x1-dx,w.parsed_bb.y1-dx,w.parsed_bb.w+2*dx,w.parsed_bb.h+2*dx])
         else:
             w.bb_big = TextParser.bbox([w.bb.x1-dx,w.bb.y1-dx,w.bb.w+2*dx,w.bb.h+2*dx])
         w.mw = []
@@ -205,8 +206,8 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
     for ii in range(len(ws)):
         box1 = ws[ii].bb_big;
         box2 = ws[ii].bb;
-        if ws[ii].orig_bb is not None:
-            box2 = ws[ii].orig_bb
+        if ws[ii].parsed_bb is not None:
+            box2 = ws[ii].parsed_bb
         xc1[ii] = box1.xc; yc1[ii] = box1.yc; wd1[ii] = box1.w;  ht1[ii] = box1.h
         xc2[ii] = box2.xc; yc2[ii] = box2.yc; wd2[ii] = box2.w;  ht2[ii] = box2.h
     intersects =  np.logical_and((abs(xc1.reshape(-1,1) - xc2) * 2 < (wd1.reshape(-1,1) + wd2)), \
@@ -268,7 +269,7 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
         if DEBUG_MERGE:
             dh.debug('\nMerging "'+w.txt() + '" and "' + w2.txt()+'"')
             if not(xpenmatch):
-                dh.debug('Aborted, x pen too far: '+str([br1.x,bl2.x]))
+                dh.debug('Aborted, x pen too far: '+str([br1.x,bl2.x,dx]))
             elif not(neitherempty):
                 dh.debug('Aborted, one empty')
             else:

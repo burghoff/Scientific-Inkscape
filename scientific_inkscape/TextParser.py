@@ -39,35 +39,7 @@ from Style2 import Style2
 global debug
 debug = False;
 
-#def deepcopy(x,d1,d2,prntisll=False,prntln=None):
-#    y = None
-#    if x is None or isinstance(x,(int,float,str,Character_Table,bool,Style2)):
-#        y = x;
-#    elif isinstance(x,(list)):
-#        y = copy.copy(x);
-#        for ii in range(len(y)):
-#            y[ii] = deepcopy(x[ii],d1,d2,prntln=prntln);
-#    elif isinstance(x,(TextElement,Tspan)):
-#        myi = d1.index(x);
-#        y = d2[myi]
-#    elif isinstance(x,(tline)) and not(prntln is None):
-#        y = prntln;
-#    elif isinstance(x,(LineList,tword,tchar,cprop,cloc,tline)):
-#        y = copy.copy(x);
-#        xvrs = vars(x)
-#        for k in xvrs.keys():
-##            dh.debug(type(y).__name__ + ' '+k)
-#            if prntln is None and isinstance(x,(tline)):
-#                setattr(y,k,deepcopy(xvrs[k],d1,d2,prntln=y))
-#            else:
-#                setattr(y,k,deepcopy(xvrs[k],d1,d2,prntln=prntln))
-#    elif isinstance(x,(dict)):
-#        y = copy.copy(x);
-#        for k in x.keys():
-#            setattr(y,k,deepcopy(x[k],d1,d2,prntln=prntln))
-#    else:
-#        inkex.utils.errormsg('Unknown copy error! '+str(x));
-#    return y
+
 
 # A text element that has been parsed into a list of lines
 class LineList():
@@ -82,6 +54,11 @@ class LineList():
         self.lns = self.Parse_Lines2(el,debug=debug);
         self.Finish_Lines2();
         
+        for ln in self.lns:
+            for w in ln.ws:
+                w.parsed_bb = copy.deepcopy(w.bb);
+                for c in w.cs:
+                    c.parsed_pts_ut, c.parsed_pts_t = c.interp_pts()
                 
         # dh.debug('\n')
         # for ln in self.lns:
@@ -123,12 +100,17 @@ class LineList():
                 prop = copy.copy(c.prop); prop.charw = c.cw;
 #                    prop = self.ctable.get_prop(' ',c.nsty)*c.fs # cannot just use old one for some reason???
                 ret.lns[-1].addc(tchar(c.c,c.fs,c.sf,prop,c.sty,c.nsty,newloc));
-        ret.Finish_Lines();                              # generates the new words
+        ret.Finish_Lines2();                              # generates the new words
         for ii in range(len(self.lns)):
             for jj in range(len(self.lns[ii].ws)):
-                ret.lns[ii].ws[jj].orig_pts_ut = copy.deepcopy(self.lns[ii].ws[jj].orig_pts_ut)
-                ret.lns[ii].ws[jj].orig_pts_t  = copy.deepcopy(self.lns[ii].ws[jj].orig_pts_t )
-                ret.lns[ii].ws[jj].orig_bb     = copy.deepcopy(self.lns[ii].ws[jj].orig_bb    )
+                # ret.lns[ii].ws[jj].orig_pts_ut = copy.deepcopy(self.lns[ii].ws[jj].orig_pts_ut)
+                # ret.lns[ii].ws[jj].orig_pts_t  = copy.deepcopy(self.lns[ii].ws[jj].orig_pts_t )
+                # ret.lns[ii].ws[jj].orig_bb     = copy.deepcopy(self.lns[ii].ws[jj].orig_bb    )
+                ret.lns[ii].ws[jj].parsed_bb   = copy.deepcopy(self.lns[ii].ws[jj].parsed_bb    )
+            for jj in range(len(self.lns[ii].cs)):
+                ret.lns[ii].cs[jj].parsed_pts_ut = copy.deepcopy(self.lns[ii].cs[jj].parsed_pts_ut)
+                ret.lns[ii].cs[jj].parsed_pts_t  = copy.deepcopy(self.lns[ii].cs[jj].parsed_pts_t )
+                    
         ret.isinkscape = self.isinkscape;
         ret.dxs = copy.copy(self.dxs);
         ret.dys = copy.copy(self.dys);
@@ -303,6 +285,7 @@ class LineList():
                             if len(lns)>0 and nspr[edi]!='line':
                                 if lns[-1].anchor is not None:
                                     anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
+                            if anch is None: anch = 'start';
                             lns.append(tline(xv,yv,issprl,nspr[edi],anch,ct,ang,ds[edi],\
                                               xsrc,ysrc,tlvlno,sty,continuex,continuey))
                             if newsprl or len(lns)==1:
@@ -553,6 +536,15 @@ class LineList():
                         ys.append(ap.y);
                         x2s.append(ap2.x);
                         y2s.append(ap2.y);
+                # for ln in self.lns:          
+                #     for w in ln.ws:
+                #         for c in w.cs:
+                #             ap  = c.parsed_pts_t[0];
+                #             ap2 = c.parsed_pts_t[2];
+                #             xs.append(ap.x); #dh.debug(ap.x/self.svg.scale)
+                #             ys.append(ap.y);
+                #             x2s.append(ap2.x);
+                #             y2s.append(ap2.y);
                     
                 for ii in range(len(xs)):
                     r = inkex.Rectangle();
@@ -922,7 +914,7 @@ class tword:
         c.w = self;
         self.unrenderedspace = False;
         self.nextw = None;
-        self.orig_pts_t = None; self.orig_pts_ut = None; self.orig_bb = None; # for merging later
+        # self.orig_pts_t = None; self.orig_pts_ut = None; self.orig_bb = None; # for merging later
     def addc(self,ii):
         c = self.ln.cs[ii];
         self.cs.append(c);
@@ -998,138 +990,183 @@ class tword:
     # Add a new word (possibly from another line) into the current one
     # Equivalent to typing it in
     def appendw(self,nw,type):
-        # Store new word data prior to merging
-        if self.orig_pts_t is None:
-            self.orig_pts_t  = [self.pts_t]
-            self.orig_pts_ut = [self.pts_ut]
-            self.orig_bb     = self.bb
-        if nw.orig_pts_t is None:
-            nw.orig_pts_t  = [nw.pts_t]
-            nw.orig_pts_ut = [nw.pts_ut]
-            nw.orig_bb     = nw.bb
-            
-
-        # If the last char is a nested Tspan, we will need to delete it and re-add it
-        # to prevent the new chars from inheriting its properties
-        if len(self.cs)>1:
-            ii = len(self.cs)-1;
-            isnested = (self.cs[ii].loc.el != self.cs[0].loc.el);
-            deleted = [];
-            while isnested and ii>0:
-                oldc = self.cs[ii];
-                oldc.delc(); deleted.append(oldc);
-                ii -= 1; isnested = (self.cs[ii].loc.el != self.cs[0].loc.el);
-            for delch in reversed(deleted):
-                # dh.debug([delc.c,delc.cw])
-                self.appendc(delch.c,delch.cw,delch.dx,delch.dy);
-                self.cs[-1].pending_style = delch.sty;
-                # dh.debug(self.cs[-1].c)
-        # dh.debug(self.x)
-        
-
-        
-        # Calculate the number of spaces we need to keep the position constant
-        # (still need to adjust for anchors)
-        # bl2 = (-self.transform).apply_to_point(nw.pts_t[0])
-        # br1 = self.pts_ut[3];
-        tr1, br1, tl2, bl2 = self.get_orig_pts(nw)
-        lc = self.cs[-1]; # last character
-        numsp = (bl2.x-br1.x)/(lc.sw/self.sf);
-#        if 0.6<=numsp<=0.9: dh.debug([self.txt(),nw.txt(),numsp])
-#        numsp = numsp - (numsp%1) + (numsp % 1 >= 0.75) ;  # round down if under 75%
-        numsp = max(0,round(numsp));
-        for ii in range(numsp):
-            self.appendc(' ',lc.sw,0,0)
-#        dh.debug([self.txt(),nw.txt()])
-        for c in nw.cs:
-#            dh.debug(c.c)
-            c.delc();
-            
-            ntype = copy.copy(type)
-            otype = dh.Get_Style_Comp(c.sty,'baseline-shift');
-            if otype in ['super','sub'] and type=='normal':
-                ntype = otype
-            self.appendc(c.c,c.cw,c.dx,c.dy)
-#            dh.debug(c.c)
-
-            
-            # We cannot yet apply any styles. Instead, add the character and add a pending style
-            # that will be applied at the end
-            newc = self.cs[-1]; newsty=None;
-            if c.nstyc!=newc.nstyc:
-                newsty = c.sty;
-            
-            
-            if ntype in ['super','sub']:
-                if newsty is None:
-                    newsty = Style2('');
-                else:
-                    newsty = Style2(newsty)
-                sz = round(c.sw/newc.sw*100)
+        if len(nw.cs)>0:
+            # Store new word data prior to merging
+            # if self.orig_pts_t is None:
+            #     self.orig_pts_t  = [self.pts_t]
+            #     self.orig_pts_ut = [self.pts_ut]
+            #     self.orig_bb     = self.bb
+            # if nw.orig_pts_t is None:
+            #     nw.orig_pts_t  = [nw.pts_t]
+            #     nw.orig_pts_ut = [nw.pts_ut]
+            #     nw.orig_bb     = nw.bb
+                # nw_pput = [c.parsed_pts_ut for c in nw.cs]
+                # nw_ppt  = [c.parsed_pts_t for c in nw.cs]
                 
-                # Nativize super/subscripts                
-                newsty['font-size'] = str(sz)+'%';
-                if ntype=='super':
-                    newsty['baseline-shift']='super'
-                else:
-                    newsty['baseline-shift']='sub'
-                
-                # Leave baseline unchanged (works, but do I want it?)
-#                if nw.orig_pts_ut is not None:
-#                    w2x = [p[0].x for p in nw.orig_pts_ut];
-#                    min2 = min([ii for ii in range(len(w2x)) if min(w2x)==w2x[ii]]);
-#                    bl2 = (-self.transform).apply_to_point(nw.orig_pts_t[min2][0]);
-#                else:
-#                    bl2 = (-self.transform).apply_to_point(nw.pts_t[0])
-#                if self.orig_pts_ut is not None:
-#                    w1x = [p[3].x for p in self.orig_pts_ut];
-#                    max1 = max([ii for ii in range(len(w1x)) if max(w1x)==w1x[ii]]);
-#                    br1 = self.orig_pts_ut[max1][3];
-#                else:
-#                    br1 = self.pts_ut[3];
-#                shft = round(-(bl2.y-br1.y)/self.fs*100*self.sf);
-#                newsty['baseline-shift']= str(shft)+'%';
-                
-                newsty = str(newsty)
-            self.cs[-1].pending_style = newsty;
+    
+            # If the last char is a nested Tspan, we will need to delete it and re-add it
+            # to prevent the new chars from inheriting its properties
+            if len(self.cs)>1:
+                ii = len(self.cs)-1;
+                isnested = (self.cs[ii].loc.el != self.cs[0].loc.el);
+                deleted = [];
+                while isnested and ii>0:
+                    oldc = self.cs[ii];
+                    oldc.delc(); deleted.append(oldc);
+                    ii -= 1; isnested = (self.cs[ii].loc.el != self.cs[0].loc.el);
+                for delch in reversed(deleted):
+                    # dh.debug([delc.c,delc.cw])
+                    self.appendc(delch.c,delch.cw,delch.dx,delch.dy);
+                    self.cs[-1].pending_style = delch.sty;
+                    self.cs[-1].parsed_pts_ut = delch.parsed_pts_ut;
+                    self.cs[-1].parsed_pts_t  = delch.parsed_pts_t;
+                    
+                    # dh.debug(self.cs[-1].c)
+            # dh.debug(self.x)
             
-        if dh.cascaded_style2(self.ln.xsrc).get('letter-spacing') is not None:
-            dh.Set_Style_Comp(self.ln.xsrc,'letter-spacing','0');
+            # dh.idebug([self.txt(),nw.txt()])
             
-        # Following the merge, append the new word's data to the orig pts lists
-        self.orig_pts_t  += nw.orig_pts_t
-        self.orig_pts_ut += [[(-self.transform).apply_to_point(p) for p in pts] for pts in nw.orig_pts_t]
-        self.orig_bb = self.orig_bb.union(nw.orig_bb)
+            # Calculate the number of spaces we need to keep the position constant
+            # (still need to adjust for anchors)
+            # bl2 = (-self.transform).apply_to_point(nw.pts_t[0])
+            # br1 = self.pts_ut[3];
+            tr1, br1, tl2, bl2 = self.get_orig_pts(nw)
+            lc = self.cs[-1]; # last character
+            numsp = (bl2.x-br1.x)/(lc.sw/self.sf);
+            mytxt = self.txt();
+            numsp = max(0,round(numsp));
+            if (mytxt is not None and len(mytxt)>0 and mytxt[-1]==' ') \
+                or type in ['super','sub']: # no extra spaces for sub/supers or if there's already one
+                    numsp=0;
+            for ii in range(numsp):
+                self.appendc(' ',lc.sw,0,0)
+                
+            for c in nw.cs:
+                notfirst = c!=nw.cs[0]
+                c.delc();
+                
+                ntype = copy.copy(type)
+                otype = dh.Get_Style_Comp(c.sty,'baseline-shift');
+                if otype in ['super','sub'] and type=='normal':
+                    ntype = otype
+                self.appendc(c.c,c.cw,c.dx*notfirst,c.dy)
+                
+                self.cs[-1].parsed_pts_ut = [(-self.transform).apply_to_point(p) for p in c.parsed_pts_t];
+                self.cs[-1].parsed_pts_t  = c.parsed_pts_t;
+                
+                # We cannot yet apply any styles. Instead, add the character and add a pending style
+                # that will be applied at the end
+                newc = self.cs[-1]; newsty=None;
+                if c.nstyc!=newc.nstyc:
+                    newsty = c.sty;
+                
+                
+                if ntype in ['super','sub']:
+                    if newsty is None:
+                        newsty = Style2('');
+                    else:
+                        newsty = Style2(newsty)
+                    sz = round(c.sw/newc.sw*100)
+                    
+                    # Nativize super/subscripts                
+                    newsty['font-size'] = str(sz)+'%';
+                    if ntype=='super':
+                        newsty['baseline-shift']='super'
+                    else:
+                        newsty['baseline-shift']='sub'
+                    
+                    # Leave baseline unchanged (works, but do I want it?)
+    #                if nw.orig_pts_ut is not None:
+    #                    w2x = [p[0].x for p in nw.orig_pts_ut];
+    #                    min2 = min([ii for ii in range(len(w2x)) if min(w2x)==w2x[ii]]);
+    #                    bl2 = (-self.transform).apply_to_point(nw.orig_pts_t[min2][0]);
+    #                else:
+    #                    bl2 = (-self.transform).apply_to_point(nw.pts_t[0])
+    #                if self.orig_pts_ut is not None:
+    #                    w1x = [p[3].x for p in self.orig_pts_ut];
+    #                    max1 = max([ii for ii in range(len(w1x)) if max(w1x)==w1x[ii]]);
+    #                    br1 = self.orig_pts_ut[max1][3];
+    #                else:
+    #                    br1 = self.pts_ut[3];
+    #                shft = round(-(bl2.y-br1.y)/self.fs*100*self.sf);
+    #                newsty['baseline-shift']= str(shft)+'%';
+                    
+                    newsty = str(newsty)
+                self.cs[-1].pending_style = newsty;
+                
+            if dh.cascaded_style2(self.ln.xsrc).get('letter-spacing') is not None:
+                dh.Set_Style_Comp(self.ln.xsrc,'letter-spacing','0');
+                
+            # Following the merge, append the new word's data to the orig pts lists
+            # self.orig_pts_t  += nw.orig_pts_t
+            # self.orig_pts_ut += [[(-self.transform).apply_to_point(p) for p in pts] for pts in nw.orig_pts_t]
+            # self.orig_bb = self.orig_bb.union(nw.orig_bb)
+            self.parsed_bb = self.parsed_bb.union(nw.parsed_bb)
 
        
     # For merged text, get the pre-merged coordinates in my coordinate system
     def get_orig_pts(self,w2):
-        if w2.orig_pts_ut is not None:
-            w2x = [p[0].x for p in w2.orig_pts_ut];
-            min2 = min([ii for ii in range(len(w2x)) if min(w2x)==w2x[ii]]);
-            bl2 = (-self.transform).apply_to_point(w2.orig_pts_t[min2][0])
-            tl2 = (-self.transform).apply_to_point(w2.orig_pts_t[min2][1]);
-        else:
-            bl2 = (-self.transform).apply_to_point(w2.pts_t[0])
-            tl2 = (-self.transform).apply_to_point(w2.pts_t[1]);
-        if self.orig_pts_ut is not None:
-            w1x = [p[3].x for p in self.orig_pts_ut];
-            max1 = max([ii for ii in range(len(w1x)) if max(w1x)==w1x[ii]]);
-            tr1 = self.orig_pts_ut[max1][2];
-            br1 = self.orig_pts_ut[max1][3];
-        else:
-            tr1 = self.pts_ut[2];
-            br1 = self.pts_ut[3];
+        
+        mv = float('inf'); ci=None
+        for ii in range(len(w2.cs)):
+            if w2.cs[ii].parsed_pts_ut is not None:
+                if w2.cs[ii].parsed_pts_ut[0].x<mv:
+                    mv = w2.cs[ii].parsed_pts_ut[0].x;
+                    ci = ii;
+        
+        # dh.idebug('"'+w2.txt()+'"')
+        # dh.idebug(len(w2.cs))
+        # dh.idebug(w2.cs[0].parsed_pts_ut)
+        bl2 = (-self.transform).apply_to_point(w2.cs[ci].parsed_pts_t[0])
+        tl2 = (-self.transform).apply_to_point(w2.cs[ci].parsed_pts_t[1]);
+        
+        mv = float('-inf'); ci=None
+        for ii in range(len(self.cs)):
+            if self.cs[ii].parsed_pts_ut is not None:
+                if self.cs[ii].parsed_pts_ut[3].x>mv:
+                    mv = self.cs[ii].parsed_pts_ut[3].x;
+                    ci = ii;
+        
+        tr1 = self.cs[ci].parsed_pts_ut[2];
+        br1 = self.cs[ci].parsed_pts_ut[3];
         return tr1, br1, tl2, bl2
+    
+        # if w2.orig_pts_ut is not None:
+        #     w2x = [p[0].x for p in w2.orig_pts_ut];
+        #     min2 = min([ii for ii in range(len(w2x)) if min(w2x)==w2x[ii]]);
+        #     bl2 = (-self.transform).apply_to_point(w2.orig_pts_t[min2][0])
+        #     tl2 = (-self.transform).apply_to_point(w2.orig_pts_t[min2][1]);
+        # else:
+        #     bl2 = (-self.transform).apply_to_point(w2.pts_t[0])
+        #     tl2 = (-self.transform).apply_to_point(w2.pts_t[1]);
+        # if self.orig_pts_ut is not None:
+        #     w1x = [p[3].x for p in self.orig_pts_ut];
+        #     max1 = max([ii for ii in range(len(w1x)) if max(w1x)==w1x[ii]]);
+        #     tr1 = self.orig_pts_ut[max1][2];
+        #     br1 = self.orig_pts_ut[max1][3];
+        # else:
+        #     tr1 = self.pts_ut[2];
+        #     br1 = self.pts_ut[3];
+            
+        # # if abs((tr1-tr1b).x)>1e-6:
+        # #     dh.debug([self.txt(),w2.txt()])
+        # #     dh.debug([tr1-tr1b, br1-br1b, tl2-tl2b, bl2-bl2b])
+        # #     dh.debug(tr1)
+        # #     for c in self.cs:
+        # #         dh.debug(c.parsed_pts_ut[2])
+        # return tr1, br1, tl2, bl2
     
     # Adjusts the position of merged text to account for small changes in word position that occur
     # This depends on alignment, so it is generally done after the final justification is set
     def fix_merged_position(self):
-        if self.orig_pts_ut is not None:
-            omaxx = max([p[3].x for p in self.orig_pts_ut])
-            ominx = min([p[0].x for p in self.orig_pts_ut])
-            nmaxx = self.pts_ut[3].x;
-            nminx = self.pts_ut[0].x;
+        
+        gcs = [c for c in self.cs if c.c!=' ']
+        if len(gcs)>0:
+            omaxx = max([c.parsed_pts_ut[3].x for c in gcs])
+            ominx = min([c.parsed_pts_ut[0].x for c in gcs])
+            newptsut = [c.interp_pts()[0] for c in gcs]
+            nmaxx = max([p[3].x for p in newptsut])
+            nminx = min([p[0].x for p in newptsut])
             
             # dh.debug([ominx,omaxx,nminx,nmaxx])
             anch_frac = {'start': 0, 'middle': 0.5, 'end': 1}
@@ -1141,7 +1178,24 @@ class tword:
                 self.ln.change_pos(newx)
                 self.x -= deltaanch
             self.ln.ll.Update_Delta();
-            self.calcprops() 
+            self.calcprops()
+        # if self.orig_pts_ut is not None:
+        #     omaxx = max([p[3].x for p in self.orig_pts_ut])
+        #     ominx = min([p[0].x for p in self.orig_pts_ut])
+        #     nmaxx = self.pts_ut[3].x;
+        #     nminx = self.pts_ut[0].x;
+            
+        #     # dh.debug([ominx,omaxx,nminx,nmaxx])
+        #     anch_frac = {'start': 0, 'middle': 0.5, 'end': 1}
+        #     xf = anch_frac[self.ln.anchor];
+        #     deltaanch = (nminx*(1-xf)+nmaxx*xf) - (ominx*(1-xf)+omaxx*xf);  # how much the final anchor moved
+        #     # dh.debug(deltaanch)
+        #     if deltaanch!=0:
+        #         newx = self.ln.x; newx[self.ln.cs.index(self.cs[0])] -= deltaanch
+        #         self.ln.change_pos(newx)
+        #         self.x -= deltaanch
+        #     self.ln.ll.Update_Delta();
+        #     self.calcprops() 
     
     # Calculate the properties of a word that depend on its characters       
     def calcprops(self): # calculate properties inherited from characters
@@ -1157,6 +1211,9 @@ class tword:
                 if dk is None: dk=0;                  # for chars of different style
                 wadj[ii] = dk
         if len(w.cs)>0:
+            dx0 = [0]+dxl[1:];
+            tmp = [w.cs[ii].cw + dx0[ii]*w.sf + wadj[ii] for ii in range(len(w.cs))];
+            w.cumw = [sum(tmp[:ii+1]) for ii in range(len(tmp))];    # cumulative width up to and including the iith char
             w.ww = sum([c.cw  for c in w.cs])+sum(dxl[1:])*w.sf + sum(wadj);
             w.fs = max([c.fs          for c in w.cs])
             w.sw = max([c.sw for c in w.cs])
@@ -1186,13 +1243,17 @@ class tword:
             
         w.pts_ut = [Vector2d(w.x + w.offx/w.sf,      ymax), Vector2d(w.x+ w.offx/w.sf,       ymin),\
                     Vector2d(w.x+(w.ww+w.offx)/w.sf, ymin), Vector2d(w.x+(w.ww+w.offx)/w.sf, ymax)];
-        w.pts_t=[];
-        for p in w.pts_ut:
-            w.pts_t.append(w.transform.apply_to_point(p))
+        # w.pts_t=[];
+        # for p in w.pts_ut:
+        #     w.pts_t.append(w.transform.apply_to_point(p))
+        w.pts_t = [w.transform.apply_to_point(p) for p in w.pts_ut]
         w.bb = bbox([min([p.x for p in w.pts_t]),\
                 min([p.y for p in w.pts_t]),\
                 max([p.x for p in w.pts_t])-min([p.x for p in w.pts_t]),\
                 max([p.y for p in w.pts_t])-min([p.y for p in w.pts_t])]);
+            
+        c_pts_ut = [Vector2d(w.x + w.offx/w.sf,      ymax), Vector2d(w.x+ w.offx/w.sf,       ymin),\
+                    Vector2d(w.x+(w.ww+w.offx)/w.sf, ymin), Vector2d(w.x+(w.ww+w.offx)/w.sf, ymax)]
             
         
         
@@ -1220,6 +1281,7 @@ class tchar:
         self.deltanum = None;      # get later
         self.dkerns = prop.dkerns;
         self.pending_style = None; # assign later (maybe)
+        self.parsed_pts_t = None; self.parsed_pts_ut = None; # for merging later
         
     def delc(self): # deletes me from document (and from my word/line)
         # Deleting a character causes the word to move if it's center- or right-justified. Adjust position to fix
@@ -1326,6 +1388,25 @@ class tchar:
     def applypending(self):
         self.add_style(self.pending_style);
         
+    def interp_pts(self):
+        """  Interpolate the pts of a word to get a specific character's pts"""
+        myi = self.w.cs.index(self)
+        
+        fracl = 0;
+        if myi>0:
+            fracl = self.w.cumw[myi-1]/self.w.ww
+        fracr = self.w.cumw[myi]/self.w.ww;
+        ret_pts_ut = [(self.w.pts_ut[3]-self.w.pts_ut[0])*fracl+self.w.pts_ut[0],\
+                      (self.w.pts_ut[2]-self.w.pts_ut[1])*fracl+self.w.pts_ut[1],\
+                      (self.w.pts_ut[2]-self.w.pts_ut[1])*fracr+self.w.pts_ut[1],\
+                      (self.w.pts_ut[3]-self.w.pts_ut[0])*fracr+self.w.pts_ut[0]]
+            
+        ret_pts_t  = [(self.w.pts_t[3]-self.w.pts_t[0])*fracl+self.w.pts_t[0],\
+                      (self.w.pts_t[2]-self.w.pts_t[1])*fracl+self.w.pts_t[1],\
+                      (self.w.pts_t[2]-self.w.pts_t[1])*fracr+self.w.pts_t[1],\
+                      (self.w.pts_t[3]-self.w.pts_t[0])*fracr+self.w.pts_t[0]]
+        return ret_pts_ut, ret_pts_t
+    
     # def changex(self,newx):
     #     self.ln.x[self.ln.cs.index(self)] = newx
     #     if self.ln.x==[]: self.ln.xsrc.set('x',None)
