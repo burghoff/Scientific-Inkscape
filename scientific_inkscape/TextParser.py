@@ -244,6 +244,7 @@ class LineList():
                         sty = dh.selected_style_local(sel);
                         ct = sel.composed_transform();
                         fs,sf,ct,ang = dh.Get_Composed_Width(sel,'font-size',4,styin=sty,ctin=ct); #dh.debug(el.get_id()); dh.debug(el.composed_transform())
+                        # dh.idebug(fs)
                         if newsprl:
                             lh = dh.Get_Composed_LineHeight(sel,styin=sty,ctin=ct);
                         nsty=Character_Table.normalize_style(sty);
@@ -1289,13 +1290,21 @@ class tchar:
         if self.w.unrenderedspace and self.w.cs[-1]==self:
             if len(self.w.cs)>1 and self.w.cs[-2].c!=' ':
                 cwo = 0; # deletion will not affect position
-            
-        if self.ln.anchor=='middle':
-            deltax = cwo/self.sf / 2;
-        elif self.ln.anchor=='end':
-            deltax = cwo/self.sf;
-        else:
-            deltax = 0;
+                
+        if self==self.w.cs[0]:              # from beginning of line
+            if self.ln.anchor=='middle':
+                deltax = -cwo/self.sf / 2;
+            elif self.ln.anchor=='end':
+                deltax = 0;
+            else:
+                deltax = -cwo/self.sf;
+        else:                               # assume end of line
+            if self.ln.anchor=='middle':
+                deltax = cwo/self.sf / 2;
+            elif self.ln.anchor=='end':
+                deltax = cwo/self.sf;
+            else:
+                deltax = 0;
         if deltax!=0:
             newx = self.ln.x; 
             nnii = [ii for ii in range(len(self.ln.x)) if self.ln.x[ii] is not None]; # non-None

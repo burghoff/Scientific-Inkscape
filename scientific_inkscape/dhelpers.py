@@ -7,6 +7,7 @@
 #                    Martin Owens <doctormo@gmail.com>
 #                    Sergei Izmailov <sergei.a.izmailov@gmail.com>
 #                    Thomas Holder <thomas.holder@schrodinger.com>
+#                    Jonathan Neuhauser <jonathan.neuhauser@outlook.com>
 # Functions modified from Deep_Ungroup made by Nikita Kitaev
 #
 # This program is free software; you can redistribute it and/or modify
@@ -177,6 +178,7 @@ def cascaded_style2(el):
         # If elements change, will need to rerun by setting cssdict to None
         generate_cssdict(get_parent_svg(el));
     csssty = cssdict.get(el.get_id());
+    # idebug(csssty)
     # locsty = el.style;
     locsty = Style2(el.get('style'));
     
@@ -207,10 +209,11 @@ def generate_cssdict(svg):
     for sheet in svg.root.stylesheets:
         for style in sheet:
             try:
-                # debug(style)
-                els = svg.xpath(style.to_xpath())
+                # els = svg.xpath(style.to_xpath())
+                els = svg.xpath(vto_xpath(style))
                 for elem in els:
                     elid = elem.get('id',None);
+                    # idebug(elid)
                     if elid is not None and style!=inkex.Style():  # still using Inkex's Style here since from stylesheets
                         if cssdict.get(elid) is None:
                             cssdict[elid] = Style2() + style;
@@ -219,7 +222,7 @@ def generate_cssdict(svg):
             except (lxml.etree.XPathEvalError,TypeError):
                 pass
             
-
+    
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
 def Get_Composed_Width(el,comp,nargout=1,styin=None,ctin=None):
@@ -1390,6 +1393,34 @@ def isMask(el):
         return (el.tag[-4:]=='mask')
     else:               
         return isinstance(el, (inkex.Mask))
+    
+def vto_xpath(sty):
+    if ivp[0]<=1 and ivp[1]<2:      # pre-1.2: use v1.1 version of to_xpath from inkex.Style
+        import re
+        step_to_xpath = [
+            (re.compile(r'\[(\w+)\^=([^\]]+)\]'), r'[starts-with(@\1,\2)]'), # Starts With
+            (re.compile(r'\[(\w+)\$=([^\]]+)\]'), r'[ends-with(@\1,\2)]'), # Ends With
+            (re.compile(r'\[(\w+)\*=([^\]]+)\]'), r'[contains(@\1,\2)]'), # Contains
+            (re.compile(r'\[([^@\(\)\]]+)\]'), r'[@\1]'), # Attribute (start)
+            (re.compile(r'#(\w+)'), r"[@id='\1']"), # Id Match
+            (re.compile(r'\s*>\s*([^\s>~\+]+)'), r'/\1'), # Direct child match
+            #(re.compile(r'\s*~\s*([^\s>~\+]+)'), r'/following-sibling::\1'),
+            #(re.compile(r'\s*\+\s*([^\s>~\+]+)'), r'/following-sibling::\1[1]'),
+            (re.compile(r'\s*([^\s>~\+]+)'), r'//\1'), # Decendant match
+            (re.compile(r'\.([-\w]+)'), r"[contains(concat(' ', normalize-space(@class), ' '), ' \1 ')]"),
+            (re.compile(r'//\['), r'//*['), # Attribute only match
+            (re.compile(r'//(\w+)'), r'//svg:\1'), # SVG namespace addition
+        ]
+        def style_to_xpath(styin):
+            return '|'.join([rule_to_xpath(rule) for rule in styin.rules])
+        def rule_to_xpath(rulein):
+            ret = rulein.rule
+            for matcher, replacer in step_to_xpath:
+                ret = matcher.sub(replacer, ret)
+            return ret
+        return style_to_xpath(sty)
+    else:
+        return sty.to_xpath();
     
 def Version_Check(caller):
     siv = 'v1.4.13'         # Scientific Inkscape version

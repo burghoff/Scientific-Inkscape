@@ -3,7 +3,7 @@
 
 cff-version: 1.2.0
 title: Scientific Inkscape
-message: Please cite this software using these metadata.
+message: If you would like to cite this software, please use this metadata.
 type: software
 authors:
   - given-names: David
