@@ -224,7 +224,7 @@ class ScalePlots(inkex.EffectExtension):
             if len(vels)==0 or len(hels)==0 or wholesel:    
                 noplotarea = True;
                 lvl = None; lhl = None;
-                if len(vels)==0 or len(hels)==0:
+                if (len(vels)==0 or len(hels)==0) and not(wholesel):
                     # Display warning message   
                     def appendInt(num):
                         if num > 9:
@@ -281,8 +281,16 @@ class ScalePlots(inkex.EffectExtension):
             if self.options.tab=='correction':
                 # Invert the existing transform so we can run the rest of the code regularly
                 extr = trs[i0]; # existing transform
-                scalex = extr.a
-                scaley = extr.d
+                
+                # scalex = extr.a
+                # scaley = extr.d
+                import math
+                sx = math.sqrt(extr.a**2 + extr.b**2)
+                sy = (-extr.b*extr.c + extr.a*extr.d)/math.sqrt(extr.a**2 + extr.b**2)
+                if sx<0: sx=-sx; sy=-sy;
+                scalex = sx; scaley=sy; # allow for rotations
+                
+                
                 if not(figuremode):
                     refx = (minxp+maxxp)/2; refy = (minyp+maxyp)/2;
                 else:

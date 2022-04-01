@@ -99,7 +99,7 @@ class AutoExporter(inkex.EffectExtension):
             s=[self.options.watchdir,self.options.writedir,bfn,formats,sys.path,dpi,\
                imagedpi,reduce_images,tojpg,text_to_paths,thinline_dehancement];
             pickle.dump(s,open(os.path.join(dh.get_script_path(),'ae_settings.p'),'wb'));
-            # dh.debug([pybin,aepy])
+            # dh.idebug(sys.path)
                     
             
             def escp(x):

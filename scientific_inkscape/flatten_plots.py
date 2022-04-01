@@ -51,6 +51,7 @@ class FlattenPlots(inkex.EffectExtension):
         pars.add_argument("--setreplacement", type=inkex.Boolean, default=False, help="Replace missing fonts")
         pars.add_argument("--replacement", type=str, default='Arial', help="Missing font replacement");
         pars.add_argument("--justification", type=int, default=1, help="Text justification");
+        pars.add_argument("--testmode", type=inkex.Boolean, default=False, help="Test mode");
 
     def runflatten(self):
         poprest = self.options.deepungroup
@@ -63,8 +64,26 @@ class FlattenPlots(inkex.EffectExtension):
         replacement = self.options.replacement
         
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
-        seld = [v for el in sel for v in dh.descendants2(el)];
         
+        # For testing, duplicate selection and flatten its elements
+        # self.svg.selection = [self.svg.getElementById('layer1')]
+        # self.options.testmode = True
+        if self.options.testmode: # 
+            # global cssdict
+            # cssdict = None
+            sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
+            for el in sel:
+                d=dh.duplicate2(el);
+                el.getparent().insert(list(el.getparent()).index(el),d)
+                if d.get('inkscape:label') is not None:
+                    el.set('inkscape:label',el.get('inkscape:label')+' flat')
+                    d.set('inkscape:label',d.get('inkscape:label')+' original')
+            sel = [list(el) for el in sel]
+            import itertools
+            sel = list(itertools.chain.from_iterable(sel))
+            
+        
+        seld = [v for el in sel for v in dh.descendants2(el)];
         
         # Move selected defs/clips/mask into global defs
         if poprest:
@@ -204,7 +223,7 @@ class FlattenPlots(inkex.EffectExtension):
                    dh.cascaded_style2,dh.shallow_composed_style,dh.generate_cssdict,dh.descendants2,\
                    dh.getElementById2,dh.add_to_iddict,dh.get_id2,dh.compose_all,dh.unlink2,dh.merge_clipmask,\
                    inkex.elements._base.ShapeElement.composed_transform,dh.fix_css_clipmask,\
-                   TextParser.Character_Table.measure_character_widths2,dh.get_points]
+                   TextParser.Character_Table.measure_character_widths2,dh.get_points,dh.vto_xpath]
             for fn in fns:
                 lp.add_function(fn)
             lpw = lp(self.runflatten)

@@ -25,7 +25,7 @@
 # Characters are also grouped into twords, which represent groups of characters with the same position.
 
 
-KERN_TABLE = False;   # if enabled, generates a kern table for each font (slower, but more accurate)
+KERN_TABLE = True;   # if enabled, generates a kern table for each font (slower, but more accurate)
 
 import os,sys
 sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
@@ -73,6 +73,9 @@ class LineList():
         self.isinkscape = all([ln.sprl for ln in tlvllns]) and len(tlvllns)>0 and\
                           all([ln.style.get('-inkscape-font-specification') is not None \
                                for ln in self.lns]); # probably made in Inkscape
+        
+        sty = dh.selected_style_local(el);
+        self.issvg2 = (sty.get('inline-size') is not None or sty.get('shape-inside') is not None); # svg2 flows
         self.dxs = [c.dx for ln in self.lns for c in ln.cs]; 
         self.dys = [c.dy for ln in self.lns for c in ln.cs]; self.flatdelta = False;
 
@@ -221,84 +224,90 @@ class LineList():
         
         
         # Finally, walk the text tree generating lines
-        lns=[]; sprl_inherits = None; #lastsprlel = None
-        
-        for di in range(len(ds)+1):
-            tstrt = (di==0)
-            tstop = 2-(di==len(ds))
-            for tt in range(tstrt,tstop):
-                if tt==0:
-                    txts = ptail[di]
-                    tels = pts[di]
-                else:
-                    txts = [text[di]]
-                    tels = [ds[di]]
+        lns=[]; sprl_inherits = None;
+        for di,tt in ttiterator(Nd):
+            if tt==0:
+                txts = ptail[di]
+                tels = pts[di]
+            else:
+                txts = [text[di]]
+                tels = [ds[di]]
+                
+            for ii in range(len(tels)):
+                tel = tels[ii]; txt = txts[ii]
+                
+                newsprl = tt==1 and types[di]=='tlvlsprl'
+                if (txt is not None and len(txt)>0) or newsprl:
+                    sel = tel;
+                    if tt==0: sel = pd[tel]; # tails get their sty from the parent of the element the tail belongs to
+                    sty = dh.selected_style_local(sel);
+                    ct = sel.composed_transform();
+                    fs,sf,ct,ang = dh.Get_Composed_Width(sel,'font-size',4,styin=sty,ctin=ct); #dh.debug(el.get_id()); dh.debug(el.composed_transform())
+                    # dh.idebug(fs)
+                    if newsprl:
+                        lh = dh.Get_Composed_LineHeight(sel,styin=sty,ctin=ct);
+                    nsty=Character_Table.normalize_style(sty);
                     
-                for ii in range(len(tels)):
-                    tel = tels[ii]; txt = txts[ii]
-                    
-                    newsprl = tt==1 and types[di]=='tlvlsprl'
-                    if (txt is not None and len(txt)>0) or newsprl:
-                        sel = tel;
-                        if tt==0: sel = pd[tel]; # tails get their sty from the parent of the element the tail belongs to
-                        sty = dh.selected_style_local(sel);
-                        ct = sel.composed_transform();
-                        fs,sf,ct,ang = dh.Get_Composed_Width(sel,'font-size',4,styin=sty,ctin=ct); #dh.debug(el.get_id()); dh.debug(el.composed_transform())
-                        # dh.idebug(fs)
+                    # Make a new line if we're sprl or if we have a new x or y
+                    if len(lns)==0 or (tt==1 and (newsprl or\
+                                       (types[di]=='normal' and \
+                                       (ixs[di][0] is not None or iys[di][0] is not None)))):
+                        edi = di;
+                        if tt==0: edi = ds.index(sel)
+                        xv = ixs[edi];      xsrc = xsrcs[edi]; 
+                        yv = iys[edi];      ysrc = ysrcs[edi];
                         if newsprl:
-                            lh = dh.Get_Composed_LineHeight(sel,styin=sty,ctin=ct);
-                        nsty=Character_Table.normalize_style(sty);
-                        
-                        # Make a new line if we're sprl or if we have a new x or y
-                        if len(lns)==0 or (tt==1 and (newsprl or\
-                                           (types[di]=='normal' and \
-                                           (ixs[di][0] is not None or iys[di][0] is not None)))):
-                            edi = di;
-                            if tt==0: edi = ds.index(sel)
-                            xv = ixs[edi];      xsrc = xsrcs[edi]; 
-                            yv = iys[edi];      ysrc = ysrcs[edi];
-                            if newsprl:
-                                if len(lns)==0:
-                                    xv = [ixs[0][0]];                xsrc = xsrcs[0];
-                                    yv = [iys[0][0]];                ysrc = ysrcs[0];
-                                else:
-                                    xv = [sprl_inherits.x[0]];        xsrc = sprl_inherits.xsrc;
-                                    yv = [sprl_inherits.y[0]+lh/sf];  ysrc = sprl_inherits.ysrc;
-                                issprl  = True;  
-                                continuex = False; continuey = False;
+                            if len(lns)==0:
+                                xv = [ixs[0][0]];                xsrc = xsrcs[0];
+                                yv = [iys[0][0]];                ysrc = ysrcs[0];
                             else:
-                                continuex = False; issprl = False;
-                                if xv[0] is None:      
-                                    if len(lns)>0: xv = copy.copy(lns[-1].x); xsrc = lns[-1].xsrc; 
-                                    else:          xv = copy.copy(ixs[0]);        xsrc = xsrcs[0];
-                                    continuex = True; #issprl = True;
-                                continuey = False; 
-                                if yv[0] is None:        
-                                    if len(lns)>0: yv = copy.copy(lns[-1].y); ysrc = lns[-1].ysrc; 
-                                    else:          yv = copy.copy(iys[0]);        ysrc = ysrcs[0];
-                                    continuey = True; 
+                                xv = [sprl_inherits.x[0]];        xsrc = sprl_inherits.xsrc;
+                                yv = [sprl_inherits.y[0]+lh/sf];  ysrc = sprl_inherits.ysrc;
+                            issprl  = True;  
+                            continuex = False; continuey = False;
+                        else:
+                            continuex = False; issprl = False;
+                            if xv[0] is None:      
+                                if len(lns)>0: xv = copy.copy(lns[-1].x); xsrc = lns[-1].xsrc; 
+                                else:          xv = copy.copy(ixs[0]);        xsrc = xsrcs[0];
+                                continuex = True; #issprl = True;
+                            continuey = False; 
+                            if yv[0] is None:        
+                                if len(lns)>0: yv = copy.copy(lns[-1].y); ysrc = lns[-1].ysrc; 
+                                else:          yv = copy.copy(iys[0]);        ysrc = ysrcs[0];
+                                continuey = True; 
+                        
+                        tlvlno = None
+                        if ds[di] in ks:  tlvlno = ks.index(ds[di])
+                        elif edi==0:      tlvlno = 0;
                             
-                            tlvlno = None
-                            if ds[di] in ks:  tlvlno = ks.index(ds[di])
-                            elif edi==0:      tlvlno = 0;
-                                
-                            anch = sty.get('text-anchor') 
-                            if len(lns)>0 and nspr[edi]!='line':
-                                if lns[-1].anchor is not None:
-                                    anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
-                            if anch is None: anch = 'start';
-                            lns.append(tline(xv,yv,issprl,nspr[edi],anch,ct,ang,ds[edi],\
-                                              xsrc,ysrc,tlvlno,sty,continuex,continuey))
-                            if newsprl or len(lns)==1:
-                                sprl_inherits = lns[-1];
-                                
-                        if txt is not None:
-                            for jj in range(len(txt)):
-                                c = txt[jj]
-                                prop = self.ctable.get_prop(c,nsty)*fs;
-                                ttv = 'text';
-                                if tt==0: ttv='tail'
-                                lns[-1].addc(tchar(c,fs,sf,prop,sty,nsty,cloc(tel,ttv,jj)));
+                        anch = sty.get('text-anchor') 
+                        if len(lns)>0 and nspr[edi]!='line':
+                            if lns[-1].anchor is not None:
+                                anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
+                        if anch is None: anch = 'start';
+                        txtdir = sty.get('direction')
+                        if txtdir is not None:
+                            if txtdir=='rtl':
+                                if anch=='start': anch='end'
+                                elif anch=='end': anch='start'
+                        lns.append(tline(xv,yv,issprl,nspr[edi],anch,ct,ang,ds[edi],\
+                                          xsrc,ysrc,tlvlno,sty,continuex,continuey));
+                        
+                        if newsprl or len(lns)==1:
+                            sprl_inherits = lns[-1];
+                            
+                    if txt is not None:
+                        lsp = sty.get('letter-spacing')
+                        if lsp is not None: lsp = dh.implicitpx(lsp);
+                        for jj in range(len(txt)):
+                            c = txt[jj]
+                            prop = self.ctable.get_prop(c,nsty)*fs;
+                            ttv = 'text';
+                            if tt==0: ttv='tail'
+                            lns[-1].addc(tchar(c,fs,sf,prop,sty,nsty,cloc(tel,ttv,jj)));
+                            if lsp is not None:
+                                lns[-1].cs[-1].lsp = lsp;
             
         return lns
         
@@ -484,21 +493,14 @@ class LineList():
             self.Get_Delta(self.lns,self.textel,'dy');
             for ii in range(len(self.lns)):
                 ln = self.lns[ii];
-                
-                if ln.continuex and ii>0 and len(self.lns[ii-1].ws)>0:
-                    self.lns[ii-1].ws[-1].calcprops();
-                    ln.x = [self.lns[ii-1].ws[-1].pts_ut[3].x]
-                if ln.continuey and ii>0 and len(self.lns[ii-1].ws)>0:
-                    self.lns[ii-1].ws[-1].calcprops();
-                    ln.y = [self.lns[ii-1].ws[-1].pts_ut[3].y]
-
+                ln.ll = self;
                 ln.parse_words()
             
             for ln in reversed(self.lns): 
                 if len(ln.cs)==0:
                     self.lns.remove(ln); # prune empty lines
-            for ln in self.lns:
-                ln.ll = self;
+            # for ln in self.lns:
+            #     ln.ll = self;
             
             # Assign nextw for single-word lines sharing a y (Illustrator SVGs usually have one Tspan per character)
             ys = [ln.y[0] for ln in self.lns if ln.y is not None and len(ln.y)>0]
@@ -531,8 +533,8 @@ class LineList():
                 xs = []; ys = []; x2s = []; y2s = [];
                 for ln in self.lns:          
                     for w in ln.ws:
-                        ap  = w.pts_t[0];
-                        ap2 = w.pts_t[2];  
+                        ap  = (-w.transform).apply_to_point(w.pts_t[0]);
+                        ap2 = (-w.transform).apply_to_point(w.pts_t[2]);  
                         xs.append(ap.x); #dh.debug(ap.x/self.svg.scale)
                         ys.append(ap.y);
                         x2s.append(ap2.x);
@@ -547,15 +549,16 @@ class LineList():
                 #             x2s.append(ap2.x);
                 #             y2s.append(ap2.y);
                     
-                for ii in range(len(xs)):
-                    r = inkex.Rectangle();
-                    r.set('x',min(xs[ii],x2s[ii]))
-                    r.set('y',min(ys[ii],y2s[ii]))
-                    r.set('height',abs(ys[ii]-y2s[ii]))
-                    r.set('width', abs(xs[ii]-x2s[ii]))
-                    # r.set('style','fill-opacity:0.5')
-                    r.set('style','fill:#007575;fill-opacity:0.4675'); # mimic selection boxes
-                    svg.append(r)
+                # for ii in range(len(xs)):
+                        r = inkex.Rectangle();
+                        r.set('x',min(ap.x,ap2.x))
+                        r.set('y',min(ap.y,ap2.y))
+                        r.set('height',abs(ap.y-ap2.y))
+                        r.set('width', abs(ap.x-ap2.x))
+                        # r.set('style','fill-opacity:0.5')
+                        r.set('transform',str(w.transform))
+                        r.set('style','fill:#007575;fill-opacity:0.4675'); # mimic selection boxes
+                        svg.append(r)
     
     
     # Traverse the element tree to find dx/dy values and apply them to the chars
@@ -576,7 +579,7 @@ class LineList():
                     thec = [c for c in allcs if c.loc.el==el and c.loc.tt=='text' and c.loc.ind==ii];
                     if cnt < len(dxy):
                         # if dxy[cnt]==30: dh.debug(dxysrc.get_id())
-                        if xy=='dx': thec[0].dx = dxy[cnt]; 
+                        if xy=='dx': thec[0].dx = dxy[cnt];
                         if xy=='dy': thec[0].dy = dxy[cnt]; 
                         cnt+=1;
             for k in el.getchildren():
@@ -595,7 +598,11 @@ class LineList():
                             cnt+=1;    
         if toplevel:
             for k in el.getchildren():
-                self.Get_Delta(lns,k,xy);   
+                self.Get_Delta(lns,k,xy);
+        # if not(recursive) and xy=='dx':
+        #     for ln in lns:
+        #         for c in ln.cs:
+        #             c.dx += c.lsp
         return cnt
     
     # Traverse the tree to find where deltas need to be located relative to the top-level text
@@ -709,6 +716,17 @@ class LineList():
             w.delw();
         debug = False;
         
+        # If line was continuing, fuse the coordinates
+        if nll.lns[il].continuex:
+            nll.lns[il].continuex=False
+            nll.lns[il].xsrc = nll.lns[il].el;
+            nll.lns[il].change_pos(newx=nll.lns[il].x);
+        if nll.lns[il].continuey:
+            nll.lns[il].continuey=False
+            nll.lns[il].ysrc = nll.lns[il].el;
+            nll.lns[il].change_pos(newx=nll.lns[il].x);
+        
+        # Delete the other lines/words in the copy
         for il2 in reversed(range(len(nll.lns))):
             if il2!=il:
                 nll.lns[il2].dell();
@@ -758,13 +776,53 @@ class tline:
         self.tlvlno = tlvlno;        # which number Tspan I am if I'm top-level (otherwise None)
         self.style = sty;
         self.el = el;
-        # self.dx = dx;
-        # self.dy = dy;
-        
         self.continuex = continuex;  # when enabled, x of a line is the endpoint of the previous line
         self.continuey = continuey;  # when enabled, y of a line is the endpoint of the previous line
         
-        # self.ll = None;   # line list we belong to (add later)
+    # x property
+    def get_x(self):
+        if self.continuex:  # For continuing lines, need to calculate anchor position
+            ii = self.ll.lns.index(self);
+            if ii>0 and len(self.ll.lns[ii-1].ws)>0:
+                self.ll.lns[ii-1].ws[-1].calcprops();
+                if self.anchor=='middle':
+                    xanch = 1.5*self.ll.lns[ii-1].ws[-1].pts_ut[3].x-0.5*self.ll.lns[ii-1].ws[-1].pts_ut[0].x;
+                elif self.anchor=='end':
+                    xanch =   2*self.ll.lns[ii-1].ws[-1].pts_ut[3].x-  1*self.ll.lns[ii-1].ws[-1].pts_ut[0].x;
+                else: # start
+                    xanch =   1*self.ll.lns[ii-1].ws[-1].pts_ut[3].x;
+                return [xanch]
+            else:
+                return [0]
+        else:
+            return self._x
+    def set_x(self,xi):
+        self._x = xi;
+    x = property(get_x,set_x)
+    
+    # y property
+    def get_y(self):
+        if self.continuey:  # For continuing lines, need to calculate anchor position
+            ii = self.ll.lns.index(self);
+            if ii>0 and len(self.ll.lns[ii-1].ws)>0:
+                self.ll.lns[ii-1].ws[-1].calcprops();
+                if self.anchor=='middle':
+                    yanch = 1.5*self.ll.lns[ii-1].ws[-1].pts_ut[3].y-0.5*self.ll.lns[ii-1].ws[-1].pts_ut[0].y;
+                elif self.anchor=='end':
+                    yanch =   2*self.ll.lns[ii-1].ws[-1].pts_ut[3].y-  1*self.ll.lns[ii-1].ws[-1].pts_ut[0].y;
+                else: # start
+                    yanch =   1*self.ll.lns[ii-1].ws[-1].pts_ut[3].y;
+                return [yanch]
+            else:
+                return [0]
+        else:
+            return self._y
+    def set_y(self,yi):
+        self._y = yi;
+    y = property(get_y,set_y)
+    
+    
+    
     def addc(self,c):
         self.cs.append(c)
         c.ln = self;
@@ -827,7 +885,7 @@ class tline:
                 if w.unrenderedspace and self.cs[-1] in w.cs:
                     maxx -= w.cs[-1].cw/w.cs[-1].sf;
                 
-                dxl = [c.dx for c in self.cs];
+                dxl = [c.dx+c.lsp for c in self.cs];
                 if len(dxl)==0: dxl=[0];
                 if newanch=='middle':
                     newx = (minx+maxx)/2-dxl[0]/2;
@@ -937,7 +995,7 @@ class tword:
         return ''.join([c.c for c in self.cs])
             
     # Add a new character to the end of the word
-    def appendc(self,ncv,ncw,ndx,ndy):
+    def appendc(self,ncv,ncw,ndx,ndy,nlsp):
         # Add to document
         lc = self.cs[-1]; # last character
         myi = lc.loc.ind+1; # insert after last character
@@ -950,7 +1008,7 @@ class tword:
         c = copy.copy(lc)
         c.c  = ncv
         c.cw = ncw
-        c.dx = ndx; c.dy = ndy;
+        c.dx = ndx; c.dy = ndy; c.lsp = nlsp;
         c.pending_style = None;
         c.loc = cloc(c.loc.el,c.loc.tt,c.loc.ind+1) # updated location
         
@@ -1017,7 +1075,7 @@ class tword:
                     ii -= 1; isnested = (self.cs[ii].loc.el != self.cs[0].loc.el);
                 for delch in reversed(deleted):
                     # dh.debug([delc.c,delc.cw])
-                    self.appendc(delch.c,delch.cw,delch.dx,delch.dy);
+                    self.appendc(delch.c,delch.cw,delch.dx,delch.dy,delch.lsp);
                     self.cs[-1].pending_style = delch.sty;
                     self.cs[-1].parsed_pts_ut = delch.parsed_pts_ut;
                     self.cs[-1].parsed_pts_t  = delch.parsed_pts_t;
@@ -1040,7 +1098,7 @@ class tword:
                 or type in ['super','sub']: # no extra spaces for sub/supers or if there's already one
                     numsp=0;
             for ii in range(numsp):
-                self.appendc(' ',lc.sw,0,0)
+                self.appendc(' ',lc.sw,0,0,lc.lsp)
                 
             for c in nw.cs:
                 notfirst = c!=nw.cs[0]
@@ -1050,7 +1108,7 @@ class tword:
                 otype = dh.Get_Style_Comp(c.sty,'baseline-shift');
                 if otype in ['super','sub'] and type=='normal':
                     ntype = otype
-                self.appendc(c.c,c.cw,c.dx*notfirst,c.dy)
+                self.appendc(c.c,c.cw,c.dx*notfirst,c.dy,c.lsp)
                 
                 self.cs[-1].parsed_pts_ut = [(-self.transform).apply_to_point(p) for p in c.parsed_pts_t];
                 self.cs[-1].parsed_pts_t  = c.parsed_pts_t;
@@ -1058,9 +1116,9 @@ class tword:
                 # We cannot yet apply any styles. Instead, add the character and add a pending style
                 # that will be applied at the end
                 newc = self.cs[-1]; newsty=None;
-                if c.nstyc!=newc.nstyc:
+                # if c.nstyc!=newc.nstyc:
+                if c.sty!=newc.sty:
                     newsty = c.sty;
-                
                 
                 if ntype in ['super','sub']:
                     if newsty is None:
@@ -1093,10 +1151,11 @@ class tword:
     #                newsty['baseline-shift']= str(shft)+'%';
                     
                     newsty = str(newsty)
+                # dh.idebug([c.c,c.sty])
                 self.cs[-1].pending_style = newsty;
                 
-            if dh.cascaded_style2(self.ln.xsrc).get('letter-spacing') is not None:
-                dh.Set_Style_Comp(self.ln.xsrc,'letter-spacing','0');
+            # if dh.cascaded_style2(self.ln.xsrc).get('letter-spacing') is not None:
+            #     dh.Set_Style_Comp(self.ln.xsrc,'letter-spacing','0');
                 
             # Following the merge, append the new word's data to the orig pts lists
             # self.orig_pts_t  += nw.orig_pts_t
@@ -1201,7 +1260,7 @@ class tword:
     # Calculate the properties of a word that depend on its characters       
     def calcprops(self): # calculate properties inherited from characters
         w = self;
-        dxl = [c.dx for c in self.cs];
+        dxl = [c.dx+c.lsp for c in self.cs];
         if len(dxl)==0: dxl=[0];
 #        dh.debug(w.txt())
 #        dh.debug(dxl)
@@ -1229,7 +1288,7 @@ class tword:
             
         # If last char of a multichar line is a space, is not rendered
         wwo = w.ww;
-        w.unrenderedspace =len(w.cs)>1 and w.cs[-1]==self.ln.cs[-1] and w.cs[-1].c==' '
+        w.unrenderedspace =len(w.cs)>1 and w.cs[-1]==self.ln.cs[-1] and w.cs[-1].c in [' ','\u00A0']
         if w.unrenderedspace:
             wwo -= w.cs[-1].cw;           # ww for offset calculations  
         
@@ -1283,6 +1342,7 @@ class tchar:
         self.dkerns = prop.dkerns;
         self.pending_style = None; # assign later (maybe)
         self.parsed_pts_t = None; self.parsed_pts_ut = None; # for merging later
+        self.lsp = 0;  # letter spacing
         
     def delc(self): # deletes me from document (and from my word/line)
         # Deleting a character causes the word to move if it's center- or right-justified. Adjust position to fix
@@ -1518,174 +1578,199 @@ class Character_Table():
             dh.debug('Style: '+sty);
             dh.debug('Existing styles: '+str(list(self.ctable.keys())))
 
-    def generate_character_table(self,els,ctable):
-        if isinstance(els,list):
-            for el in els:
-                ctable = self.generate_character_table(el,ctable);
-        else:
-            el=els;
-            ks=el.getchildren();
-            for k in ks:
-                ctable = self.generate_character_table(k,ctable);
+    # def generate_character_table(self,els,ctable):
+    #     if isinstance(els,list):
+    #         for el in els:
+    #             ctable = self.generate_character_table(el,ctable);
+    #     else:
+    #         el=els;
+    #         ks=el.getchildren();
+    #         for k in ks:
+    #             ctable = self.generate_character_table(k,ctable);
                     
-            if ctable is None:
-                ctable = dict();
-            if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
-                if el.text is not None:
-                    # sty = str(el.composed_style());
-                    sty = str(dh.selected_style_local(el));
-                    sty = self.normalize_style(sty)    
-                    if sty in list(ctable.keys()):
-                        ctable[sty] = list(set(ctable[sty]+list(el.text)));
-                    else:
-                        ctable[sty] = list(set(list(el.text)));
-                if isinstance(el,Tspan) and el.tail is not None and el.tail!='':
-                    # sty = str(el.getparent().composed_style());
-                    sty = str(dh.selected_style_local(el.getparent()));
-                    sty = self.normalize_style(sty)   
-#                    dh.debug(el.tail)
-#                    dh.debug(el.get_id())
-#                    dh.debug(str(dh.selected_style_local(el.getparent())))
-#                    dh.debug(sty)
-                    if sty in list(ctable.keys()):
-                        ctable[sty] = list(set(ctable[sty]+list(el.tail)));
-                    else:
-                        ctable[sty] = list(set(list(el.tail)));
-        for sty in list(ctable.keys()): # make sure they have NBSPs
-            ctable[sty] = list(set(ctable[sty]+[' ']))
-        return ctable
+    #         if ctable is None:
+    #             ctable = dict();
+    #         if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
+    #             if el.text is not None:
+    #                 # sty = str(el.composed_style());
+    #                 sty = str(dh.selected_style_local(el));
+    #                 sty = self.normalize_style(sty)    
+    #                 if sty in list(ctable.keys()):
+    #                     ctable[sty] = list(set(ctable[sty]+list(el.text)));
+    #                 else:
+    #                     ctable[sty] = list(set(list(el.text)));
+    #             if isinstance(el,Tspan) and el.tail is not None and el.tail!='':
+    #                 # sty = str(el.getparent().composed_style());
+    #                 sty = str(dh.selected_style_local(el.getparent()));
+    #                 sty = self.normalize_style(sty)
+    #                 if sty in list(ctable.keys()):
+    #                     ctable[sty] = list(set(ctable[sty]+list(el.tail)));
+    #                 else:
+    #                     ctable[sty] = list(set(list(el.tail)));
+    #     for sty in list(ctable.keys()): # make sure they have NBSPs
+    #         ctable[sty] = list(set(ctable[sty]+[' ']))
+    #     return ctable
     
-    def measure_character_widths(self,els):
-        # Measure the width of all characters of a given style by generating copies with two and three extra spaces.
-        # We take the difference to get the width of a space, then subtract that to get the character's full width.
-        # This includes any spaces between characters as well.
-        # The width will be the width of a character whose composed font size is 1 uu.
-        ct = self.generate_character_table(els,None);
-        docscale = self.caller.svg.scale;
-        # dh.debug(self.caller.svg.scale)
-                            
-        pI1 = 'pI  ';        # pI with 2 spaces
-        pI2 = 'pI   ';       # pI with 3 spaces
-        # We add pI as test characters because p gives the font's descender (how much the tail descends)
-        # and I gives its cap height (how tall capital letters are).
-        
-        # txts = dict();
-        # for s in list(ct.keys()):
-        #     nt = TextElement();
-        #     nt.set('style',s)
-        #     nt.set('xml:space','preserve'); # needed to prevent spaces from collapsing
-        #     self.caller.svg.append(nt);
-        #     dh.get_id2(nt); # assign id now
-        #     txts[s] = nt;
-        # def Make_Character(c,sty):
-        #     nt = Tspan();
-        #     nt.text = c;
-        #     nt.set('x','0')
-        #     txts[sty].append(nt);
-        #     dh.get_id2(nt); # assign id now
-        #     return nt
-        
-        global cnt
-        cnt = 0;
-        
-        def Make_Character(c,sty):
-            nt = TextElement();
-            nt.text = c;
-            nt.set('style',sty)
-            nt.set('xml:space','preserve'); # needed to prevent spaces from collapsing
-            self.caller.svg.append(nt);
-            dh.get_id2(nt); # assign id now
-            global cnt
-            cnt += 1;
-            return nt
+    def generate_character_table2(self,els):
+        ctable = dict();
+        pctable = dict();  # a dictionary of preceding characters in the same style
+        for el in els:
+            ds,pts,cd,pd = dh.descendants2(el,True); Nd = len(ds)
+            text = [d.text for d in ds]
+            ptail = [[tel.tail for tel in pt] for pt in pts]   # preceding tails
+            if len(ptail)>0 and len(ptail[-1])>0:             ptail[-1][-1] = None; # do not count el's tail
+            
+            for di,tt in ttiterator(Nd):
+                if tt==0: txts = ptail[di];  tels = pts[di]
+                else:     txts = [text[di]]; tels = [ds[di]]
+                for ii in range(len(tels)):
+                    tel = tels[ii]; txt = txts[ii]
+                    if txt is not None and len(txt)>0:
+                        sel = tel;
+                        if tt==0: sel = pd[tel]; # tails get their sty from the parent of the element the tail belongs to
+                        sty = dh.selected_style_local(sel);
+                        sty = Character_Table.normalize_style(sty);
+                        ctable[sty] = list(set(ctable.get(sty,[])+list(txt)));
+                        if sty not in pctable:
+                            pctable[sty] = dict();
+                        for jj in range(1,len(txt)):
+                            pctable[sty][txt[jj]] = list(set(pctable[sty].get(txt[jj],[])+[txt[jj-1]]));
+        for sty in ctable: # make sure they have spaces
+            ctable[sty] = list(set(ctable[sty]+[' ']))
+        return ctable, pctable
                         
-        ct2 = dict();
-        for s in list(ct.keys()):
-            ct2[s]=dict();
-            for ii in range(len(ct[s])):
-                t = Make_Character(ct[s][ii]+'  ',s);    # character with 2 spaces (last space not rendered)
-                myc = ct[s][ii];
-                dkern = dict();
-                if KERN_TABLE:
-                    for jj in range(len(ct[s])):
-                        pc = ct[s][jj];
-                        t2 = Make_Character(pc+myc+'  ',s); # precede by all chars of the same style
-                        dkern[ct[s][jj]] = [ct[s][jj],t2,t2.get_id()];
-                ct2[s][myc]=[myc,t,t.get_id(),dkern];     
-            t = Make_Character(pI1,s);              
-            ct2[s][pI1]=[pI1,t,t.get_id(),dict()];             
-            t = Make_Character(pI2,s);        
-            ct2[s][pI2]=[pI2,t,t.get_id(),dict()]; 
-        ct = ct2;
+    
+    # def measure_character_widths(self,els):
+    #     # Measure the width of all characters of a given style by generating copies with two and three extra spaces.
+    #     # We take the difference to get the width of a space, then subtract that to get the character's full width.
+    #     # This includes any spaces between characters as well.
+    #     # The width will be the width of a character whose composed font size is 1 uu.
+    #     ct = self.generate_character_table(els,None);
+    #     docscale = self.caller.svg.scale;
+    #     # dh.debug(self.caller.svg.scale)
+                            
+    #     pI1 = 'pI  ';        # pI with 2 spaces
+    #     pI2 = 'pI   ';       # pI with 3 spaces
+    #     # We add pI as test characters because p gives the font's descender (how much the tail descends)
+    #     # and I gives its cap height (how tall capital letters are).
+        
+    #     # txts = dict();
+    #     # for s in list(ct.keys()):
+    #     #     nt = TextElement();
+    #     #     nt.set('style',s)
+    #     #     nt.set('xml:space','preserve'); # needed to prevent spaces from collapsing
+    #     #     self.caller.svg.append(nt);
+    #     #     dh.get_id2(nt); # assign id now
+    #     #     txts[s] = nt;
+    #     # def Make_Character(c,sty):
+    #     #     nt = Tspan();
+    #     #     nt.text = c;
+    #     #     nt.set('x','0')
+    #     #     txts[sty].append(nt);
+    #     #     dh.get_id2(nt); # assign id now
+    #     #     return nt
+        
+    #     global cnt
+    #     cnt = 0;
+        
+    #     def Make_Character(c,sty):
+    #         nt = TextElement();
+    #         nt.text = c;
+    #         nt.set('style',sty)
+    #         nt.set('xml:space','preserve'); # needed to prevent spaces from collapsing
+    #         self.caller.svg.append(nt);
+    #         dh.get_id2(nt); # assign id now
+    #         global cnt
+    #         cnt += 1;
+    #         return nt
+                        
+    #     ct2 = dict();
+    #     for s in list(ct.keys()):
+    #         ct2[s]=dict();
+    #         for ii in range(len(ct[s])):
+    #             t = Make_Character(ct[s][ii]+'  ',s);    # character with 2 spaces (last space not rendered)
+    #             myc = ct[s][ii];
+    #             dkern = dict();
+    #             if KERN_TABLE:
+    #                 for jj in range(len(ct[s])):
+    #                     pc = ct[s][jj];
+    #                     t2 = Make_Character(pc+myc+'  ',s); # precede by all chars of the same style
+    #                     dkern[ct[s][jj]] = [ct[s][jj],t2,t2.get_id()];
+    #             ct2[s][myc]=[myc,t,t.get_id(),dkern];     
+    #         t = Make_Character(pI1,s);              
+    #         ct2[s][pI1]=[pI1,t,t.get_id(),dict()];             
+    #         t = Make_Character(pI2,s);        
+    #         ct2[s][pI2]=[pI2,t,t.get_id(),dict()]; 
+    #     ct = ct2;
 
             
-        nbb = dh.Get_Bounding_Boxes(self.caller,True);  
-        dkern = dict();
-        for s in list(ct.keys()):
-            for ii in ct[s].keys():
-                # dh.debug(nbb)
-                bb=nbb[ct[s][ii][2]]
-                wdth = bb[0]+bb[2]
-                caphgt = -bb[1]
-                bbstrt = bb[0]
-                dscnd = bb[1]+bb[3]
-                ct[s][ii][1].delete();
+    #     nbb = dh.Get_Bounding_Boxes(self.caller,True);  
+    #     dkern = dict();
+    #     for s in list(ct.keys()):
+    #         for ii in ct[s].keys():
+    #             # dh.debug(nbb)
+    #             bb=nbb[ct[s][ii][2]]
+    #             wdth = bb[0]+bb[2]
+    #             caphgt = -bb[1]
+    #             bbstrt = bb[0]
+    #             dscnd = bb[1]+bb[3]
+    #             ct[s][ii][1].delete();
                 
-                if KERN_TABLE:
-                    precwidth = dict();
-                    for jj in ct[s][ii][-1].keys():
-                        bb=nbb[ct[s][ii][-1][jj][2]];
-                        wdth2 = bb[0]+bb[2];
-                        precwidth[jj] = wdth2;         # width including the preceding character and extra kerning
-                        ct[s][ii][-1][jj][1].delete();
-                    ct[s][ii] = [ct[s][ii][0],wdth,bbstrt,caphgt,dscnd,precwidth]
-                else:                        
-                    ct[s][ii] = [ct[s][ii][0],wdth,bbstrt,caphgt,dscnd]
+    #             if KERN_TABLE:
+    #                 precwidth = dict();
+    #                 for jj in ct[s][ii][-1].keys():
+    #                     bb=nbb[ct[s][ii][-1][jj][2]];
+    #                     wdth2 = bb[0]+bb[2];
+    #                     precwidth[jj] = wdth2;         # width including the preceding character and extra kerning
+    #                     ct[s][ii][-1][jj][1].delete();
+    #                 ct[s][ii] = [ct[s][ii][0],wdth,bbstrt,caphgt,dscnd,precwidth]
+    #             else:                        
+    #                 ct[s][ii] = [ct[s][ii][0],wdth,bbstrt,caphgt,dscnd]
                     
-            if KERN_TABLE:
-                dkern[s] = dict();
-                for ii in ct[s].keys():
-                    sw = ct[s][pI2][1] - ct[s][pI1][1];
-                    mcw = ct[s][ii][1] - sw;      # my character width
-                    if ii==' ': mcw = sw;
-                    for jj in ct[s][ii][-1].keys():
-                        # myi = mycs.index(jj);
-                        pcw = ct[s][jj][1] - sw; # preceding char width
-                        if ct[s][jj][0]==' ': pcw = sw;
-                        bcw = ct[s][ii][-1][jj] - sw; # both char widths
-                        dkern[s][jj,ct[s][ii][0]] = bcw - pcw - mcw;          # preceding char, then next char
+    #         if KERN_TABLE:
+    #             dkern[s] = dict();
+    #             for ii in ct[s].keys():
+    #                 sw = ct[s][pI2][1] - ct[s][pI1][1];
+    #                 mcw = ct[s][ii][1] - sw;      # my character width
+    #                 if ii==' ': mcw = sw;
+    #                 for jj in ct[s][ii][-1].keys():
+    #                     # myi = mycs.index(jj);
+    #                     pcw = ct[s][jj][1] - sw; # preceding char width
+    #                     if ct[s][jj][0]==' ': pcw = sw;
+    #                     bcw = ct[s][ii][-1][jj] - sw; # both char widths
+    #                     dkern[s][jj,ct[s][ii][0]] = bcw - pcw - mcw;          # preceding char, then next char
                         
                 
-        for s in list(ct.keys()):
-            sw = ct[s][pI2][1] - ct[s][pI1][1] # space width is the difference in widths of the last two
-            ch = ct[s][pI2][3]                # cap height
-            dr = ct[s][pI2][4]                # descender
-            for ii in ct[s].keys():
-                cw = ct[s][ii][1] - sw;  # character width (full, including extra space on each side)
-                xo = ct[s][ii][2]        # x offset: how far it starts from the left anchor
-                if ct[s][ii][0]==' ':
-                    cw = sw;
-                    xo = 0;
+    #     for s in list(ct.keys()):
+    #         sw = ct[s][pI2][1] - ct[s][pI1][1] # space width is the difference in widths of the last two
+    #         ch = ct[s][pI2][3]                # cap height
+    #         dr = ct[s][pI2][4]                # descender
+    #         for ii in ct[s].keys():
+    #             cw = ct[s][ii][1] - sw;  # character width (full, including extra space on each side)
+    #             xo = ct[s][ii][2]        # x offset: how far it starts from the left anchor
+    #             if ct[s][ii][0]==' ':
+    #                 cw = sw;
+    #                 xo = 0;
                     
-                # dh.debug([ii,cw,sw])
+    #             # dh.debug([ii,cw,sw])
                 
-                dkernscl = dict();
-                if KERN_TABLE:    
-                    for k in dkern[s].keys():
-                        dkernscl[k] = dkern[s][k]/docscale;
-                # dh.debug([ct[s][ii][0],dkern])
-                ct[s][ii] = cprop(ct[s][ii][0],cw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale,dkernscl);
-                # Because a nominal 1 px font is docscale px tall, we need to divide by the docscale to get the true width
+    #             dkernscl = dict();
+    #             if KERN_TABLE:    
+    #                 for k in dkern[s].keys():
+    #                     dkernscl[k] = dkern[s][k]/docscale;
+    #             # dh.debug([ct[s][ii][0],dkern])
+    #             ct[s][ii] = cprop(ct[s][ii][0],cw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale,dkernscl);
+    #             # Because a nominal 1 px font is docscale px tall, we need to divide by the docscale to get the true width
                 
             
-            # dh.debug(dkernscl)    
-            # ct[s] = ct[s][0:Nl]
+    #         # dh.debug(dkernscl)    
+    #         # ct[s] = ct[s][0:Nl]
             
         
-        # for s in list(ct.keys()):
-        #     txts[s].delete();
-        # dh.debug(ct)
-        return ct, nbb
+    #     # for s in list(ct.keys()):
+    #     #     txts[s].delete();
+    #     # dh.debug(ct)
+    #     return ct, nbb
 
     
     def measure_character_widths2(self,els):
@@ -1693,8 +1778,9 @@ class Character_Table():
         # We take the difference to get the width of a space, then subtract that to get the character's full width.
         # This includes any spaces between characters as well.
         # The width will be the width of a character whose composed font size is 1 uu.
-        ct = self.generate_character_table(els,None);
-        # docscale = dh.vscale(self.caller.svg);           
+        # ct = self.generate_character_table(els,None);
+        ct,pct = self.generate_character_table2(els);     
+        # dh.idebug(pct)
         
         pI1 = 'pI  ';        # pI with 2 spaces
         pI2 = 'pI   ';       # pI with 3 spaces
@@ -1729,14 +1815,15 @@ class Character_Table():
         for s in list(ct.keys()):
             ct2[s]=dict();
             for ii in range(len(ct[s])):
-                t = Make_Character2(ct[s][ii]+'  ',s);    # character with 2 spaces (last space not rendered)
                 myc = ct[s][ii];
+                t = Make_Character2(myc+'  ',s);    # character with 2 spaces (last space not rendered)
                 dkern = dict();
                 if KERN_TABLE:
                     for jj in range(len(ct[s])):
                         pc = ct[s][jj];
-                        t2 = Make_Character2(pc+myc+'  ',s); # precede by all chars of the same style
-                        dkern[ct[s][jj]] = [ct[s][jj],0,t2];
+                        if myc in pct[s] and pc in pct[s][myc]:
+                            t2 = Make_Character2(pc+myc+'  ',s); # precede by all chars of the same style
+                            dkern[pc] = [pc,0,t2];
                 ct2[s][myc]=[myc,0,t,dkern];     
             t = Make_Character2(pI1,s);              
             ct2[s][pI1]=[pI1,0,t,dict()];             
@@ -1867,3 +1954,24 @@ def deleteempty(el):
              return txt.translate({ord(c):None for c in ' \n\t\r'}); 
         if all([(d.text is None or len(wstrip(d.text))==0) and (d.tail is None or len(wstrip(d.tail))==0) for d in dh.descendants2(el)]):
             el.delete(); # delete any text elements that are just white space
+
+
+# An iterator for crawling through a text descendant tree
+# Returns the current descendant index and tt (0 for tail, 1 for text)          
+class ttiterator:
+    def __init__(self,Nd):
+        self.Nd = Nd;
+    def __iter__(self):
+        self.di = 0;
+        self.tt = 0;
+        return self
+    def __next__(self):
+        if self.tt==1:
+            self.di+=1
+            self.tt=0;
+        else:
+            self.tt=1;
+        if self.di==self.Nd and self.tt==1:
+            raise StopIteration
+        else:
+            return self.di,self.tt

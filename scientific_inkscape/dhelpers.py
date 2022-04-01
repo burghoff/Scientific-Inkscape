@@ -167,16 +167,24 @@ def selected_style_local(el):
 
 svgpres = ['alignment-baseline','baseline-shift','clip','clip-path','clip-rule','color','color-interpolation','color-interpolation-filters','color-profile','color-rendering','cursor','direction','display','dominant-baseline','enable-background','fill','fill-opacity','fill-rule','filter','flood-color','flood-opacity','font-family','font-size','font-size-adjust','font-stretch','font-style','font-variant','font-weight','glyph-orientation-horizontal','glyph-orientation-vertical','image-rendering','kerning','letter-spacing','lighting-color','marker-end','marker-mid','marker-start','mask','opacity','overflow','pointer-events','shape-rendering','stop-color','stop-opacity','stroke','stroke-dasharray','stroke-dashoffset','stroke-linecap','stroke-linejoin','stroke-miterlimit','stroke-opacity','stroke-width','text-anchor','text-decoration','text-rendering','transform','transform-origin','unicode-bidi','vector-effect','visibility','word-spacing','writing-mode']
 excludes = ['clip','clip-path','mask','transform','transform-origin']
-global cssdict
-cssdict = None;
+# global cssdict
+# cssdict = None;
 def cascaded_style2(el):
 # Object's style including any CSS
 # Modified from Inkex's cascaded_style
-    global cssdict
-    if cssdict is None:
-        # Generate a dictionary of styles at least once so we don't have to do constant lookups
-        # If elements change, will need to rerun by setting cssdict to None
-        generate_cssdict(get_parent_svg(el));
+
+    svg = get_parent_svg(el);
+    if not(hasattr(svg,'cssdict')):
+        generate_cssdict(svg);
+    if svg is not None:        cssdict = svg.cssdict;
+    else:                      cssdict = dict();
+
+    # global cssdict
+    # idebug(cssdict)
+    # if cssdict is None:
+    #     # Generate a dictionary of styles at least once so we don't have to do constant lookups
+    #     # If elements change, will need to rerun by setting cssdict to None
+    #     generate_cssdict(get_parent_svg(el));
     csssty = cssdict.get(el.get_id());
     # idebug(csssty)
     # locsty = el.style;
@@ -196,31 +204,40 @@ def cascaded_style2(el):
         # Any style specified locally takes priority, followed by CSS,
         # followed by any attributes that the element has
         return attsty+csssty+locsty
-def dupe_in_cssdict(oldid,newid):
+def dupe_in_cssdict(oldid,newid,svg):
     # duplicate a style in cssdict
-    global cssdict
+    if not(hasattr(svg,'cssdict')):
+        generate_cssdict(svg);
+    if svg is not None:        cssdict = svg.cssdict;
+    else:                      cssdict = dict();
+    
+    # global cssdict
     if cssdict is not None:
         csssty = cssdict.get(oldid);
         if csssty is not None:
             cssdict[newid]=csssty;
 def generate_cssdict(svg):
-    global cssdict
-    cssdict= dict();
-    for sheet in svg.root.stylesheets:
-        for style in sheet:
-            try:
-                # els = svg.xpath(style.to_xpath())
-                els = svg.xpath(vto_xpath(style))
-                for elem in els:
-                    elid = elem.get('id',None);
-                    # idebug(elid)
-                    if elid is not None and style!=inkex.Style():  # still using Inkex's Style here since from stylesheets
-                        if cssdict.get(elid) is None:
-                            cssdict[elid] = Style2() + style;
-                        else:
-                            cssdict[elid] += style;
-            except (lxml.etree.XPathEvalError,TypeError):
-                pass
+    # global cssdict
+    if svg is not None:
+        cssdict= dict();
+        # idebug(cssdict)
+        for sheet in svg.root.stylesheets:
+            for style in sheet:
+                try:
+                    # els = svg.xpath(style.to_xpath())
+                    # idebug(vto_xpath(style))
+                    els = svg.xpath(vto_xpath(style))
+                    for elem in els:
+                        elid = elem.get('id',None);
+                        # idebug(elid)
+                        if elid is not None and style!=inkex.Style():  # still using Inkex's Style here since from stylesheets
+                            if cssdict.get(elid) is None:
+                                cssdict[elid] = Style2() + style;
+                            else:
+                                cssdict[elid] += style;
+                except (lxml.etree.XPathEvalError,TypeError):
+                    pass
+        svg.cssdict = cssdict;
             
     
 # For style components that represent a size (stroke-width, font-size, etc), calculate
@@ -511,9 +528,16 @@ def shallow_composed_style(el):
 def fix_css_clipmask(el,mask=False):
     if not(mask): cm = 'clip-path'
     else:         cm = 'mask'
-    global cssdict
-    if cssdict is None:
-        generate_cssdict(get_parent_svg(el));
+    
+    svg = get_parent_svg(el);
+    if not(hasattr(svg,'cssdict')):
+        generate_cssdict(svg);
+    if svg is not None:        cssdict = svg.cssdict;
+    else:                      cssdict = dict();
+    
+    # global cssdict
+    # if cssdict is None:
+    #     generate_cssdict(get_parent_svg(el));
     mycss = cssdict.get(el.get_id());
     if mycss is not None:
         if mycss.get(cm) is not None and mycss.get(cm)!=el.get(cm):
@@ -546,16 +570,17 @@ def duplicate2(el,disabledup=False):
     if not(disabledup):
         # d = el.duplicate();
         d = duplicate_fixed(el);
-        dupe_in_cssdict(el.get_id(),d.get_id())
+        dupe_in_cssdict(el.get_id(),d.get_id(),get_parent_svg(el))
         add_to_iddict(d);
     else:
         d = el;
     for k in d.getchildren():
-        oldid = k.get_id();
-        set_random_id2(k);
-        dupe_in_cssdict(oldid,k.get_id())
-        add_to_iddict(k);
-        duplicate2(k,True)
+        if not(k,lxml.etree._Comment):
+            oldid = k.get_id();
+            set_random_id2(k);
+            dupe_in_cssdict(oldid,k.get_id(),get_parent_svg(k))
+            add_to_iddict(k);
+            duplicate2(k,True)
     return d
 def duplicate_fixed(el): # fixes duplicate's set_random_id
     """Like copy(), but the copy stays in the tree and sets a random id"""
@@ -568,7 +593,7 @@ def duplicate_fixed(el): # fixes duplicate's set_random_id
 def new_element(genin,inheritfrom):
     g = genin();                            # e.g Rectangle
     inheritfrom.root.append(g);             # add to the SVG so we can assign an id
-    dupe_in_cssdict(get_id2(inheritfrom),get_id2(g))
+    dupe_in_cssdict(get_id2(inheritfrom),get_id2(g),inheritfrom.root)
     add_to_iddict(g);
     return g
 
@@ -586,7 +611,7 @@ def replace_element(el1,el2):
     el1.delete();
     el2.set_id(newid)
     add_to_iddict(el2)
-    dupe_in_cssdict(oldid,newid)
+    dupe_in_cssdict(oldid,newid,el2.root)
 
 def intersect_paths(ptha,pthb):
     # Intersect two rectangular paths. Could be generalized later
@@ -835,6 +860,7 @@ def add_to_iddict(el):
 # size based on the current number of ids
 # Modified from Inkex's get_unique_id
 import random
+random.seed(1)
 def get_unique_id2(svg, prefix):
     ids = svg.get_ids()
     new_id = None
@@ -1186,22 +1212,30 @@ def get_strokefill(el,styin=None):
     op     = float(sty.get('opacity',1.0))
     nones = [None,'none','None'];
     if not(strk in nones):    
-        strk   = inkex.Color(strk).to_rgb()
-        strkl  = strk.lightness
-        strkop = float(sty.get('stroke-opacity',1.0))
-        strk.alpha = strkop*op
-        strkl  = strk.alpha * strkl/255 + (1-strk.alpha)*1; # effective lightness frac with a white bg
-        strk.efflightness = strkl
+        try:
+            strk   = inkex.Color(strk).to_rgb()
+            strkl  = strk.lightness
+            strkop = float(sty.get('stroke-opacity',1.0))
+            strk.alpha = strkop*op
+            strkl  = strk.alpha * strkl/255 + (1-strk.alpha)*1; # effective lightness frac with a white bg
+            strk.efflightness = strkl
+        except:# inkex.colors.ColorIdError:
+            strk  = None
+            strkl = None
     else:
         strk = None
         strkl = None
     if not(fill in nones):
-        fill   = inkex.Color(fill).to_rgb()
-        filll  = fill.lightness
-        fillop = float(sty.get('fill-opacity',1.0))
-        fill.alpha = fillop*op
-        filll  = fill.alpha * filll/255 + (1-fill.alpha)*1;  # effective lightness frac with a white bg
-        fill.efflightness = filll
+        try:
+            fill   = inkex.Color(fill).to_rgb()
+            filll  = fill.lightness
+            fillop = float(sty.get('fill-opacity',1.0))
+            fill.alpha = fillop*op
+            filll  = fill.alpha * filll/255 + (1-fill.alpha)*1;  # effective lightness frac with a white bg
+            fill.efflightness = filll
+        except:# inkex.colors.ColorIdError:
+            fill   = None
+            filll  = None
     else:
         fill = None
         filll = None
@@ -1271,6 +1305,14 @@ def Get_Binary_Loc(fin):
                 return prog
         except ImportError:
             pass # python2
+        try:
+            import sys
+            for sp in sys.path:
+                prog = find_executable(program,path=sp)
+                if prog:
+                    return prog
+        except ImportError:
+            pass
         raise CommandNotFound(f"Can not find the command: '{program}'")
     def write_svg(svg, *filename):
         filename = os.path.join(*filename)

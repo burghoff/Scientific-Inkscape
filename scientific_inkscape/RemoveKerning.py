@@ -62,14 +62,13 @@ def Fix_Merge_Positions(lls,os):
 
 def Remove_Trailing_Leading_Spaces(lls,os):
     for ll in lls:
-        if not(ll.isinkscape) or (ll.lns is not None and len(ll.lns)<2): # skip Inkscape-generated text
+        if (not(ll.isinkscape) or (ll.lns is not None and len(ll.lns)<2)) and not(ll.issvg2): # skip Inkscape-generated text
             for ln in ll.lns:
                 mtxt = ln.txt();
                 ii=len(mtxt)-1
                 while ii>=0 and mtxt[ii]==' ':
                     ln.cs[ii].delc()
                     ii-=1
-                
                 
                 mtxt = ln.txt();
                 ii=0
@@ -88,7 +87,7 @@ def Change_Justification(lls,os,justification):
     if justification is not None:
         for ll in lls:
             # ll.Position_Check()
-            if not(ll.isinkscape) or (ll.lns is not None and len(ll.lns)<2): # skip Inkscape-generated text
+            if (not(ll.isinkscape) or (ll.lns is not None and len(ll.lns)<2)) and not(ll.issvg2): # skip Inkscape-generated text
                 for ln in ll.lns:
                     ln.change_alignment(justification);
                 dh.Set_Style_Comp(ll.textel,'text-anchor',justification)
@@ -103,7 +102,7 @@ def Split_Lines(lls,os):
     newlls = [];            
     for jj in range(len(lls)):
         ll = lls[jj];
-        if ll.lns is not None and len(ll.lns)>1 and not(ll.isinkscape):
+        if ll.lns is not None and len(ll.lns)>1 and not(ll.isinkscape) and not(ll.issvg2):
             for il in reversed(range(1,len(ll.lns))):
                 newtxt,nll = ll.Split_Off_Words(ll.lns[il].ws)
                 os.append(newtxt)
