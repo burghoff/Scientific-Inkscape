@@ -69,8 +69,8 @@ class FlattenPlots(inkex.EffectExtension):
         # self.svg.selection = [self.svg.getElementById('layer1')]
         # self.options.testmode = True
         if self.options.testmode: # 
-            # global cssdict
-            # cssdict = None
+            import random
+            random.seed(1)
             sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
             for el in sel:
                 d=dh.duplicate2(el);
@@ -217,13 +217,14 @@ class FlattenPlots(inkex.EffectExtension):
             
             import TextParser
             fns = [RemoveKerning.remove_kerning,RemoveKerning.Remove_Manual_Kerning,\
-                   RemoveKerning.External_Merges,TextParser.LineList.Parse_Lines,\
-                   TextParser.LineList.Parse_Lines2,TextParser.LineList.Split_Off_Words,\
+                   RemoveKerning.External_Merges,TextParser.LineList.Parse_Lines2,\
+                   TextParser.LineList.Split_Off_Words,\
                    dh.Get_Composed_LineHeight,dh.Get_Composed_Width,dh.ungroup,dh.selected_style_local,\
                    dh.cascaded_style2,dh.shallow_composed_style,dh.generate_cssdict,dh.descendants2,\
                    dh.getElementById2,dh.add_to_iddict,dh.get_id2,dh.compose_all,dh.unlink2,dh.merge_clipmask,\
                    inkex.elements._base.ShapeElement.composed_transform,dh.fix_css_clipmask,\
-                   TextParser.Character_Table.measure_character_widths2,dh.get_points,dh.vto_xpath]
+                   TextParser.Character_Table.measure_character_widths2,dh.get_points,dh.vto_xpath,\
+                   TextParser.LineList.__init__]
             for fn in fns:
                 lp.add_function(fn)
             lpw = lp(self.runflatten)

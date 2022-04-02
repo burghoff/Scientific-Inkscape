@@ -44,8 +44,9 @@ class ApplyTransform(inkex.EffectExtension):
     # Scale stroke width and dashes
     def applyToStrokes(self, node, transf):
         if 'style' in node.attrib:
-            style = node.attrib.get('style')
-            style = dict(Style2.parse_str(style))
+            # style = node.attrib.get('style')
+            # style = dict(Style2.parse_str(style))
+            style = node.lstyle
             update = False
             if 'stroke-width' in style:
                 try:
@@ -66,7 +67,9 @@ class ApplyTransform(inkex.EffectExtension):
                 except AttributeError:
                     pass
             if update:
-                node.attrib['style'] = Style2(style).to_str()
+                # node.attrib['style'] = Style2(style).to_str()
+                node.lstyle = style;
+                
     
     
     def transform_clipmask(self,el,mask=False):

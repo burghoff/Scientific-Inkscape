@@ -392,7 +392,7 @@ class ScalePlots(inkex.EffectExtension):
                 r = Rectangle();
                 r.set('x',minxp); r.set('y',minyp)
                 r.set('width',abs(maxxp-minxp));  r.set('height', abs(maxyp-minyp))
-                r.set('style','fill-opacity:0.5')
+                r.lstyle = 'fill-opacity:0.5'
                 self.svg.append(r)
                 dh.global_transform(r,gtr)
                 dh.debug('Largest vertical line: '+lvl)

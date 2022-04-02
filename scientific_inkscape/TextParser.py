@@ -760,8 +760,8 @@ class LineList():
 # This is further subdivided into a list of words
 class tline:
     def __init__(self, x, y, sprl, nspr, anch, xform,ang,el,xsrc,ysrc,tlvlno,sty,continuex=False,continuey=False):
-        self.x = x; 
-        self.y = y;
+        self._x = x; 
+        self._y = y;
         self.sprl = sprl;        # is this line truly a sodipodi:role line
         self.nominalspr = nspr;  # nominal value of spr (sprl may actually be disabled)
         self.anchor = anch
@@ -1563,53 +1563,12 @@ class Character_Table():
     def get_prop(self,char,sty):
         if sty in list(self.ctable.keys()):
             return self.ctable[sty][char]
-            # matches = [jj for jj in range(len(self.ctable[sty])) if self.ctable[sty][jj].char==char]
-            # if len(matches)>0:
-            #     return self.ctable[sty][matches[0]]
-            # else:
-            #     dh.debug('No character matches!');
-            #     dh.debug('Character: '+char)
-            #     dh.debug('Style: '+sty);
-            #     dh.debug('Existing characters: '+str(list([self.ctable[sty][jj].char for jj in range(len(self.ctable[sty]))])))
-            #     quit()
         else:
             dh.debug('No style matches!');
             dh.debug('Character: '+char)
             dh.debug('Style: '+sty);
             dh.debug('Existing styles: '+str(list(self.ctable.keys())))
 
-    # def generate_character_table(self,els,ctable):
-    #     if isinstance(els,list):
-    #         for el in els:
-    #             ctable = self.generate_character_table(el,ctable);
-    #     else:
-    #         el=els;
-    #         ks=el.getchildren();
-    #         for k in ks:
-    #             ctable = self.generate_character_table(k,ctable);
-                    
-    #         if ctable is None:
-    #             ctable = dict();
-    #         if isinstance(el,(TextElement,Tspan)) and el.getparent() is not None: # textelements not deleted
-    #             if el.text is not None:
-    #                 # sty = str(el.composed_style());
-    #                 sty = str(dh.selected_style_local(el));
-    #                 sty = self.normalize_style(sty)    
-    #                 if sty in list(ctable.keys()):
-    #                     ctable[sty] = list(set(ctable[sty]+list(el.text)));
-    #                 else:
-    #                     ctable[sty] = list(set(list(el.text)));
-    #             if isinstance(el,Tspan) and el.tail is not None and el.tail!='':
-    #                 # sty = str(el.getparent().composed_style());
-    #                 sty = str(dh.selected_style_local(el.getparent()));
-    #                 sty = self.normalize_style(sty)
-    #                 if sty in list(ctable.keys()):
-    #                     ctable[sty] = list(set(ctable[sty]+list(el.tail)));
-    #                 else:
-    #                     ctable[sty] = list(set(list(el.tail)));
-    #     for sty in list(ctable.keys()): # make sure they have NBSPs
-    #         ctable[sty] = list(set(ctable[sty]+[' ']))
-    #     return ctable
     
     def generate_character_table2(self,els):
         ctable = dict();
@@ -1638,139 +1597,6 @@ class Character_Table():
         for sty in ctable: # make sure they have spaces
             ctable[sty] = list(set(ctable[sty]+[' ']))
         return ctable, pctable
-                        
-    
-    # def measure_character_widths(self,els):
-    #     # Measure the width of all characters of a given style by generating copies with two and three extra spaces.
-    #     # We take the difference to get the width of a space, then subtract that to get the character's full width.
-    #     # This includes any spaces between characters as well.
-    #     # The width will be the width of a character whose composed font size is 1 uu.
-    #     ct = self.generate_character_table(els,None);
-    #     docscale = self.caller.svg.scale;
-    #     # dh.debug(self.caller.svg.scale)
-                            
-    #     pI1 = 'pI  ';        # pI with 2 spaces
-    #     pI2 = 'pI   ';       # pI with 3 spaces
-    #     # We add pI as test characters because p gives the font's descender (how much the tail descends)
-    #     # and I gives its cap height (how tall capital letters are).
-        
-    #     # txts = dict();
-    #     # for s in list(ct.keys()):
-    #     #     nt = TextElement();
-    #     #     nt.set('style',s)
-    #     #     nt.set('xml:space','preserve'); # needed to prevent spaces from collapsing
-    #     #     self.caller.svg.append(nt);
-    #     #     dh.get_id2(nt); # assign id now
-    #     #     txts[s] = nt;
-    #     # def Make_Character(c,sty):
-    #     #     nt = Tspan();
-    #     #     nt.text = c;
-    #     #     nt.set('x','0')
-    #     #     txts[sty].append(nt);
-    #     #     dh.get_id2(nt); # assign id now
-    #     #     return nt
-        
-    #     global cnt
-    #     cnt = 0;
-        
-    #     def Make_Character(c,sty):
-    #         nt = TextElement();
-    #         nt.text = c;
-    #         nt.set('style',sty)
-    #         nt.set('xml:space','preserve'); # needed to prevent spaces from collapsing
-    #         self.caller.svg.append(nt);
-    #         dh.get_id2(nt); # assign id now
-    #         global cnt
-    #         cnt += 1;
-    #         return nt
-                        
-    #     ct2 = dict();
-    #     for s in list(ct.keys()):
-    #         ct2[s]=dict();
-    #         for ii in range(len(ct[s])):
-    #             t = Make_Character(ct[s][ii]+'  ',s);    # character with 2 spaces (last space not rendered)
-    #             myc = ct[s][ii];
-    #             dkern = dict();
-    #             if KERN_TABLE:
-    #                 for jj in range(len(ct[s])):
-    #                     pc = ct[s][jj];
-    #                     t2 = Make_Character(pc+myc+'  ',s); # precede by all chars of the same style
-    #                     dkern[ct[s][jj]] = [ct[s][jj],t2,t2.get_id()];
-    #             ct2[s][myc]=[myc,t,t.get_id(),dkern];     
-    #         t = Make_Character(pI1,s);              
-    #         ct2[s][pI1]=[pI1,t,t.get_id(),dict()];             
-    #         t = Make_Character(pI2,s);        
-    #         ct2[s][pI2]=[pI2,t,t.get_id(),dict()]; 
-    #     ct = ct2;
-
-            
-    #     nbb = dh.Get_Bounding_Boxes(self.caller,True);  
-    #     dkern = dict();
-    #     for s in list(ct.keys()):
-    #         for ii in ct[s].keys():
-    #             # dh.debug(nbb)
-    #             bb=nbb[ct[s][ii][2]]
-    #             wdth = bb[0]+bb[2]
-    #             caphgt = -bb[1]
-    #             bbstrt = bb[0]
-    #             dscnd = bb[1]+bb[3]
-    #             ct[s][ii][1].delete();
-                
-    #             if KERN_TABLE:
-    #                 precwidth = dict();
-    #                 for jj in ct[s][ii][-1].keys():
-    #                     bb=nbb[ct[s][ii][-1][jj][2]];
-    #                     wdth2 = bb[0]+bb[2];
-    #                     precwidth[jj] = wdth2;         # width including the preceding character and extra kerning
-    #                     ct[s][ii][-1][jj][1].delete();
-    #                 ct[s][ii] = [ct[s][ii][0],wdth,bbstrt,caphgt,dscnd,precwidth]
-    #             else:                        
-    #                 ct[s][ii] = [ct[s][ii][0],wdth,bbstrt,caphgt,dscnd]
-                    
-    #         if KERN_TABLE:
-    #             dkern[s] = dict();
-    #             for ii in ct[s].keys():
-    #                 sw = ct[s][pI2][1] - ct[s][pI1][1];
-    #                 mcw = ct[s][ii][1] - sw;      # my character width
-    #                 if ii==' ': mcw = sw;
-    #                 for jj in ct[s][ii][-1].keys():
-    #                     # myi = mycs.index(jj);
-    #                     pcw = ct[s][jj][1] - sw; # preceding char width
-    #                     if ct[s][jj][0]==' ': pcw = sw;
-    #                     bcw = ct[s][ii][-1][jj] - sw; # both char widths
-    #                     dkern[s][jj,ct[s][ii][0]] = bcw - pcw - mcw;          # preceding char, then next char
-                        
-                
-    #     for s in list(ct.keys()):
-    #         sw = ct[s][pI2][1] - ct[s][pI1][1] # space width is the difference in widths of the last two
-    #         ch = ct[s][pI2][3]                # cap height
-    #         dr = ct[s][pI2][4]                # descender
-    #         for ii in ct[s].keys():
-    #             cw = ct[s][ii][1] - sw;  # character width (full, including extra space on each side)
-    #             xo = ct[s][ii][2]        # x offset: how far it starts from the left anchor
-    #             if ct[s][ii][0]==' ':
-    #                 cw = sw;
-    #                 xo = 0;
-                    
-    #             # dh.debug([ii,cw,sw])
-                
-    #             dkernscl = dict();
-    #             if KERN_TABLE:    
-    #                 for k in dkern[s].keys():
-    #                     dkernscl[k] = dkern[s][k]/docscale;
-    #             # dh.debug([ct[s][ii][0],dkern])
-    #             ct[s][ii] = cprop(ct[s][ii][0],cw/docscale,sw/docscale,xo/docscale,ch/docscale,dr/docscale,dkernscl);
-    #             # Because a nominal 1 px font is docscale px tall, we need to divide by the docscale to get the true width
-                
-            
-    #         # dh.debug(dkernscl)    
-    #         # ct[s] = ct[s][0:Nl]
-            
-        
-    #     # for s in list(ct.keys()):
-    #     #     txts[s].delete();
-    #     # dh.debug(ct)
-    #     return ct, nbb
 
     
     def measure_character_widths2(self,els):

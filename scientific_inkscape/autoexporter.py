@@ -87,7 +87,7 @@ class AutoExporter(inkex.EffectExtension):
         thinline_dehancement = self.options.thinline;
         export_now = self.options.exportnow
         
-        bfn, tmp = dh.Get_Binary_Loc(self.options.input_file)
+        bfn = dh.Get_Binary_Loc()
         bloc, bnm = os.path.split(bfn)
         pyloc,pybin = os.path.split(sys.executable)
             

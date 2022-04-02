@@ -136,8 +136,8 @@ class ScalePlots(inkex.EffectExtension):
                     newsize = self.svg.unittouu('1pt')*fontsize;
                 else:
                     newsize = actualsize*(fontsize/100);
-                # fs = dh.Get_Style_Comp(el.style,'font-size');
-                fs = dh.Get_Style_Comp(Style2(el.get('style')),'font-size');
+                fs = dh.Get_Style_Comp(el.lstyle,'font-size');
+                # fs = dh.Get_Style_Comp(Style2(el.get('style')),'font-size');
                 if fs is None or not('%' in fs): # keep sub/superscripts relative size
                     dh.Set_Style_Comp(el,'font-size',str(newsize/sf)+'px')
         

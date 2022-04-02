@@ -109,6 +109,7 @@ def Set_Style_Comp(el_or_sty,comp,val):
     isel = isinstance(el_or_sty,(BaseElement))  # is element
     if isel:
         sty = el_or_sty.get('style');
+        # sty = getstylelazy(el_or_sty);
     else:
         isstr = isinstance(el_or_sty,(str))
         if not(isstr):                          # is style string
@@ -137,7 +138,8 @@ def Set_Style_Comp(el_or_sty,comp,val):
             sty = comp+':'+val
     
     if isel:
-        el_or_sty.set('style',sty);             # set element style
+        # el_or_sty.set('style',sty);             # set element style
+        el_or_sty.lstyle = sty;             # set element style
     else:
         if isstr:
             return sty                          # return style string
@@ -157,13 +159,19 @@ def Get_Style_Comp(sty,comp):
                 val=a[1];
     return val
 
-# A temporary version of the new selected_style until it's officially released.
+# A temporary version of the new specified_style until it's officially released.
 # Maybe replace later (but it's currently way faster, so maybe not)
+def specified_style2(el):
+    if not(hasattr(el,'spdstyle')):
+        parent = el.getparent();
+        if parent is not None and isinstance(parent, (ShapeElement,SvgDocumentElement)):
+            ret = specified_style2(parent) + cascaded_style2(el) 
+        else:
+            ret = cascaded_style2(el)
+        el.spdstyle = ret
+    return el.spdstyle
 def selected_style_local(el):
-    parent = el.getparent();
-    if parent is not None and isinstance(parent, (ShapeElement,SvgDocumentElement)):
-        return selected_style_local(parent) + cascaded_style2(el) 
-    return cascaded_style2(el)
+    return specified_style2(el)
 
 svgpres = ['alignment-baseline','baseline-shift','clip','clip-path','clip-rule','color','color-interpolation','color-interpolation-filters','color-profile','color-rendering','cursor','direction','display','dominant-baseline','enable-background','fill','fill-opacity','fill-rule','filter','flood-color','flood-opacity','font-family','font-size','font-size-adjust','font-stretch','font-style','font-variant','font-weight','glyph-orientation-horizontal','glyph-orientation-vertical','image-rendering','kerning','letter-spacing','lighting-color','marker-end','marker-mid','marker-start','mask','opacity','overflow','pointer-events','shape-rendering','stop-color','stop-opacity','stroke','stroke-dasharray','stroke-dashoffset','stroke-linecap','stroke-linejoin','stroke-miterlimit','stroke-opacity','stroke-width','text-anchor','text-decoration','text-rendering','transform','transform-origin','unicode-bidi','vector-effect','visibility','word-spacing','writing-mode']
 excludes = ['clip','clip-path','mask','transform','transform-origin']
@@ -172,38 +180,40 @@ excludes = ['clip','clip-path','mask','transform','transform-origin']
 def cascaded_style2(el):
 # Object's style including any CSS
 # Modified from Inkex's cascaded_style
-
-    svg = get_parent_svg(el);
-    if not(hasattr(svg,'cssdict')):
-        generate_cssdict(svg);
-    if svg is not None:        cssdict = svg.cssdict;
-    else:                      cssdict = dict();
-
-    # global cssdict
-    # idebug(cssdict)
-    # if cssdict is None:
-    #     # Generate a dictionary of styles at least once so we don't have to do constant lookups
-    #     # If elements change, will need to rerun by setting cssdict to None
-    #     generate_cssdict(get_parent_svg(el));
-    csssty = cssdict.get(el.get_id());
-    # idebug(csssty)
-    # locsty = el.style;
-    locsty = Style2(el.get('style'));
+    if not(hasattr(el,'csdstyle')):
+        svg = get_parent_svg(el);
+        if not(hasattr(svg,'cssdict')):
+            generate_cssdict(svg);
+        if svg is not None:        cssdict = svg.cssdict;
+        else:                      cssdict = dict();
     
-    # Add any presentation attributes to local style
-    attr = list(el.keys());
-    attsty = Style2('');
-    for a in attr:
-        if a in svgpres and not(a in excludes) and locsty.get(a) is None and el.get(a) is not None:
-            attsty[a] = el.get(a)
-#            debug(el.get(a))
-
-    if csssty is None:
-        return attsty+locsty
-    else:
-        # Any style specified locally takes priority, followed by CSS,
-        # followed by any attributes that the element has
-        return attsty+csssty+locsty
+        # global cssdict
+        # idebug(cssdict)
+        # if cssdict is None:
+        #     # Generate a dictionary of styles at least once so we don't have to do constant lookups
+        #     # If elements change, will need to rerun by setting cssdict to None
+        #     generate_cssdict(get_parent_svg(el));
+        csssty = cssdict.get(el.get_id());
+        # locsty = Style2(el.get('style'));
+        locsty = el.lstyle
+        
+        # Add any presentation attributes to local style
+        attr = list(el.keys());
+        attsty = Style2('');
+        for a in attr:
+            if a in svgpres and not(a in excludes) and locsty.get(a) is None and el.get(a) is not None:
+                attsty[a] = el.get(a)
+    #            debug(el.get(a))
+    
+        if csssty is None:
+            ret = attsty+locsty
+        else:
+            # Any style specified locally takes priority, followed by CSS,
+            # followed by any attributes that the element has
+            ret = attsty+csssty+locsty
+        el.csdstyle = ret
+    return el.csdstyle
+        
 def dupe_in_cssdict(oldid,newid,svg):
     # duplicate a style in cssdict
     if not(hasattr(svg,'cssdict')):
@@ -238,14 +248,27 @@ def generate_cssdict(svg):
                 except (lxml.etree.XPathEvalError,TypeError):
                     pass
         svg.cssdict = cssdict;
-            
+
+
+# Give all BaseElements a lazy style attribute that clears the stored cascaded / specified
+# style whenever the style is changed
+def lstyget(el):
+    if not(hasattr(el,'style2')):
+        el.style2 = Style2(el.get('style'))        # el.get() is very efficient
+    return el.style2
+def lstyset(el,sty):
+    el.style  = sty
+    el.style2 = Style2(sty);
+    if hasattr(el,'csdstyle'): delattr(el,'csdstyle');
+    if hasattr(el,'spdstyle'): delattr(el,'spdstyle');
+inkex.BaseElement.lstyle = property(lstyget,lstyset)
     
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
 def Get_Composed_Width(el,comp,nargout=1,styin=None,ctin=None):
     # cs = el.composed_style();
     if styin is None:                   # can pass styin to reduce extra style gets
-        cs = selected_style_local(el);
+        cs = specified_style2(el);
     else:
         cs = styin;
     if ctin is None:                    # can pass ctin to reduce extra composed_transforms
@@ -292,7 +315,7 @@ def Get_Composed_Width(el,comp,nargout=1,styin=None,ctin=None):
 # Get line-height in user units
 def Get_Composed_LineHeight(el,styin=None,ctin=None):    # cs = el.composed_style();
     if styin is None:
-        cs = selected_style_local(el);
+        cs = specified_style2(el);
     else:
         cs = styin;
     sc = Get_Style_Comp(cs,'line-height');
@@ -313,7 +336,7 @@ def Get_Composed_LineHeight(el,styin=None,ctin=None):    # cs = el.composed_styl
 def Get_Composed_List(el,comp,nargout=1,styin=None):
     # cs = el.composed_style();
     if styin is None:
-        cs = selected_style_local(el);
+        cs = specified_style2(el);
     else:
         cs = styin
     ct = el.composed_transform();
@@ -495,7 +518,7 @@ def compose_all(el,clipurl,maskurl,transform,style):
         mysty = cascaded_style2(el);
         compsty = style + mysty                
         compsty['opacity']=str(float(mysty.get('opacity','1'))*float(style.get('opacity','1')))  # opacity accumulates at each layer
-        el.style = compsty;                                                       
+        el.lstyle = compsty;                                                       
     
     if clipurl is not None:   cout = merge_clipmask(el, clipurl)        # clip applied before transform, fix first
     if maskurl is not None:   merge_clipmask(el, maskurl, mask=True)
@@ -515,7 +538,7 @@ def shallow_composed_style(el):
     parent = el.getparent();
     if parent.get('opacity') is not None:                          # make sure style includes opacity
         Set_Style_Comp(parent,'opacity',parent.get('opacity'));
-    if Get_Style_Comp(parent.style,'stroke-linecap') is not None:  # linecaps not currently inherited, so don't include in composition
+    if Get_Style_Comp(parent.lstyle,'stroke-linecap') is not None:  # linecaps not currently inherited, so don't include in composition
         Set_Style_Comp(parent,'stroke-linecap',None);
     if parent is not None and isinstance(parent, ShapeElement):
         return cascaded_style2(parent) + cascaded_style2(el)
@@ -541,13 +564,12 @@ def fix_css_clipmask(el,mask=False):
     mycss = cssdict.get(el.get_id());
     if mycss is not None:
         if mycss.get(cm) is not None and mycss.get(cm)!=el.get(cm):
-            # get_parent_svg(el).stylesheet.add('#'+el.get_id(),cm+':'+el.get(cm));
             svg = get_parent_svg(el)
             if not(hasattr(svg,'stylesheet_entries')):
                 svg.stylesheet_entries = dict();
             svg.stylesheet_entries['#'+el.get_id()]=cm+':'+el.get(cm);
             mycss[cm]=el.get(cm);
-    if el.style.get(cm) is not None: # also clear local style
+    if el.lstyle.get(cm) is not None: # also clear local style
         Set_Style_Comp(el,cm,None);
 
 # Adding to the stylesheet is slow, so as a workaround we only do this once
@@ -940,7 +962,7 @@ def Get_Bounding_Boxes(s=None,getnew=False,filename=None,pxinuu=None,inkscape_bi
 # I think this is more robust. Make a tally below if it freezes:
 def commandqueryall(fn,inkscape_binary=None):
     if inkscape_binary is None:
-        bfn, tmp = Get_Binary_Loc(fn);
+        bfn = Get_Binary_Loc();
     else:
         bfn = inkscape_binary
     arg2 = [bfn, '--query-all',fn]
@@ -989,14 +1011,17 @@ def idebug(x):
     inkex.utils.debug(x);
 
 def get_parent_svg(el):
-    # slightly faster than el.root
-    myn = el
-    while myn.getparent() is not None:
-        myn = myn.getparent();
-    if isinstance(myn,SvgDocumentElement):    
-        return myn;
-    else:
-        return None
+    if not(hasattr(el,'svg')):
+        # slightly faster than el.root
+        myn = el
+        while myn.getparent() is not None:
+            myn = myn.getparent();
+        if isinstance(myn,SvgDocumentElement):    
+            el.svg = myn;
+        else:
+            el.svg = None
+    return el.svg
+    
 
 
 # Modified from Inkex's get function
@@ -1204,7 +1229,7 @@ def combine_paths(els,mergeii=0):
 # Gets all of the stroke and fill properties from a style
 def get_strokefill(el,styin=None):
     if styin is None:
-        sty = selected_style_local(el)
+        sty = specified_style2(el)
     else:
         sty = styin
     strk = sty.get('stroke',None)
@@ -1272,7 +1297,7 @@ def visible_descendants(svg):
 # Gets the location of the Inkscape binary
 # Functions copied from command.py
 # Copyright (C) 2019 Martin Owens
-def Get_Binary_Loc(fin):
+def Get_Binary_Loc():
     from lxml.etree import ElementTree
     INKSCAPE_EXECUTABLE_NAME = os.environ.get('INKSCAPE_COMMAND')
     if INKSCAPE_EXECUTABLE_NAME == None:
@@ -1282,8 +1307,6 @@ def Get_Binary_Loc(fin):
         else:
             INKSCAPE_EXECUTABLE_NAME = 'inkscape'
     class CommandNotFound(IOError):
-        pass
-    class ProgramRunError(ValueError):
         pass
     def which(program):
         if os.path.isabs(program) and os.path.isfile(program):
@@ -1314,58 +1337,7 @@ def Get_Binary_Loc(fin):
         except ImportError:
             pass
         raise CommandNotFound(f"Can not find the command: '{program}'")
-    def write_svg(svg, *filename):
-        filename = os.path.join(*filename)
-        if os.path.isfile(filename):
-            return filename
-        with open(filename, 'wb') as fhl:
-            if isinstance(svg, SvgDocumentElement):
-                svg = ElementTree(svg)
-            if hasattr(svg, 'write'):
-                # XML document
-                svg.write(fhl)
-            elif isinstance(svg, bytes):
-                fhl.write(svg)
-            else:
-                raise ValueError("Not sure what type of SVG data this is.")
-        return filename
-    def to_arg(arg, oldie=False):
-        if isinstance(arg, (tuple, list)):
-            (arg, val) = arg
-            arg = '-' + arg
-            if len(arg) > 2 and not oldie:
-                arg = '-' + arg
-            if val is True:
-                return arg
-            if val is False:
-                return None
-            return f"{arg}={str(val)}"
-        return str(arg)
-    def to_args(prog, *positionals, **arguments):
-        args = [prog]
-        oldie = arguments.pop('oldie', False)
-        for arg, value in arguments.items():
-            arg = arg.replace('_', '-').strip()    
-            if isinstance(value, tuple):
-                value = list(value)
-            elif not isinstance(value, list):
-                value = [value]    
-            for val in value:
-                args.append(to_arg((arg, val), oldie))
-        args += [to_arg(pos, oldie) for pos in positionals if pos is not None]
-        # Filter out empty non-arguments
-        return [arg for arg in args if arg is not None]
-    def _call(program, *args, **kwargs):
-        stdin = kwargs.pop('stdin', None)
-        if isinstance(stdin, str):
-            stdin = stdin.encode('utf-8')
-        return to_args(which(program), *args, **kwargs)
-    def call(program, *args, **kwargs):
-        return _call(program, *args, **kwargs)
-    def inkscape2(svg_file, *args, **kwargs):
-        return call(INKSCAPE_EXECUTABLE_NAME, svg_file, *args, **kwargs)
-    return inkscape2(fin)
-
+    return which(INKSCAPE_EXECUTABLE_NAME)
 
 # Get document location or prompt
 def Get_Current_File(ext):
