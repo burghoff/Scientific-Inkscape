@@ -22,21 +22,16 @@
 
 import inkex
 from inkex import (TextElement, FlowRoot, FlowPara, FlowRegion, Tspan, TextPath, Rectangle,\
-                   addNS, Transform, Style, PathElement, Line, Path,StyleElement,\
-                   NamedView, Defs, Metadata, ForeignObject,Group,Use)
+                   PathElement, Line, Path,StyleElement,\
+                   NamedView, Defs, Metadata, ForeignObject,Group)
 
 import os,sys
 sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
 import dhelpers as dh
 
 import lxml, os
-import RemoveKerning
+import RemoveKerning, Style2
 
-
-dispprofile = True;
-dispprofile = False;
-lprofile = True;
-lprofile = False;
 
 class FlattenPlots(inkex.EffectExtension):
     def add_arguments(self, pars):
@@ -78,6 +73,8 @@ class FlattenPlots(inkex.EffectExtension):
                 if d.get('inkscape:label') is not None:
                     el.set('inkscape:label',el.get('inkscape:label')+' flat')
                     d.set('inkscape:label',d.get('inkscape:label')+' original')
+                d.set('sodipodi:insensitive','true'); # lock original
+                d.set('opacity',0.3);
             sel = [list(el) for el in sel]
             import itertools
             sel = list(itertools.chain.from_iterable(sel))
@@ -91,12 +88,12 @@ class FlattenPlots(inkex.EffectExtension):
             for el in seldefs:
                 self.svg.defs.append(el)
                 for d in dh.descendants2(el):
-                    if d in seld: seld.remove(d)
+                    if d in seld: seld.remove(d) # no longer selected
             selcm = [el for el in seld if isinstance(el, (inkex.ClipPath)) or dh.isMask(el)];
             for el in selcm:
                 self.svg.defs.append(el)
                 for d in dh.descendants2(el):
-                    if d in seld: seld.remove(d)
+                    if d in seld: seld.remove(d) # no longer selected
         
         
         gs = [el for el in seld if isinstance(el,Group)]
@@ -177,7 +174,8 @@ class FlattenPlots(inkex.EffectExtension):
         # Remove any unused clips we made, unnecessary white space in document
         # import time
         # tic = time.time();
-        ds = dh.descendants2(self.svg);
+        # ds = dh.descendants2(self.svg);
+        ds = self.svg.ldescendants;                
         clips = [el.get('clip-path') for el in ds]; 
         masks = [el.get('mask')      for el in ds]; 
         clips = [url[5:-1] for url in clips if url is not None];
@@ -199,54 +197,73 @@ class FlattenPlots(inkex.EffectExtension):
         # dh.debug(time.time()-tic)
 
 
-    def effect(self):   
-        # import random
-        # random.seed(a=1)
-#        tic = time.time();
-        if dispprofile:
-            import cProfile, pstats, io
+    def effect(self): 
+        cprofile = True;
+        cprofile = False;
+        lprofile = True;
+        lprofile = False;
+        
+        if cprofile or lprofile:
+            import io
+            if self.options.testmode:
+                # print(self.options.output)
+                profiledir = os.path.split(os.path.abspath(str(self.options.output)))[0];
+                cprofile = True;
+            else:
+                profiledir = dh.get_script_path();
+        
+        if cprofile:
+            import cProfile, pstats
             from pstats import SortKey
             pr = cProfile.Profile()
             pr.enable()
         
+        needtorun = True;
         if lprofile:
-            from line_profiler import LineProfiler
-            import io
-            lp = LineProfiler()
-            
-            
-            import TextParser
-            fns = [RemoveKerning.remove_kerning,RemoveKerning.Remove_Manual_Kerning,\
-                   RemoveKerning.External_Merges,TextParser.LineList.Parse_Lines2,\
-                   TextParser.LineList.Split_Off_Words,\
-                   dh.Get_Composed_LineHeight,dh.Get_Composed_Width,dh.ungroup,dh.selected_style_local,\
-                   dh.cascaded_style2,dh.shallow_composed_style,dh.generate_cssdict,dh.descendants2,\
-                   dh.getElementById2,dh.add_to_iddict,dh.get_id2,dh.compose_all,dh.unlink2,dh.merge_clipmask,\
-                   inkex.elements._base.ShapeElement.composed_transform,dh.fix_css_clipmask,\
-                   TextParser.Character_Table.measure_character_widths2,dh.get_points,dh.vto_xpath,\
-                   TextParser.LineList.__init__]
-            for fn in fns:
-                lp.add_function(fn)
-            lpw = lp(self.runflatten)
-            lpw()
-            
-            stdouttrap = io.StringIO()
-            lp.print_stats(stdouttrap);
-            
-            ppath = os.path.abspath(os.path.join(dh.get_script_path(),'Profile.csv'))
-            result=stdouttrap.getvalue()
-            f=open(ppath,'w');
-            f.write(result); f.close();
-        else:
+            try:
+                from line_profiler import LineProfiler
+                lp = LineProfiler()
+                
+                
+                import TextParser
+                from inspect import getmembers, isfunction, isclass,getmodule
+                fns = []
+                for m in [dh,TextParser,RemoveKerning,Style2]:
+                    fns += [v[1] for v in getmembers(m,isfunction)]
+                    for c in getmembers(m,isclass):
+                        if getmodule(c[1]) is m:
+                            fns += [v[1] for v in getmembers(c[1],isfunction)]
+                            for p in getmembers(c[1],lambda o: isinstance(o, property)):
+                                if p[1].fget is not None:
+                                    fns += [p[1].fget]
+                                if p[1].fset is not None:
+                                    fns += [p[1].fset]
+                for fn in fns:
+                    lp.add_function(fn)
+                lpw = lp(self.runflatten)
+                lpw()
+                stdouttrap = io.StringIO()
+                lp.print_stats(stdouttrap);
+                
+                ppath = os.path.abspath(os.path.join(profiledir,'lprofile.csv'))
+                result=stdouttrap.getvalue()
+                f=open(ppath,'w',encoding="utf-8");
+                f.write(result); f.close();
+                needtorun = False;
+            except: pass
+        
+        if needtorun:
             self.runflatten()
         
-        if dispprofile:
+        if cprofile:
             pr.disable()
             s = io.StringIO()
             sortby = SortKey.CUMULATIVE
+            pr.dump_stats(os.path.abspath(os.path.join(profiledir,'cprofile.prof')))
             ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
             ps.print_stats()
-            ppath = os.path.abspath(os.path.join(dh.get_script_path(),'Profile.csv'))
+            ppath = os.path.abspath(os.path.join(profiledir,'cprofile.csv'))
+            
             result=s.getvalue()
             prefix = result.split('ncalls')[0];
             # chop the string into a csv-like buffer
@@ -256,58 +273,6 @@ class FlattenPlots(inkex.EffectExtension):
             f=open(ppath,'w');
             f.write(result); f.close();
                             
-            
-        
-#        for el in obs:
-#            dh.debug(el.get_id());
-#            dh.debug(el.get('clip-path'));
-#        self.svg.selection = inkex.elements._selected.ElementList([el for el in gs + obs + newobs \
-#                                if not(isinstance(el, (NamedView, Defs, Metadata, ForeignObject,Tspan)))])
-        # removedupes = True
-        # if removedupes:
-        #     dels=dict();
-        #     for ii in range(len(obs)):
-        #         el = obs[ii];
-        #         dels[el.get_id()]=False
-        #         elsty = el.composed_style()
-        #         for jj in range(ii+1,len(os)):
-        #             cel = os[jj];
-        #             if el.typename==cel.typename:
-        #                 if elsty==cel.composed_style():
-        #                     if isinstance(el, (PathElement, Rectangle, Line)):
-        #                         xs,ys   = dh.get_points(el);
-        #                         cxs,cys = dh.get_points(cel);
-        #                         dh.debug(xs)
-        #                         dh.debug(cxs)
-        #                         dh.debug(ys)
-        #                         dh.debug(cys)
-        #                         if max([abs(d[0]-d[1]) for d in zip(xs,cxs)])<.01 and\
-        #                             max([abs(d[0]-d[1]) for d in zip(ys,cys)])<.01:
-        #                             dels[el.get_id()]=True;
-        #     for el in os:
-        #         if dels[el.get_id()]:
-        #             el.delete();
-                             
-        # linestotop = True
-        # if linestotop:
-        #     for el in os:
-        #         if isinstance(el, (PathElement, Rectangle, Line)):
-        #             xs,ys = dh.get_points(el);
-        #             if (len(xs)==5 and len(set(xs))==2 and len(set(ys))==2) \
-        #                 or len(set(xs))==1 or len(set(ys))==1:        # horizontal or vertical line
-        #                 strk = el.composed_style().get('stroke');
-        #                 sdsh = el.composed_style().get('stroke-dasharray');
-        #                 if not(strk in [None,'none']) and sdsh in [None,'none']:
-        #                     el.getparent().insert(len(el.getparent()),el); # pop me to the top
-                    
-        # selected = self.svg
-        # if scope == "selection_only":
-        #     selected = self.svg.selected.values()
-
-        # for item in selected:
-        #     inkex.utils.debug(item) 
-                      
-                
 
 if __name__ == '__main__':
     dh.Version_Check('Flattener')

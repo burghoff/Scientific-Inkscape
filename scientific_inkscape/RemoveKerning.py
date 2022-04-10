@@ -5,9 +5,10 @@ DEBUG_MERGE = True; # for checking why elements aren't merging
 DEBUG_MERGE = False; 
 
 NUM_SPACES = 1.0;     # number of spaces beyond which text will be merged/split
-XTOL = 0.6            # x tolerance (number of spaces), let be big since there are kerning inaccuracies (as big as -0.56 in Whitney)
-YTOL = 0.03           # y tolerance (number of spaces), should be really small
-XTOLMK = 0.99         # tolerance for manual kerning removal, should be more open-minded
+XTOLEXT = 0.6         # x tolerance (number of spaces), let be big since there are kerning inaccuracies (as big as -0.56 in Whitney)
+YTOLEXT = 0.03        # y tolerance (number of spaces), should be really small
+XTOLMKN = 0.99*1000   # left tolerance for manual kerning removal, should be huge
+XTOLMKP = 0.99        # right tolerance for manual kerning removal, should be fairly open-minded
 XTOLSPLIT = 0.5       # tolerance for manual kerning splitting, should be fairly tight
 SUBSUPER_THR = 1.0;  # ensuring sub/superscripts are smaller helps reduce false merges
 SUBSUPER_YTHR = 1/3; # superscripts must be at least 1/3 of the way above the baseline to merge (1/3 below cap for sub)
@@ -29,17 +30,19 @@ def remove_kerning(caller,os,removemanual,mergesupersub,splitdistant,mergenearby
                 lls[-1].Position_Check();
     
     if not(DEBUG_PARSER):
-        if splitdistant: lls, os = Split_Distant_Manual_Kerning(lls,os)
         if removemanual: lls, os = Remove_Manual_Kerning(lls,os,mergesupersub)
-        # # for ll in lls: dh.debug(ll.txt())
+        if splitdistant: lls, os = Split_Distant_Words(lls,os)
+        if splitdistant: lls, os = Split_Distant_Intraword(lls,os)
+        if splitdistant: lls, os = Split_Lines(lls,os);
+        # for ll in lls: dh.debug(ll.txt())
         # for ll in lls: ll.Position_Check()
         if mergenearby or mergesupersub: lls, os = External_Merges(lls,os,mergenearby,mergesupersub)
-        # for ll in lls: ll.Position_Check()
-        if splitdistant: lls, os = Split_Lines(lls,os);
+        # # # for ll in lls: ll.Position_Check()
+        # # for ll in lls: ll.Position_Check()
         lls, os = Change_Justification(lls,os,justification)
         if removemanual or mergenearby or mergesupersub: lls, os = Fix_Merge_Positions(lls,os)
         lls, os = Remove_Trailing_Leading_Spaces(lls,os);
-        # # for ll in lls: ll.Position_Check()
+        # # # for ll in lls: ll.Position_Check()
         lls, os = Make_All_Editable(lls,os);
         lls, os = Final_Cleanup(lls,os);
     return os
@@ -62,7 +65,7 @@ def Fix_Merge_Positions(lls,os):
 
 def Remove_Trailing_Leading_Spaces(lls,os):
     for ll in lls:
-        if (not(ll.isinkscape) or (ll.lns is not None and len(ll.lns)<2)) and not(ll.issvg2): # skip Inkscape-generated text
+        if not(ll.ismlinkscape) and not(ll.issvg2): # skip Inkscape-generated text
             for ln in ll.lns:
                 mtxt = ln.txt();
                 ii=len(mtxt)-1
@@ -87,7 +90,7 @@ def Change_Justification(lls,os,justification):
     if justification is not None:
         for ll in lls:
             # ll.Position_Check()
-            if (not(ll.isinkscape) or (ll.lns is not None and len(ll.lns)<2)) and not(ll.issvg2): # skip Inkscape-generated text
+            if not(ll.ismlinkscape) and not(ll.issvg2): # skip Inkscape-generated text
                 for ln in ll.lns:
                     ln.change_alignment(justification);
                 dh.Set_Style_Comp(ll.textel,'text-anchor',justification)
@@ -102,7 +105,7 @@ def Split_Lines(lls,os):
     newlls = [];            
     for jj in range(len(lls)):
         ll = lls[jj];
-        if ll.lns is not None and len(ll.lns)>1 and not(ll.isinkscape) and not(ll.issvg2):
+        if ll.lns is not None and len(ll.lns)>1 and not(ll.ismlinkscape) and not(ll.issvg2):
             for il in reversed(range(1,len(ll.lns))):
                 newtxt,nll = ll.Split_Off_Words(ll.lns[il].ws)
                 os.append(newtxt)
@@ -111,7 +114,7 @@ def Split_Lines(lls,os):
     return lls,os
      
 # Generate splitting of distantly-kerned text
-def Split_Distant_Manual_Kerning(lls,os):
+def Split_Distant_Words(lls,os):
     newlls=[];
     for ll in lls:
         if ll.lns is not None:
@@ -127,11 +130,14 @@ def Split_Distant_Manual_Kerning(lls,os):
                     dx = w.sw*(NUM_SPACES-trl_spcs-ldg_spcs)/w.sf
                     xtol = XTOLSPLIT*w.sw/w.sf;
                     
-                    bl2 = w2.pts_ut[0];
-                    br1 = w.pts_ut[3];     
+                    tr1, br1, tl2, bl2 = w.get_orig_pts(w2)
+                    
+                    # bl2 = w2.pts_ut[0];
+                    # br1 = w.pts_ut[3];     
                     
                     if bl2.x > br1.x + dx + xtol:
                         splits.append(ii);
+                        # dh.idebug([w.txt(),w2.txt(),br1.x+dx,bl2.x,xtol])
                 ln.splits = splits; ln.sws = sws;
             
                 if len(splits)>0:
@@ -148,7 +154,51 @@ def Split_Distant_Manual_Kerning(lls,os):
     lls+=newlls;    
     return lls,os    
 
-
+# Generate splitting of distantly-kerned text
+def Split_Distant_Intraword(lls,os):
+    newlls=[];
+    for ll in lls:
+        if ll.lns is not None and not(ll.ismlinkscape) and not(ll.issvg2):
+            for ln in ll.lns:
+                for w in ln.ws:
+                    if len(w.cs)>0:
+                        lastnspc = None; splitiis=[];
+                        if w.cs[0].c not in [' ','\u00A0']: lastnspc = w.cs[0]
+                        for ii in range(1,len(w.cs)):
+                            if lastnspc is not None:
+                                c = lastnspc
+                                c2= w.cs[ii]
+                                
+                                bl2 = c2.parsed_pts_ut[0];
+                                br1 =  c.parsed_pts_ut[3];     
+                                
+                                # trl_spcs, ldg_spcs = trailing_leading(w,w2)
+                                dx = w.sw*(NUM_SPACES)/w.sf
+                                xtol = XTOLSPLIT*w.sw/w.sf;
+                                
+                                if bl2.x > br1.x + dx + xtol:
+                                    splitiis.append(ii);
+                            if w.cs[ii].c not in [' ','\u00A0']: lastnspc = w.cs[ii]
+                        
+                        # if len(splitiis)>0:
+                        #     dh.idebug(w.txt())
+                        #     for spl in splitiis:
+                        #         dh.idebug(w.cs[spl].c)
+                            
+                        if len(splitiis)>0:
+                            for ii in reversed(range(len(splitiis))):
+                                sstart = splitiis[ii];
+                                if ii!=len(splitiis)-1:
+                                    sstop  = splitiis[ii+1]
+                                else:
+                                    sstop = len(w.cs)
+        
+                                # dh.idebug(w.txt()[sstart:sstop])
+                                newtxt,nll = ll.Split_Off_Characters(w.cs[sstart:sstop])
+                                os.append(newtxt);
+                                newlls.append(nll)
+    lls+=newlls;    
+    return lls,os   
 
 def Remove_Manual_Kerning(lls,os,mergesupersub):
     # Generate list of merges     
@@ -158,31 +208,33 @@ def Remove_Manual_Kerning(lls,os,mergesupersub):
             ws += [w for ln in ll.lns for w in ln.ws];
         # ll.Position_Check()
     for w in ws:
-        dx = w.sw*(NUM_SPACES+1*XTOL) # a big bounding box that includes the extra space
-        w.bb_big = TextParser.bbox([w.bb.x1-dx,w.bb.y1-dx,w.bb.w+2*dx,w.bb.h+2*dx])
-    # for w in ws:
-    #     while w.nextw is not None and w.txt()[-1]==' ' and w.nextw.txt()==' ':
-    #         w.nextw = w.nextw.nextw;
-    for w in ws:
         mw = [];
         w2=w.nextw      
         if w2 is not None and w2 in ws and not(twospaces(w,w2)):
             trl_spcs, ldg_spcs = trailing_leading(w,w2)
             dx = w.sw*(NUM_SPACES-trl_spcs-ldg_spcs)/w.sf
-            xtol2 = XTOLMK*w.sw/w.sf;
+            xtoln = XTOLMKN*w.sw/w.sf;
+            xtolp = XTOLMKP*w.sw/w.sf;
             
-            bl2 = w2.pts_ut[0];  # part of the same line, so same transform and y
-            br1 = w.pts_ut[3];
+            tr1, br1, tl2, bl2 = w.get_orig_pts(w2)
             
             if isnumeric(w.txt()) and isnumeric(w2.txt(),True):
                 dx = w.sw*0/w.sf
             
-#            dh.idebug([w.txt(),w2.txt(),br1.x-xtol2 <= bl2.x <= br1.x + dx + xtol2])
-            if br1.x-xtol2 <= bl2.x <= br1.x + dx + xtol2:
+            
+            previoussp = w.txt()==' ' and w.prevw is not None;
+            validmerge = br1.x-xtoln <= bl2.x <= br1.x + dx + xtolp;
+            
+            if previoussp and not(validmerge): # reconsider in case previous space was weirdly-kerned
+                tr1p, br1p, tl2p, bl2p = w.prevw.get_orig_pts(w2);
+                dx = w.sw*(NUM_SPACES-trl_spcs-ldg_spcs+1)/w.sf
+                validmerge = br1p.x-xtoln <= bl2p.x <= br1p.x + dx + xtolp
+                
+            if validmerge:
                 mw.append([w2,'same',br1,bl2])
         w.mw = mw;
         
-    Perform_Merges(ws)    
+    Perform_Merges(ws,mk=True)    
                     
     # Following manual kerning removal, lines with multiple words need to be split out into new text els
     newlls=[];
@@ -204,7 +256,7 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
             ws += [w for ln in ll.lns for w in ln.ws];
         # ll.Position_Check()
     for w in ws:
-        dx = w.sw*(NUM_SPACES+1*XTOL) # a big bounding box that includes the extra space
+        dx = w.sw*(NUM_SPACES+XTOLEXT) # a big bounding box that includes the extra space
         if w.parsed_bb is not None:
             w.bb_big = TextParser.bbox([w.parsed_bb.x1-dx,w.parsed_bb.y1-dx,w.parsed_bb.w+2*dx,w.parsed_bb.h+2*dx])
         else:
@@ -236,8 +288,8 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
         trl_spcs, ldg_spcs = trailing_leading(w,w2)
 
         dx   = w.sw*(NUM_SPACES-trl_spcs-ldg_spcs)/w.sf
-        xtol = XTOL*w.sw/w.sf;
-        ytol = YTOL*w.sw/w.sf;
+        xtol = XTOLEXT*w.sw/w.sf;
+        ytol = YTOLEXT*w.sw/w.sf;
         
 
         # calculate 2's coords in 1's system
@@ -254,26 +306,33 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
                 # dh.debug(w.txt()+' '+w2.txt())
             elif br1.y+ytol >= bl2.y >= tr1.y-ytol and mergesupersub: # above baseline
                 aboveline = br1.y*(1-SUBSUPER_YTHR)+tr1.y*SUBSUPER_YTHR+ytol >= bl2.y;
-                if w2.fs<w.fs*SUBSUPER_THR-.01: # new smaller, expect super
+                if w2.fs<w.fs*(SUBSUPER_THR-.01): # new smaller, expect super
                     if aboveline: 
                         type = 'super';
-                elif w.fs<w2.fs*SUBSUPER_THR-.01: # old smaller, expect reutrn
+                        # dh.idebug([w2.fs,w.fs*SUBSUPER_THR])
+                elif w.fs<w2.fs*(SUBSUPER_THR-.01): # old smaller, expect reutrn
                         type = 'subreturn';
                 else:
-                    if aboveline: 
-                        type = 'superorsubreturn'; # could be either, decide later
+                    if aboveline:
+                        if len(w2.ln.txt())>2:         # long text, probably not super
+                            type = 'subreturn'
+                        else:
+                            type = 'superorsubreturn'; # could be either, decide later
                     else:
                         type = 'subreturn';
             elif br1.y+ytol >= tl2.y >= tr1.y-ytol and mergesupersub:
                 belowline = tl2.y >= br1.y*SUBSUPER_YTHR+tr1.y*(1-SUBSUPER_YTHR)-ytol;
-                if w2.fs<w.fs*SUBSUPER_THR-.01: # new smaller, expect sub
+                if w2.fs<w.fs*(SUBSUPER_THR-.01): # new smaller, expect sub
                     if  belowline:
                         type = 'sub';
-                elif w.fs<w2.fs*SUBSUPER_THR+.01: # old smaller, expect superreturn
+                elif w.fs<w2.fs*(SUBSUPER_THR+.01): # old smaller, expect superreturn
                         type = 'superreturn'
                 else:
                     if  belowline:
-                        type = 'suborsuperreturn'; # could be either, decide later
+                        if len(w2.ln.txt())>2:        # long text, probably not sub
+                            type = 'superreturn'
+                        else:
+                            type = 'suborsuperreturn'; # could be either, decide later
                     else:
                         type = 'superreturn';
             if type is not None:
@@ -302,7 +361,7 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
 
 
 
-def Perform_Merges(ws):
+def Perform_Merges(ws,mk=False):
     for w in ws:
         mw = w.mw;
         minx = float('inf');
@@ -384,12 +443,22 @@ def Perform_Merges(ws):
 #        dh.idebug([w.txt(),w.merges[ii].txt()])
         if len(w.merges)>0 and not(w.merged):
             maxii = len(w.merges);
+            alltxt = ''.join([w.txt()]+[w2.txt() for w2 in w.merges]);
+            hasspaces = ' ' in alltxt;
             
             for ii in range(maxii):
-#                dh.idebug([w.txt(),w.merges[ii].txt()])
-                w.appendw(w.merges[ii],w.wtypes[ii+1]);
+                
+                maxspaces = None
+                if mk and hasspaces and w.merges[ii].prevsametspan:
+                    maxspaces = 0
+                if (w.txt() is not None and len(w.txt())>0 and w.txt()[-1]==' ') \
+                    or w.wtypes[ii+1] in ['super','sub']: # no extra spaces for sub/supers or if there's already one
+                        maxspaces=0;
+                    
+                w.appendw(w.merges[ii],w.wtypes[ii+1],maxspaces);
             for c in w.cs:
                 if c.pending_style is not None:
+                    # dh.idebug([c.c,c.pending_style])
                     c.applypending();
 
 # Check if text represents a number

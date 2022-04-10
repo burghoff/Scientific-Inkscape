@@ -25,20 +25,21 @@
 # Characters are also grouped into twords, which represent groups of characters with the same position.
 
 
-KERN_TABLE = True;   # if enabled, generates a kern table for each font (slower, but more accurate)
+KERN_TABLE = True;   # if enabled, generates a fine kerning table for each font (more accurate)
 
 import os,sys
 sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
 import dhelpers as dh
 
-import copy
+from copy import copy,deepcopy
 import inkex
 from inkex import (TextElement, Tspan ,Vector2d,Transform)
 from Style2 import Style2
+from inkex import ImmutableVector2d as iv2d
+import numpy as np
 
 global debug
 debug = False;
-
 
 
 # A text element that has been parsed into a list of lines
@@ -46,24 +47,26 @@ class LineList():
     def __init__(self, el, ctable,debug=False):
         self.ctable = ctable
         self.textel = el;
-        self.inittextel = el;                           # prior to any merging/splitting/etc
         
         # self.lns = self.Parse_Lines(el,debug=debug);
         # self.Finish_Lines();
         
-        self.lns = self.Parse_Lines2(el,debug=debug);
+        self.lns = self.Parse_Lines2();
         self.Finish_Lines2();
         
         for ln in self.lns:
             for w in ln.ws:
-                w.parsed_bb = copy.deepcopy(w.bb);
+                w.parsed_bb = deepcopy(w.bb);
                 for c in w.cs:
-                    c.parsed_pts_ut, c.parsed_pts_t = c.interp_pts()
+                    c.parsed_pts_ut = c.pts_ut;
+                    c.parsed_pts_t  = c.pts_t;
                 
-        # dh.debug('\n')
+        # dh.idebug('\n')
         # for ln in self.lns:
-        #     dh.debug(ln.txt())
-        #     dh.debug(ln.el.get_id())
+        #     dh.idebug(ln.txt())
+        #     for c in ln.cs:
+        #         dh.idebug([c.c,c.lsp])
+            # dh.debug(ln.el.get_id())
         #     dh.debug(ln.xsrc.get_id())
         #     dh.debug(ln.x)
         #     dh.debug(ln.sprl)
@@ -72,64 +75,71 @@ class LineList():
         tlvllns = [ln for ln in self.lns if ln.tlvlno is not None and ln.tlvlno>0]; # top-level lines after 1st
         self.isinkscape = all([ln.sprl for ln in tlvllns]) and len(tlvllns)>0 and\
                           all([ln.style.get('-inkscape-font-specification') is not None \
-                               for ln in self.lns]); # probably made in Inkscape
+                               for ln in self.lns]);             # probably made in Inkscape
+        self.ismlinkscape = self.isinkscape and len(self.lns)>1; # multi-line Inkscape
         
         sty = dh.selected_style_local(el);
         self.issvg2 = (sty.get('inline-size') is not None or sty.get('shape-inside') is not None); # svg2 flows
-        self.dxs = [c.dx for ln in self.lns for c in ln.cs]; 
-        self.dys = [c.dy for ln in self.lns for c in ln.cs]; self.flatdelta = False;
+        # self._cdx = None;
+        
 
     def duplicate(self):
         # Duplicates a LL and its text
-        ret = copy.copy(self);
+        ret = copy(self);
         ret.textel = dh.duplicate2(self.textel);
-        ret.inittextel = self.textel;
-        d1 = dh.descendants2(self.textel);
+        # d1 = dh.descendants2(self.textel);
+        d1 = self.textds;
         d2 = dh.descendants2(ret.textel);
+        ret.textds = d2;
         ret.ctable = self.ctable
         ret.lns = []
         for ln in self.lns:
-            eli = d1.index(ln.el);
+            # eli = d1.index(ln.el);
             xsi = d1.index(ln.xsrc);
             ysi = d1.index(ln.ysrc);
-            ret.lns.append(tline(copy.copy(ln.x), copy.copy(ln.y), ln.sprl, ln.nominalspr, ln.anchor, \
-                                  ln.transform,ln.angle,\
-                                  d2[eli],d2[xsi],d2[ysi],ln.tlvlno,ln.style,ln.continuex));
-            ret.lns[-1].anchor = ln.anchor;
+            ret.lns.append(tline(ret,copy(ln.x),copy(ln.y),d2[xsi],d2[ysi],ln.sprl, ln.nominalspr, ln.anchor, \
+                                 ln.transform,ln.angle,ln.tlvlno,ln.style,ln.continuex,ln.continuey));
+            # ret.lns[-1].anchor = ln.anchor;
             ret.lns[-1].cs = []
             for c in ln.cs:
                 myi = d1.index(c.loc.el);
                 newloc = cloc(d2[myi],c.loc.tt,c.loc.ind);
-                prop = copy.copy(c.prop); prop.charw = c.cw;
+                prop = (c.prop); prop.charw = c.cw;
 #                    prop = self.ctable.get_prop(' ',c.nsty)*c.fs # cannot just use old one for some reason???
                 ret.lns[-1].addc(tchar(c.c,c.fs,c.sf,prop,c.sty,c.nsty,newloc));
         ret.Finish_Lines2();                              # generates the new words
         for ii in range(len(self.lns)):
             for jj in range(len(self.lns[ii].ws)):
-                # ret.lns[ii].ws[jj].orig_pts_ut = copy.deepcopy(self.lns[ii].ws[jj].orig_pts_ut)
-                # ret.lns[ii].ws[jj].orig_pts_t  = copy.deepcopy(self.lns[ii].ws[jj].orig_pts_t )
-                # ret.lns[ii].ws[jj].orig_bb     = copy.deepcopy(self.lns[ii].ws[jj].orig_bb    )
-                ret.lns[ii].ws[jj].parsed_bb   = copy.deepcopy(self.lns[ii].ws[jj].parsed_bb    )
+                ret.lns[ii].ws[jj].parsed_bb     = (self.lns[ii].ws[jj].parsed_bb    )
             for jj in range(len(self.lns[ii].cs)):
-                ret.lns[ii].cs[jj].parsed_pts_ut = copy.deepcopy(self.lns[ii].cs[jj].parsed_pts_ut)
-                ret.lns[ii].cs[jj].parsed_pts_t  = copy.deepcopy(self.lns[ii].cs[jj].parsed_pts_t )
+                ret.lns[ii].cs[jj].parsed_pts_ut = (self.lns[ii].cs[jj].parsed_pts_ut)
+                ret.lns[ii].cs[jj].parsed_pts_t  = (self.lns[ii].cs[jj].parsed_pts_t )
+
                     
         ret.isinkscape = self.isinkscape;
-        ret.dxs = copy.copy(self.dxs);
-        ret.dys = copy.copy(self.dys);
+        ret.dxs = copy(self.dxs);
+        ret.dys = copy(self.dys);
         ret.flatdelta = self.flatdelta;
+        
+        ret._dxchange = self._dxchange;
+        ret._hasdx = self._hasdx;
+        ret._dychange = self._dychange;
+        ret._hasdy = self._hasdy;
         return ret
 
             
     def txt(self):
         return [v.txt() for v in self.lns]
     
+    
     # Every text element in an SVG can be thought of as a group of lines.
     # A line is a collection of text that gets its position from a single source element.
     # This position may be directly set, continued from a previous line, or inherited from a previous line
-    def Parse_Lines2(self,el,lns=None,debug=False):
+    def Parse_Lines2(self,srcsonly=False):
+        el=self.textel
         # First we get the tree structure of the text and do all our gets
-        ds,pts,cd,pd = dh.descendants2(el,True); Nd = len(ds)
+        ds,pts,cd,pd = dh.descendants2(el,True); Nd = len(ds);
+        self.textds = ds;
         ks = list(el);
         text = [d.text for d in ds]
         ptail = [[tel.tail for tel in pt] for pt in pts]   # preceding tails
@@ -142,7 +152,7 @@ class LineList():
         sprl   = [nspr[ii]=='line' and len(xs[ii])==1 and len(ys[ii])==1 for ii in range(len(ds))]
         
         # Find effective sprls (ones that are not disabled)
-        esprl = copy.copy(sprl)         
+        esprl = copy(sprl)         
         for ii in range(len(ds)):
             # Any non-sprl ancestor disables spr:l on me
             cel = ds[ii];                                   
@@ -205,7 +215,7 @@ class LineList():
             return xy[iin], ds[iin]
         
         # For positions that are None, inherit from ancestor/descendants if possible
-        ixs=copy.copy(xs); iys=copy.copy(ys);
+        ixs=copy(xs); iys=copy(ys);
         xsrcs=[None]*len(ds); ysrcs=[None]*len(ds);
         for ii in range(0,len(ds)):
             xv = xs[ii]; xsrc = ds[ii];
@@ -241,9 +251,9 @@ class LineList():
                     sel = tel;
                     if tt==0: sel = pd[tel]; # tails get their sty from the parent of the element the tail belongs to
                     sty = dh.selected_style_local(sel);
-                    ct = sel.composed_transform();
+                    ct = sel.lcomposed_transform;
                     fs,sf,ct,ang = dh.Get_Composed_Width(sel,'font-size',4,styin=sty,ctin=ct); #dh.debug(el.get_id()); dh.debug(el.composed_transform())
-                    # dh.idebug(fs)
+
                     if newsprl:
                         lh = dh.Get_Composed_LineHeight(sel,styin=sty,ctin=ct);
                     nsty=Character_Table.normalize_style(sty);
@@ -268,17 +278,20 @@ class LineList():
                         else:
                             continuex = False; issprl = False;
                             if xv[0] is None:      
-                                if len(lns)>0: xv = copy.copy(lns[-1].x); xsrc = lns[-1].xsrc; 
-                                else:          xv = copy.copy(ixs[0]);        xsrc = xsrcs[0];
+                                if len(lns)>0: xv = copy(lns[-1].x); xsrc = lns[-1].xsrc; 
+                                else:          xv = copy(ixs[0]);        xsrc = xsrcs[0];
                                 continuex = True; #issprl = True;
                             continuey = False; 
                             if yv[0] is None:        
-                                if len(lns)>0: yv = copy.copy(lns[-1].y); ysrc = lns[-1].ysrc; 
-                                else:          yv = copy.copy(iys[0]);        ysrc = ysrcs[0];
+                                if len(lns)>0: yv = copy(lns[-1].y); ysrc = lns[-1].ysrc; 
+                                else:          yv = copy(iys[0]);        ysrc = ysrcs[0];
                                 continuey = True; 
                         
+                        if srcsonly: # quit and return srcs of first line
+                            return xsrc,ysrc
+                        
                         tlvlno = None
-                        if ds[di] in ks:  tlvlno = ks.index(ds[di])
+                        if di<Nd and ds[di] in ks:  tlvlno = ks.index(ds[di])
                         elif edi==0:      tlvlno = 0;
                             
                         anch = sty.get('text-anchor') 
@@ -291,206 +304,37 @@ class LineList():
                             if txtdir=='rtl':
                                 if anch=='start': anch='end'
                                 elif anch=='end': anch='start'
-                        lns.append(tline(xv,yv,issprl,nspr[edi],anch,ct,ang,ds[edi],\
-                                          xsrc,ysrc,tlvlno,sty,continuex,continuey));
+                        lns.append(tline(self,xv,yv,xsrc,ysrc,issprl,nspr[edi],anch,ct,ang,\
+                                          tlvlno,sty,continuex,continuey));
                         
                         if newsprl or len(lns)==1:
                             sprl_inherits = lns[-1];
                             
                     if txt is not None:
-                        lsp = sty.get('letter-spacing')
-                        if lsp is not None: lsp = dh.implicitpx(lsp);
+
                         for jj in range(len(txt)):
                             c = txt[jj]
                             prop = self.ctable.get_prop(c,nsty)*fs;
                             ttv = 'text';
                             if tt==0: ttv='tail'
                             lns[-1].addc(tchar(c,fs,sf,prop,sty,nsty,cloc(tel,ttv,jj)));
-                            if lsp is not None:
-                                lns[-1].cs[-1].lsp = lsp;
             
         return lns
-        
-    # Seperate a text element into a group of lines
-    def Parse_Lines(self,el,lns=None,debug=False):
-        sty = dh.selected_style_local(el);
-        ct = el.composed_transform();
-        fs,sf,ct,ang = dh.Get_Composed_Width(el,'font-size',4,styin=sty,ctin=ct); #dh.debug(el.get_id()); dh.debug(el.composed_transform())
-        lh = dh.Get_Composed_LineHeight(el,styin=sty,ctin=ct);
-        nsty=Character_Table.normalize_style(sty);
-        tv = el.text;
-        
-        xv = LineList.GetXY(el,'x'); xsrc = el;
-        yv = LineList.GetXY(el,'y'); ysrc = el;
 
-        # Notes on sodipodi:role line
-        # If a top-level Tspan has sodipodi:role set to line, its position is inherited based on the previous line.
-        # The x value is taken from the previous line's x value.
-        # The y value is taken by adding the line height to the previous y value.
-        # However, inheritance is disabled by the presence of multiple x values or multiple y values.
-        # (Multiple dx or dy values does not disable this inheritance.)
-        # If sodipodi:role is not line, its anchoring/alignment will be inherited from the previous line.
-        
-        # Detect if inheriting position
-        nspr = el.get('sodipodi:role');
-        
-        toplevelTspan = isinstance(el,Tspan) and isinstance(el.getparent(),TextElement);
-        myi = el.getparent().getchildren().index(el);
-        
-        if toplevelTspan:                tlvlno=myi;
-        elif isinstance(el,TextElement): tlvlno=0;
-        else:                            tlvlno=None;
-        
-        sprl = (nspr=='line');
-        multiplepos = len(xv)>1 or len(yv)>1;           # multiple x or y values disable sodipodi:role line
-        inheritx = (sprl and not(multiplepos)) or (xv[0] is None)
-        inherity = (sprl and not(multiplepos)) or (yv[0] is None)
-        
-        # Determine if new line
-        newline = False;            
-        if isinstance(el,TextElement):
-            newline = True
-        elif toplevelTspan: # top level Tspans
-            if (sprl      and (not(inheritx) or not(inherity) or not(myi==0)))\
-            or (not(sprl) and (not(inheritx) or not(inherity))):   
-                # if not inheriting, continue previous line
-                newline = True
-        elif isinstance(el,Tspan):                      # nested Tspans: become a new line with an explicit x or y
-            if el.get('x') is not None:  
-                newline = True; inheritx=False;
-            if el.get('y') is not None:  
-                newline = True; inherity=False;
-        
-        # dh.debug(el.get_id() + str(inheritx))
-        # dh.debug(el.get_id())
-        # dh.debug(len(el.text))
-        # dh.debug(newline)
-        # dh.debug(inheritx)
-        # dh.debug(inherity)
-        # dh.debug((nspr=='line' and not(multiplepos)) or (yv[0] is None))
-        # dh.debug(' ')
-#        dh.debug(toplevelTspan)
-        
-        # debug = True
-        if debug:
-            dh.debug(el.get_id())
-            dh.debug(tv)
-            dh.debug(newline)
-            dh.debug(fs)
-            dh.debug(xv)
-            # dh.debug(inheritx)
-        
-        if newline:
-            continuex = False;
-            if lns is None:  
-                lns=[];
-            else:
-                if inheritx:                
-                    if len(lns)==0 or len(lns[-1].x)==0: return None
-                    else:
-                        if toplevelTspan and myi>0: # inheriting from previous top-level line
-                            lastln = [ln for ln in lns if ln.tlvlno==tlvlno-1][-1];
-                            xv   = [lastln.x[0]]; 
-                            xsrc = lastln.xsrc;
-                            if lastln.x[0] is None:
-                                lli=[ii for ii in range(len(lns)) if lns[ii].x[0] is not None]
-                                if len(lli)>0:
-                                    xv = [lns[max(lli)].x[0]]
-                                    xsrc = lns[max(lli)].xsrc
-                        else:                       # continuing previous line
-                            xv   = [None]; 
-                            xsrc = lns[-1].xsrc;
-                            continuex = True;
-#                        ct   = lns[-1].transform; # I don't think these do anything (2021.10.18)
-#                        ang  = lns[-1].angle;
-                if inherity:               
-                    if len(lns)==0 or len(lns[-1].y)==0: return None
-                    else:
-                        if toplevelTspan and myi>0: # inheriting from previous top-level line
-                            lastln = [ln for ln in lns if ln.tlvlno==tlvlno-1][-1];
-                            offs = lh/sf;
-                            if lns[-1].y[0] is not None:
-                                if lastln.y[0] is None:
-                                    lli=[ii for ii in range(len(lns)) if lns[ii].y[0] is not None]
-                                    if len(lli)>0: lyv = lns[max(lli)].y[0]
-                                    else: lyv=0
-                                else:
-                                    lyv = lastln.y[0]
-                                yv   = [lyv+offs];
-                            else: yv = [None];
-                            ysrc = lastln.ysrc;
-                        else:                       # continuing previous line
-                            yv   = [lns[-1].y[0]];
-                            ysrc = lns[-1].ysrc;
-                            
-            anch = sty.get('text-anchor') 
-            if len(lns)!=0 and nspr!='line':
-                if lns[-1].anchor is not None:
-                    anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
-            lns.append(tline(xv,yv,inheritx,nspr,anch,ct,ang,el,xsrc,ysrc,tlvlno,sty,continuex))
-        
-        # First line anchor should be the Tspan style if there are no characters in the text
-        if toplevelTspan and myi==0:
-            if len(lns)==1 and len(lns[0].cs)==0:
-                lns[0].anchor = sty.get('text-anchor');
-        
-        ctable = self.ctable  
-        if tv is not None and tv!='' and len(tv)>0:
-            for ii in range(len(tv)):
-                # if fs is None: return None # bail if there is text without font
-                prop = ctable.get_prop(tv[ii],nsty)*fs;
-                lns[-1].addc(tchar(tv[ii],fs,sf,prop,sty,nsty,cloc(el,'text',ii)));
-        
-        ks = el.getchildren();
-        # if debug:
-        #     dh.debug(ks)
-        for k in ks:
-            lns = self.Parse_Lines(k,lns,debug=debug);
-            tv = k.tail;
-            if tv is not None and tv!='':
-                for ii in range(len(tv)):
-                    # if fs is None: return None # bail if there is text without font
-                    prop = ctable.get_prop(tv[ii],nsty)*fs;
-                    lns[-1].addc(tchar(tv[ii],fs,sf,prop,sty,nsty,cloc(k,'tail',ii)));
-            
-        return lns
-    
-    def Finish_Lines(self):
-        if self.lns is not None:
-            self.Get_Delta(self.lns,self.textel,'dx');
-            self.Get_Delta(self.lns,self.textel,'dy');
-            for ii in range(len(self.lns)):
-                ln = self.lns[ii];
-                if ln.x[0] is None: # no x ever assigned
-                    if ln.continuex and ii>0 and len(self.lns[ii-1].ws)>0:
-                        self.lns[ii-1].ws[-1].calcprops();
-                        ln.x[0] = self.lns[ii-1].ws[-1].pts_ut[3].x
-                    else:
-                        ln.x[0] = 0;
-                if ln.y[0] is None: # no y ever assigned
-                    ln.y[0] = 0;
-                ln.parse_words()
-            for ln in reversed(self.lns): 
-                if len(ln.cs)==0:
-                    self.lns.remove(ln); # prune empty lines
-            for ln in self.lns:
-                ln.ll = self;
-            
-            # Assign nextw for single-word lines sharing a y (Illustrator SVGs usually have one Tspan per character)
-            ys = [ln.y[0] for ln in self.lns if ln.y is not None and len(ln.y)>0]
-            for uy in list(set(ys)):
-                samey = [self.lns[ii] for ii in range(len(self.lns)) if ys[ii]==uy];
-                xs = [ln.x for ln in samey]
-                slns = [x for _, x in sorted(zip(xs, samey), key=lambda pair: pair[0])] # words sorted in ascending x
-                for ii in range(len(slns)-1):
-                    if len(slns[ii].ws)==1 and len(slns[ii+1].ws)==1:
-                        slns[ii].ws[-1].nextw = slns[ii+1].ws[0] 
                         
                         
     def Finish_Lines2(self):
         if self.lns is not None:
             self.Get_Delta(self.lns,self.textel,'dx');
             self.Get_Delta(self.lns,self.textel,'dy');
+            
+            self.dxs = [c.dx for ln in self.lns for c in ln.cs]; 
+            self.dys = [c.dy for ln in self.lns for c in ln.cs]; self.flatdelta = False;
+            self._dxchange = False;
+            self._hasdx = any([dxv!=0 for dxv in self.dxs]);
+            self._dychange = False;
+            self._hasdy = any([dyv!=0 for dyv in self.dys]);
+            
             for ii in range(len(self.lns)):
                 ln = self.lns[ii];
                 ln.ll = self;
@@ -499,18 +343,19 @@ class LineList():
             for ln in reversed(self.lns): 
                 if len(ln.cs)==0:
                     self.lns.remove(ln); # prune empty lines
-            # for ln in self.lns:
-            #     ln.ll = self;
             
-            # Assign nextw for single-word lines sharing a y (Illustrator SVGs usually have one Tspan per character)
+            # For manual kerning removal, assign next and previous words. These can be in different lines            
             ys = [ln.y[0] for ln in self.lns if ln.y is not None and len(ln.y)>0]
-            for uy in list(set(ys)):
-                samey = [self.lns[ii] for ii in range(len(self.lns)) if ys[ii]==uy];
-                xs = [ln.x for ln in samey]
-                slns = [x for _, x in sorted(zip(xs, samey), key=lambda pair: pair[0])] # words sorted in ascending x
-                for ii in range(len(slns)-1):
-                    if len(slns[ii].ws)==1 and len(slns[ii+1].ws)==1:
-                        slns[ii].ws[-1].nextw = slns[ii+1].ws[0]
+            tol = .001;
+            for uy in dh.uniquetol(ys,tol):
+                samey = [self.lns[ii] for ii in range(len(self.lns)) if abs(ys[ii]-uy)<tol];
+                sameyws = [w for ln in samey for w in ln.ws]
+                xs =    [w.x for ln in samey for w in ln.ws]
+                sws = [x for _, x in sorted(zip(xs, sameyws), key=lambda pair: pair[0])] # words sorted in ascending x
+                for ii in range(1,len(sws)):
+                    sws[ii-1].nextw   = sws[ii]
+                    sws[ii].prevw     = sws[ii-1]
+                    sws[ii].prevsametspan = (sws[ii-1].cs[-1].loc.pel == sws[ii].cs[0].loc.pel)
     
     @staticmethod
     def GetXY(el,xy):
@@ -530,35 +375,33 @@ class LineList():
         if self.lns is not None and len(self.lns)>0:
             if self.lns[0].xsrc is not None:
                 svg = dh.get_parent_svg(self.lns[0].xsrc)
-                xs = []; ys = []; x2s = []; y2s = [];
-                for ln in self.lns:          
-                    for w in ln.ws:
-                        ap  = (-w.transform).apply_to_point(w.pts_t[0]);
-                        ap2 = (-w.transform).apply_to_point(w.pts_t[2]);  
-                        xs.append(ap.x); #dh.debug(ap.x/self.svg.scale)
-                        ys.append(ap.y);
-                        x2s.append(ap2.x);
-                        y2s.append(ap2.y);
+                # # Word highlight
                 # for ln in self.lns:          
                 #     for w in ln.ws:
-                #         for c in w.cs:
-                #             ap  = c.parsed_pts_t[0];
-                #             ap2 = c.parsed_pts_t[2];
-                #             xs.append(ap.x); #dh.debug(ap.x/self.svg.scale)
-                #             ys.append(ap.y);
-                #             x2s.append(ap2.x);
-                #             y2s.append(ap2.y);
-                    
-                # for ii in range(len(xs)):
-                        r = inkex.Rectangle();
-                        r.set('x',min(ap.x,ap2.x))
-                        r.set('y',min(ap.y,ap2.y))
-                        r.set('height',abs(ap.y-ap2.y))
-                        r.set('width', abs(ap.x-ap2.x))
-                        # r.set('style','fill-opacity:0.5')
-                        r.set('transform',str(w.transform))
-                        r.set('style','fill:#007575;fill-opacity:0.4675'); # mimic selection boxes
-                        svg.append(r)
+                #         ap  = (-w.transform).apply_to_point(w.pts_t[0]);
+                #         ap2 = (-w.transform).apply_to_point(w.pts_t[2]);  
+                #         r = inkex.Rectangle();
+                #         r.set('x',min(ap.x,ap2.x))
+                #         r.set('y',min(ap.y,ap2.y))
+                #         r.set('height',abs(ap.y-ap2.y))
+                #         r.set('width', abs(ap.x-ap2.x))
+                #         r.set('transform',str(w.transform))
+                #         r.set('style','fill:#007575;fill-opacity:0.4675'); # mimic selection boxes
+                #         svg.append(r)
+                # Character highlight
+                for ln in self.lns:          
+                    for w in ln.ws:
+                        for c in w.cs:
+                            ap  = (-w.transform).apply_to_point(c.parsed_pts_t[0]);
+                            ap2 = (-w.transform).apply_to_point(c.parsed_pts_t[2]);
+                            r = inkex.Rectangle();
+                            r.set('x',min(ap.x,ap2.x))
+                            r.set('y',min(ap.y,ap2.y))
+                            r.set('height',abs(ap.y-ap2.y))
+                            r.set('width', abs(ap.x-ap2.x))
+                            r.set('transform',str(w.transform))
+                            r.set('style','fill:#007575;fill-opacity:0.4675'); # mimic selection boxes
+                            svg.append(r)
     
     
     # Traverse the element tree to find dx/dy values and apply them to the chars
@@ -599,10 +442,6 @@ class LineList():
         if toplevel:
             for k in el.getchildren():
                 self.Get_Delta(lns,k,xy);
-        # if not(recursive) and xy=='dx':
-        #     for ln in lns:
-        #         for c in ln.cs:
-        #             c.dx += c.lsp
         return cnt
     
     # Traverse the tree to find where deltas need to be located relative to the top-level text
@@ -638,35 +477,41 @@ class LineList():
     # After dx/dy has changed, call this to write them to the text element
     # For simplicity, this is best done at the LineList level all at once
     def Update_Delta(self,forceupdate=False):
-        dxs = [c.dx for ln in self.lns for c in ln.cs];
-        dys = [c.dy for ln in self.lns for c in ln.cs];
-        
-        anynewx = self.dxs!=dxs and any([dxv!=0 for dxv in self.dxs+dxs]); # only if new is not old and at least one is non-zero
-        anynewy = self.dys!=dys and any([dyv!=0 for dyv in self.dys+dys]);
-           
-        if anynewx or anynewy or forceupdate:
-            self.Get_DeltaNum(self.lns, self.textel)
-            dx=[]; dy=[]; 
-            for ln in self.lns:
-                for c in ln.cs:
-                    if c.deltanum is not None:
-                        dx = extendind(dx, c.deltanum, c.dx,0)
-                        dy = extendind(dy, c.deltanum, c.dy,0)
+        if self._dxchange or self._dychange or forceupdate:
+            dxs = [c.dx for ln in self.lns for c in ln.cs];
+            dys = [c.dy for ln in self.lns for c in ln.cs];
             
-            if not(self.flatdelta): # flatten onto textel
-                for d in dh.descendants2(self.textel): d.set('dx',None);
-                for d in dh.descendants2(self.textel): d.set('dy',None)
-                self.flatdy = True; # only need to do this once
+            anynewx = self.dxs!=dxs and any([dxv!=0 for dxv in self.dxs+dxs]); # only if new is not old and at least one is non-zero
+            anynewy = self.dys!=dys and any([dyv!=0 for dyv in self.dys+dys]);
+               
+            if anynewx or anynewy or forceupdate:
+                self.Get_DeltaNum(self.lns, self.textel)
+                dx=[]; dy=[]; 
+                for ln in self.lns:
+                    for c in ln.cs:
+                        if c.deltanum is not None:
+                            dx = extendind(dx, c.deltanum, c.dx,0)
+                            dy = extendind(dy, c.deltanum, c.dy,0)
+                
+                if not(self.flatdelta): # flatten onto textel
+                    # for d in dh.descendants2(self.textel):
+                    for d in self.textds:
+                        d.set('dx',None);
+                        d.set('dy',None)
+                    self.flatdelta = True; # only need to do this once
+                
+                dxset = None; dyset = None;
+                if any([dxv!=0 for dxv in dx]):
+                    dxset = ' '.join([str(v) for v in dx]);
+                if any([dyv!=0 for dyv in dy]):
+                    dyset = ' '.join([str(v) for v in dy]);
+                self.textel.set('dx',dxset);
+                self.textel.set('dy',dyset);
+            self.dxs = dxs;
+            self.dys = dys;
             
-            dxset = None; dyset = None;
-            if any([dxv!=0 for dxv in dx]):
-                dxset = ' '.join([str(v) for v in dx]);
-            if any([dyv!=0 for dyv in dy]):
-                dyset = ' '.join([str(v) for v in dy]);
-            self.textel.set('dx',dxset);
-            self.textel.set('dy',dyset);
-        self.dxs = dxs;
-        self.dys = dys;
+            self._hasdx = any([dxv!=0 for dxv in dxs]); self._dxchange=False;
+            self._hasdy = any([dyv!=0 for dyv in dys]); self._dychange=False;
 
     # Text is hard to edit unless xml:space is set to preserve and sodipodi:role is set to line
     # Should usually be called last
@@ -677,23 +522,34 @@ class LineList():
         # if len(self.lns)==1 and self.lns[0].tlvlno==0: # only child, no nesting, not a sub/superscript
         if len(self.lns)==1 and self.lns[0].tlvlno is not None and not(self.lns[0].sprl): # only one line that is a top-level tspan
             ln = self.lns[0];
-            olddx = self.dxs;
-            olddy = self.dys;
+            olddx = [c.dx for ln in self.lns for c in ln.cs];
+            olddy = [c.dy for ln in self.lns for c in ln.cs];
+            
             
             # ln.el.set('sodipodi:role','line')
             # self.lns = self.Parse_Lines(el); # unnecessary if called last
             # self.lns[0].change_pos(oldx,oldy); 
             
-            tx = ln.el.get('x'); ty=ln.el.get('y');
-            myp = ln.el.getparent();
-            if tx is not None: myp.set('x',tx)      # enabling sodipodi causes it to move to the parent's x and y
-            if ty is not None: myp.set('y',ty)      # enabling sodipodi causes it to move to the parent's x and y
-            ln.el.set('sodipodi:role','line');      # reenable sodipodi so we can insert returns
-            
-            for ii in range(len(self.lns[0].cs)):
-                self.lns[0].cs[ii].dx = olddx[ii]
-                self.lns[0].cs[ii].dy = olddy[ii];
-            self.Update_Delta(forceupdate=True)
+            if len(ln.cs)>0:
+                cel = ln.cs[0].loc.el;
+                while cel!=el and cel.getparent()!=el:
+                    cel = cel.getparent()
+                tlvl = cel;
+                
+                tlvl.getparent().set('x',tline.writev(ln.x))
+                tlvl.getparent().set('y',tline.writev(ln.y))
+                
+                # tx = ln.el.get('x'); ty=ln.el.get('y');
+                # # myp = ln.el.getparent();
+                # if tx is not None: tlvl.set('x',tx)      # enabling sodipodi causes it to move to the parent's x and y
+                # if ty is not None: tlvl.set('y',ty)      # enabling sodipodi causes it to move to the parent's x and y
+                tlvl.set('sodipodi:role','line');      # reenable sodipodi so we can insert returns
+                
+                if self._hasdx or self._hasdy:
+                    for ii in range(len(self.lns[0].cs)):
+                        self.lns[0].cs[ii].dx = olddx[ii]
+                        self.lns[0].cs[ii].dy = olddy[ii];
+                    self.Update_Delta(forceupdate=True);     # may have deleted spr lines
     
             
     def Split_Off_Words(self,ws):
@@ -709,22 +565,18 @@ class LineList():
         dxl = [c.dx for w in ws for c in w.cs];
         dyl = [c.dy for w in ws for c in w.cs];
         
-        global debug
-        debug = True;
-        
         for w in reversed(ws):
             w.delw();
-        debug = False;
         
         # If line was continuing, fuse the coordinates
         if nll.lns[il].continuex:
             nll.lns[il].continuex=False
-            nll.lns[il].xsrc = nll.lns[il].el;
+            nll.lns[il].xsrc = nll.lns[il].cs[0].loc.pel;
             nll.lns[il].change_pos(newx=nll.lns[il].x);
         if nll.lns[il].continuey:
             nll.lns[il].continuey=False
-            nll.lns[il].ysrc = nll.lns[il].el;
-            nll.lns[il].change_pos(newx=nll.lns[il].x);
+            nll.lns[il].ysrc = nll.lns[il].cs[0].loc.pel;
+            nll.lns[il].change_pos(newy=nll.lns[il].y);
         
         # Delete the other lines/words in the copy
         for il2 in reversed(range(len(nll.lns))):
@@ -753,13 +605,76 @@ class LineList():
         for ln in self.lns:
             for c in ln.cs:
                 c.dx = dxl[cnt];  c.dy = dyl[cnt]; cnt+=1
-        self.Update_Delta(forceupdate=True); # force an update, could have deleted sodipodi lines
+        if self._hasdx or self._hasdy:
+            self.Update_Delta(forceupdate=True); # force an update, could have deleted sodipodi lines
 
+    def Split_Off_Characters(self,cs):
+        nll = self.duplicate();
+        newtxt = nll.textel; 
+        
+        il = self.lns.index(cs[0].ln);          # chars' line index
+        ciis =  [c.ln.cs.index(c) for c in cs]  # indexs of charsin line
+        
+        # Record position
+        dxl = [c.dx for c in cs];
+        dyl = [c.dy for c in cs];
+        
+        
+        fusex = self.lns[il].continuex or ciis[0]>0
+        fusey = self.lns[il].continuey or ciis[0]>0
+        if fusex:
+            xf = self.lns[il].anchorfrac
+            oldx = cs[0].pts_ut[0].x*(1-xf)+cs[-1].pts_ut[3].x*xf
+        if fusey:
+            oldy = cs[0].pts_ut[0].y
+        
+        for c in reversed(cs):
+            c.delc();
+        
+        # Delete the other lines/chars in the copy
+        for il2 in reversed(range(len(nll.lns))):
+            if il2!=il:
+                nll.lns[il2].dell();
+            else:
+                nln = nll.lns[il2];
+                for jj in reversed(range(len(nln.cs))):
+                    if jj not in ciis:
+                        nln.cs[jj].delc();
+        
+        
+        # Deletion of text can cause the srcs to be wrong. Reparse to find where it is now
+        nln.xsrc,nln.ysrc = nll.Parse_Lines2(srcsonly=True);
+        nln.change_pos(newx=nln.x,newy=nln.y);
+        nln.disablesodipodi(force=True)
+        
+        if fusex:
+            nln.continuex=False
+            nln.change_pos(newx=[oldx]);
+            dxl[0]=0;
+        if fusey:
+            nln.continuey=False
+            nln.change_pos(newy=[oldy]);
+            dyl[0]=0;
+        
+        
+        cnt=0;
+        for l2 in nll.lns:
+            for c in l2.cs:
+                c.dx = dxl[cnt];  c.dy = dyl[cnt]; cnt+=1
+        nll.Update_Delta();
+        
+        return newtxt,nll
+
+
+# For lines, words, and chars
+def get_anchorfrac(anch):
+    anch_frac = {'start': 0, 'middle': 0.5, 'end': 1}
+    return anch_frac[anch];
     
 # A single line, which represents a list of characters. Typically a top-level Tspan or TextElement.
 # This is further subdivided into a list of words
 class tline:
-    def __init__(self, x, y, sprl, nspr, anch, xform,ang,el,xsrc,ysrc,tlvlno,sty,continuex=False,continuey=False):
+    def __init__(self, ll, x, y, xsrc,ysrc, sprl, nspr, anch, xform,ang,tlvlno,sty,continuex,continuey):
         self._x = x; 
         self._y = y;
         self.sprl = sprl;        # is this line truly a sodipodi:role line
@@ -775,25 +690,22 @@ class tline:
         self.ysrc = ysrc; # element from which we derive our x value
         self.tlvlno = tlvlno;        # which number Tspan I am if I'm top-level (otherwise None)
         self.style = sty;
-        self.el = el;
+        # self.el = el;
         self.continuex = continuex;  # when enabled, x of a line is the endpoint of the previous line
         self.continuey = continuey;  # when enabled, y of a line is the endpoint of the previous line
+        self.ll = ll;
         
     # x property
     def get_x(self):
         if self.continuex:  # For continuing lines, need to calculate anchor position
-            ii = self.ll.lns.index(self);
-            if ii>0 and len(self.ll.lns[ii-1].ws)>0:
-                self.ll.lns[ii-1].ws[-1].calcprops();
-                if self.anchor=='middle':
-                    xanch = 1.5*self.ll.lns[ii-1].ws[-1].pts_ut[3].x-0.5*self.ll.lns[ii-1].ws[-1].pts_ut[0].x;
-                elif self.anchor=='end':
-                    xanch =   2*self.ll.lns[ii-1].ws[-1].pts_ut[3].x-  1*self.ll.lns[ii-1].ws[-1].pts_ut[0].x;
-                else: # start
-                    xanch =   1*self.ll.lns[ii-1].ws[-1].pts_ut[3].x;
-                return [xanch]
-            else:
-                return [0]
+            if self.ll is not None:
+                ii = self.ll.lns.index(self);
+                if ii>0 and len(self.ll.lns[ii-1].ws)>0:
+                    xf = self.anchorfrac
+                    xanch =   (1+xf)*self.ll.lns[ii-1].ws[-1].pts_ut[3].x - xf*self.ll.lns[ii-1].ws[-1].pts_ut[0].x;
+                    return [xanch]
+                else: return [0]
+            else: return[0]
         else:
             return self._x
     def set_x(self,xi):
@@ -803,24 +715,20 @@ class tline:
     # y property
     def get_y(self):
         if self.continuey:  # For continuing lines, need to calculate anchor position
-            ii = self.ll.lns.index(self);
-            if ii>0 and len(self.ll.lns[ii-1].ws)>0:
-                self.ll.lns[ii-1].ws[-1].calcprops();
-                if self.anchor=='middle':
-                    yanch = 1.5*self.ll.lns[ii-1].ws[-1].pts_ut[3].y-0.5*self.ll.lns[ii-1].ws[-1].pts_ut[0].y;
-                elif self.anchor=='end':
-                    yanch =   2*self.ll.lns[ii-1].ws[-1].pts_ut[3].y-  1*self.ll.lns[ii-1].ws[-1].pts_ut[0].y;
-                else: # start
-                    yanch =   1*self.ll.lns[ii-1].ws[-1].pts_ut[3].y;
-                return [yanch]
-            else:
-                return [0]
+            if self.ll is not None:
+                ii = self.ll.lns.index(self);
+                if ii>0 and len(self.ll.lns[ii-1].ws)>0:
+                    xf = self.anchorfrac
+                    yanch = (1+xf)*self.ll.lns[ii-1].ws[-1].pts_ut[3].y - xf*self.ll.lns[ii-1].ws[-1].pts_ut[0].y;
+                    return [yanch]
+                else: return [0]
+            else: return [0]
         else:
             return self._y
     def set_y(self,yi):
         self._y = yi;
     y = property(get_y,set_y)
-    
+    anchorfrac = property(lambda self : get_anchorfrac(self.anchor))
     
     
     def addc(self,c):
@@ -829,15 +737,11 @@ class tline:
     def insertc(self,c,ec): # insert below
         self.cs = self.cs[0:ec]+[c]+self.cs[ec:]
         c.ln = self;
-    def addw(self,w): # Add a complete word and calculate its properties
+    def addw(self,w): # Add a complete word
         self.ws.append(w)
-        w.calcprops();
-        # if len(w.cs)==0:
-        #     dh.debug(self.xsrc.get_id())
     def parse_words(self):
         # Parsing a line into words is the final step that should be called once
         # the line parser has gotten all the characters
-        
         w=None; self.ws=[];
         for ii in range(len(self.cs)):
             if ii==0:
@@ -850,21 +754,22 @@ class tline:
         if w is not None:
             self.addw(w)
             
-        if len(self.x)>1:
-            xn = [self.x[ii] for ii in range(len(self.x)) if self.x[ii] is not None]; # non-None
-            sws = [x for _, x in sorted(zip(xn, self.ws), key=lambda pair: pair[0])] # words sorted in ascending x
-            for ii in range(len(sws)-1):
-                sws[ii].nextw = sws[ii+1]
+        # if len(self.x)>1:
+        #     xn = [self.x[ii] for ii in range(len(self.x)) if self.x[ii] is not None]; # non-None
+        #     sws = [x for _, x in sorted(zip(xn, self.ws), key=lambda pair: pair[0])] # words sorted in ascending x
+        #     for ii in range(len(sws)-1):
+        #         sws[ii].nextw = sws[ii+1]
         # dh.debug([self.x,len(self.ws)])
             
     def dell(self): # deletes the whole line
         for c in reversed(self.cs):
             c.delc();
-        if self.ll is not None:
+        if self in self.ll.lns: 
             self.ll.lns.remove(self)
-        self.ll = None;
+        # self.ll = None;
     def txt(self):   
         return ''.join([c.c for c in self.cs])
+    
     
     # Change the alignment of a line without affecting character position
     def change_alignment(self,newanch):
@@ -874,35 +779,27 @@ class tline:
                 ln.disablesodipodi()     # Disable sprl for all lines sharing our src, including us
                                          # Note that it's impossible to change one line without affecting the others
                 
-            # if len(self.cs)>0 and self.cs[-1].c==' ':
-            #     self.cs[-1].delc(); # can delete final space since it's never rendered
-            # hasunrenderedspace = (len(self.cs)>0 and self.cs[-1].c==' ')
-                
             for w in self.ws:
                 minx = min([w.pts_ut[ii][0] for ii in range(4)]);
                 maxx = max([w.pts_ut[ii][0] for ii in range(4)]);
                 
                 if w.unrenderedspace and self.cs[-1] in w.cs:
                     maxx -= w.cs[-1].cw/w.cs[-1].sf;
-                
-                dxl = [c.dx+c.lsp for c in self.cs];
-                if len(dxl)==0: dxl=[0];
-                if newanch=='middle':
-                    newx = (minx+maxx)/2-dxl[0]/2;
-                elif newanch=='end':
-                    newx = maxx;
-                else:
-                    newx = minx-dxl[0];
+                    
+                xf = get_anchorfrac(newanch);
+                newx = (1-xf)*minx + xf*maxx; 
                 
                 if len(w.cs)>0:
                     newxv = self.x; newxv[self.cs.index(w.cs[0])] = newx;
+                    
+                    # dh.idebug([w.txt(),newx,newxv])
                     self.change_pos(newxv)
                     dh.Set_Style_Comp(w.cs[0].loc.el,'text-anchor',newanch)
                     alignd = {'start': 'start', 'middle': 'center', 'end': 'end'}
                     dh.Set_Style_Comp(w.cs[0].loc.el,'text-align',alignd[newanch]);
                     
                 self.anchor = newanch;
-                w.x = newx; w.calcprops();
+                for w in self.ws: w.pts_ut = None    # invalidate word positions
     
     @staticmethod            
     def writev(v):
@@ -912,15 +809,19 @@ class tline:
             return ' '.join([str(w) for w in v])
     
     # Disable sodipodi:role = line
-    def disablesodipodi(self):
-        if self.nominalspr=='line':
-            self.el.set('sodipodi:role',None)
-            self.nominalspr = None
-            self.xsrc = self.el;                    # change position source
-            self.ysrc = self.el;
-            self.el.set('x',tline.writev(self.x))   # fuse position to new source
-            self.el.set('y',tline.writev(self.y))
-            self.sprl = False;
+    def disablesodipodi(self,force=False):
+        if self.nominalspr=='line' or force:
+            if len(self.cs)>0:
+                newsrc = self.cs[0].loc.el              # disabling snaps src to first char
+                if self.cs[0].loc.tt=='tail':
+                    newsrc = self.cs[0].loc.el.getparent()
+                newsrc.set('sodipodi:role',None)
+                self.nominalspr = None
+                self.xsrc = newsrc;                    
+                self.ysrc = newsrc;
+                self.xsrc.set('x',tline.writev(self.x))   # fuse position to new source
+                self.ysrc.set('y',tline.writev(self.y))
+                self.sprl = False;
     
     # Update the line's position in the document, accounting for inheritance
     # Never change x/y directly, always call this function
@@ -936,9 +837,12 @@ class tline:
             oldx = self.x
             self.x = newx;
             self.xsrc.set('x',tline.writev(newx))
+            # dh.idebug([self.txt(),self.xsrc.get('x')])
             
             if len(oldx)>1 and len(self.x)==1 and self.nominalspr=='line': # would re-enable sprl
                 self.disablesodipodi()
+            
+            # dh.idebug([self.txt(),self.xsrc.get_id(),self.xsrc.get('x')])
                 
         if newy is not None:
             sibsrc = [ln for ln in self.ll.lns if ln.ysrc==self.ysrc]
@@ -953,11 +857,10 @@ class tline:
             self.ysrc.set('y',tline.writev(newy))
             
             if len(oldy)>1 and len(self.y)==1 and self.nominalspr=='line': # would re-enable sprl
-                self.disablesodipodi()
-                
+                self.disablesodipodi()  
         if reparse:
             self.parse_words(); # usually don't want to do this since it generates new words
-                
+
     
 # A word (a group of characters with the same assigned anchor)
 class tword: 
@@ -965,36 +868,86 @@ class tword:
         c = ln.cs[ii];
         self.cs  = [c];
         self.iis = [ii]; # character index in word
-        self.x = x;
-        self.y = y;
+        self._x = x;
+        self._y = y;
         self.sf= c.sf; # all letters have the same scale
         self.ln = ln;
         self.transform = ln.transform
         c.w = self;
-        self.unrenderedspace = False;
-        self.nextw = None;
+        # self.unrenderedspace = False;
+        self.nextw = self.prevw = self.sametspan = None;
+        self._pts_ut = self._pts_t = self._bb = None; # invalidate 
+        self._lsp = self._dxeff = self._charpos = None
+        self._cpts_ut = None; self._cpts_t = None; 
         # self.orig_pts_t = None; self.orig_pts_ut = None; self.orig_bb = None; # for merging later
-    def addc(self,ii):
+    
+    def addc(self,ii):                  # adds an existing char to a word
         c = self.ln.cs[ii];
-        self.cs.append(c);
+        self.cs.append(c); self.cchange();
         self.iis.append(ii);
         c.w = self;
+    def removec(self,ii):                  # removes a char from a word
+        # myc = self.cs[ii]
+        self.cs = del2(self.cs ,ii); self.cchange();
+        self.iis= del2(self.iis,ii)
+        if len(self.cs)==0: # word now empty
+            self.delw();
+        # myc.w = None
+    
+    # Callback for character addition/deletion. Used to invalidate cached properties
+    def cchange(self):
+        self.lsp = None
+        self.dxeff = None
+        self.charpos = None
+        
+        if self.ln.ll._hasdx:
+            self.ln.ll._dxchange = True;
+        if self.ln.ll._hasdy:
+            self.ln.ll._dychange = True;
+            
+    
+    
+    @property
+    def x(self):
+        if self.ln is not None:
+            lnx = self.ln.x;
+            if len(self.iis)>0:
+                fi = self.iis[0];
+                if fi<len(lnx):
+                    return lnx[fi]
+                else:
+                    return lnx[-1]
+            else:
+                return 0
+        else: return 0
+    @property
+    def y(self):
+        if self.ln is not None:
+            lny = self.ln.y;
+            if len(self.iis)>0:
+                fi = self.iis[0];
+                if fi<len(lny):
+                    return lny[fi]
+                else:
+                    return lny[-1]
+            else:
+                return 0
+        else:
+            return 0
+    
     
     # Deletes me from everywhere
     def delw(self):
-#        global debug;
-#        if debug: dh.debug(self.ln.x)
         for c in reversed(self.cs):
             c.delc();
         if self in self.ln.ws:
             self.ln.ws.remove(self)
-#        if debug: dh.debug(self.ln.x)
             
     # Gets all text
     def txt(self):   
         return ''.join([c.c for c in self.cs])
             
-    # Add a new character to the end of the word
+    # Generate a new character and add it to the end of the word
     def appendc(self,ncv,ncw,ndx,ndy,nlsp):
         # Add to document
         lc = self.cs[-1]; # last character
@@ -1005,10 +958,10 @@ class tword:
             lc.loc.el.tail = lc.loc.el.tail[0:myi]+ncv+lc.loc.el.tail[myi:]
         
         # Make new character as a copy of the last one of the current word
-        c = copy.copy(lc)
+        c = copy(lc)
         c.c  = ncv
         c.cw = ncw
-        c.dx = ndx; c.dy = ndy; c.lsp = nlsp;
+        c.dx = ndx; c.dy = ndy;
         c.pending_style = None;
         c.loc = cloc(c.loc.el,c.loc.tt,c.loc.ind+1) # updated location
         
@@ -1029,40 +982,19 @@ class tword:
                 ca.w.iis[i2] += 1
         # Add to word, recalculate properties
         self.addc(myi)
-        # self.calcprops()
         
         # Adding a character causes the word to move if it's center- or right-justified
         # Need to fix this by adjusting position
-        if self.ln.anchor=='middle':
-            deltax = -self.ln.cs[myi].cw/self.sf / 2;
-        elif self.ln.anchor=='end':
-            deltax = -self.ln.cs[myi].cw/self.sf;
-        else:
-            deltax = 0;
+        deltax = -self.anchorfrac * self.ln.cs[myi].cw/self.sf
         if deltax!=0:
             newx = self.ln.x; newx[self.ln.cs.index(self.cs[0])] -= deltax
             self.ln.change_pos(newx)
-            self.x -= deltax
         self.ln.ll.Update_Delta();
-        self.calcprops()
         
     # Add a new word (possibly from another line) into the current one
     # Equivalent to typing it in
-    def appendw(self,nw,type):
+    def appendw(self,nw,type,maxspaces=None):
         if len(nw.cs)>0:
-            # Store new word data prior to merging
-            # if self.orig_pts_t is None:
-            #     self.orig_pts_t  = [self.pts_t]
-            #     self.orig_pts_ut = [self.pts_ut]
-            #     self.orig_bb     = self.bb
-            # if nw.orig_pts_t is None:
-            #     nw.orig_pts_t  = [nw.pts_t]
-            #     nw.orig_pts_ut = [nw.pts_ut]
-            #     nw.orig_bb     = nw.bb
-                # nw_pput = [c.parsed_pts_ut for c in nw.cs]
-                # nw_ppt  = [c.parsed_pts_t for c in nw.cs]
-                
-    
             # If the last char is a nested Tspan, we will need to delete it and re-add it
             # to prevent the new chars from inheriting its properties
             if len(self.cs)>1:
@@ -1076,15 +1008,10 @@ class tword:
                 for delch in reversed(deleted):
                     # dh.debug([delc.c,delc.cw])
                     self.appendc(delch.c,delch.cw,delch.dx,delch.dy,delch.lsp);
-                    self.cs[-1].pending_style = delch.sty;
+                    self.cs[-1].pending_style = delch.sty; 
                     self.cs[-1].parsed_pts_ut = delch.parsed_pts_ut;
                     self.cs[-1].parsed_pts_t  = delch.parsed_pts_t;
-                    
-                    # dh.debug(self.cs[-1].c)
-            # dh.debug(self.x)
-            
-            # dh.idebug([self.txt(),nw.txt()])
-            
+
             # Calculate the number of spaces we need to keep the position constant
             # (still need to adjust for anchors)
             # bl2 = (-self.transform).apply_to_point(nw.pts_t[0])
@@ -1092,30 +1019,35 @@ class tword:
             tr1, br1, tl2, bl2 = self.get_orig_pts(nw)
             lc = self.cs[-1]; # last character
             numsp = (bl2.x-br1.x)/(lc.sw/self.sf);
+            # dh.idebug([self.txt(),nw.txt(),numsp,(bl2.x-br1.x)/(lc.sw/self.sf)])
+            # dh.idebug([self.txt(),nw.txt(),numsp])
             mytxt = self.txt();
             numsp = max(0,round(numsp));
-            if (mytxt is not None and len(mytxt)>0 and mytxt[-1]==' ') \
-                or type in ['super','sub']: # no extra spaces for sub/supers or if there's already one
-                    numsp=0;
+            if maxspaces is not None:
+                numsp = min(numsp,maxspaces)
+            
             for ii in range(numsp):
-                self.appendc(' ',lc.sw,0,0,lc.lsp)
-                
+                self.appendc(' ',lc.sw,-lc.lsp,0,lc.lsp)
+            
+            fc = nw.cs[0]; prevc = self.cs[-1];
             for c in nw.cs:
-                notfirst = c!=nw.cs[0]
+                mydx = (c!=fc)*c.dx - prevc.lsp; # use dx to remove lsp from the previous c
                 c.delc();
                 
-                ntype = copy.copy(type)
+                ntype = copy(type)
                 otype = dh.Get_Style_Comp(c.sty,'baseline-shift');
                 if otype in ['super','sub'] and type=='normal':
                     ntype = otype
-                self.appendc(c.c,c.cw,c.dx*notfirst,c.dy,c.lsp)
+                    
+                self.appendc(c.c,c.cw,mydx,c.dy,c.lsp)
+                newc = self.cs[-1]; 
                 
-                self.cs[-1].parsed_pts_ut = [(-self.transform).apply_to_point(p) for p in c.parsed_pts_t];
-                self.cs[-1].parsed_pts_t  = c.parsed_pts_t;
+                newc.parsed_pts_ut = [(-self.transform).apply_to_point(p) for p in c.parsed_pts_t];
+                newc.parsed_pts_t  = c.parsed_pts_t;
                 
                 # We cannot yet apply any styles. Instead, add the character and add a pending style
                 # that will be applied at the end
-                newc = self.cs[-1]; newsty=None;
+                newsty=None;
                 # if c.nstyc!=newc.nstyc:
                 if c.sty!=newc.sty:
                     newsty = c.sty;
@@ -1125,48 +1057,34 @@ class tword:
                         newsty = Style2('');
                     else:
                         newsty = Style2(newsty)
-                    sz = round(c.sw/newc.sw*100)
                     
-                    # Nativize super/subscripts                
-                    newsty['font-size'] = str(sz)+'%';
+                    # Nativize super/subscripts               
                     if ntype=='super':
                         newsty['baseline-shift']='super'
                     else:
                         newsty['baseline-shift']='sub'
-                    
+                        
+                    # Leave size unchanged
+                    newsty['font-size'] = '65%';
+                    # sz = round(c.sw/newc.sw*100)
+                    # newsty['font-size'] = str(sz)+'%';
+                        
                     # Leave baseline unchanged (works, but do I want it?)
-    #                if nw.orig_pts_ut is not None:
-    #                    w2x = [p[0].x for p in nw.orig_pts_ut];
-    #                    min2 = min([ii for ii in range(len(w2x)) if min(w2x)==w2x[ii]]);
-    #                    bl2 = (-self.transform).apply_to_point(nw.orig_pts_t[min2][0]);
-    #                else:
-    #                    bl2 = (-self.transform).apply_to_point(nw.pts_t[0])
-    #                if self.orig_pts_ut is not None:
-    #                    w1x = [p[3].x for p in self.orig_pts_ut];
-    #                    max1 = max([ii for ii in range(len(w1x)) if max(w1x)==w1x[ii]]);
-    #                    br1 = self.orig_pts_ut[max1][3];
-    #                else:
-    #                    br1 = self.pts_ut[3];
     #                shft = round(-(bl2.y-br1.y)/self.fs*100*self.sf);
     #                newsty['baseline-shift']= str(shft)+'%';
                     
-                    newsty = str(newsty)
-                # dh.idebug([c.c,c.sty])
-                self.cs[-1].pending_style = newsty;
-                
-            # if dh.cascaded_style2(self.ln.xsrc).get('letter-spacing') is not None:
-            #     dh.Set_Style_Comp(self.ln.xsrc,'letter-spacing','0');
-                
+                    # newsty = str(newsty);
+                newc.pending_style = newsty;
+                prevc = newc
+
             # Following the merge, append the new word's data to the orig pts lists
-            # self.orig_pts_t  += nw.orig_pts_t
-            # self.orig_pts_ut += [[(-self.transform).apply_to_point(p) for p in pts] for pts in nw.orig_pts_t]
-            # self.orig_bb = self.orig_bb.union(nw.orig_bb)
             self.parsed_bb = self.parsed_bb.union(nw.parsed_bb)
+            
+            
 
        
-    # For merged text, get the pre-merged coordinates in my coordinate system
+    # For merged text, get the pre-processed coordinates in my coordinate system
     def get_orig_pts(self,w2):
-        
         mv = float('inf'); ci=None
         for ii in range(len(w2.cs)):
             if w2.cs[ii].parsed_pts_ut is not None:
@@ -1174,9 +1092,6 @@ class tword:
                     mv = w2.cs[ii].parsed_pts_ut[0].x;
                     ci = ii;
         
-        # dh.idebug('"'+w2.txt()+'"')
-        # dh.idebug(len(w2.cs))
-        # dh.idebug(w2.cs[0].parsed_pts_ut)
         bl2 = (-self.transform).apply_to_point(w2.cs[ci].parsed_pts_t[0])
         tl2 = (-self.transform).apply_to_point(w2.cs[ci].parsed_pts_t[1]);
         
@@ -1191,132 +1106,203 @@ class tword:
         br1 = self.cs[ci].parsed_pts_ut[3];
         return tr1, br1, tl2, bl2
     
-        # if w2.orig_pts_ut is not None:
-        #     w2x = [p[0].x for p in w2.orig_pts_ut];
-        #     min2 = min([ii for ii in range(len(w2x)) if min(w2x)==w2x[ii]]);
-        #     bl2 = (-self.transform).apply_to_point(w2.orig_pts_t[min2][0])
-        #     tl2 = (-self.transform).apply_to_point(w2.orig_pts_t[min2][1]);
-        # else:
-        #     bl2 = (-self.transform).apply_to_point(w2.pts_t[0])
-        #     tl2 = (-self.transform).apply_to_point(w2.pts_t[1]);
-        # if self.orig_pts_ut is not None:
-        #     w1x = [p[3].x for p in self.orig_pts_ut];
-        #     max1 = max([ii for ii in range(len(w1x)) if max(w1x)==w1x[ii]]);
-        #     tr1 = self.orig_pts_ut[max1][2];
-        #     br1 = self.orig_pts_ut[max1][3];
-        # else:
-        #     tr1 = self.pts_ut[2];
-        #     br1 = self.pts_ut[3];
-            
-        # # if abs((tr1-tr1b).x)>1e-6:
-        # #     dh.debug([self.txt(),w2.txt()])
-        # #     dh.debug([tr1-tr1b, br1-br1b, tl2-tl2b, bl2-bl2b])
-        # #     dh.debug(tr1)
-        # #     for c in self.cs:
-        # #         dh.debug(c.parsed_pts_ut[2])
-        # return tr1, br1, tl2, bl2
     
     # Adjusts the position of merged text to account for small changes in word position that occur
     # This depends on alignment, so it is generally done after the final justification is set
     def fix_merged_position(self):
-        
         gcs = [c for c in self.cs if c.c!=' ']
         if len(gcs)>0:
             omaxx = max([c.parsed_pts_ut[3].x for c in gcs])
             ominx = min([c.parsed_pts_ut[0].x for c in gcs])
-            newptsut = [c.interp_pts()[0] for c in gcs]
+            newptsut = [c.pts_ut for c in gcs]
             nmaxx = max([p[3].x for p in newptsut])
             nminx = min([p[0].x for p in newptsut])
             
-            # dh.debug([ominx,omaxx,nminx,nmaxx])
-            anch_frac = {'start': 0, 'middle': 0.5, 'end': 1}
-            xf = anch_frac[self.ln.anchor];
+            xf = self.anchorfrac
             deltaanch = (nminx*(1-xf)+nmaxx*xf) - (ominx*(1-xf)+omaxx*xf);  # how much the final anchor moved
             # dh.debug(deltaanch)
             if deltaanch!=0:
                 newx = self.ln.x; newx[self.ln.cs.index(self.cs[0])] -= deltaanch
                 self.ln.change_pos(newx)
-                self.x -= deltaanch
+                # self.x -= deltaanch
             self.ln.ll.Update_Delta();
-            self.calcprops()
-        # if self.orig_pts_ut is not None:
-        #     omaxx = max([p[3].x for p in self.orig_pts_ut])
-        #     ominx = min([p[0].x for p in self.orig_pts_ut])
-        #     nmaxx = self.pts_ut[3].x;
-        #     nminx = self.pts_ut[0].x;
-            
-        #     # dh.debug([ominx,omaxx,nminx,nmaxx])
-        #     anch_frac = {'start': 0, 'middle': 0.5, 'end': 1}
-        #     xf = anch_frac[self.ln.anchor];
-        #     deltaanch = (nminx*(1-xf)+nmaxx*xf) - (ominx*(1-xf)+omaxx*xf);  # how much the final anchor moved
-        #     # dh.debug(deltaanch)
-        #     if deltaanch!=0:
-        #         newx = self.ln.x; newx[self.ln.cs.index(self.cs[0])] -= deltaanch
-        #         self.ln.change_pos(newx)
-        #         self.x -= deltaanch
-        #     self.ln.ll.Update_Delta();
-        #     self.calcprops() 
+
+
+        
+    @property
+    def lsp(self):
+        if self._lsp is None:
+            self._lsp = [c.lsp for c in self.cs];
+        return self._lsp
+    @lsp.setter
+    def lsp(self,li):
+        if li is None:
+            self._lsp = None
+            self.dxeff = None
     
-    # Calculate the properties of a word that depend on its characters       
-    def calcprops(self): # calculate properties inherited from characters
-        w = self;
-        dxl = [c.dx+c.lsp for c in self.cs];
-        if len(dxl)==0: dxl=[0];
-#        dh.debug(w.txt())
-#        dh.debug(dxl)
-        wadj = [0 for c in self.cs];
-        if KERN_TABLE:
-            for ii in range(1,len(self.cs)):
-                dk = self.cs[ii].dkerns.get((self.cs[ii-1].c,self.cs[ii].c));
-                if dk is None: dk=0;                  # for chars of different style
-                wadj[ii] = dk
-        if len(w.cs)>0:
-            dx0 = [0]+dxl[1:];
-            tmp = [w.cs[ii].cw + dx0[ii]*w.sf + wadj[ii] for ii in range(len(w.cs))];
-            w.cumw = [sum(tmp[:ii+1]) for ii in range(len(tmp))];    # cumulative width up to and including the iith char
-            w.ww = sum([c.cw  for c in w.cs])+sum(dxl[1:])*w.sf + sum(wadj);
-            w.fs = max([c.fs          for c in w.cs])
-            w.sw = max([c.sw for c in w.cs])
-            w.ch = max([c.ch   for c in w.cs])
-        w.angle = w.ln.angle
-        
-        if len(w.cs)>0:
-            ymin = min([w.y+c.dy-c.ch/w.sf   for c in w.cs]);
-            ymax = max([w.y+c.dy             for c in w.cs]);
-        else:
-            ymin = w.y-w.ch/w.sf; ymax = w.y;
+    # Effective dx (with letter-spacing). Note that letter-spacing adds space
+    # after the char, so dxl ends up being longer than the number of chars by 1
+    # @property
+    @property
+    def dxeff(self):
+        if self._dxeff is None:
+            dxlsp = [0]+ self.lsp; # letter-spacing applies to next character
+            self._dxeff = [self.cs[ii].dx + dxlsp[ii] for ii in range(len(self.cs))] + [dxlsp[-1]];        
+        return self._dxeff
+    @dxeff.setter
+    def dxeff(self,di):
+        if di is None:
+            self._dxeff = None
+
+    # Word properties
+    def get_fs(self):
+        return maxnone([c.fs          for c in self.cs])
+    fs = property(get_fs)
+    def get_sw(self):
+        return maxnone([c.sw for c in self.cs])
+    sw = property(get_sw)
+    def get_ch(self):
+        return maxnone([c.ch   for c in self.cs])
+    ch = property(get_ch)
+    def get_ang(self):
+        return self.ln.angle
+    angle = property(get_ang)
+    anchorfrac = property(lambda self : get_anchorfrac(self.ln.anchor))
             
-        # If last char of a multichar line is a space, is not rendered
-        wwo = w.ww;
-        w.unrenderedspace =len(w.cs)>1 and w.cs[-1]==self.ln.cs[-1] and w.cs[-1].c in [' ','\u00A0']
-        if w.unrenderedspace:
-            wwo -= w.cs[-1].cw;           # ww for offset calculations  
-        
-        if self.ln.anchor=='middle':
-            w.offx = dxl[0]*w.sf/2-wwo/2;
-        elif self.ln.anchor=='end':
-            w.offx = -wwo;
-        else:
-            w.offx = dxl[0]*w.sf;
+    
+    @property
+    def unrenderedspace(self): # If last char of a multichar line is a space, is not rendered
+        return len(self.cs)>1 and self.cs[-1]==self.ln.cs[-1] and self.cs[-1].c in [' ','\u00A0']
+    
+
+    @property
+    def charpos(self):
+        # Where characters in a word are relative to the left side of the word, in x units
+        # Unaffected by alignment, only dx and fine kerning
+        if self._charpos is None:
+            if len(self.cs)>0:
+                dxl = self.dxeff
+                wadj = [0 for c in self.cs];
+                if KERN_TABLE:
+                    for ii in range(1,len(self.cs)):
+                        dk = self.cs[ii].dkerns.get((self.cs[ii-1].c,self.cs[ii].c));
+                        if dk is None: dk=0;                  # for chars of different style
+                        wadj[ii] = dk
+                tmp = [self.cs[ii].cw + dxl[ii]*self.sf + wadj[ii] for ii in range(len(self.cs))];
+                cstop = [sum(tmp[:ii+1]) for ii in range(len(tmp))];    # cumulative width up to and including the iith char
+                cstrt = [cstop[ii]-self.cs[ii].cw for ii in range(len(self.cs))];
+            else:
+                cstop = []; cstrt = [];
             
-        # dh.debug([self.txt(),sum(wadj)])
+            cstrt = np.array(cstrt);
+            cstop = np.array(cstop);
+            self._charpos = (cstrt,cstop)
+        return self._charpos
+    @charpos.setter
+    def charpos(self,ci):
+        if ci is None: # invalidate self and dependees
+            self._charpos = None
+            self.pts_ut = None;
+            self.cpts_ut = None;
+            self.cpts_t = None
+    
+    
+    # Untransformed bounding box of word
+    @property   
+    def pts_ut(self):
+        if self._pts_ut is None:
+            (cstrt,cstop) = self.charpos
+            ww = cstop[-1];
+            offx = -self.anchorfrac*(ww-self.unrenderedspace*self.cs[-1].cw)  # offset of the left side of the word from the anchor
             
-        w.pts_ut = [Vector2d(w.x + w.offx/w.sf,      ymax), Vector2d(w.x+ w.offx/w.sf,       ymin),\
-                    Vector2d(w.x+(w.ww+w.offx)/w.sf, ymin), Vector2d(w.x+(w.ww+w.offx)/w.sf, ymax)];
-        # w.pts_t=[];
-        # for p in w.pts_ut:
-        #     w.pts_t.append(w.transform.apply_to_point(p))
-        w.pts_t = [w.transform.apply_to_point(p) for p in w.pts_ut]
-        w.bb = bbox([min([p.x for p in w.pts_t]),\
-                min([p.y for p in w.pts_t]),\
-                max([p.x for p in w.pts_t])-min([p.x for p in w.pts_t]),\
-                max([p.y for p in w.pts_t])-min([p.y for p in w.pts_t])]);
+            wx = self.x; wy = self.y;
+            if len(self.cs)>0:
+                ymin = min([wy+c.dy-c.ch/self.sf   for c in self.cs]);
+                ymax = max([wy+c.dy                for c in self.cs]);
+            else:  ymin = ymax = wy;
+            self._pts_ut = [iv2d(wx + offx/self.sf,    ymax), iv2d(wx+ offx/self.sf,     ymin),\
+                            iv2d(wx+(ww+offx)/self.sf, ymin), iv2d(wx+(ww+offx)/self.sf, ymax)];
+        return self._pts_ut
+    @pts_ut.setter
+    def pts_ut(self,pi):
+        if pi is None and self._pts_ut is not None: # invalidate self and dependees
+            self._pts_ut = None;
+            self.pts_t = None; 
+            self.cpts_ut = None;
+    @property 
+    def pts_t(self):
+        if self._pts_t is None:
+            self._pts_t = [self.transform.apply_to_point(p) for p in self.pts_ut]
+        return self._pts_t
+    @pts_t.setter
+    def pts_t(self,pi):
+        if pi is None and self._pts_t is not None: # invalidate self and dependees
+            self._pts_t = None
+            self.bb = None  
+            self.cpts_t = None
+    @property
+    def bb(self):
+        if self._bb is None:
+            ptt = self.pts_t
+            self._bb = bbox([min([p.x for p in ptt]),min([p.y for p in ptt]),\
+                             max([p.x for p in ptt])-min([p.x for p in ptt]),\
+                             max([p.y for p in ptt])-min([p.y for p in ptt])]);
+        return self._bb
+    @bb.setter
+    def bb(self,bbi):
+        if bbi is None: # invalidate
+            self._bb = None
             
-        c_pts_ut = [Vector2d(w.x + w.offx/w.sf,      ymax), Vector2d(w.x+ w.offx/w.sf,       ymin),\
-                    Vector2d(w.x+(w.ww+w.offx)/w.sf, ymin), Vector2d(w.x+(w.ww+w.offx)/w.sf, ymax)]
             
-        
-        
+    @property
+    def cpts_ut(self):
+        if self._cpts_ut is None:
+            """  Interpolate the pts of a word to get a specific character's pts"""            
+            (cstrt,cstop) = self.charpos
+
+            ww = cstop[-1];
+            fracl = cstrt.reshape(-1,1)/ww # col vec
+            fracr = cstop.reshape(-1,1)/ww
+
+            ptut = self.pts_ut
+            ptutb = np.array([[ptut[0].x,ptut[0].y],\
+                              [ptut[1].x,ptut[1].y],\
+                              [ptut[2].x,ptut[2].y],\
+                              [ptut[3].x,ptut[3].y]])
+            
+            self._cpts_ut = [(ptutb[3]-ptutb[0])*fracl+ptutb[0],\
+                             (ptutb[2]-ptutb[1])*fracl+ptutb[1],\
+                             (ptutb[2]-ptutb[1])*fracr+ptutb[1],\
+                             (ptutb[3]-ptutb[0])*fracr+ptut[0]]
+        return self._cpts_ut
+    @cpts_ut.setter
+    def cpts_ut(self,ci):
+        if ci is None:
+            self._cpts_ut = None
+            
+    @property
+    def cpts_t(self):
+        if self._cpts_t is None:
+            """  Interpolate the pts of a word to get a specific character's pts"""            
+            (cstrt,cstop) = self.charpos
+            ww = cstop[-1];
+            fracl = cstrt.reshape(-1,1)/ww # col vec
+            fracr = cstop.reshape(-1,1)/ww
+            ptut = self.pts_t
+            ptutb = np.array([[ptut[0].x,ptut[0].y],\
+                              [ptut[1].x,ptut[1].y],\
+                              [ptut[2].x,ptut[2].y],\
+                              [ptut[3].x,ptut[3].y]])
+            self._cpts_t = [(ptutb[3]-ptutb[0])*fracl+ptutb[0],\
+                             (ptutb[2]-ptutb[1])*fracl+ptutb[1],\
+                             (ptutb[2]-ptutb[1])*fracr+ptutb[1],\
+                             (ptutb[3]-ptutb[0])*fracr+ptut[0]]
+        return self._cpts_t
+    @cpts_t.setter
+    def cpts_t(self,ci):
+        if ci is None:
+            self._cpts_t = None
+    
 # A single character and its style
 class tchar:
     def __init__(self, c,fs,sf,prop,sty,nsty,loc):
@@ -1327,7 +1313,7 @@ class tchar:
         self.cw = prop.charw;     # actual character width in user units
         self.sty  = sty;  # actual style
         self.nsty = nsty; # normalized style
-        self.nstyc = dh.Set_Style_Comp(nsty,'fill',dh.Get_Style_Comp(sty,'fill')) # with color
+        # self.nstyc = dh.Set_Style_Comp(nsty,'fill',dh.Get_Style_Comp(sty,'fill')) # with color
         self.loc = loc;   # true location: [parent, 'text' or 'tail', index]
         self.ch = prop.caph;     # cap height (height of flat capitals like T)
         # self.dr = dr;     # descender (length of p/q descender))
@@ -1336,49 +1322,103 @@ class tchar:
         self.w  = None;   # my word (to be assigned)
         self.type=None;   # 'normal','super', or 'sub' (to be assigned)
         self.ofs = fs;    # original character width (never changed, even if character is updated later)
-        self.dx = 0;      # get later
-        self.dy = 0;      # get later
+        self._dx = 0;      # get later
+        self._dy = 0;      # get later
         self.deltanum = None;      # get later
         self.dkerns = prop.dkerns;
-        self.pending_style = None; # assign later (maybe)
+        self._pending_style = None; # assign later (maybe)
         self.parsed_pts_t = None; self.parsed_pts_ut = None; # for merging later
-        self.lsp = 0;  # letter spacing
+        self._lsp = None;  # letter spacing
         
-    def delc(self): # deletes me from document (and from my word/line)
+    
+    # def __copy__(self):
+    #     ret = tchar(self.c,self.fs,self.sf,self.prop,self.sty,self.nsty,self.loc)
+    #     for a,v in self.__dict__.items():
+    #         ret.__dict__[a]=v
+    #     ret.loc = copy(self.loc)
+    #     return ret
+    
+    @property
+    def dx(self):
+        return self._dx
+    @dx.setter
+    def dx(self,di):
+        if self._dx != di:
+            self._dx = di;
+            if self.w is not None:
+                self.w.dxeff = None; # invalidate
+            self.ln.ll._dxchange = True;
+    @property
+    def dy(self):
+        return self._dy
+    @dy.setter
+    def dy(self,di):
+        if self._dy != di:
+            self._dy = di;
+            self.ln.ll._dychange = True;
+                
+    
+    
+    anchorfrac = property(lambda self : get_anchorfrac(self.ln.anchor))
+    @property
+    def lsp(self):
+        if self._lsp is None:
+            styv = self.sty
+            if self.pending_style is not None:
+                styv = self.pending_style
+            # dh.idebug(lspv)
+            if 'letter-spacing' in styv:
+                lspv = styv.get('letter-spacing')
+                if 'em' in lspv: # em is basically the font size
+                    fs2 = styv.get('font-size');
+                    if fs2 is None: fs2 = '12px'
+                    lspv = float(lspv.strip('em'))*dh.implicitpx(fs2);
+                else:
+                    lspv = dh.implicitpx(lspv);
+            else:
+                lspv = 0;
+            self._lsp = lspv
+        return self._lsp
+    @lsp.setter
+    def lsp(self,si):
+        if si is None:
+            self._lsp = None
+            if self.w is not None:
+                self.w.lsp = None
+
+
+    @property
+    def pending_style(self):
+        return self._pending_style
+    @pending_style.setter
+    def pending_style(self,psty):
+        self._pending_style = psty;
+        self.lsp = None              # invalidate
+    
+    def delc(self):
+        # Deletes character from document (and from my word/line)
         # Deleting a character causes the word to move if it's center- or right-justified. Adjust position to fix
-        cwo = self.cw;
+        cwo = self.cw + self.dx + self.lsp*(self.w.cs[0]!=self)
         if self.w.unrenderedspace and self.w.cs[-1]==self:
             if len(self.w.cs)>1 and self.w.cs[-2].c!=' ':
                 cwo = 0; # deletion will not affect position
                 
         if self==self.w.cs[0]:              # from beginning of line
-            if self.ln.anchor=='middle':
-                deltax = -cwo/self.sf / 2;
-            elif self.ln.anchor=='end':
-                deltax = 0;
-            else:
-                deltax = -cwo/self.sf;
+            deltax = (self.anchorfrac-1)*cwo/self.sf
         else:                               # assume end of line
-            if self.ln.anchor=='middle':
-                deltax = cwo/self.sf / 2;
-            elif self.ln.anchor=='end':
-                deltax = cwo/self.sf;
-            else:
-                deltax = 0;
+            deltax = self.anchorfrac*cwo/self.sf
         if deltax!=0:
             newx = self.ln.x; 
             nnii = [ii for ii in range(len(self.ln.x)) if self.ln.x[ii] is not None]; # non-None
             newx[nnii[self.ln.ws.index(self.w)]] -= deltax;
-            
-#            dh.debug(self.ln.x)
             self.ln.change_pos(newx)
-            self.w.x -= deltax
-    
+        
         # Delete from document
         if self.loc.tt=='text':
             self.loc.el.text = del2(self.loc.el.text,self.loc.ind)
         else:
             self.loc.el.tail = del2(self.loc.el.tail,self.loc.ind)
+            
         myi = self.ln.cs.index(self) # index in line
         if len(self.ln.x)>1:
             if myi<len(self.ln.x):
@@ -1400,30 +1440,23 @@ class tchar:
                 i2 = ca.w.cs.index(ca)
                 ca.w.iis[i2] -= 1
         self.ln.cs = del2(self.ln.cs,myi)
-        oldll = self.ln.ll;
-        if len(self.ln.cs)==0: # line now empty
+        if len(self.ln.cs)==0: # line now empty, can delete
             self.ln.dell();
-        self.ln = None
+        # self.ln = None
         
-        
-        # Delete from word
+        # Remove from word
         myi = self.w.cs.index(self)
-        self.w.cs = del2(self.w.cs ,myi)
-        self.w.iis= del2(self.w.iis,myi)
-        self.w.calcprops()
-        if len(self.w.cs)==0: # word now empty
-            self.w.delw();
-        self.w = None
-
+        self.w.removec(myi)
+        
         # Update the dx/dy value in the LineList
-        oldll.Update_Delta();
-        # dh.debug([[ln.x for ln in oldll.lns],[ln.xsrc.get('x') for ln in oldll.lns]])
+        self.ln.ll.Update_Delta();
+        
         
     def add_style(self,sty):
     # Adds a style to an existing character by wrapping it in a new Tspan
-        t = Tspan();
+        # t = Tspan();
+        t = dh.new_element(Tspan,self.loc.el)
         t.text = self.c;
-        t.style = str(sty);
         
         prt = self.loc.el;
         if self.loc.tt=='text':
@@ -1431,6 +1464,7 @@ class tchar:
             tafter  = prt.text[self.loc.ind+1:];
             prt.text = tbefore;
             prt.insert(0,t);
+            
             t.tail = tafter;
         else:
             tbefore = prt.tail[0:self.loc.ind];
@@ -1438,14 +1472,29 @@ class tchar:
             prt.tail = tbefore
             gp =prt.getparent();                # parent is a Tspan, so insert it into the grandparent
             pi = (gp.getchildren()).index(prt);   
-            gp.insert(pi+1,t); # above the parent
+            gp.insert(pi+1,t); # after the parent
+            
             t.tail =  tafter
+            
+        # dh.idebug([v.get_id() for v in dh.descendants2(self.ln.ll.textel)])
+        # dh.idebug([v.get_id() for v in self.ln.ll.textds])
+        textd = self.ln.ll.textds; # update the descendants list
+        textd.insert(textd.index(prt)+1,t)
             
         myi = self.ln.cs.index(self)
         for ii in range(myi+1,len(self.ln.cs)):  # for characters after, update location
             ca = self.ln.cs[ii];
             ca.loc = cloc(t,'tail',ii-myi-1)
         self.loc = cloc(t,'text',0)                  # update my own location
+        
+        
+        spfd = dh.specified_style2(t);           # make sure inheritance doesn't override letter-spacing
+        if 'letter-spacing' in spfd and 'letter-spacing' not in sty:
+            sty['letter-spacing'] = '0px'    
+        t.lstyle = sty;
+        
+        self.sty = sty;
+        self.lsp = None;
         
     def makesubsuper(self,sz=65):
         if self.type=='super':
@@ -1456,26 +1505,63 @@ class tchar:
         
     def applypending(self):
         self.add_style(self.pending_style);
+        self.pending_style = None
         
-    def interp_pts(self):
+    # def interp_pts(self):
+    #     """  Interpolate the pts of a word to get a specific character's pts"""
+    #     myi = self.w.cs.index(self)
+    #     cput = self.w.cpts_ut;
+    #     ret_pts_ut = [iv2d(cput[0][myi][0],cput[0][myi][1]),\
+    #                   iv2d(cput[1][myi][0],cput[1][myi][1]),\
+    #                   iv2d(cput[2][myi][0],cput[2][myi][1]),\
+    #                   iv2d(cput[3][myi][0],cput[3][myi][1])]
+            
+    #     cpt = self.w.cpts_t;
+    #     ret_pts_t = [iv2d(cpt[0][myi][0],cpt[0][myi][1]),\
+    #                  iv2d(cpt[1][myi][0],cpt[1][myi][1]),\
+    #                  iv2d(cpt[2][myi][0],cpt[2][myi][1]),\
+    #                  iv2d(cpt[3][myi][0],cpt[3][myi][1])]
+        
+    #     return ret_pts_ut, ret_pts_t
+    
+    @property
+    def pts_ut(self):
         """  Interpolate the pts of a word to get a specific character's pts"""
         myi = self.w.cs.index(self)
-        
-        fracl = 0;
-        if myi>0:
-            fracl = self.w.cumw[myi-1]/self.w.ww
-        fracr = self.w.cumw[myi]/self.w.ww;
-        ret_pts_ut = [(self.w.pts_ut[3]-self.w.pts_ut[0])*fracl+self.w.pts_ut[0],\
-                      (self.w.pts_ut[2]-self.w.pts_ut[1])*fracl+self.w.pts_ut[1],\
-                      (self.w.pts_ut[2]-self.w.pts_ut[1])*fracr+self.w.pts_ut[1],\
-                      (self.w.pts_ut[3]-self.w.pts_ut[0])*fracr+self.w.pts_ut[0]]
-            
-        ret_pts_t  = [(self.w.pts_t[3]-self.w.pts_t[0])*fracl+self.w.pts_t[0],\
-                      (self.w.pts_t[2]-self.w.pts_t[1])*fracl+self.w.pts_t[1],\
-                      (self.w.pts_t[2]-self.w.pts_t[1])*fracr+self.w.pts_t[1],\
-                      (self.w.pts_t[3]-self.w.pts_t[0])*fracr+self.w.pts_t[0]]
-        return ret_pts_ut, ret_pts_t
+        cput = self.w.cpts_ut;
+        ret_pts_ut = [iv2d(cput[0][myi][0],cput[0][myi][1]),\
+                      iv2d(cput[1][myi][0],cput[1][myi][1]),\
+                      iv2d(cput[2][myi][0],cput[2][myi][1]),\
+                      iv2d(cput[3][myi][0],cput[3][myi][1])]
+        return ret_pts_ut;
     
+    @property
+    def pts_t(self):
+        myi = self.w.cs.index(self)   
+        cpt = self.w.cpts_t;
+        ret_pts_t = [iv2d(cpt[0][myi][0],cpt[0][myi][1]),\
+                     iv2d(cpt[1][myi][0],cpt[1][myi][1]),\
+                     iv2d(cpt[2][myi][0],cpt[2][myi][1]),\
+                     iv2d(cpt[3][myi][0],cpt[3][myi][1])]
+        return ret_pts_t
+    
+    # @property
+    # def parsed_pts_ut(self):
+    #     if self._parsed_pts_ut is None:
+    #         self._parsed_pts_ut = self.pts_ut
+    #     return self._parsed_pts_ut
+    # @parsed_pts_ut.setter
+    # def parsed_pts_ut(self,pi):
+    #     self._parsed_pts_ut = pi;
+    # @property
+    # def parsed_pts_t(self):
+    #     if self._parsed_pts_t is None:
+    #         self._parsed_pts_t = self.pts_t
+    #     return self._parsed_pts_t
+    # @parsed_pts_t.setter
+    # def parsed_pts_t(self,pi):
+    #     self._parsed_pts_t = pi;
+
     # def changex(self,newx):
     #     self.ln.x[self.ln.cs.index(self)] = newx
     #     if self.ln.x==[]: self.ln.xsrc.set('x',None)
@@ -1502,6 +1588,9 @@ class bbox:
         miny = min([self.y1,self.y2,bb2.y1,bb2.y2]);
         maxy = max([self.y1,self.y2,bb2.y1,bb2.y2]);
         return bbox([minx,miny,maxx-minx,maxy-miny]);
+    
+    def __deepcopy__(self,memo):
+        return bbox([self.x1,self.y1,self.w,self.h])
 
 def del2(x,ind): # deletes an index from a list
     return x[:ind]+x[ind+1:]
@@ -1538,9 +1627,10 @@ class cprop():
         self.descrh = dr;   # descender height
         self.dkerns = dkerns# table of how much extra width a preceding character adds to me
     def __mul__(self, scl):
-        dkern2 = dict();
-        for c in self.dkerns.keys():
-            dkern2[c] = self.dkerns[c]*scl;
+        # dkern2 = dict();
+        # for c in self.dkerns.keys():
+        #     dkern2[c] = self.dkerns[c]*scl;
+        dkern2 = {k: v*scl for k, v in self.dkerns.items()}
         return cprop(self.char,self.charw*scl,self.spacew*scl,self.xoffset*scl,self.caph*scl,self.descrh*scl,dkern2)
 # A class indicating a single character's location in the SVG
 class cloc():
@@ -1549,10 +1639,19 @@ class cloc():
         self.tt = tt;  # 'text' or 'tail'
         self.ind= ind; # its index
         
-        tmp = el;
-        if isinstance(tmp.getparent(),(TextElement,Tspan)):
-            tmp = tmp.getparent()
-        self.textel = tmp; # parent TextElement
+        # tmp = el;
+        # if isinstance(tmp.getparent(),(TextElement,Tspan)):
+        #     tmp = tmp.getparent()
+        # self.textel = tmp; # parent TextElement
+        
+        if self.tt=='text':
+            self.pel = self.el                 # parent element (different for tails)
+        else:
+            self.pel = self.el.getparent();
+        
+    def __eq__(self,other):
+        return self.el==other.el and self.tt==other.tt and self.ind==other.ind;
+        
 
 # A class representing the properties of a collection of characters
 class Character_Table():
@@ -1773,13 +1872,13 @@ def deleteempty(el):
     txt = el.text;
     tail = el.tail;
     if (txt is None or len((txt))==0) and (tail is None or len((tail))==0) and len(el.getchildren())==0:
-        el.delete();                    # delete anything empty
+        el.delete2();                    # delete anything empty
         # dh.debug(el.get_id())
     elif isinstance(el, (TextElement)):    
         def wstrip(txt): # strip whitespaces
              return txt.translate({ord(c):None for c in ' \n\t\r'}); 
         if all([(d.text is None or len(wstrip(d.text))==0) and (d.tail is None or len(wstrip(d.tail))==0) for d in dh.descendants2(el)]):
-            el.delete(); # delete any text elements that are just white space
+            el.delete2(); # delete any text elements that are just white space
 
 
 # An iterator for crawling through a text descendant tree
@@ -1801,3 +1900,184 @@ class ttiterator:
             raise StopIteration
         else:
             return self.di,self.tt
+
+    
+def maxnone(xi):
+    if len(xi)>0: return max(xi)
+    else:         return None        
+    
+        
+    # Seperate a text element into a group of lines
+#     def Parse_Lines(self,el,lns=None,debug=False):
+#         sty = dh.selected_style_local(el);
+#         ct = el.composed_transform();
+#         fs,sf,ct,ang = dh.Get_Composed_Width(el,'font-size',4,styin=sty,ctin=ct); #dh.debug(el.get_id()); dh.debug(el.composed_transform())
+#         lh = dh.Get_Composed_LineHeight(el,styin=sty,ctin=ct);
+#         nsty=Character_Table.normalize_style(sty);
+#         tv = el.text;
+        
+#         xv = LineList.GetXY(el,'x'); xsrc = el;
+#         yv = LineList.GetXY(el,'y'); ysrc = el;
+
+#         # Notes on sodipodi:role line
+#         # If a top-level Tspan has sodipodi:role set to line, its position is inherited based on the previous line.
+#         # The x value is taken from the previous line's x value.
+#         # The y value is taken by adding the line height to the previous y value.
+#         # However, inheritance is disabled by the presence of multiple x values or multiple y values.
+#         # (Multiple dx or dy values does not disable this inheritance.)
+#         # If sodipodi:role is not line, its anchoring/alignment will be inherited from the previous line.
+        
+#         # Detect if inheriting position
+#         nspr = el.get('sodipodi:role');
+        
+#         toplevelTspan = isinstance(el,Tspan) and isinstance(el.getparent(),TextElement);
+#         myi = el.getparent().getchildren().index(el);
+        
+#         if toplevelTspan:                tlvlno=myi;
+#         elif isinstance(el,TextElement): tlvlno=0;
+#         else:                            tlvlno=None;
+        
+#         sprl = (nspr=='line');
+#         multiplepos = len(xv)>1 or len(yv)>1;           # multiple x or y values disable sodipodi:role line
+#         inheritx = (sprl and not(multiplepos)) or (xv[0] is None)
+#         inherity = (sprl and not(multiplepos)) or (yv[0] is None)
+        
+#         # Determine if new line
+#         newline = False;            
+#         if isinstance(el,TextElement):
+#             newline = True
+#         elif toplevelTspan: # top level Tspans
+#             if (sprl      and (not(inheritx) or not(inherity) or not(myi==0)))\
+#             or (not(sprl) and (not(inheritx) or not(inherity))):   
+#                 # if not inheriting, continue previous line
+#                 newline = True
+#         elif isinstance(el,Tspan):                      # nested Tspans: become a new line with an explicit x or y
+#             if el.get('x') is not None:  
+#                 newline = True; inheritx=False;
+#             if el.get('y') is not None:  
+#                 newline = True; inherity=False;
+        
+#         # dh.debug(el.get_id() + str(inheritx))
+#         # dh.debug(el.get_id())
+#         # dh.debug(len(el.text))
+#         # dh.debug(newline)
+#         # dh.debug(inheritx)
+#         # dh.debug(inherity)
+#         # dh.debug((nspr=='line' and not(multiplepos)) or (yv[0] is None))
+#         # dh.debug(' ')
+# #        dh.debug(toplevelTspan)
+        
+#         # debug = True
+#         if debug:
+#             dh.debug(el.get_id())
+#             dh.debug(tv)
+#             dh.debug(newline)
+#             dh.debug(fs)
+#             dh.debug(xv)
+#             # dh.debug(inheritx)
+        
+#         if newline:
+#             continuex = False;
+#             if lns is None:  
+#                 lns=[];
+#             else:
+#                 if inheritx:                
+#                     if len(lns)==0 or len(lns[-1].x)==0: return None
+#                     else:
+#                         if toplevelTspan and myi>0: # inheriting from previous top-level line
+#                             lastln = [ln for ln in lns if ln.tlvlno==tlvlno-1][-1];
+#                             xv   = [lastln.x[0]]; 
+#                             xsrc = lastln.xsrc;
+#                             if lastln.x[0] is None:
+#                                 lli=[ii for ii in range(len(lns)) if lns[ii].x[0] is not None]
+#                                 if len(lli)>0:
+#                                     xv = [lns[max(lli)].x[0]]
+#                                     xsrc = lns[max(lli)].xsrc
+#                         else:                       # continuing previous line
+#                             xv   = [None]; 
+#                             xsrc = lns[-1].xsrc;
+#                             continuex = True;
+# #                        ct   = lns[-1].transform; # I don't think these do anything (2021.10.18)
+# #                        ang  = lns[-1].angle;
+#                 if inherity:               
+#                     if len(lns)==0 or len(lns[-1].y)==0: return None
+#                     else:
+#                         if toplevelTspan and myi>0: # inheriting from previous top-level line
+#                             lastln = [ln for ln in lns if ln.tlvlno==tlvlno-1][-1];
+#                             offs = lh/sf;
+#                             if lns[-1].y[0] is not None:
+#                                 if lastln.y[0] is None:
+#                                     lli=[ii for ii in range(len(lns)) if lns[ii].y[0] is not None]
+#                                     if len(lli)>0: lyv = lns[max(lli)].y[0]
+#                                     else: lyv=0
+#                                 else:
+#                                     lyv = lastln.y[0]
+#                                 yv   = [lyv+offs];
+#                             else: yv = [None];
+#                             ysrc = lastln.ysrc;
+#                         else:                       # continuing previous line
+#                             yv   = [lns[-1].y[0]];
+#                             ysrc = lns[-1].ysrc;
+                            
+#             anch = sty.get('text-anchor') 
+#             if len(lns)!=0 and nspr!='line':
+#                 if lns[-1].anchor is not None:
+#                     anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
+#             lns.append(tline(xv,yv,inheritx,nspr,anch,ct,ang,el,xsrc,ysrc,tlvlno,sty,continuex))
+        
+#         # First line anchor should be the Tspan style if there are no characters in the text
+#         if toplevelTspan and myi==0:
+#             if len(lns)==1 and len(lns[0].cs)==0:
+#                 lns[0].anchor = sty.get('text-anchor');
+        
+#         ctable = self.ctable  
+#         if tv is not None and tv!='' and len(tv)>0:
+#             for ii in range(len(tv)):
+#                 # if fs is None: return None # bail if there is text without font
+#                 prop = ctable.get_prop(tv[ii],nsty)*fs;
+#                 lns[-1].addc(tchar(tv[ii],fs,sf,prop,sty,nsty,cloc(el,'text',ii)));
+        
+#         ks = el.getchildren();
+#         # if debug:
+#         #     dh.debug(ks)
+#         for k in ks:
+#             lns = self.Parse_Lines(k,lns,debug=debug);
+#             tv = k.tail;
+#             if tv is not None and tv!='':
+#                 for ii in range(len(tv)):
+#                     # if fs is None: return None # bail if there is text without font
+#                     prop = ctable.get_prop(tv[ii],nsty)*fs;
+#                     lns[-1].addc(tchar(tv[ii],fs,sf,prop,sty,nsty,cloc(k,'tail',ii)));
+            
+#         return lns
+    
+#     def Finish_Lines(self):
+#         if self.lns is not None:
+#             self.Get_Delta(self.lns,self.textel,'dx');
+#             self.Get_Delta(self.lns,self.textel,'dy');
+#             for ii in range(len(self.lns)):
+#                 ln = self.lns[ii];
+#                 if ln.x[0] is None: # no x ever assigned
+#                     if ln.continuex and ii>0 and len(self.lns[ii-1].ws)>0:
+#                         self.lns[ii-1].ws[-1].calcprops();
+#                         ln.x[0] = self.lns[ii-1].ws[-1].pts_ut[3].x
+#                     else:
+#                         ln.x[0] = 0;
+#                 if ln.y[0] is None: # no y ever assigned
+#                     ln.y[0] = 0;
+#                 ln.parse_words()
+#             for ln in reversed(self.lns): 
+#                 if len(ln.cs)==0:
+#                     self.lns.remove(ln); # prune empty lines
+#             for ln in self.lns:
+#                 ln.ll = self;
+            
+#             # Assign nextw for single-word lines sharing a y (Illustrator SVGs usually have one Tspan per character)
+#             ys = [ln.y[0] for ln in self.lns if ln.y is not None and len(ln.y)>0]
+#             for uy in list(set(ys)):
+#                 samey = [self.lns[ii] for ii in range(len(self.lns)) if ys[ii]==uy];
+#                 xs = [ln.x for ln in samey]
+#                 slns = [x for _, x in sorted(zip(xs, samey), key=lambda pair: pair[0])] # words sorted in ascending x
+#                 for ii in range(len(slns)-1):
+#                     if len(slns[ii].ws)==1 and len(slns[ii+1].ws)==1:
+#                         slns[ii].ws[-1].nextw = slns[ii+1].ws[0] 

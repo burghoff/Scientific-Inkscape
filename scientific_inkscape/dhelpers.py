@@ -33,7 +33,7 @@ from inkex import (
         Metadata, ForeignObject, Vector2d, Path, Line, PathElement,command,\
         SvgDocumentElement,Image,Group,Polyline,Anchor,Switch,ShapeElement, BaseElement,FlowRegion)
 from applytransform_mod import ApplyTransform
-import lxml, math
+import lxml, math, re
 from lxml import etree  
 from Style2 import Style2
 
@@ -72,7 +72,7 @@ def descendants2(el,return_tails=False):
         keepgoing = False;
         if not(childrendone):
             descendants.append(cel);
-            precedingtails.append(copy.copy(pendingtails))
+            precedingtails.append((pendingtails))
             pendingtails = [];
 
             ks = getchildren_dict(cel);
@@ -175,24 +175,14 @@ def selected_style_local(el):
 
 svgpres = ['alignment-baseline','baseline-shift','clip','clip-path','clip-rule','color','color-interpolation','color-interpolation-filters','color-profile','color-rendering','cursor','direction','display','dominant-baseline','enable-background','fill','fill-opacity','fill-rule','filter','flood-color','flood-opacity','font-family','font-size','font-size-adjust','font-stretch','font-style','font-variant','font-weight','glyph-orientation-horizontal','glyph-orientation-vertical','image-rendering','kerning','letter-spacing','lighting-color','marker-end','marker-mid','marker-start','mask','opacity','overflow','pointer-events','shape-rendering','stop-color','stop-opacity','stroke','stroke-dasharray','stroke-dashoffset','stroke-linecap','stroke-linejoin','stroke-miterlimit','stroke-opacity','stroke-width','text-anchor','text-decoration','text-rendering','transform','transform-origin','unicode-bidi','vector-effect','visibility','word-spacing','writing-mode']
 excludes = ['clip','clip-path','mask','transform','transform-origin']
-# global cssdict
-# cssdict = None;
 def cascaded_style2(el):
 # Object's style including any CSS
 # Modified from Inkex's cascaded_style
     if not(hasattr(el,'csdstyle')):
         svg = get_parent_svg(el);
-        if not(hasattr(svg,'cssdict')):
-            generate_cssdict(svg);
         if svg is not None:        cssdict = svg.cssdict;
         else:                      cssdict = dict();
-    
-        # global cssdict
-        # idebug(cssdict)
-        # if cssdict is None:
-        #     # Generate a dictionary of styles at least once so we don't have to do constant lookups
-        #     # If elements change, will need to rerun by setting cssdict to None
-        #     generate_cssdict(get_parent_svg(el));
+
         csssty = cssdict.get(el.get_id());
         # locsty = Style2(el.get('style'));
         locsty = el.lstyle
@@ -203,8 +193,6 @@ def cascaded_style2(el):
         for a in attr:
             if a in svgpres and not(a in excludes) and locsty.get(a) is None and el.get(a) is not None:
                 attsty[a] = el.get(a)
-    #            debug(el.get(a))
-    
         if csssty is None:
             ret = attsty+locsty
         else:
@@ -216,30 +204,58 @@ def cascaded_style2(el):
         
 def dupe_in_cssdict(oldid,newid,svg):
     # duplicate a style in cssdict
-    if not(hasattr(svg,'cssdict')):
-        generate_cssdict(svg);
-    if svg is not None:        cssdict = svg.cssdict;
-    else:                      cssdict = dict();
-    
-    # global cssdict
-    if cssdict is not None:
-        csssty = cssdict.get(oldid);
+    if svg is not None:      
+        csssty = svg.cssdict.get(oldid);
         if csssty is not None:
-            cssdict[newid]=csssty;
-def generate_cssdict(svg):
-    # global cssdict
-    if svg is not None:
+            svg.cssdict[newid]=csssty;
+            
+def get_cssdict(svg):
+    if not(hasattr(svg,'_cssdict')):
+        # For certain xpaths such as classes, we can avoid xpath calls
+        # by checking the class attributes on a document's descendants directly.
+        # This is much faster for large documents.
+        hasall = False;
+        simpleclasses = dict(); simpleids = dict();
+        for sheet in svg.stylesheets:
+            for style in sheet:
+                xp = vto_xpath(style);
+                if xp=='//*': hasall = True;
+                elif all([re.compile(r'\.([-\w]+)').sub(r"IAMCLASS", r.rule)=='IAMCLASS' for r in style.rules]): # all rules are classes
+                    simpleclasses[xp] = [re.compile(r'\.([-\w]+)').sub(r"\1",r.rule) for r in style.rules]
+                elif all([re.compile(r'#(\w+)').sub(r"IAMID", r.rule)=='IAMID' for r in style.rules]):           # all rules are ids
+                    simpleids[xp] = [re.compile(r'\.([-\w]+)').sub(r"\1",r.rule)[1:] for r in style.rules]
+
+        knownxpaths = dict()
+        if hasall or len(simpleclasses)>0:
+            ds = svg.ldescendants;
+                
+            cs = [d.get('class') for d in ds] 
+            if hasall: knownxpaths['//*'] = ds;
+            for xp in simpleclasses: knownxpaths[xp]=[]
+            for ii in range(len(ds)):
+                if cs[ii] is not None:
+                    cv = cs[ii].split(' ') # only valid delimeter for multiple classes is space
+                    for xp in simpleclasses:
+                        if any([v in cv for v in simpleclasses[xp]]):
+                            knownxpaths[xp].append(ds[ii])
+        for xp in simpleids:
+            knownxpaths[xp]=[]
+            for sid in simpleids[xp]:
+                idel = getElementById2(svg, sid);
+                if idel is not None:
+                    knownxpaths[xp].append(idel)
+        
+        # Now run any necessary xpaths and get the element styles
         cssdict= dict();
-        # idebug(cssdict)
         for sheet in svg.root.stylesheets:
             for style in sheet:
                 try:
-                    # els = svg.xpath(style.to_xpath())
-                    # idebug(vto_xpath(style))
-                    els = svg.xpath(vto_xpath(style))
+                    # els = svg.xpath(style.to_xpath())  # original code
+                    xp = vto_xpath(style);
+                    if xp in knownxpaths: els = knownxpaths[xp]
+                    else:                 els = svg.xpath(xp)
                     for elem in els:
                         elid = elem.get('id',None);
-                        # idebug(elid)
                         if elid is not None and style!=inkex.Style():  # still using Inkex's Style here since from stylesheets
                             if cssdict.get(elid) is None:
                                 cssdict[elid] = Style2() + style;
@@ -247,21 +263,48 @@ def generate_cssdict(svg):
                                 cssdict[elid] += style;
                 except (lxml.etree.XPathEvalError,TypeError):
                     pass
-        svg.cssdict = cssdict;
-
+        svg._cssdict = cssdict;
+    return svg._cssdict;
+inkex.SvgDocumentElement.cssdict = property(get_cssdict);
 
 # Give all BaseElements a lazy style attribute that clears the stored cascaded / specified
-# style whenever the style is changed
+# style whenever the style is changed. Always use this when setting styles.
 def lstyget(el):
-    if not(hasattr(el,'style2')):
-        el.style2 = Style2(el.get('style'))        # el.get() is very efficient
-    return el.style2
-def lstyset(el,sty):
-    el.style  = sty
-    el.style2 = Style2(sty);
+    if not(hasattr(el,'_lstyle')):
+        el._lstyle = Style2(el.get('style'))        # el.get() is very efficient
+    return el._lstyle
+def lstyset(el,nsty):
+    el.style  = nsty
+    el._lstyle = Style2(nsty);
     if hasattr(el,'csdstyle'): delattr(el,'csdstyle');
     if hasattr(el,'spdstyle'): delattr(el,'spdstyle');
 inkex.BaseElement.lstyle = property(lstyget,lstyset)
+
+# Lazy composed_transform that stores the value when finished. Could be invalidated by
+# changes to transform. Currently is not invalidated when the element is moved, so beware!
+def lcomposed_transform(el):
+    if not(hasattr(el,'_lcomposed_transform')):
+        ret = el.ltransform
+        cel = el.getparent();
+        while cel is not None:
+            ret = vmult(cel.ltransform,ret)
+            cel = cel.getparent();
+        el._lcomposed_transform = ret;
+    return el._lcomposed_transform
+inkex.BaseElement.lcomposed_transform = property(lcomposed_transform)
+
+# Lazy transform 
+def docT(t): # version stored to doc (for testing)
+    return Transform([float(f"{t.a:.6g}"),float(f"{t.b:.6g}"),float(f"{t.c:.6g}"),float(f"{t.d:.6g}"),float(f"{t.e:.6g}"),float(f"{t.f:.6g}")]);
+def ltransform(el):
+    if not(hasattr(el,'_ltransform')):
+        el._ltransform = el.transform;
+    return el._ltransform
+def set_ltransform(el,newt):
+    el.transform = newt;
+    el._ltransform = newt;
+    # el._ltransform = docT(newt);
+inkex.BaseElement.ltransform = property(ltransform,set_ltransform)
     
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
@@ -281,8 +324,9 @@ def Get_Composed_Width(el,comp,nargout=1,styin=None,ctin=None):
     docscale = 1;
     if svg is not None:
         docscale = vscale(svg);
+        # idebug(vscale(svg))
     sc = Get_Style_Comp(cs,comp);
-    # debug(sc)
+    # idebug(sc)
     if sc is not None:
         if '%' in sc: # relative width, get parent width
             sc = float(sc.strip('%'))/100;
@@ -480,7 +524,7 @@ def ungroup(groupnode):
     
     gparent = groupnode.getparent()
     gindex  = list(gparent).index(groupnode)   # group's location in parent
-    gtransform = groupnode.transform
+    gtransform = groupnode.ltransform
     gclipurl   = groupnode.get('clip-path')
     gmaskurl   = groupnode.get('mask')
     gstyle =  cascaded_style2(groupnode)
@@ -503,16 +547,17 @@ def ungroup(groupnode):
         if not(isinstance(el, unungroupable)): 
             clippedout = compose_all(el,gclipurl,gmaskurl,gtransform,gstyle)
             if clippedout:
-                el.delete()
+                el.delete2()
             else:
                 gparent.insert(gindex+1,el); # places above
                 
         if isinstance(el, Group) and unlinkclone: # if was a clone, may need to ungroup
             ungroup(el)
     if len(groupnode.getchildren())==0:
-        groupnode.delete();
+        groupnode.delete2();
 
 # For composing a group's properties onto its children (also group-like objects like Uses)        
+Itmat = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0));
 def compose_all(el,clipurl,maskurl,transform,style):
     if style is not None:                                                         # style must go first since we may change it with CSS
         mysty = cascaded_style2(el);
@@ -525,24 +570,30 @@ def compose_all(el,clipurl,maskurl,transform,style):
     if clipurl is not None:   fix_css_clipmask(el);
     if maskurl is not None:   fix_css_clipmask(el,mask=True);
     
-    if transform is not None: el.transform = vmult(transform,el.transform)
+    # t1 = el.ltransform;
+    # t2 = el.transform;
+    # if abs(t1.a-t2.a)>.001 or abs(t1.b-t2.b)>.001 or abs(t1.c-t2.c)>.001 or abs(t1.d-t2.d)>.001 or abs(t1.e-t2.e)>.001 or abs(t1.f-t2.f)>.001:
+    #     idebug([t1.a,t1.b,t1.c,t1.d,t1.e,t1.f])
+    #     idebug([t2.a,t2.b,t2.c,t2.d,t2.e,t2.f])
+    #     idebug('\n')
+    if transform is not None: el.ltransform = vmult(transform,el.ltransform)
+    
+    
+    
+    # if transform.matrix!=Itmat:
+    #     myt = el.transform
+    #     if myt.matrix==Itmat: el.transform = transform
+    #     else:                 el.transform = vmult(transform,myt)
+    
+    # if [el2.get_id()=='tspan6056' for el2 in descendants2(el.root)]:
+    #     debug(el.get_id())
     
     if clipurl is None:
         return False
     else:
         return cout
 
-         
-# Same as composed_style(), but no recursion and with some tweaks
-def shallow_composed_style(el):
-    parent = el.getparent();
-    if parent.get('opacity') is not None:                          # make sure style includes opacity
-        Set_Style_Comp(parent,'opacity',parent.get('opacity'));
-    if Get_Style_Comp(parent.lstyle,'stroke-linecap') is not None:  # linecaps not currently inherited, so don't include in composition
-        Set_Style_Comp(parent,'stroke-linecap',None);
-    if parent is not None and isinstance(parent, ShapeElement):
-        return cascaded_style2(parent) + cascaded_style2(el)
-    return cascaded_style2(el)
+        
 
 
 # If an element has clipping/masking specified in a stylesheet, this will override any attributes
@@ -553,14 +604,9 @@ def fix_css_clipmask(el,mask=False):
     else:         cm = 'mask'
     
     svg = get_parent_svg(el);
-    if not(hasattr(svg,'cssdict')):
-        generate_cssdict(svg);
     if svg is not None:        cssdict = svg.cssdict;
     else:                      cssdict = dict();
-    
-    # global cssdict
-    # if cssdict is None:
-    #     generate_cssdict(get_parent_svg(el));
+
     mycss = cssdict.get(el.get_id());
     if mycss is not None:
         if mycss.get(cm) is not None and mycss.get(cm)!=el.get(cm):
@@ -587,23 +633,22 @@ def flush_stylesheet_entries(svg):
 
 # Like duplicate, but randomly sets the id of all descendants also
 # Normal duplicate does not
-# Second argument disables duplication (for children, whose ids only need to be set)
-def duplicate2(el,disabledup=False):
-    if not(disabledup):
-        # d = el.duplicate();
-        d = duplicate_fixed(el);
-        dupe_in_cssdict(el.get_id(),d.get_id(),get_parent_svg(el))
-        add_to_iddict(d);
-    else:
-        d = el;
-    for k in d.getchildren():
-        if not(k,lxml.etree._Comment):
-            oldid = k.get_id();
+def duplicate2(el):
+    svg = get_parent_svg(el);
+    svg.iddict; svg.cssdict; # need to generate now to prevent problems in duplicate_fixed (el.addnext(elem) line, no idea why)
+    
+    d = duplicate_fixed(el);
+    dupe_in_cssdict(el.get_id2(),d.get_id2(),get_parent_svg(el))
+    add_to_iddict(d);
+    
+    for k in descendants2(d)[1:]:
+        if not(isinstance(k,lxml.etree._Comment)):
+            oldid = k.get_id2();
             set_random_id2(k);
-            dupe_in_cssdict(oldid,k.get_id(),get_parent_svg(k))
+            dupe_in_cssdict(oldid,k.get_id2(),get_parent_svg(k))
             add_to_iddict(k);
-            duplicate2(k,True)
     return d
+
 def duplicate_fixed(el): # fixes duplicate's set_random_id
     """Like copy(), but the copy stays in the tree and sets a random id"""
     elem = el.copy()
@@ -630,9 +675,9 @@ def replace_element(el1,el2):
     newid = get_id2(el1);
     oldid = get_id2(el2);
     
-    el1.delete();
+    el1.delete2();
     el2.set_id(newid)
-    add_to_iddict(el2)
+    add_to_iddict(el2,todel=oldid);
     dupe_in_cssdict(oldid,newid,el2.root)
 
 def intersect_paths(ptha,pthb):
@@ -663,7 +708,7 @@ def merge_clipmask(node,newclipurl,mask=False):
         isrect = False;
         if isinstance(el,(PathElement,Rectangle,Line,Polyline)):
             pth = Path(get_path2(el)).to_absolute();
-            pth = pth.transform(el.transform)
+            pth = pth.transform(el.ltransform)
             
             pts = list(pth.control_points);
             xs = []; ys = [];
@@ -686,7 +731,7 @@ def merge_clipmask(node,newclipurl,mask=False):
             myp = el.getparent();
             p=new_element(PathElement,el); myp.append(p)
             p.set('d',newpath);
-        el.delete()
+        el.delete2()
         return isempty # if clipped out, safe to delete element
 
     if newclipurl is not None:
@@ -694,19 +739,20 @@ def merge_clipmask(node,newclipurl,mask=False):
         cmstr   = 'clip-path'
         if mask: cmstr='mask'
             
-        if node.transform is not None:
+        if node.ltransform is not None:
             # Clip-paths on nodes with a transform have the transform
             # applied to the clipPath as well, which we don't want. 
             # Duplicate the new clip and apply node's inverse transform to its children.
             clippath = getElementById2(svg,newclipurl[5:-1])
             if clippath is not None:    
                 d = duplicate2(clippath); 
-                svg.defs.append(d)
+                svg.defs2.append(d)
+                # idebug([d.get_id(),d.getparent().get_id()])
                 if not(hasattr(svg,'newclips')):
                     svg.newclips = []
                 svg.newclips.append(d)            # for later cleanup
                 for k in list(d):
-                    compose_all(k,None,None,-node.transform,None)
+                    compose_all(k,None,None,-node.ltransform,None)
                 newclipurl = get_id2(d,2)
         
         newclipnode = getElementById2(svg,newclipurl[5:-1]);
@@ -728,7 +774,7 @@ def merge_clipmask(node,newclipurl,mask=False):
                 if not(hasattr(svg,'newclips')):
                     svg.newclips = []
                 svg.newclips.append(d)            # for later cleanup
-                svg.defs.append(d);               # move to defs
+                svg.defs2.append(d);               # move to defs
                 node.set(cmstr,get_id2(d,2));
                 
                 newclipisrect = False
@@ -754,129 +800,58 @@ def merge_clipmask(node,newclipurl,mask=False):
         return cout
 
 
-# Repeated getElementById lookups can be really slow, so instead create a dict that can be used to 
-# speed this up. When an element is created that may be needed later, it MUST be added. 
+# Repeated getElementById lookups can be really slow, so instead create a lazy iddict property.
+# When an element is created that may be needed later, it must be added using add_to_iddict. 
 def getElementById2(svg,elid):
-    if not(hasattr(svg,'iddict')):
-        generate_iddict(svg);
-    iddict = svg.iddict
-    return iddict.get(elid);    
-def generate_iddict(svg):
-    svg.iddict = dict();
-    for el in descendants2(svg):
-        svg.iddict[get_id2(el)] = el;
-def add_to_iddict(el):
+    return svg.iddict.get(elid);   
+def add_to_iddict(el,todel=None):
     svg = get_parent_svg(el);
-    if not(hasattr(svg,'iddict')):
-        generate_iddict(svg);
-    iddict = svg.iddict
-    iddict[get_id2(el)] = el;
+    svg.iddict[get_id2(el)] = el;
+    if todel is not None:
+        del svg.iddict[todel];
+def getiddict(svg):
+    if not(hasattr(svg,'_iddict')):
+        svg._iddict = dict();
+        for el in descendants2(svg):
+            svg._iddict[get_id2(el)] = el;
+    return svg._iddict
+inkex.SvgDocumentElement.iddict = property(getiddict)
 
+# A lazy list of all descendants of an svg (not necessarily in order)
+def getldescendants(svg):
+    # if 'image7824' not in svg.iddict.keys():
+    #     idebug('Error')
+    # else:
+    #     idebug('yay')
+    #     idebug([elid for elid in set(list(svg.iddict.keys()))])
+    #     idebug([el.get_id() for el in set(list(svg.iddict.values()))])
+    # if not(hasattr(svg,'_iddict')):
+    #     getiddict(svg)
+    return list(svg.iddict.values())
+inkex.SvgDocumentElement.ldescendants = property(getldescendants)
 
+# Deletes an element from lazy dicts on deletion
+def delete2(el):
+    svg = get_parent_svg(el);
+    if svg is not None:
+        try:             del svg.iddict[get_id2(el)]
+        except KeyError: pass
+    el.delete();
+inkex.BaseElement.delete2 = delete2
 
-# class clipmaskdict():
-#     def __init__(self,svg,mask):
-#         self.svg   = svg;
-#         self.fdict = dict();      # looking up the clip/mask corresponding to an element
-#         self.idict = dict();      # looking up the elements corresponding to a clip
-        
-#         self.mask  = mask;
-#         self.cm    =  'clip-path'
-#         if mask: self.cm = 'mask'
-        
-#         for el in descendants2(svg):
-#             self.assign_clipmaskdict(el)
-    
-#     def assign_clipmaskdict(self,el):
-#         curl = el.get(self.cm)
-#         if curl is not None:
-#             cid = curl[5:-1];
-#             self.idictappend(cid,el)
-#             cel = getElementById2(self.svg, cid);
-#             self.fdictappend(el.get_id(),cel)
+def defs2(svg):
+# Defs get that avoids xpath. Looks for a defs under the svg
+    if not(hasattr(svg,'_defs2')):
+        for k in list(svg):
+            if isinstance(k,(inkex.Defs)):
+                svg._defs2 = k;
+                return svg._defs2
+        d = new_element(inkex.Defs, svg)
+        svg.insert(0,d)
+        svg._defs2 = d;
+    return svg._defs2
+inkex.SvgDocumentElement.defs2 = property(defs2)
             
-#     def idictappend(self,nid,el): # initialize if no entry, otherwise append
-#         cels = self.idict.get(nid);
-#         if cels is None:
-#             self.idict[nid]=[el]
-#         else:
-#             self.idict[nid]=list(set(cels+[el]))
-#     def fdictappend(self,nid,el):
-#         self.fdict[nid]=el
-#     def set_new(self,el,newurl):
-#         elid=el.get_id();
-        
-#         oldclip = self.fdict.get(elid)
-#         if oldclip is not None:
-#             oldid = oldclip.get_id();
-#             self.idict[oldid].remove(el); # remove from old clip's inverse dict
-        
-#         newid = newurl[5:-1];
-#         el.set(self.cm,newurl);
-#         self.idictappend(newid,el)    # add to new clip's inverse dict
-        
-#         cel = getElementById2(self.svg, newid);
-#         self.fdictappend(elid,cel)
-#     def dupe_item(self,orig,dup):
-#         myclip = self.fdict.get(orig.get_id());
-#         self.fdictappend(dup.get_id(),myclip)
-#         if myclip is not None:
-#             self.idictappend(myclip.get_id(),dup)
-        
-# # Generate a dictionary for inverse lookups of clipping/masking
-# def generate_clipmaskdict(svg):
-#     svg.clipdict = clipmaskdict(svg,False)
-#     svg.maskdict = clipmaskdict(svg,True)
-# def set_clipmask(el,svg,newurl,mask=False):
-#     if not(hasattr(svg,'clipdict')):
-#         generate_clipmaskdict(svg)
-#     thedict = svg.clipdict;
-#     if mask:  thedict = svg.maskdict;
-#     thedict.set_new(el,newurl)
-# def dupe_in_cmdict(el,dup):
-#     svg = get_parent_svg(el)
-#     if not(hasattr(svg,'clipdict')):
-#         generate_clipmaskdict(svg)
-#     d1 = descendants2(el)
-#     d2 = descendants2(dup)
-#     for ii in range(len(d1)):
-#         svg.clipdict.dupe_item(d1[ii],d2[ii])
-#         svg.maskdict.dupe_item(d1[ii],d2[ii])
-
-# def prune_clips(svg):
-#     if not(hasattr(svg,'clipdict')):
-#         generate_clipmaskdict(svg)
-#     for d in reversed(descendants2(svg.defs)):
-#         did = d.get_id();
-#         cps = svg.clipdict.idict.get(did);
-#         mks = svg.maskdict.idict.get(did);
-#         if cps is not None and mks is not None:
-#             if (cps==[] and mks is None) or (mks==[] and cps is None) or (mks==[] and cps==[]):
-#                 d.remove()
-        
-# def delete2(el):
-#     svg = get_parent_svg(el)
-#     if not(hasattr(svg,'clipdict')):
-#         generate_clipmaskdict(svg)
-#     elid = el.get_id();
-#     if elid in svg.clipdict.fdict.keys():
-#         cpid = getElementById2(svg, svg.clipdict.fdict[elid]).get_id();
-#         svg.clipdict.idict[cpid].remove(el)
-#     if elid in svg.maskdict.fdict.keys():
-#         mkid = getElementById2(svg, svg.maskdict.fdict[elid]).get_id();
-#         svg.maskdict.idict[cpid].remove(el)
-#     el.delete();
-    
-    
- 
-# def dupe_in_clipmaskdict(oldid,newid):
-#     # duplicate a style in clipmask dicts
-#     global cssdict
-#     if cssdict is not None:
-#         csssty = cssdict.get(oldid);
-#         if csssty is not None:
-#             cssdict[newid]=csssty;
-
 
 # The built-in get_unique_id gets stuck if there are too many elements. Instead use an adaptive
 # size based on the current number of ids
@@ -919,12 +894,14 @@ def get_id2(el, as_url=0):
     """
     if 'id' not in el.attrib:
         set_random_id2(el,el.TAG)
+        # idebug('unassigned '+el.getparent().get_id())
     eid = el.get('id')
     if as_url > 0:
         eid = '#' + eid
     if as_url > 1:
         eid = f'url({eid})'
     return eid
+inkex.BaseElement.get_id2 = get_id2
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
 def Get_Bounding_Boxes(s=None,getnew=False,filename=None,pxinuu=None,inkscape_binary=None):
@@ -1081,6 +1058,8 @@ def Replace_Non_Ascii_Font(el,newfont,*args):
                     if any([nonletter(c) for c in w]):
                         w=w.replace(' ','\u00A0'); # spaces can disappear, replace with NBSP
                         ts = Tspan(w,style=sty+'font-family:'+newfont)
+                        # ts = new_element(Tspan,el);
+                        # ts.text = w; ts.lstyle=sty+'font-family:'+newfont
                         el.append(ts);
                         lstspan = ts;
                     else:
@@ -1187,7 +1166,7 @@ def object_to_path(el):
 # Delete and prune empty ancestor groups       
 def deleteup(el):
     myp = el.getparent();
-    el.delete()
+    el.delete2()
     if myp is not None:
         myc = myp.getchildren();
         if myc is not None and len(myc)==0:
@@ -1198,7 +1177,7 @@ def combine_paths(els,mergeii=0):
     pnew = Path();
     si = [];  # start indices
     for el in els:
-        pth = Path(el.get_path()).to_absolute().transform(el.composed_transform());
+        pth = Path(el.get_path()).to_absolute().transform(el.lcomposed_transform);
         if el.get('inkscape-academic-combined-by-color') is None:
             si.append(len(pnew))
         else:
@@ -1213,7 +1192,7 @@ def combine_paths(els,mergeii=0):
     mel  = els[mergeii]
     if mel.get('d') is None: # Polylines and lines have to be converted to a path
         object_to_path(mel)
-    mel.set('d',str(pnew.transform(-mel.composed_transform())));
+    mel.set('d',str(pnew.transform(-mel.lcomposed_transform)));
     
     # Release clips/masks    
     mel.set('clip-path','none'); # release any clips
@@ -1385,9 +1364,9 @@ def vscale(svg):
     except:
         if ivp[0]<=1 and ivp[1]<2:          # pre-1.2: return scale
             svg.oldscale = svg.scale
-        else:                               # post-1.2: return old scale
-            scale_x = float(svg.unittouu(svg.get('width')))/ float(svg.get_viewbox()[2])
-            scale_y = float(svg.unittouu(svg.get('height'))) / float(svg.get_viewbox()[3])
+        else:                               # post-1.2: return old scale          
+            scale_x = float((svg.unittouu(svg.get('width' ))) or (svg.get_viewbox()[2]))  / float(svg.get_viewbox()[2])
+            scale_y = float((svg.unittouu(svg.get('height'))) or (svg.get_viewbox()[3]))  / float(svg.get_viewbox()[3])
             svg.oldscale = max([scale_x, scale_y])
             return svg.oldscale
         return svg.oldscale
@@ -1437,7 +1416,7 @@ def vto_xpath(sty):
         return sty.to_xpath();
     
 def Version_Check(caller):
-    siv = 'v1.4.13'         # Scientific Inkscape version
+    siv = 'v1.4.15'         # Scientific Inkscape version
     maxsupport = '1.2.0';
     minsupport = '1.1.0';
     
@@ -1459,6 +1438,7 @@ def Version_Check(caller):
         if displayedform:
             d=d[:len(d)-1];
     
+    # idebug(ivp)
     prevvp = [vparse(dv[-6:]) for dv in d]
     if (ivp[0]<minsupp[0] or ivp[1]<minsupp[1]) and not(ivp in prevvp):
         msg = 'Scientific Inkscape requires Inkscape version '+minsupport+' or higher. '+\
