@@ -59,26 +59,11 @@ class FlattenPlots(inkex.EffectExtension):
         replacement = self.options.replacement
         
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
-        
-        # For testing, duplicate selection and flatten its elements
+ 
         # self.svg.selection = [self.svg.getElementById('layer1')]
         # self.options.testmode = True
-        if self.options.testmode: # 
-            import random
-            random.seed(1)
-            sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
-            for el in sel:
-                d=dh.duplicate2(el);
-                el.getparent().insert(list(el.getparent()).index(el),d)
-                if d.get('inkscape:label') is not None:
-                    el.set('inkscape:label',el.get('inkscape:label')+' flat')
-                    d.set('inkscape:label',d.get('inkscape:label')+' original')
-                d.set('sodipodi:insensitive','true'); # lock original
-                d.set('opacity',0.3);
-            sel = [list(el) for el in sel]
-            import itertools
-            sel = list(itertools.chain.from_iterable(sel))
-            
+        if self.options.testmode:
+            sel = self.duplicate_layer1()
         
         seld = [v for el in sel for v in dh.descendants2(el)];
         
@@ -196,6 +181,23 @@ class FlattenPlots(inkex.EffectExtension):
 
         # dh.debug(time.time()-tic)
 
+    def duplicate_layer1(self):
+        # For testing, duplicate selection and flatten its elements
+        import random
+        random.seed(1)
+        sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
+        for el in sel:
+            d=dh.duplicate2(el);
+            el.getparent().insert(list(el.getparent()).index(el),d)
+            if d.get('inkscape:label') is not None:
+                el.set('inkscape:label',el.get('inkscape:label')+' flat')
+                d.set('inkscape:label',d.get('inkscape:label')+' original')
+            d.set('sodipodi:insensitive','true'); # lock original
+            d.set('opacity',0.3);
+        sel = [list(el) for el in sel]
+        import itertools
+        sel = list(itertools.chain.from_iterable(sel))
+        return sel
 
     def effect(self): 
         cprofile = True;
@@ -203,12 +205,13 @@ class FlattenPlots(inkex.EffectExtension):
         lprofile = True;
         lprofile = False;
         
+        if self.options.testmode:
+            cprofile = True;
+            
         if cprofile or lprofile:
             import io
             if self.options.testmode:
-                # print(self.options.output)
-                profiledir = os.path.split(os.path.abspath(str(self.options.output)))[0];
-                cprofile = True;
+                profiledir = os.path.split(os.path.abspath(str(self.options.input_file)))[0]+'/outputs';
             else:
                 profiledir = dh.get_script_path();
         
@@ -223,8 +226,6 @@ class FlattenPlots(inkex.EffectExtension):
             try:
                 from line_profiler import LineProfiler
                 lp = LineProfiler()
-                
-                
                 import TextParser
                 from inspect import getmembers, isfunction, isclass,getmodule
                 fns = []

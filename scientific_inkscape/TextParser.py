@@ -392,8 +392,8 @@ class LineList():
                 for ln in self.lns:          
                     for w in ln.ws:
                         for c in w.cs:
-                            ap  = (-w.transform).apply_to_point(c.parsed_pts_t[0]);
-                            ap2 = (-w.transform).apply_to_point(c.parsed_pts_t[2]);
+                            ap  = (-w.transform).apply_to_point(c.pts_t[0]);
+                            ap2 = (-w.transform).apply_to_point(c.pts_t[2]);
                             r = inkex.Rectangle();
                             r.set('x',min(ap.x,ap2.x))
                             r.set('y',min(ap.y,ap2.y))
@@ -619,14 +619,16 @@ class LineList():
         dxl = [c.dx for c in cs];
         dyl = [c.dy for c in cs];
         
+        # dh.idebug(dxl)
         
-        fusex = self.lns[il].continuex or ciis[0]>0
-        fusey = self.lns[il].continuey or ciis[0]>0
+        fusex = self.lns[il].continuex or ciis[0]>0 or dxl[0]!=0
+        fusey = self.lns[il].continuey or ciis[0]>0 or dyl[0]!=0
         if fusex:
             xf = self.lns[il].anchorfrac
             oldx = cs[0].pts_ut[0].x*(1-xf)+cs[-1].pts_ut[3].x*xf
         if fusey:
-            oldy = cs[0].pts_ut[0].y
+            oldy = cs[0].w.y+dyl[0]
+        
         
         for c in reversed(cs):
             c.delc();
@@ -647,6 +649,7 @@ class LineList():
         nln.change_pos(newx=nln.x,newy=nln.y);
         nln.disablesodipodi(force=True)
         
+        # dh.idebug([''.join([c.c for c in cs]),dyl,fusey])
         if fusex:
             nln.continuex=False
             nln.change_pos(newx=[oldx]);
@@ -1016,7 +1019,7 @@ class tword:
             # (still need to adjust for anchors)
             # bl2 = (-self.transform).apply_to_point(nw.pts_t[0])
             # br1 = self.pts_ut[3];
-            tr1, br1, tl2, bl2 = self.get_orig_pts(nw)
+            tr1, br1, tl2, bl2 = self.get_ut_pts(nw)
             lc = self.cs[-1]; # last character
             numsp = (bl2.x-br1.x)/(lc.sw/self.sf);
             # dh.idebug([self.txt(),nw.txt(),numsp,(bl2.x-br1.x)/(lc.sw/self.sf)])
@@ -1031,7 +1034,9 @@ class tword:
             
             fc = nw.cs[0]; prevc = self.cs[-1];
             for c in nw.cs:
-                mydx = (c!=fc)*c.dx - prevc.lsp; # use dx to remove lsp from the previous c
+                # mydx = (c!=fc)*c.dx - prevc.lsp; # use dx to remove lsp from the previous c
+                # mydx = (c!=fc)*c.dx; # use dx to remove lsp from the previous c
+                mydx = (c!=fc)*c.dx - prevc.lsp*(c==fc); # use dx to remove lsp from the previous c
                 c.delc();
                 
                 ntype = copy(type)
@@ -1083,27 +1088,36 @@ class tword:
             
 
        
-    # For merged text, get the pre-processed coordinates in my coordinate system
-    def get_orig_pts(self,w2):
+    # Get the coordinates of another word in my coordinate system
+    def get_ut_pts(self,w2,current_pts=False):
+        if current_pts:
+            c1uts = [c.pts_ut for c in self.cs]
+            c2uts = [c.pts_ut for c in   w2.cs]
+            c2ts  = [c.pts_t  for c in   w2.cs]
+        else:
+            c1uts = [c.parsed_pts_ut for c in self.cs]
+            c2uts = [c.parsed_pts_ut for c in   w2.cs]
+            c2ts  = [c.parsed_pts_t  for c in   w2.cs]
+        
         mv = float('inf'); ci=None
         for ii in range(len(w2.cs)):
-            if w2.cs[ii].parsed_pts_ut is not None:
-                if w2.cs[ii].parsed_pts_ut[0].x<mv:
-                    mv = w2.cs[ii].parsed_pts_ut[0].x;
+            if c2uts[ii] is not None:
+                if c2uts[ii][0].x<mv:
+                    mv = c2uts[ii][0].x;
                     ci = ii;
         
-        bl2 = (-self.transform).apply_to_point(w2.cs[ci].parsed_pts_t[0])
-        tl2 = (-self.transform).apply_to_point(w2.cs[ci].parsed_pts_t[1]);
+        bl2 = (-self.transform).apply_to_point(c2ts[ci][0])
+        tl2 = (-self.transform).apply_to_point(c2ts[ci][1]);
         
         mv = float('-inf'); ci=None
         for ii in range(len(self.cs)):
-            if self.cs[ii].parsed_pts_ut is not None:
-                if self.cs[ii].parsed_pts_ut[3].x>mv:
-                    mv = self.cs[ii].parsed_pts_ut[3].x;
+            if c1uts[ii] is not None:
+                if c1uts[ii][3].x>mv:
+                    mv = c1uts[ii][3].x;
                     ci = ii;
         
-        tr1 = self.cs[ci].parsed_pts_ut[2];
-        br1 = self.cs[ci].parsed_pts_ut[3];
+        tr1 = c1uts[ci][2];
+        br1 = c1uts[ci][3];
         return tr1, br1, tl2, bl2
     
     

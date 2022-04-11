@@ -30,19 +30,18 @@ def remove_kerning(caller,os,removemanual,mergesupersub,splitdistant,mergenearby
                 lls[-1].Position_Check();
     
     if not(DEBUG_PARSER):
+        # Do merges first (deciding based on original position)
         if removemanual: lls, os = Remove_Manual_Kerning(lls,os,mergesupersub)
+        if mergenearby or mergesupersub: lls, os = External_Merges(lls,os,mergenearby,mergesupersub)
+        # # Then do splits (deciding based on current position, not original position, since merges intentionally change position)
         if splitdistant: lls, os = Split_Distant_Words(lls,os)
+        # for ll in lls: ll.Position_Check()
         if splitdistant: lls, os = Split_Distant_Intraword(lls,os)
         if splitdistant: lls, os = Split_Lines(lls,os);
-        # for ll in lls: dh.debug(ll.txt())
-        # for ll in lls: ll.Position_Check()
-        if mergenearby or mergesupersub: lls, os = External_Merges(lls,os,mergenearby,mergesupersub)
-        # # # for ll in lls: ll.Position_Check()
-        # # for ll in lls: ll.Position_Check()
+        # Final tweaks
         lls, os = Change_Justification(lls,os,justification)
         if removemanual or mergenearby or mergesupersub: lls, os = Fix_Merge_Positions(lls,os)
         lls, os = Remove_Trailing_Leading_Spaces(lls,os);
-        # # # for ll in lls: ll.Position_Check()
         lls, os = Make_All_Editable(lls,os);
         lls, os = Final_Cleanup(lls,os);
     return os
@@ -130,7 +129,7 @@ def Split_Distant_Words(lls,os):
                     dx = w.sw*(NUM_SPACES-trl_spcs-ldg_spcs)/w.sf
                     xtol = XTOLSPLIT*w.sw/w.sf;
                     
-                    tr1, br1, tl2, bl2 = w.get_orig_pts(w2)
+                    tr1, br1, tl2, bl2 = w.get_ut_pts(w2,current_pts=True)
                     
                     # bl2 = w2.pts_ut[0];
                     # br1 = w.pts_ut[3];     
@@ -162,22 +161,34 @@ def Split_Distant_Intraword(lls,os):
             for ln in ll.lns:
                 for w in ln.ws:
                     if len(w.cs)>0:
-                        lastnspc = None; splitiis=[];
+                        lastnspc = None; splitiis=[]; prevsplit = 0;
                         if w.cs[0].c not in [' ','\u00A0']: lastnspc = w.cs[0]
                         for ii in range(1,len(w.cs)):
                             if lastnspc is not None:
                                 c = lastnspc
                                 c2= w.cs[ii]
                                 
-                                bl2 = c2.parsed_pts_ut[0];
-                                br1 =  c.parsed_pts_ut[3];     
+                                bl2 = c2.pts_ut[0];
+                                br1 =  c.pts_ut[3];  
                                 
                                 # trl_spcs, ldg_spcs = trailing_leading(w,w2)
                                 dx = w.sw*(NUM_SPACES)/w.sf
                                 xtol = XTOLSPLIT*w.sw/w.sf;
                                 
-                                if bl2.x > br1.x + dx + xtol:
+                                # If this character is splitting two numbers, should always split in case they are ticks
+                                import re
+                                remainingnumeric = False;
+                                numbersplits = [' ','-','−']; # chars that may separate numbers
+                                splrest = re.split('|'.join(numbersplits),w.txt()[ii:]);
+                                splrest = [v for v in splrest if v!='']
+                                if len(splrest)>0: remainingnumeric=isnumeric(splrest[0]);
+                                numbersplit = isnumeric(w.txt()[prevsplit:ii]) and \
+                                              (c2.c in numbersplits and remainingnumeric) and \
+                                              c.loc.el==c2.loc.el
+                                
+                                if bl2.x > br1.x + dx + xtol or numbersplit:
                                     splitiis.append(ii);
+                                    prevsplit = ii;
                             if w.cs[ii].c not in [' ','\u00A0']: lastnspc = w.cs[ii]
                         
                         # if len(splitiis)>0:
@@ -216,7 +227,7 @@ def Remove_Manual_Kerning(lls,os,mergesupersub):
             xtoln = XTOLMKN*w.sw/w.sf;
             xtolp = XTOLMKP*w.sw/w.sf;
             
-            tr1, br1, tl2, bl2 = w.get_orig_pts(w2)
+            tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
             
             if isnumeric(w.txt()) and isnumeric(w2.txt(),True):
                 dx = w.sw*0/w.sf
@@ -226,7 +237,7 @@ def Remove_Manual_Kerning(lls,os,mergesupersub):
             validmerge = br1.x-xtoln <= bl2.x <= br1.x + dx + xtolp;
             
             if previoussp and not(validmerge): # reconsider in case previous space was weirdly-kerned
-                tr1p, br1p, tl2p, bl2p = w.prevw.get_orig_pts(w2);
+                tr1p, br1p, tl2p, bl2p = w.prevw.get_ut_pts(w2);
                 dx = w.sw*(NUM_SPACES-trl_spcs-ldg_spcs+1)/w.sf
                 validmerge = br1p.x-xtoln <= bl2p.x <= br1p.x + dx + xtolp
                 
@@ -244,6 +255,18 @@ def Remove_Manual_Kerning(lls,os,mergesupersub):
                 newtxt,nll = ll.Split_Off_Words([ln.ws[-1]])
                 os.append(newtxt)
                 newlls.append(nll)
+    lls+=newlls
+    # newlls=[];
+    # for ll in lls:
+    #     for ln in ll.lns:
+    #         for w in ln.ws:
+    #             for ii in reversed(range(1,len(w.cs))):
+    #                 if w.cs[ii].dy!=0:
+    #                     # dh.idebug([w.cs[ii-1].dy,w.cs[ii].dy])
+    #                     newtxt,nll = ll.Split_Off_Characters(w.cs[ii:])
+    #                     os.append(newtxt)
+    #                     newlls.append(nll)
+                        
     lls+=newlls
     return lls,os
 
@@ -285,6 +308,8 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
         w = ws[goodl[ii,0]]
         w2= ws[goodl[ii,1]]
 
+        # dh.idebug([w.txt(),w2.txt()])
+
         trl_spcs, ldg_spcs = trailing_leading(w,w2)
 
         dx   = w.sw*(NUM_SPACES-trl_spcs-ldg_spcs)/w.sf
@@ -293,12 +318,14 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
         
 
         # calculate 2's coords in 1's system
-        tr1, br1, tl2, bl2 = w.get_orig_pts(w2)
+        tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
         xpenmatch = (br1.x-xtol <= bl2.x <= br1.x + dx + xtol);
         neitherempty = len(wstrip(w.txt()))>0 and len(wstrip(w2.txt()))>0
         if xpenmatch and neitherempty and not(twospaces(w,w2)):
             type = None;
             # samecolor = Style2(w2.cs[0].nstyc).get('fill')==Style2(w.cs[-1].nstyc).get('fill')
+            # dh.idebug([w.fs,w2.fs])
+            # dh.idebug([br1.y+ytol>=bl2.y>=tr1.y-ytol,mergesupersub])
             if abs(bl2.y-br1.y)<ytol and abs(w.fs-w2.fs)<.001 and mergenearby:
                 if not(isnumeric(w.ln.txt())) or not(isnumeric(w2.ln.txt(),True)): \
                    # or w.ln.ll.inittextel==w2.ln.ll.inittextel: # don't merge two numbers (may be ticks)
@@ -306,10 +333,10 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
                 # dh.debug(w.txt()+' '+w2.txt())
             elif br1.y+ytol >= bl2.y >= tr1.y-ytol and mergesupersub: # above baseline
                 aboveline = br1.y*(1-SUBSUPER_YTHR)+tr1.y*SUBSUPER_YTHR+ytol >= bl2.y;
+                # dh.idebug(aboveline)
                 if w2.fs<w.fs*(SUBSUPER_THR-.01): # new smaller, expect super
                     if aboveline: 
                         type = 'super';
-                        # dh.idebug([w2.fs,w.fs*SUBSUPER_THR])
                 elif w.fs<w2.fs*(SUBSUPER_THR-.01): # old smaller, expect reutrn
                         type = 'subreturn';
                 else:
@@ -340,21 +367,21 @@ def External_Merges(lls,os,mergenearby,mergesupersub):
 #                            dh.debug(w.txt+' to '+w2.txt+' as '+type)
 
         if DEBUG_MERGE:
-            dh.debug('\nMerging "'+w.txt() + '" and "' + w2.txt()+'"')
+            dh.idebug('\nMerging "'+w.txt() + '" and "' + w2.txt()+'"')
             if not(xpenmatch):
-                dh.debug('Aborted, x pen too far: '+str([br1.x,bl2.x,dx]))
+                dh.idebug('Aborted, x pen too far: '+str([br1.x,bl2.x,dx]))
             elif not(neitherempty):
-                dh.debug('Aborted, one empty')
+                dh.idebug('Aborted, one empty')
             else:
                 if type is None:
                     if not(abs(bl2.y-br1.y)<ytol):
-                        dh.debug('Aborted, y pen too far: '+str([bl2.y,br1.y]))
+                        dh.idebug('Aborted, y pen too far: '+str([bl2.y,br1.y]))
                     elif not(abs(w.fs-w2.fs)<.001):
-                        dh.debug('Aborted, fonts too different: '+str([w.fs,w2.fs]))
+                        dh.idebug('Aborted, fonts too different: '+str([w.fs,w2.fs]))
                     elif not(not(isnumeric(w.ln.txt())) or not(isnumeric(w2.ln.txt()))):
-                        dh.debug('Aborted, both numbers')
+                        dh.idebug('Aborted, both numbers')
                 else:
-                    dh.debug('Merged as '+type)
+                    dh.idebug('Merged as '+type)
 
     Perform_Merges(ws)
     return lls,os

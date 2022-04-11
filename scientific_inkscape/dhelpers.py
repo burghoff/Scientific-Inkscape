@@ -108,14 +108,12 @@ def descendants2(el,return_tails=False):
 def Set_Style_Comp(el_or_sty,comp,val):
     isel = isinstance(el_or_sty,(BaseElement))  # is element
     if isel:
-        sty = el_or_sty.get('style');
+        sty = str(el_or_sty.lstyle)
+        # sty = el_or_sty.get('style');
         # sty = getstylelazy(el_or_sty);
     else:
         isstr = isinstance(el_or_sty,(str))
-        if not(isstr):                          # is style string
-            sty = str(el_or_sty)
-        else:                                   # is Style element
-            sty = el_or_sty
+        sty = str(el_or_sty)
 
     if sty is not None:
         sty = sty.split(';');
