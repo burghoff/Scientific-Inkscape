@@ -44,6 +44,7 @@ The Flattener removes unwanted structure from figures imported into Inkscape. Se
 <li><i>Remove manual kerning</i>: Text in PDFs is typically kerned—its letters are positioned individually, so it is difficult to edit. This option reverses that.</li>
 <p align="center"><img src="https://github.com/burghoff/Scientific-Inkscape/blob/main/examples/kerning_removalb.svg" alt="drawing" ></img></p>
 <li><i>Merge superscripts and subscripts</i>: Detect likely subscripts and superscripts, replacing them with native SVG versions.</li>
+<li><i>Final text justification</i>: Lets you set the justification of all text without changing its position.
 <li><i>Replace missing fonts</i>: Specifies a backup font for when the desired font is not installed on your machine.</li></ol>
 
 # The Homogenizer
