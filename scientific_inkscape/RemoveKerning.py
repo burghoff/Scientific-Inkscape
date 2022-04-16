@@ -40,6 +40,9 @@ def remove_kerning(caller,os,removemanual,mergesupersub,splitdistant,mergenearby
         if splitdistant: lls, os = Split_Lines(lls,os);
         # Final tweaks
         lls, os = Change_Justification(lls,os,justification)
+        # for ll in lls:
+        #     ll.Position_Check()
+        #     dh.idebug(ll.txt())
         if removemanual or mergenearby or mergesupersub: lls, os = Fix_Merge_Positions(lls,os)
         lls, os = Remove_Trailing_Leading_Spaces(lls,os);
         lls, os = Make_All_Editable(lls,os);
@@ -256,6 +259,7 @@ def Remove_Manual_Kerning(lls,os,mergesupersub):
                 os.append(newtxt)
                 newlls.append(nll)
     lls+=newlls
+    
     # newlls=[];
     # for ll in lls:
     #     for ln in ll.lns:
@@ -265,9 +269,9 @@ def Remove_Manual_Kerning(lls,os,mergesupersub):
     #                     # dh.idebug([w.cs[ii-1].dy,w.cs[ii].dy])
     #                     newtxt,nll = ll.Split_Off_Characters(w.cs[ii:])
     #                     os.append(newtxt)
-    #                     newlls.append(nll)
-                        
-    lls+=newlls
+    #                     newlls.append(nll)       
+    # lls+=newlls
+    
     return lls,os
 
 import numpy as np
@@ -483,10 +487,10 @@ def Perform_Merges(ws,mk=False):
                         maxspaces=0;
                     
                 w.appendw(w.merges[ii],w.wtypes[ii+1],maxspaces);
-            for c in w.cs:
-                if c.pending_style is not None:
-                    # dh.idebug([c.c,c.pending_style])
-                    c.applypending();
+            # for c in w.cs:
+            #     if c.pending_style is not None:
+            #         # dh.idebug([c.c,c.pending_style])
+            #         c.applypending();
 
 # Check if text represents a number
 ncs = ['0','1','2','3','4','5','6','7','8','9','.','e','E','-','−',','];

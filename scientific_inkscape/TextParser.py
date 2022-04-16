@@ -311,13 +311,23 @@ class LineList():
                             sprl_inherits = lns[-1];
                             
                     if txt is not None:
-
+                        
+                        
+                        
                         for jj in range(len(txt)):
                             c = txt[jj]
                             prop = self.ctable.get_prop(c,nsty)*fs;
                             ttv = 'text';
                             if tt==0: ttv='tail'
                             lns[-1].addc(tchar(c,fs,sf,prop,sty,nsty,cloc(tel,ttv,jj)));
+                            
+                            if jj==0:
+                                lsp0   = lns[-1].cs[-1].lsp;
+                                bshft0 = lns[-1].cs[-1].bshft;
+                            else:
+                                lns[-1].cs[-1].lsp   =  lsp0;
+                                lns[-1].cs[-1].bshft =  bshft0;
+                            # dh.idebug([c,fs,sel.get_id()])
             
         return lns
 
@@ -466,10 +476,11 @@ class LineList():
                 for ii in range(len(k.tail)):
                     thec = [c for c in allcs if c.loc.el==k and c.loc.tt=='tail' and c.loc.ind==ii];
                     if len(thec)==0:
-                        dh.debug('Missing '+k.tail[ii])
+                        dh.idebug('\nMissing '+k.tail[ii])
                         tll = LineList(self.textel,self.ctable);
-                        dh.debug(self.txt())
-                        dh.debug(tll.txt())
+                        dh.idebug(self.txt())
+                        dh.idebug(tll.txt())
+                        quit()
                     thec[0].deltanum = topcnt;
                     topcnt+=1
         return topcnt
@@ -880,7 +891,7 @@ class tword:
         # self.unrenderedspace = False;
         self.nextw = self.prevw = self.sametspan = None;
         self._pts_ut = self._pts_t = self._bb = None; # invalidate 
-        self._lsp = self._dxeff = self._charpos = None
+        self._lsp = self._bshft = self._dxeff = self._charpos = None
         self._cpts_ut = None; self._cpts_t = None; 
         # self.orig_pts_t = None; self.orig_pts_ut = None; self.orig_bb = None; # for merging later
     
@@ -900,6 +911,7 @@ class tword:
     # Callback for character addition/deletion. Used to invalidate cached properties
     def cchange(self):
         self.lsp = None
+        self.bshft = None
         self.dxeff = None
         self.charpos = None
         
@@ -951,22 +963,32 @@ class tword:
         return ''.join([c.c for c in self.cs])
             
     # Generate a new character and add it to the end of the word
-    def appendc(self,ncv,ncw,ndx,ndy,nlsp):
+    def appendc(self,ncv,ncw,ndx,ndy,totail=None):
         # Add to document
         lc = self.cs[-1]; # last character
-        myi = lc.loc.ind+1; # insert after last character
-        if lc.loc.tt=='text':
-            lc.loc.el.text = lc.loc.el.text[0:myi]+ncv+lc.loc.el.text[myi:]
+        if totail is None:
+            myi = lc.loc.ind+1; # insert after last character
+            if lc.loc.tt=='text':
+                lc.loc.el.text = lc.loc.el.text[0:myi]+ncv+lc.loc.el.text[myi:]
+            else:
+                lc.loc.el.tail = lc.loc.el.tail[0:myi]+ncv+lc.loc.el.tail[myi:]
         else:
-            lc.loc.el.tail = lc.loc.el.tail[0:myi]+ncv+lc.loc.el.tail[myi:]
+            if totail.tail is None: totail.tail = ncv;
+            else:                   totail.tail = ncv+totail.tail;
         
         # Make new character as a copy of the last one of the current word
         c = copy(lc)
         c.c  = ncv
         c.cw = ncw
         c.dx = ndx; c.dy = ndy;
-        c.pending_style = None;
-        c.loc = cloc(c.loc.el,c.loc.tt,c.loc.ind+1) # updated location
+        # c.pending_style = None;
+        # c.lsp = nlsp
+        
+        if totail is None:
+            c.loc = cloc(c.loc.el,c.loc.tt,c.loc.ind+1) # updated location
+        else:
+            c.loc = cloc(totail,'tail',0)
+        c.sty = dh.specified_style2(c.loc.pel);
         
         # Add to line
         myi = self.ln.cs.index(lc)+1 # insert after last character
@@ -998,44 +1020,21 @@ class tword:
     # Equivalent to typing it in
     def appendw(self,nw,type,maxspaces=None):
         if len(nw.cs)>0:
-            # If the last char is a nested Tspan, we will need to delete it and re-add it
-            # to prevent the new chars from inheriting its properties
-            if len(self.cs)>1:
-                ii = len(self.cs)-1;
-                isnested = (self.cs[ii].loc.el != self.cs[0].loc.el);
-                deleted = [];
-                while isnested and ii>0:
-                    oldc = self.cs[ii];
-                    oldc.delc(); deleted.append(oldc);
-                    ii -= 1; isnested = (self.cs[ii].loc.el != self.cs[0].loc.el);
-                for delch in reversed(deleted):
-                    # dh.debug([delc.c,delc.cw])
-                    self.appendc(delch.c,delch.cw,delch.dx,delch.dy,delch.lsp);
-                    self.cs[-1].pending_style = delch.sty; 
-                    self.cs[-1].parsed_pts_ut = delch.parsed_pts_ut;
-                    self.cs[-1].parsed_pts_t  = delch.parsed_pts_t;
-
             # Calculate the number of spaces we need to keep the position constant
             # (still need to adjust for anchors)
-            # bl2 = (-self.transform).apply_to_point(nw.pts_t[0])
-            # br1 = self.pts_ut[3];
             tr1, br1, tl2, bl2 = self.get_ut_pts(nw)
             lc = self.cs[-1]; # last character
             numsp = (bl2.x-br1.x)/(lc.sw/self.sf);
-            # dh.idebug([self.txt(),nw.txt(),numsp,(bl2.x-br1.x)/(lc.sw/self.sf)])
-            # dh.idebug([self.txt(),nw.txt(),numsp])
-            mytxt = self.txt();
             numsp = max(0,round(numsp));
             if maxspaces is not None:
                 numsp = min(numsp,maxspaces)
             
+            # dh.idebug([self.txt(),nw.txt(),(bl2.x-br1.x)/(lc.sw/self.sf)])
             for ii in range(numsp):
-                self.appendc(' ',lc.sw,-lc.lsp,0,lc.lsp)
+                self.appendc(' ',lc.sw,-lc.lsp,0)
             
-            fc = nw.cs[0]; prevc = self.cs[-1];
+            fc = nw.cs[0]; prevc = self.cs[-1]; 
             for c in nw.cs:
-                # mydx = (c!=fc)*c.dx - prevc.lsp; # use dx to remove lsp from the previous c
-                # mydx = (c!=fc)*c.dx; # use dx to remove lsp from the previous c
                 mydx = (c!=fc)*c.dx - prevc.lsp*(c==fc); # use dx to remove lsp from the previous c
                 c.delc();
                 
@@ -1044,7 +1043,16 @@ class tword:
                 if otype in ['super','sub'] and type=='normal':
                     ntype = otype
                     
-                self.appendc(c.c,c.cw,mydx,c.dy,c.lsp)
+                
+                # Nested tspans should be appended to the end of tails
+                totail = None
+                if self.cs[-1].loc.pel != self.cs[0].loc.pel:
+                    cel = self.cs[-1].loc.pel;
+                    while cel.getparent()!=self.cs[0].loc.pel and cel.getparent()!=self.ln.ll.textel:
+                        cel = cel.getparent();
+                    totail = cel;
+                    
+                self.appendc(c.c,c.cw,mydx,c.dy,totail=totail)
                 newc = self.cs[-1]; 
                 
                 newc.parsed_pts_ut = [(-self.transform).apply_to_point(p) for p in c.parsed_pts_t];
@@ -1052,8 +1060,7 @@ class tword:
                 
                 # We cannot yet apply any styles. Instead, add the character and add a pending style
                 # that will be applied at the end
-                newsty=None;
-                # if c.nstyc!=newc.nstyc:
+                newsty=None;                
                 if c.sty!=newc.sty:
                     newsty = c.sty;
                 
@@ -1064,10 +1071,8 @@ class tword:
                         newsty = Style2(newsty)
                     
                     # Nativize super/subscripts               
-                    if ntype=='super':
-                        newsty['baseline-shift']='super'
-                    else:
-                        newsty['baseline-shift']='sub'
+                    if ntype=='super': newsty['baseline-shift']='super'
+                    else:              newsty['baseline-shift']='sub'
                         
                     # Leave size unchanged
                     newsty['font-size'] = '65%';
@@ -1078,14 +1083,12 @@ class tword:
     #                shft = round(-(bl2.y-br1.y)/self.fs*100*self.sf);
     #                newsty['baseline-shift']= str(shft)+'%';
                     
-                    # newsty = str(newsty);
-                newc.pending_style = newsty;
+                if newsty is not None:
+                    newc.add_style(newsty);
                 prevc = newc
 
             # Following the merge, append the new word's data to the orig pts lists
             self.parsed_bb = self.parsed_bb.union(nw.parsed_bb)
-            
-            
 
        
     # Get the coordinates of another word in my coordinate system
@@ -1153,6 +1156,17 @@ class tword:
         if li is None:
             self._lsp = None
             self.dxeff = None
+            
+    
+    # @property
+    # def bshft(self):
+    #     if self._bshft is None:
+    #         self._bshft = [c.bshft for c in self.cs];
+    #     return self._bshft
+    # @bshft.setter
+    # def bshft(self,li):
+    #     if li is None:
+    #         self._bshft = None
     
     # Effective dx (with letter-spacing). Note that letter-spacing adds space
     # after the char, so dxl ends up being longer than the number of chars by 1
@@ -1210,7 +1224,24 @@ class tword:
             
             cstrt = np.array(cstrt);
             cstop = np.array(cstop);
-            self._charpos = (cstrt,cstop)
+            
+            ww = cstop[-1];
+            offx = -self.anchorfrac*(ww-self.unrenderedspace*self.cs[-1].cw)  # offset of the left side of the word from the anchor
+            wx = self.x; wy = self.y;
+            
+            lx = (wx + (cstrt+offx)/self.sf).reshape(-1,1);
+            rx = (wx + (cstop+offx)/self.sf).reshape(-1,1);
+            dyl = [c.dy for c in self.cs]
+            chs = [c.ch for c in self.cs]
+            bss = [c.bshft for c in self.cs]
+
+            # dh.idebug(self.bshft)
+            by = np.array([wy+sum(dyl[:ii+1])-bss[ii]                  for ii in range(len(dyl))]).reshape(-1,1)
+            ty = np.array([wy+sum(dyl[:ii+1])-chs[ii]/self.sf-bss[ii]  for ii in range(len(dyl))]).reshape(-1,1)
+            
+            
+            self._charpos = (cstrt,cstop,lx,rx,by,ty)
+            
         return self._charpos
     @charpos.setter
     def charpos(self,ci):
@@ -1225,7 +1256,7 @@ class tword:
     @property   
     def pts_ut(self):
         if self._pts_ut is None:
-            (cstrt,cstop) = self.charpos
+            (cstrt,cstop,lx,rx,by,ty) = self.charpos
             ww = cstop[-1];
             offx = -self.anchorfrac*(ww-self.unrenderedspace*self.cs[-1].cw)  # offset of the left side of the word from the anchor
             
@@ -1272,22 +1303,29 @@ class tword:
     def cpts_ut(self):
         if self._cpts_ut is None:
             """  Interpolate the pts of a word to get a specific character's pts"""            
-            (cstrt,cstop) = self.charpos
+            (cstrt,cstop,lx,rx,by,ty) = self.charpos
 
-            ww = cstop[-1];
-            fracl = cstrt.reshape(-1,1)/ww # col vec
-            fracr = cstop.reshape(-1,1)/ww
+            # ww = cstop[-1];
+            # fracl = cstrt.reshape(-1,1)/ww # col vec
+            # fracr = cstop.reshape(-1,1)/ww
 
-            ptut = self.pts_ut
-            ptutb = np.array([[ptut[0].x,ptut[0].y],\
-                              [ptut[1].x,ptut[1].y],\
-                              [ptut[2].x,ptut[2].y],\
-                              [ptut[3].x,ptut[3].y]])
+            # ptut = self.pts_ut
+            # ptutb = np.array([[ptut[0].x,ptut[0].y],\
+            #                   [ptut[1].x,ptut[1].y],\
+            #                   [ptut[2].x,ptut[2].y],\
+            #                   [ptut[3].x,ptut[3].y]])
             
-            self._cpts_ut = [(ptutb[3]-ptutb[0])*fracl+ptutb[0],\
-                             (ptutb[2]-ptutb[1])*fracl+ptutb[1],\
-                             (ptutb[2]-ptutb[1])*fracr+ptutb[1],\
-                             (ptutb[3]-ptutb[0])*fracr+ptut[0]]
+            # self._cpts_ut = [(ptutb[3]-ptutb[0])*fracl+ptutb[0],\
+            #                  (ptutb[2]-ptutb[1])*fracl+ptutb[1],\
+            #                  (ptutb[2]-ptutb[1])*fracr+ptutb[1],\
+            #                  (ptutb[3]-ptutb[0])*fracr+ptut[0]]
+                
+            self._cpts_ut = [np.hstack((lx,by)),\
+                             np.hstack((lx,ty)),\
+                             np.hstack((rx,ty)),\
+                             np.hstack((rx,by))]
+                             
+            
         return self._cpts_ut
     @cpts_ut.setter
     def cpts_ut(self,ci):
@@ -1298,19 +1336,30 @@ class tword:
     def cpts_t(self):
         if self._cpts_t is None:
             """  Interpolate the pts of a word to get a specific character's pts"""            
-            (cstrt,cstop) = self.charpos
-            ww = cstop[-1];
-            fracl = cstrt.reshape(-1,1)/ww # col vec
-            fracr = cstop.reshape(-1,1)/ww
-            ptut = self.pts_t
-            ptutb = np.array([[ptut[0].x,ptut[0].y],\
-                              [ptut[1].x,ptut[1].y],\
-                              [ptut[2].x,ptut[2].y],\
-                              [ptut[3].x,ptut[3].y]])
-            self._cpts_t = [(ptutb[3]-ptutb[0])*fracl+ptutb[0],\
-                             (ptutb[2]-ptutb[1])*fracl+ptutb[1],\
-                             (ptutb[2]-ptutb[1])*fracr+ptutb[1],\
-                             (ptutb[3]-ptutb[0])*fracr+ptut[0]]
+            (cstrt,cstop,lx,rx,by,ty) = self.charpos
+            # ww = cstop[-1];
+            # fracl = cstrt.reshape(-1,1)/ww # col vec
+            # fracr = cstop.reshape(-1,1)/ww
+            # ptut = self.pts_t
+            # ptutb = np.array([[ptut[0].x,ptut[0].y],\
+            #                   [ptut[1].x,ptut[1].y],\
+            #                   [ptut[2].x,ptut[2].y],\
+            #                   [ptut[3].x,ptut[3].y]])
+            # self._cpts_t = [(ptutb[3]-ptutb[0])*fracl+ptutb[0],\
+            #                  (ptutb[2]-ptutb[1])*fracl+ptutb[1],\
+            #                  (ptutb[2]-ptutb[1])*fracr+ptutb[1],\
+            #                  (ptutb[3]-ptutb[0])*fracr+ptut[0]]
+                
+            Nc = len(lx); #onev = np.ones([Nc,1])
+            # ps = np.vstack((np.hstack((lx,by,onev)),\
+            #                 np.hstack((lx,ty,onev)),\
+            #                 np.hstack((rx,ty,onev)),\
+            #                 np.hstack((rx,by,onev))));
+            ps = np.hstack((np.vstack((lx,lx,rx,rx)),np.vstack((by,ty,ty,by)),np.ones([4*Nc,1])));
+            M = np.vstack((np.array(self.transform.matrix),np.array([[0,0,1]])))
+            tps = np.dot(M,ps.T).T
+            self._cpts_t = [tps[0:Nc,0:2],tps[Nc:2*Nc,0:2],tps[2*Nc:3*Nc,0:2],tps[3*Nc:4*Nc,0:2]]
+                
         return self._cpts_t
     @cpts_t.setter
     def cpts_t(self,ci):
@@ -1325,7 +1374,7 @@ class tchar:
         self.sf = sf;     # how much it is scaled to get to the actual width
         self.prop = prop;
         self.cw = prop.charw;     # actual character width in user units
-        self.sty  = sty;  # actual style
+        self._sty  = sty;  # actual style
         self.nsty = nsty; # normalized style
         # self.nstyc = dh.Set_Style_Comp(nsty,'fill',dh.Get_Style_Comp(sty,'fill')) # with color
         self.loc = loc;   # true location: [parent, 'text' or 'tail', index]
@@ -1340,9 +1389,9 @@ class tchar:
         self._dy = 0;      # get later
         self.deltanum = None;      # get later
         self.dkerns = prop.dkerns;
-        self._pending_style = None; # assign later (maybe)
+        # self.pending_style = None; # assign later (maybe)
         self.parsed_pts_t = None; self.parsed_pts_ut = None; # for merging later
-        self._lsp = None;  # letter spacing
+        self._lsp = self._bshft = None;  # letter spacing
         
     
     # def __copy__(self):
@@ -1371,6 +1420,14 @@ class tchar:
             self._dy = di;
             self.ln.ll._dychange = True;
                 
+    @property
+    def sty(self):
+        return self._sty
+    @sty.setter
+    def sty(self,si):
+        self._sty = si;
+        self.lsp = None
+        self.bshft = None
     
     
     anchorfrac = property(lambda self : get_anchorfrac(self.ln.anchor))
@@ -1378,9 +1435,6 @@ class tchar:
     def lsp(self):
         if self._lsp is None:
             styv = self.sty
-            if self.pending_style is not None:
-                styv = self.pending_style
-            # dh.idebug(lspv)
             if 'letter-spacing' in styv:
                 lspv = styv.get('letter-spacing')
                 if 'em' in lspv: # em is basically the font size
@@ -1395,19 +1449,46 @@ class tchar:
         return self._lsp
     @lsp.setter
     def lsp(self,si):
-        if si is None:
-            self._lsp = None
+        if si!=self._lsp:
+            self._lsp = si
             if self.w is not None:
                 self.w.lsp = None
-
-
     @property
-    def pending_style(self):
-        return self._pending_style
-    @pending_style.setter
-    def pending_style(self,psty):
-        self._pending_style = psty;
-        self.lsp = None              # invalidate
+    def bshft(self):
+        if self._bshft is None:
+            styv = self.sty
+            if 'baseline-shift' in styv:
+                cel = self.loc.pel; bshft = 0;
+                while cel!=self.ln.ll.textel:  # sum all ancestor baseline-shifts
+                    if 'baseline-shift' in cel.lstyle:
+                        bshft +=  tchar.get_baseline(cel.lstyle, cel.getparent())
+                    cel = cel.getparent();
+            else:
+                bshft = 0;
+            self._bshft = bshft
+        return self._bshft
+    @bshft.setter
+    def bshft(self,si):
+        if si!=self._bshft:
+            self._bshft = si
+            # if self.w is not None:
+            #     self.w.bshft = None
+
+    # @staticmethod
+    # def calc_letter_spacing(styin):
+
+    @staticmethod
+    def get_baseline(styin,fsel):
+        bshft = styin.get('baseline-shift')
+        if bshft=='super': bshft = '40%'
+        elif bshft=='sub': bshft = '-20%'
+        if '%' in bshft: # relative to parent 
+            fs2, sf2, tmp, tmp= dh.Get_Composed_Width(fsel,'font-size',4);
+            bshft = fs2/sf2*float(bshft.strip('%'))/100;
+        else:
+            bshft = dh.implicitpx(bshft)
+        return bshft
+        
     
     def delc(self):
         # Deletes character from document (and from my word/line)
@@ -1509,6 +1590,7 @@ class tchar:
         
         self.sty = sty;
         self.lsp = None;
+        self.bshft = None;
         
     def makesubsuper(self,sz=65):
         if self.type=='super':
@@ -1517,9 +1599,9 @@ class tchar:
             sty = 'font-size:'+str(sz)+'%;baseline-shift:sub';
         self.add_style(sty);   
         
-    def applypending(self):
-        self.add_style(self.pending_style);
-        self.pending_style = None
+    # def applypending(self):
+    #     self.add_style(self.pending_style);
+    #     self.pending_style = None
         
     # def interp_pts(self):
     #     """  Interpolate the pts of a word to get a specific character's pts"""

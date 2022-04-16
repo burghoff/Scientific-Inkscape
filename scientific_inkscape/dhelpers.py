@@ -314,6 +314,7 @@ def Get_Composed_Width(el,comp,nargout=1,styin=None,ctin=None):
         cs = styin;
     if ctin is None:                    # can pass ctin to reduce extra composed_transforms
         ct = el.composed_transform();
+        # ct = el.lcomposed_transform;
     else:
         ct = ctin;
     if nargout==4:
@@ -324,11 +325,15 @@ def Get_Composed_Width(el,comp,nargout=1,styin=None,ctin=None):
         docscale = vscale(svg);
         # idebug(vscale(svg))
     sc = Get_Style_Comp(cs,comp);
-    # idebug(sc)
+    # idebug([el.get_id(),sc])
     if sc is not None:
         if '%' in sc: # relative width, get parent width
+            cel = el;
+            while sc!=cel.lstyle.get(comp):
+                cel = el.getparent();  # figure out ancestor where % is coming from
+        
             sc = float(sc.strip('%'))/100;
-            fs, sf, ct, ang = Get_Composed_Width(el.getparent(),comp,4)
+            fs, sf, ct, ang = Get_Composed_Width(cel.getparent(),comp,4)
             if nargout==4:
                 ang = math.atan2(ct.c,ct.d)*180/math.pi;
                 return fs*sc,sf,ct,ang
@@ -1414,7 +1419,7 @@ def vto_xpath(sty):
         return sty.to_xpath();
     
 def Version_Check(caller):
-    siv = 'v1.4.15'         # Scientific Inkscape version
+    siv = 'v1.4.16'         # Scientific Inkscape version
     maxsupport = '1.2.0';
     minsupport = '1.1.0';
     

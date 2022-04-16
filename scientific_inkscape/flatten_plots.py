@@ -251,7 +251,7 @@ class FlattenPlots(inkex.EffectExtension):
                 f=open(ppath,'w',encoding="utf-8");
                 f.write(result); f.close();
                 needtorun = False;
-            except: pass
+            except ImportError: pass
         
         if needtorun:
             self.runflatten()
