@@ -6,7 +6,7 @@ Scientific Inkscape is a set of Inkscape extensions designed for editing scienti
 3. **The Homogenizer**: Quickly sets uniform fonts, font sizes, and stroke widths in a selection.
 4. **Combine by Color**: An extension that fuses paths of the same color and style together into a single path. Handy for speeding up operations on plots with thousands of similar elements, like markers. 
 5. **Auto-Exporter**: Automatically exports SVG files in a directory and keeps them updated.
-6. **Text Ghoster**: Adds a semi-transparent background to text so that it can be overlayed with data.
+6. **Text Ghoster**: Adds a semi-transparent background to text so that it can be overlaid with data.
 7. **Favorite Markers**: Lets you designate certain markers as favorites, mainly for convenience. 
 
 All were written by [David Burghoff](https://dburghoff.com) at the University of Notre Dame. If you find it useful, tell your collegaues! You may also find it helpful to map the extensions to hotkeys (done in the Edit > Preferences > Interface > Keyboard menu).
@@ -44,6 +44,7 @@ The Flattener removes unwanted structure from figures imported into Inkscape. Se
 <li><i>Remove manual kerning</i>: Text in PDFs is typically kerned—its letters are positioned individually, so it is difficult to edit. This option reverses that.</li>
 <p align="center"><img src="https://github.com/burghoff/Scientific-Inkscape/blob/main/examples/kerning_removalb.svg" alt="drawing" ></img></p>
 <li><i>Merge superscripts and subscripts</i>: Detect likely subscripts and superscripts, replacing them with native SVG versions.</li>
+<li><i>Final text justification</i>: Lets you set the justification of all text without changing its position.
 <li><i>Replace missing fonts</i>: Specifies a backup font for when the desired font is not installed on your machine.</li></ol>
 
 # The Homogenizer
