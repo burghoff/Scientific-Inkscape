@@ -103,6 +103,7 @@ def descendants2(el,return_tails=False):
         # For each descendants return a list of what element we expect our tails to precede
         precedingtails.append(pendingtails);  # will be one longer than descendants because of the last one
         return descendants, precedingtails, children_dict, parent_dict
+inkex.BaseElement.descendants2 = property(descendants2)
 
 # Sets a style property  
 def Set_Style_Comp(el_or_sty,comp,val):
@@ -282,12 +283,15 @@ inkex.BaseElement.lstyle = property(lstyget,lstyset)
 # changes to transform. Currently is not invalidated when the element is moved, so beware!
 def lcomposed_transform(el):
     if not(hasattr(el,'_lcomposed_transform')):
-        ret = el.ltransform
-        cel = el.getparent();
-        while cel is not None:
-            ret = vmult(cel.ltransform,ret)
-            cel = cel.getparent();
-        el._lcomposed_transform = ret;
+        # ret = el.ltransform
+        # cel = el.getparent();
+        # while cel is not None:
+        #     ret = cel.ltransform @ ret
+        #     cel = cel.getparent();
+        # el._lcomposed_transform = ret;
+        myp = el.getparent();
+        if myp is None: el._lcomposed_transform = el.ltransform;
+        else:           el._lcomposed_transform = myp.lcomposed_transform @ el.ltransform
     return el._lcomposed_transform
 inkex.BaseElement.lcomposed_transform = property(lcomposed_transform)
 
@@ -299,10 +303,14 @@ def ltransform(el):
         el._ltransform = el.transform;
     return el._ltransform
 def set_ltransform(el,newt):
-    el.transform = newt;
+    el.transform   = newt;
     el._ltransform = newt;
-    # el._ltransform = docT(newt);
+    for d in el.descendants2:
+        if hasattr(d,'_lcomposed_transform'): delattr(d,'_lcomposed_transform')  # invalidate descendant cts
 inkex.BaseElement.ltransform = property(ltransform,set_ltransform)
+
+
+# inkex.BaseElement.oldtransform = inkex.BaseElement.transform
     
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
@@ -313,8 +321,8 @@ def Get_Composed_Width(el,comp,nargout=1,styin=None,ctin=None):
     else:
         cs = styin;
     if ctin is None:                    # can pass ctin to reduce extra composed_transforms
-        ct = el.composed_transform();
-        # ct = el.lcomposed_transform;
+        # ct = el.composed_transform();
+        ct = el.lcomposed_transform;
     else:
         ct = ctin;
     if nargout==4:
@@ -386,7 +394,8 @@ def Get_Composed_List(el,comp,nargout=1,styin=None):
         cs = specified_style2(el);
     else:
         cs = styin
-    ct = el.composed_transform();
+    # ct = el.composed_transform();
+    ct = el.lcomposed_transform;
     sc = Get_Style_Comp(cs,comp);
     svg = get_parent_svg(el);
     docscale = 1;
@@ -471,7 +480,8 @@ def get_points(el,irange=None):
         pth = pnew
     pts = list(pth.end_points);
             
-    ct = el.composed_transform();
+    # ct = el.composed_transform();
+    ct = el.lcomposed_transform;
     
     mysvg = get_parent_svg(el);
     docscale = 1;
@@ -579,7 +589,7 @@ def compose_all(el,clipurl,maskurl,transform,style):
     #     idebug([t1.a,t1.b,t1.c,t1.d,t1.e,t1.f])
     #     idebug([t2.a,t2.b,t2.c,t2.d,t2.e,t2.f])
     #     idebug('\n')
-    if transform is not None: el.ltransform = vmult(transform,el.ltransform)
+    if transform is not None: el.ltransform = transform @ el.ltransform
     
     
     
@@ -860,7 +870,7 @@ inkex.SvgDocumentElement.defs2 = property(defs2)
 # size based on the current number of ids
 # Modified from Inkex's get_unique_id
 import random
-random.seed(1)
+# random.seed(1)
 def get_unique_id2(svg, prefix):
     ids = svg.get_ids()
     new_id = None
@@ -871,6 +881,7 @@ def get_unique_id2(svg, prefix):
         # Do not use randint because py2/3 incompatibility
         new_id = prefix + str(int(random.random() * _from - _to) + _to)
     svg.ids.add(new_id)
+    debug(new_id)
     return new_id
 # Version that is non-random, useful for debugging
 # global idcount
@@ -1079,29 +1090,44 @@ def Replace_Non_Ascii_Font(el,newfont,*args):
 def global_transform(el,trnsfrm,irange=None,trange=None):
     # Transforms an object and fuses it to any paths, preserving stroke
     # If parent layer is transformed, need to rotate out of its coordinate system
+    
     myp = el.getparent();
-    if isinstance(myp,SvgDocumentElement):
-        prt=Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
-    else:
-        prt=myp.composed_transform(); 
-    prt = vmult(Transform('scale('+str(vscale(get_parent_svg(el)))+')'),prt);  # also include document scaling
+    if myp is None: prt=Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+    else:           prt=myp.lcomposed_transform;   
+    prt = (Transform('scale('+str(vscale(get_parent_svg(el)))+')') @ prt);  # also include document scaling
     
     myt = el.get('transform');
     if myt==None:
-        newtr=vmult((-prt),trnsfrm,prt);
+        newtr=(-prt) @ trnsfrm @ prt;
         if trange is not None:
             for ii in range(len(trange)):
-                trange[ii] = vmult((-prt),trange[ii],prt)
+                trange[ii] = ((-prt) @ trange[ii] @ prt)
     else:
-        newtr=vmult((-prt),trnsfrm,prt,Transform(myt))
+        newtr=(-prt) @ trnsfrm @ prt @ Transform(myt)
         if trange is not None:
             for ii in range(len(trange)):
-                trange[ii] = vmult((-prt),trange[ii],prt,Transform(myt))
+                trange[ii] = (-prt) @ trange[ii] @ prt @ Transform(myt)
     
     sw = Get_Composed_Width(el,'stroke-width');
     sd = Get_Composed_List(el, 'stroke-dasharray');
     
-    el.set('transform',newtr); # Add the new transform
+    # t1 = el.composed_transform(); t2 =el.lcomposed_transform;
+    # if abs(t1.a-t2.a)>.001 or abs(t1.b-t2.b)>.001 or abs(t1.c-t2.c)>.001 or abs(t1.d-t2.d)>.001 or abs(t1.e-t2.e)>.001 or abs(t1.f-t2.f)>.001:
+    #     idebug(el.get_id2())
+    #     idebug(t1)
+    #     idebug(t2)
+    #     raise TypeError
+    
+    el.ltransform = newtr;
+    # el.set('transform',newtr); # Add the new transform
+    
+    # t1 = el.composed_transform(); t2 =el.lcomposed_transform;
+    # if abs(t1.a-t2.a)>.001 or abs(t1.b-t2.b)>.001 or abs(t1.c-t2.c)>.001 or abs(t1.d-t2.d)>.001 or abs(t1.e-t2.e)>.001 or abs(t1.f-t2.f)>.001:
+    #     idebug(el.get_id2())
+    #     idebug(t1)
+    #     idebug(t2)
+    #     raise TypeError
+    
     ApplyTransform().recursiveFuseTransform(el,irange=irange,trange=trange);
     
     if sw is not None:
@@ -1373,16 +1399,22 @@ def vscale(svg):
             svg.oldscale = max([scale_x, scale_y])
             return svg.oldscale
         return svg.oldscale
+
+# Add @ multiplication to old versions of Inkex
+It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+try:                tmp = It@It
+except TypeError:   inkex.transforms.Transform.__matmul__ = lambda a,b : a*b
+
     
 # Version-specific multiplication
-def vmult(*args):
-    outval = args[-1];
-    for ii in reversed(range(0,len(args)-1)):
-        if ivp[0]<=1 and ivp[1]<2:      # pre-1.2: use asterisk
-            outval = args[ii]*outval;
-        else:                           # post-1.2: use @
-            outval = args[ii]@outval;
-    return outval
+# def vmult(*args):
+#     outval = args[-1];
+#     for ii in reversed(range(0,len(args)-1)):
+#         if ivp[0]<=1 and ivp[1]<2:      # pre-1.2: use asterisk
+#             outval = args[ii]*outval;
+#         else:                           # post-1.2: use @
+#             outval = args[ii]@outval;
+#     return outval
 
 def isMask(el):
     if ivp[0]<=1 and ivp[1]<2:          # pre-1.2: check tag
@@ -1417,6 +1449,7 @@ def vto_xpath(sty):
         return style_to_xpath(sty)
     else:
         return sty.to_xpath();
+    
     
 def Version_Check(caller):
     siv = 'v1.4.16'         # Scientific Inkscape version

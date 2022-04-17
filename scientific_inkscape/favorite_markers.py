@@ -37,7 +37,7 @@ def get_script_path():
     return os.path.dirname(os.path.realpath(sys.argv[0]))
         
 dispprofile = False;
-class ScalePlots(inkex.EffectExtension):
+class FavoriteMarkers(inkex.EffectExtension):
 #    def document_path(self):
 #        return 'test'
     
@@ -47,7 +47,7 @@ class ScalePlots(inkex.EffectExtension):
         
         pars.add_argument("--smarker", type=inkex.Boolean, default=False,help="Start marker?")
         pars.add_argument("--mmarker", type=inkex.Boolean, default=False,help="Mid marker?")
-        pars.add_argument("--emarker", type=inkex.Boolean, default=True,help="End marker?")
+        pars.add_argument("--emarker", type=inkex.Boolean, default=False,help="End marker?")
         pars.add_argument("--size", type=float, default=100, help="Size (%)");
         
         
@@ -119,7 +119,8 @@ class ScalePlots(inkex.EffectExtension):
         # dh.debug(mkrname+mtype)
         # dh.debug(mkrdat)
 
-    def effect(self):   
+    def effect(self):  
+        import random; random.seed(1)
         if dispprofile:
             import cProfile, pstats, io
             from pstats import SortKey
@@ -223,5 +224,5 @@ if __name__ == '__main__':
     dh.Version_Check('Favorite markers')
     import warnings
     warnings.filterwarnings("ignore")
-    ScalePlots().run()
+    FavoriteMarkers().run()
 

@@ -1036,6 +1036,7 @@ class tword:
             fc = nw.cs[0]; prevc = self.cs[-1]; 
             for c in nw.cs:
                 mydx = (c!=fc)*c.dx - prevc.lsp*(c==fc); # use dx to remove lsp from the previous c
+                # dh.idebug(LineList(self.ln.ll.textel,self.ln.ll.ctable).txt())
                 c.delc();
                 
                 ntype = copy(type)
@@ -1052,6 +1053,7 @@ class tword:
                         cel = cel.getparent();
                     totail = cel;
                     
+                # dh.idebug(noneid(totail))
                 self.appendc(c.c,c.cw,mydx,c.dy,totail=totail)
                 newc = self.cs[-1]; 
                 
@@ -1579,7 +1581,8 @@ class tchar:
         myi = self.ln.cs.index(self)
         for ii in range(myi+1,len(self.ln.cs)):  # for characters after, update location
             ca = self.ln.cs[ii];
-            ca.loc = cloc(t,'tail',ii-myi-1)
+            if ca.loc.el==self.loc.el and ca.loc.tt==self.loc.tt:
+                ca.loc = cloc(t,'tail',ii-myi-1)
         self.loc = cloc(t,'text',0)                  # update my own location
         
         
@@ -2002,6 +2005,12 @@ def maxnone(xi):
     if len(xi)>0: return max(xi)
     else:         return None        
     
+
+def noneid(el):
+    if el is None:
+        return None
+    else:
+        return el.get('id');
         
     # Seperate a text element into a group of lines
 #     def Parse_Lines(self,el,lns=None,debug=False):

@@ -36,13 +36,13 @@ badels = (inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.ForeignObject,\
           inkex.SVGfont,inkex.FontFace,inkex.MissingGlyph);
 
 dispprofile = False
-class ScalePlots(inkex.EffectExtension):
+class Homogenizer(inkex.EffectExtension):
 #    def document_path(self):
 #        return 'test'
     
     def add_arguments(self, pars):
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
-        pars.add_argument("--setfontsize", type=inkex.Boolean, default=True,help="Set font size?")
+        pars.add_argument("--setfontsize", type=inkex.Boolean, default=False,help="Set font size?")
         pars.add_argument("--fontsize", type=float, default=8, help="New font size");
         pars.add_argument("--fixtextdistortion", type=inkex.Boolean, default=False,help="Fix distorted text?")
         pars.add_argument("--fontmodes", type=int, default=1, help="Font size options");
@@ -53,12 +53,13 @@ class ScalePlots(inkex.EffectExtension):
 #        pars.add_argument("--setreplacement", type=inkex.Boolean, default=False,help="Replace missing fonts?")
 #        pars.add_argument("--replacement", type=str, default='', help="Missing fon replacement");
         
-        pars.add_argument("--setstroke", type=inkex.Boolean, default=True,help="Set stroke width?")
+        pars.add_argument("--setstroke", type=inkex.Boolean, default=False,help="Set stroke width?")
         pars.add_argument("--setstrokew", type=float, default=1, help="New stroke width");
         pars.add_argument("--strokemodes", type=int, default=1, help="Stroke width options");
-        pars.add_argument("--fusetransforms", type=inkex.Boolean, default=1, help="Fuse transforms to paths?");
+        pars.add_argument("--fusetransforms", type=inkex.Boolean, default=False, help="Fuse transforms to paths?");
 
     def effect(self):
+        import random; random.seed(1)
         if dispprofile:
             import cProfile, pstats, io
             from pstats import SortKey
@@ -151,7 +152,7 @@ class ScalePlots(inkex.EffectExtension):
                 magv = math.sqrt(ct.b**2 + ct.a**2);
                 ctnew = Transform([[ct.a*sqrtdet/magv, -ct.b*sqrtdet*signdet/magv, ct.e], \
                                    [ct.b*sqrtdet/magv,  ct.a*sqrtdet*signdet/magv, ct.f]]);
-                dh.global_transform(el,dh.vmult(ctnew,(-ct))); 
+                dh.global_transform(el,(ctnew @ (-ct))); 
                 
         if setfontfamily:
             for el in reversed(sel):
@@ -251,4 +252,4 @@ class ScalePlots(inkex.EffectExtension):
 
 if __name__ == '__main__':    
     dh.Version_Check('Homogenizer')
-    ScalePlots().run()
+    Homogenizer().run()

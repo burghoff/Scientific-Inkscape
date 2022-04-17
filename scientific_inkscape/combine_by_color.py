@@ -29,7 +29,7 @@ sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my d
 import dhelpers as dh
 
 
-class ScalePlots(inkex.EffectExtension):
+class CombineByColor(inkex.EffectExtension):
 #    def document_path(self):
 #        return 'test'
     
@@ -38,6 +38,7 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument("--lightnessth", type=float, default=15, help="Lightness threshold");
 
     def effect(self):
+        import random; random.seed(1);
         # v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
         # if v1:
         #     inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
@@ -98,4 +99,4 @@ class ScalePlots(inkex.EffectExtension):
 
 if __name__ == '__main__':
     dh.Version_Check('Combine by color')
-    ScalePlots().run()
+    CombineByColor().run()

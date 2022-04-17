@@ -31,7 +31,8 @@ class TextGhoster(inkex.EffectExtension):
     def add_arguments(self, pars):
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
 
-    def effect(self):   
+    def effect(self): 
+        import random; random.seed(1)  
         if dispprofile:
             import cProfile, pstats, io
             from pstats import SortKey

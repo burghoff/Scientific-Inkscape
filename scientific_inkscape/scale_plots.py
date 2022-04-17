@@ -87,12 +87,13 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument("--layerfix", type=str, default='None',help="Layer whose elements should not be scaled");
         
         
-        pars.add_argument("--wholeplot1", type=inkex.Boolean, default=True, help="Treat whole selection as plot area?");
-        pars.add_argument("--wholeplot2", type=inkex.Boolean, default=True, help="Treat whole selection as plot area?");
-        pars.add_argument("--wholeplot3", type=inkex.Boolean, default=True, help="Treat whole selection as plot area?");
+        pars.add_argument("--wholeplot1", type=inkex.Boolean, default=False, help="Treat whole selection as plot area?");
+        pars.add_argument("--wholeplot2", type=inkex.Boolean, default=False, help="Treat whole selection as plot area?");
+        pars.add_argument("--wholeplot3", type=inkex.Boolean, default=False, help="Treat whole selection as plot area?");
 
 
     def effect(self):
+        import random; random.seed(1)
         # v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
         # if v1:
         #    inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
@@ -102,6 +103,8 @@ class ScalePlots(inkex.EffectExtension):
         # else:
         #    sel = [v for el in self.svg.selection for v in dh.descendants2(el)];
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
+        
+        # print([el.get_id2() for el in sel])
         # sel = [v for el in sel for v in dh.descendants2(el)];
         
         # starttime = time.time();
@@ -185,11 +188,11 @@ class ScalePlots(inkex.EffectExtension):
         for i0 in range(len(asel)): #sel in asel:
             sel = asel[i0];
             # Calculate geometric (tight) bounding boxes of selected items
-            sel = [k for k in sel if k.get_id() in list(fbbs.keys())]; # only work on objects with a BB
+            sel = [k for k in sel if k.get_id2() in list(fbbs.keys())]; # only work on objects with a BB
             bbs=dict();  
             for el in [firstsel]+sel+sfels:
-                if el.get_id() in list(fbbs.keys()):
-                    bbs[el.get_id()] = geometric_bbox(el,fbbs[el.get_id()]).sbb;
+                if el.get_id2() in list(fbbs.keys()):
+                    bbs[el.get_id2()] = geometric_bbox(el,fbbs[el.get_id2()]).sbb;
                 
             # Find horizontal and vertical lines (to within .001 rad), elements to be used in plot area calculations
             vl = dict(); hl = dict(); boxes = dict(); solids = dict();
@@ -197,14 +200,14 @@ class ScalePlots(inkex.EffectExtension):
             for el in list(reversed(sel)):
                 isrect = False;
                 if isinstance(el,(PathElement,Rectangle,Line,Polyline)): 
-                    bb=bbs[el.get_id()];
+                    bb=bbs[el.get_id2()];
                     xs, ys = dh.get_points(el);
                     if (max(xs)-min(xs))<.001*bb[3]: # vertical line
-                        vl[el.get_id()]=bb[3];       # lines only
-                        vels[el.get_id()]=bb[3];     # lines and rectangles
+                        vl[el.get_id2()]=bb[3];       # lines only
+                        vels[el.get_id2()]=bb[3];     # lines and rectangles
                     if (max(ys)-min(ys))<.001*bb[2]: # horizontal line
-                        hl[el.get_id()]=bb[2];       # lines only
-                        hels[el.get_id()]=bb[2];     # lines and rectangles
+                        hl[el.get_id2()]=bb[2];       # lines only
+                        hels[el.get_id2()]=bb[2];     # lines and rectangles
                     
                     if 3<=len(xs)<=5 and len(set(xs))==2 and len(set(ys))==2:
                         isrect = True;
@@ -215,11 +218,11 @@ class ScalePlots(inkex.EffectExtension):
                     
                     nones = [None,'none','white','#ffffff'];
                     if not(fill in nones) and (strk in nones or strk==fill): # solid rectangle
-                        solids[el.get_id()]=[bb[2],bb[3]];
+                        solids[el.get_id2()]=[bb[2],bb[3]];
                     elif not(strk in nones):                                 # framed box
-                        boxes[el.get_id()]=[bb[2],bb[3]];
-                        vels[el.get_id()]=bb[3];
-                        hels[el.get_id()]=bb[2];
+                        boxes[el.get_id2()]=[bb[2],bb[3]];
+                        vels[el.get_id2()]=bb[3];
+                        hels[el.get_id2()]=bb[2];
                         
             if len(vels)==0 or len(hels)==0 or wholesel:    
                 noplotarea = True;
@@ -238,45 +241,38 @@ class ScalePlots(inkex.EffectExtension):
                         else:                         return 'th'
                     numgroup = str(i0+1)+appendInt(i0+1);
                     inkex.utils.errormsg('A box-like plot area could not be automatically detected on the '+numgroup+   \
-                                         ' selected plot (group ID '+gsel[i0].get_id()+').\n\n Draw an outlined box to define the plot area.'+\
+                                         ' selected plot (group ID '+gsel[i0].get_id2()+').\n\n Draw an outlined box to define the plot area.'+\
                                          '\nScaling will still be performed, but the results will be less ideal.');
             else:
                 noplotarea = False;
                 lvl = max(vels, key=vels.get); # largest vertical
                 lhl = max(hels, key=hels.get); # largest horizontal
-
-            
-            # dh.debug(lvl)
-            # dh.debug(lhl)
-            # for el in sel:
-            #     if el.get_id()=='path109379':
-            #         dh.debug(geometric_bbox(el,fbbs[el.get_id()]).sbb)
-            
                 
             # Determine the bounding box of the whole selection and the plot area
             minx = miny = minxp = minyp = fminxp = fminyp = fminx = fminy = float('inf');
             maxx = maxy = maxxp = maxyp = fmaxxp = fmaxyp = fmaxx = fmaxy = float('-inf');
             for el in sel:
-                bb=bbs[el.get_id()];
+                bb=bbs[el.get_id2()];
                 minx = min(minx,bb[0]);
                 miny = min(miny,bb[1]);
                 maxx = max(maxx,bb[0]+bb[2]);
                 maxy = max(maxy,bb[1]+bb[3]);
-                fbb=fbbs[el.get_id()];
+                fbb=fbbs[el.get_id2()];
                 fminx = min(fminx,fbb[0]);
                 fminy = min(fminy,fbb[1]);
                 fmaxx = max(fmaxx,fbb[0]+fbb[2]);
                 fmaxy = max(fmaxy,fbb[1]+fbb[3]);
-                if el.get_id() in [lvl,lhl] or noplotarea:
+                if el.get_id2() in [lvl,lhl] or noplotarea:
                     minyp = min(minyp,bb[1]);
                     maxyp = max(maxyp,bb[1]+bb[3]);
                     minxp = min(minxp,bb[0]);
                     maxxp = max(maxxp,bb[0]+bb[2]);
-                    fbb=fbbs[el.get_id()];
+                    fbb=fbbs[el.get_id2()];
                     fminyp = min(fminyp,fbb[1]);
                     fmaxyp = max(fmaxyp,fbb[1]+fbb[3]);
                     fminxp = min(fminxp,fbb[0]);
                     fmaxxp = max(fmaxxp,fbb[0]+fbb[2]);
+                    
                     
             if self.options.tab=='correction':
                 # Invert the existing transform so we can run the rest of the code regularly
@@ -297,8 +293,18 @@ class ScalePlots(inkex.EffectExtension):
                     refx = fminx; refy = fminy;
                 trl = Transform('translate('+str(refx)+', '+str(refy)+')');
                 scl = Transform('scale('+str(1/scalex)+', '+str(1/scaley)+')');
-                iextr = dh.vmult(trl,scl,(-trl)); # invert existing transform
+                iextr = (trl @ scl @ (-trl)); # invert existing transform
                 dh.global_transform(gsel[i0],iextr);
+                
+                            
+                # for el in sel:
+                #     t1 = el.composed_transform(); t2 =el.lcomposed_transform;
+                #     if abs(t1.a-t2.a)>.001 or abs(t1.b-t2.b)>.001 or abs(t1.c-t2.c)>.001 or abs(t1.d-t2.d)>.001 or abs(t1.e-t2.e)>.001 or abs(t1.f-t2.f)>.001:
+                #         dh.idebug(el.get_id2())
+                #         dh.idebug(t1)
+                #         dh.idebug(t2)
+                #         raise TypeError
+                
                 # Invert the transform on the bounding boxes (fix later)
                 import copy
                 actfbbs = copy.deepcopy(fbbs); actbbs=copy.deepcopy(bbs);
@@ -313,22 +319,22 @@ class ScalePlots(inkex.EffectExtension):
                 minx = miny = minxp = minyp = fminxp = fminyp = fminx = fminy = float('inf');
                 maxx = maxy = maxxp = maxyp = fmaxxp = fmaxyp = fmaxx = fmaxy = float('-inf');
                 for el in sel:
-                    bb=bbs[el.get_id()];
+                    bb=bbs[el.get_id2()];
                     minx = min(minx,bb[0]);
                     miny = min(miny,bb[1]);
                     maxx = max(maxx,bb[0]+bb[2]);
                     maxy = max(maxy,bb[1]+bb[3]);
-                    fbb=fbbs[el.get_id()];
+                    fbb=fbbs[el.get_id2()];
                     fminx = min(fminx,fbb[0]);
                     fminy = min(fminy,fbb[1]);
                     fmaxx = max(fmaxx,fbb[0]+fbb[2]);
                     fmaxy = max(fmaxy,fbb[1]+fbb[3]);
-                    if el.get_id() in [lvl,lhl] or noplotarea:
+                    if el.get_id2() in [lvl,lhl] or noplotarea:
                         minyp = min(minyp,bb[1]);
                         maxyp = max(maxyp,bb[1]+bb[3]);
                         minxp = min(minxp,bb[0]);
                         maxxp = max(maxxp,bb[0]+bb[2]);
-                        fbb=fbbs[el.get_id()];
+                        fbb=fbbs[el.get_id2()];
                         fminyp = min(fminyp,fbb[1]);
                         fmaxyp = max(fmaxyp,fbb[1]+fbb[3]);
                         fminxp = min(fminxp,fbb[0]);
@@ -357,7 +363,7 @@ class ScalePlots(inkex.EffectExtension):
             
                     
             if self.options.tab=='matching':
-                bbfirst = bbs[firstsel.get_id()];
+                bbfirst = bbs[firstsel.get_id2()];
                 if hmatch:
                     scalex = bbfirst[2]/(maxxp-minxp);
                 else:
@@ -381,10 +387,11 @@ class ScalePlots(inkex.EffectExtension):
             trl = Transform('translate('+str(refx)+', '+str(refy)+')');
             scl = Transform('scale('+str(scalex)+', '+str(scaley)+')');
             
-            gtr = dh.vmult(trl,scl,(-trl)); # global transformation
+            gtr = (trl @ scl @ (-trl)); # global transformation
             iscl = Transform('scale('+str(1/scalex)+', '+str(1/scaley)+')');
             trul = gtr.apply_to_point([minxp,minyp]) # transformed upper-left
             trbr = gtr.apply_to_point([maxxp,maxyp]) # transformed bottom-right
+
             
             # Diagnostic mode                    
             diagmode = False
@@ -403,14 +410,33 @@ class ScalePlots(inkex.EffectExtension):
             sclels=[]
             for el in sel:
                 if el in sfgs: # Is a scale-free group, apply transform to children instead
-                    for k in el.getchildren(): sclels.append(k)
-                else:                          sclels.append(el)
-            sclels = list(set(sclels))
+                    for k in el.getchildren():
+                        if k not in sclels:  sclels.append(k)
+                else:                          
+                        if el not in sclels: sclels.append(el)
+            # sclels = list(set(sclels)) # randomly changes order, bad for repeatability
             
             # Apply transform and compute corrections (if needed)
             for el in sclels:
+                # t1 = el.composed_transform(); t2 =el.lcomposed_transform;
+                # if abs(t1.a-t2.a)>.001 or abs(t1.b-t2.b)>.001 or abs(t1.c-t2.c)>.001 or abs(t1.d-t2.d)>.001 or abs(t1.e-t2.e)>.001 or abs(t1.f-t2.f)>.001:
+                #     dh.idebug(el.get_id2())
+                #     dh.idebug(t1)
+                #     dh.idebug(t2)
+                #     raise TypeError
+                
                 dh.global_transform(el,gtr);                                  # apply the transform
-                elid = el.get_id();
+                
+                # t1 = el.composed_transform(); t2 =el.lcomposed_transform;
+                # if abs(t1.a-t2.a)>.001 or abs(t1.b-t2.b)>.001 or abs(t1.c-t2.c)>.001 or abs(t1.d-t2.d)>.001 or abs(t1.e-t2.e)>.001 or abs(t1.f-t2.f)>.001:
+                #     dh.idebug(el.get_id2())
+                #     dh.idebug(t1)
+                #     dh.idebug(t2)
+                #     raise TypeError
+                
+                # if el.get('clip-path') is not None:
+                #     dh.idebug(el.get_id2())
+                elid = el.get_id2();
                 
                 bb =bbs[elid];
                 fbb=fbbs[elid];   
@@ -453,7 +479,7 @@ class ScalePlots(inkex.EffectExtension):
                     elif htickr:
                         if cx<trbr[0]: trl = Transform('translate('+str(bb_tr.x2)+', '+str(cy)+')'); # inner tick
                         else:          trl = Transform('translate('+str(bb_tr.x1)+', '+str(cy)+')'); # outer tick
-                    tr1 = dh.vmult(trl,iscl,(-trl));
+                    tr1 = (trl @ iscl @ (-trl));
                     dh.global_transform(el,tr1)
                 elif isalwayscorr or isoutsideplot or issf: 
                     # Invert the transformation for text/groups, anything outside the plot, scale-free
@@ -462,7 +488,7 @@ class ScalePlots(inkex.EffectExtension):
                         bb_tr = bbox(bb).transform(gtr);
                         cx = bb_tr.xc; cy = bb_tr.yc;
                         trl = Transform('translate('+str(cx)+', '+str(cy)+')');
-                        tr1 = dh.vmult(trl,iscl,(-trl));
+                        tr1 = (trl @ iscl @ (-trl));
                         
                         # For elements outside the plot area, adjust position to maintain 
                         # the distance to the plot area
@@ -480,7 +506,8 @@ class ScalePlots(inkex.EffectExtension):
                             oy = bb[1]+bb[3]/2 - maxyp;
                             dy = oy - (cy-trbr[1]);
                         tr2 = Transform('translate('+str(dx)+', '+str(dy)+')');
-                        dh.global_transform(el,dh.vmult(tr2,tr1));
+                        dh.global_transform(el,(tr2 @ tr1));
+                        
                     else: # If previously combined, apply to subpaths instead
                         cbc = [int(v) for v in cbc.split()];
                         fbb_tr = bbox(fbb).transform(gtr).sbb
@@ -490,7 +517,7 @@ class ScalePlots(inkex.EffectExtension):
                             bb = bb_tr.transform(-gtr).sbb
                             cx = bb_tr.xc; cy = bb_tr.yc;
                             trl = Transform('translate('+str(cx)+', '+str(cy)+')');
-                            tr1 = dh.vmult(trl,iscl,(-trl));
+                            tr1 = (trl @ iscl @ (-trl));
                             dx = 0; dy = 0;
                             if cx < trul[0]:
                                 ox = bb[0]+bb[2]/2 - minxp;
@@ -506,8 +533,9 @@ class ScalePlots(inkex.EffectExtension):
                                   dy = oy - (cy-trbr[1]);
                             tr2 = Transform('translate('+str(dx)+', '+str(dy)+')');
                             irng.append([cbc[ii],cbc[ii+1]])
-                            trng.append(dh.vmult(tr2,tr1))
+                            trng.append((tr2 @ tr1))
                         dh.global_transform(el,It,irange=irng,trange=trng);
+                        
             
 
             # restore bbs             
@@ -520,7 +548,9 @@ class ScalePlots(inkex.EffectExtension):
 #        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
 #        ps.print_stats()
 #        dh.debug(s.getvalue())
-                    
+        dh.flush_stylesheet_entries(self.svg)
+        # dh.debug([el.get_id2() for el in self.svg.defs])
+        # dh.write_debug()            
 
 if __name__ == '__main__':
     dh.Version_Check('Scale plots')

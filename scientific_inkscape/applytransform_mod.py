@@ -81,15 +81,18 @@ class ApplyTransform(inkex.EffectExtension):
             clippath = dh.getElementById2(svg,clippathurl[5:-1]);
             if clippath is not None:
                 d = dh.duplicate2(clippath);
-                clippathurl = "url(#" + d.get("id") + ")"
+                el.svg.defs2.append(d)
+                # dh.idebug(el.get_id2())
+                clippathurl = "url(#" + d.get_id2() + ")"
                 el.set(cm, clippathurl);
                 dh.fix_css_clipmask(el,mask=mask);
                 for k in d.getchildren():
                     if k.get('transform') is not None:
-                        tr = dh.vmult(Transform(el.get("transform")),Transform(k.get('transform')));
+                        tr = (Transform(el.get("transform")) @ Transform(k.get('transform')));
                     else:
                         tr = Transform(el.get("transform"));
-                    k.set('transform',tr);
+                    k.ltransform = tr;
+                    # k.set('transform',tr);
                     
 
 
@@ -104,9 +107,10 @@ class ApplyTransform(inkex.EffectExtension):
             self.transform_clipmask(node,mask=False);
             self.transform_clipmask(node,mask=True);
             
-            transf = dh.vmult(Transform(transf) , Transform(node.get("transform", None)))
-            if 'transform' in node.attrib:
-                del node.attrib['transform']
+            transf = (Transform(transf)  @  Transform(node.get("transform", None)))
+            node.ltransform = None
+            # if 'transform' in node.attrib:
+            #     del node.attrib['transform']
             node = ApplyTransform.remove_attrs(node)
             
             if not(transf.b==0 and transf.c==0) and isinstance(node,(Rectangle,Ellipse,Circle)):
@@ -123,7 +127,7 @@ class ApplyTransform(inkex.EffectExtension):
                     if irange is not None:
                         p = Path(p).to_absolute(); pnew=[]
                         for ii in range(len(irange)):
-                            xf = dh.vmult(trange[ii] , Transform(node.get("transform", None)))
+                            xf = (trange[ii]  @  Transform(node.get("transform", None)))
                             pnew += Path(p[irange[ii][0]:irange[ii][1]]).transform(xf, True)
                         p = pnew
                     node.set('d', str(Path(CubicSuperPath(p).to_path())))
