@@ -3,7 +3,7 @@
 STORE_REFS = False
 fname = 'Other_tests.svg'
 
-MAXPAPERS = 1000
+MAXPAPERS = 0
 flattentext = 'Text_tests.svg'
 flattenrest = 'Acid_tests.svg';
 priority_flatten = []
