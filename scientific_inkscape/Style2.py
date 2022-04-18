@@ -14,21 +14,23 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA. 
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import inkex
 
+
 class Style2(inkex.OrderedDict):
     """A list of style directives"""
-    color_props = ('stroke', 'fill', 'stop-color', 'flood-color', 'lighting-color')
-    opacity_props = ('stroke-opacity', 'fill-opacity', 'opacity', 'stop-opacity')
-    unit_props = ('stroke-width')
+
+    color_props = ("stroke", "fill", "stop-color", "flood-color", "lighting-color")
+    opacity_props = ("stroke-opacity", "fill-opacity", "opacity", "stop-opacity")
+    unit_props = "stroke-width"
 
     def __init__(self, style=None, callback=None, **kw):
         # This callback is set twice because this is 'pre-initial' data (no callback)
         self.callback = None
         # Either a string style or kwargs (with dashes as underscores).
-        style = style or [(k.replace('_', '-'), v) for k, v in kw.items()]
+        style = style or [(k.replace("_", "-"), v) for k, v in kw.items()]
         if isinstance(style, str):
             style = self.parse_str(style)
         # Order raw dictionaries so tests can be made reliable
@@ -44,9 +46,9 @@ class Style2(inkex.OrderedDict):
         """Create a dictionary from the value of an inline style attribute"""
         if style is None:
             style = ""
-        for directive in style.split(';'):
-            if ':' in directive:
-                (name, value) = directive.split(':', 1)
+        for directive in style.split(";"):
+            if ":" in directive:
+                (name, value) = directive.split(":", 1)
                 # FUTURE: Parse value here for extra functionality
                 yield (name.strip().lower(), value.strip())
 
@@ -89,6 +91,7 @@ class Style2(inkex.OrderedDict):
             if self.get(arg, None) != other.get(arg, None):
                 return False
         return True
+
     __ne__ = lambda self, other: not self.__eq__(other)
 
     def update(self, other):
@@ -107,16 +110,16 @@ class Style2(inkex.OrderedDict):
         if self.callback is not None:
             self.callback(self)
 
-    def get_color(self, name='fill'):
+    def get_color(self, name="fill"):
         """Get the color AND opacity as one Color object"""
-        color = inkex.Color(self.get(name, 'none'))
-        return color.to_rgba(self.get(name + '-opacity', 1.0))
+        color = inkex.Color(self.get(name, "none"))
+        return color.to_rgba(self.get(name + "-opacity", 1.0))
 
-    def set_color(self, color, name='fill'):
+    def set_color(self, color, name="fill"):
         """Sets the given color AND opacity as rgba to the fill or stroke style properties."""
         color = inkex.Color(color)
-        if color.space == 'rgba':
-            self[name + '-opacity'] = color.alpha
+        if color.space == "rgba":
+            self[name + "-opacity"] = color.alpha
         self[name] = str(color.to_rgb())
 
     def update_urls(self, old_id, new_id):
@@ -135,7 +138,7 @@ class Style2(inkex.OrderedDict):
             if prop in self.color_props:
                 if isinstance(a1, inkex.Color):
                     val = a1.interpolate(inkex.Color(a2), fraction)
-                elif a1.startswith('url(') or a2.startswith('url('):
+                elif a1.startswith("url(") or a2.startswith("url("):
                     # gradient requires changes to the whole svg
                     # and needs to be handled externally
                     val = a1
@@ -148,7 +151,7 @@ class Style2(inkex.OrderedDict):
             else:
                 val = a1
         return val
-    
+
     def interpolate(self, other, fraction):
         """Interpolate all properties."""
         style = Style2()

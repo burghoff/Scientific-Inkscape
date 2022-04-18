@@ -33,22 +33,24 @@ try:
 except ImportError:
     from base64 import decodestring as decodebytes
 
+
 def mime_to_ext(mime):
     """Return an extension based on the mime type"""
     # Most extensions are automatic (i.e. extension is same as minor part of mime type)
-    part = mime.split('/', 1)[1].split('+')[0]
-    return '.' + {
+    part = mime.split("/", 1)[1].split("+")[0]
+    return "." + {
         # These are the non-matching ones.
-        'svg+xml' : '.svg',
-        'jpeg'    : '.jpg',
-        'icon'    : '.ico',
+        "svg+xml": ".svg",
+        "jpeg": ".jpg",
+        "icon": ".ico",
     }.get(part, part)
 
-def extract_image(node,save_to):
+
+def extract_image(node, save_to):
     """Extract the node as if it were an image."""
-    xlink = node.get('xlink:href')
-    if not xlink.startswith('data:'):
-        return # Not embedded image data
+    xlink = node.get("xlink:href")
+    if not xlink.startswith("data:"):
+        return  # Not embedded image data
 
     # This call will raise AbortExtension if the document wasn't saved
     # and the user is trying to extract them to a relative directory.
@@ -59,13 +61,13 @@ def extract_image(node,save_to):
 
     try:
         data = xlink[5:]
-        (mimetype, data) = data.split(';', 1)
-        (base, data) = data.split(',', 1)
+        (mimetype, data) = data.split(";", 1)
+        (base, data) = data.split(",", 1)
     except ValueError:
         inkex.errormsg("Invalid image format found")
         return
 
-    if base != 'base64':
+    if base != "base64":
         inkex.errormsg("Can't decode encoding: {}".format(base))
         return
 
@@ -73,16 +75,18 @@ def extract_image(node,save_to):
 
     pathwext = os.path.join(save_to, node.get("id") + file_ext)
     if os.path.isfile(pathwext):
-        inkex.errormsg("Can't extract image, filename already used: {}".format(pathwext))
+        inkex.errormsg(
+            "Can't extract image, filename already used: {}".format(pathwext)
+        )
         return
 
     # self.msg('Image extracted to: {}'.format(pathwext))
 
-    with open(pathwext, 'wb') as fhl:
-        fhl.write(decodebytes(data.encode('utf-8')))
+    with open(pathwext, "wb") as fhl:
+        fhl.write(decodebytes(data.encode("utf-8")))
 
     # absolute for making in-mem cycles work
-    node.set('xlink:href', os.path.realpath(pathwext))
+    node.set("xlink:href", os.path.realpath(pathwext))
 
 
 """
@@ -101,14 +105,17 @@ except ImportError:
     import urlparse
     from base64 import encodestring as encodebytes
 
-def embed_image(node,svg_path):
+
+def embed_image(node, svg_path):
     """Embed the data of the selected Image Tag element"""
-    xlink = node.get('xlink:href')
-    if (xlink is not None and xlink[:5] == 'data:'):
+    xlink = node.get("xlink:href")
+    if xlink is not None and xlink[:5] == "data:":
         # No need, data already embedded
         return
     if xlink is None:
-        inkex.errormsg(_('Attribute "xlink:href" not set on node {}.'.format(node.get_id())))
+        inkex.errormsg(
+            _('Attribute "xlink:href" not set on node {}.'.format(node.get_id()))
+        )
         return
 
     url = urlparse.urlparse(xlink)
@@ -116,11 +123,11 @@ def embed_image(node,svg_path):
 
     # Primary location always the filename itself, we allow this
     # call to search the user's home folder too.
-    path = absolute_href(href or '',svg_path)
+    path = absolute_href(href or "", svg_path)
 
     # Backup directory where we can find the image
     if not os.path.isfile(path):
-        path = node.get('sodipodi:absref', path)
+        path = node.get("sodipodi:absref", path)
 
     if not os.path.isfile(path):
         inkex.errormsg(_('File not found "{}". Unable to embed image.').format(path))
@@ -133,16 +140,26 @@ def embed_image(node,svg_path):
 
         if file_type:
             # Future: Change encodestring to encodebytes when python3 only
-            node.set('xlink:href', 'data:{};base64,{}'.format(
-                file_type, encodebytes(handle.read()).decode('ascii')))
-            node.pop('sodipodi:absref')
+            node.set(
+                "xlink:href",
+                "data:{};base64,{}".format(
+                    file_type, encodebytes(handle.read()).decode("ascii")
+                ),
+            )
+            node.pop("sodipodi:absref")
         else:
-            inkex.errormsg(_("%s is not of type image/png, image/jpeg, "\
-                "image/bmp, image/gif, image/tiff, or image/x-icon") % path)
-                
-def embed_external_image(node,path):
+            inkex.errormsg(
+                _(
+                    "%s is not of type image/png, image/jpeg, "
+                    "image/bmp, image/gif, image/tiff, or image/x-icon"
+                )
+                % path
+            )
+
+
+def embed_external_image(node, path):
     """Embed the data of the selected Image Tag element"""
-    xlink = node.get('xlink:href')
+    xlink = node.get("xlink:href")
 
     url = urlparse.urlparse(xlink)
     href = urllib.url2pathname(url.path)
@@ -154,39 +171,49 @@ def embed_external_image(node,path):
 
         if file_type:
             # Future: Change encodestring to encodebytes when python3 only
-            node.set('xlink:href', 'data:{};base64,{}'.format(
-                file_type, encodebytes(handle.read()).decode('ascii')))
-            node.pop('sodipodi:absref')
+            node.set(
+                "xlink:href",
+                "data:{};base64,{}".format(
+                    file_type, encodebytes(handle.read()).decode("ascii")
+                ),
+            )
+            node.pop("sodipodi:absref")
         else:
-            inkex.errormsg(_("%s is not of type image/png, image/jpeg, "\
-                "image/bmp, image/gif, image/tiff, or image/x-icon") % path)
+            inkex.errormsg(
+                _(
+                    "%s is not of type image/png, image/jpeg, "
+                    "image/bmp, image/gif, image/tiff, or image/x-icon"
+                )
+                % path
+            )
 
-# Check if image is linked or embedded. If linked, check if path is valid                
-def check_linked(node,svg_path):
+
+# Check if image is linked or embedded. If linked, check if path is valid
+def check_linked(node, svg_path):
     """Embed the data of the selected Image Tag element"""
-    xlink = node.get('xlink:href')
-    if (xlink is not None and xlink[:5] == 'data:'):
+    xlink = node.get("xlink:href")
+    if xlink is not None and xlink[:5] == "data:":
         return False, None
     url = urlparse.urlparse(xlink)
     href = urllib.url2pathname(url.path)
-    path = absolute_href(href or '',svg_path)
+    path = absolute_href(href or "", svg_path)
     if not os.path.isfile(path):
-        path = node.get('sodipodi:absref', path)
+        path = node.get("sodipodi:absref", path)
     fileexists = os.path.isfile(path)
-    if not(fileexists):
+    if not (fileexists):
         return True, None
     else:
         return True, path
 
 
 # Gets the type of an image element
-def get_image_type(node,svg_path):
-    xlink = node.get('xlink:href')
-    
-    if not xlink.startswith('data:'):
+def get_image_type(node, svg_path):
+    xlink = node.get("xlink:href")
+
+    if not xlink.startswith("data:"):
         # Linked image
-        xlink = node.get('xlink:href')
-        if (xlink is not None and xlink[:5] == 'data:'):
+        xlink = node.get("xlink:href")
+        if xlink is not None and xlink[:5] == "data:":
             # No need, data already embedded
             return None
         if xlink is None:
@@ -198,11 +225,11 @@ def get_image_type(node,svg_path):
 
         # Primary location always the filename itself, we allow this
         # call to search the user's home folder too.
-        path = absolute_href(href or '',svg_path)
+        path = absolute_href(href or "", svg_path)
 
         # Backup directory where we can find the image
         if not os.path.isfile(path):
-            path = node.get('sodipodi:absref', path)
+            path = node.get("sodipodi:absref", path)
 
         if not os.path.isfile(path):
             print(_('File not found "{}". Unable to embed image.').format(path))
@@ -215,45 +242,46 @@ def get_image_type(node,svg_path):
     else:
         try:
             data = xlink[5:]
-            (mimetype, data) = data.split(';', 1)
-            (base, data) = data.split(',', 1)
+            (mimetype, data) = data.split(";", 1)
+            (base, data) = data.split(",", 1)
         except ValueError:
             print("Invalid image format found")
             return None
-    
-        if base != 'base64':
+
+        if base != "base64":
             print("Can't decode encoding: {}".format(base))
             return None
         return mimetype
 
 
-
 def get_type(path, header):
     """Basic magic header checker, returns mime type"""
     for head, mime in (
-            (b'\x89PNG', 'image/png'),
-            (b'\xff\xd8', 'image/jpeg'),
-            (b'BM', 'image/bmp'),
-            (b'GIF87a', 'image/gif'),
-            (b'GIF89a', 'image/gif'),
-            (b'MM\x00\x2a', 'image/tiff'),
-            (b'II\x2a\x00', 'image/tiff'),
-        ):
+        (b"\x89PNG", "image/png"),
+        (b"\xff\xd8", "image/jpeg"),
+        (b"BM", "image/bmp"),
+        (b"GIF87a", "image/gif"),
+        (b"GIF89a", "image/gif"),
+        (b"MM\x00\x2a", "image/tiff"),
+        (b"II\x2a\x00", "image/tiff"),
+    ):
         if header.startswith(head):
             return mime
 
     # ico files lack any magic... therefore we check the filename instead
     for ext, mime in (
-            # official IANA registered MIME is 'image/vnd.microsoft.icon' tho
-            ('.ico', 'image/x-icon'),
-            ('.svg', 'image/svg+xml'),
-        ):
+        # official IANA registered MIME is 'image/vnd.microsoft.icon' tho
+        (".ico", "image/x-icon"),
+        (".svg", "image/svg+xml"),
+    ):
         if path.endswith(ext):
             return mime
     return None
 
+
 # if __name__ == '__main__':
 #     EmbedImage().run()
+
 
 def absolute_href(filename, svg_path, default="~/"):
     """
@@ -273,60 +301,79 @@ def absolute_href(filename, svg_path, default="~/"):
         filename = os.path.join(svg_path, filename)
     return os.path.realpath(os.path.expanduser(filename))
 
+
 # Stuff by David Burghoff
 try:
     from PIL import Image as Image2
-    hasPIL = True;
+
+    hasPIL = True
 except:
-    hasPIL = False;
-    
+    hasPIL = False
+
 # def remove_alpha(imin):
 #     background = Image2.new('RGBA', imin.size, (255,255,255))
 #     alpha_composite = Image2.alpha_composite(background, imin)
 #     alpha_composite_3 = alpha_composite.convert('RGB')
 #     return alpha_composite_3
 
-def remove_alpha(imin,background):
+
+def remove_alpha(imin, background):
     # background = Image2.new('RGBA', imin.size, (255,255,255))
     alpha_composite = Image2.alpha_composite(background, imin)
-    alpha_composite_3 = alpha_composite.convert('RGB')
+    alpha_composite_3 = alpha_composite.convert("RGB")
     return alpha_composite_3
 
-def to_jpeg(imin,background,imout):
+
+def to_jpeg(imin, background, imout):
     with Image2.open(imin) as im:
         with Image2.open(background) as imb:
             # Composite to remove transparent regions
-            compim = remove_alpha(im,imb); 
+            compim = remove_alpha(im, imb)
             # Crop to non-transparent region only
-            bbox = im.getbbox(); #left,upper,right,lower (left & upper pixel is non-zero corner, right-1 & lower-1 is non-zero corner)
+            bbox = im.getbbox()
+            # left,upper,right,lower (left & upper pixel is non-zero corner, right-1 & lower-1 is non-zero corner)
             if bbox is not None:
-                compim = compim.crop(bbox);
-                bbox = [bbox[0]/im.size[0],bbox[1]/im.size[1],bbox[2]/im.size[0],bbox[3]/im.size[1]]; # normalize to original size
-            compim.save(imout);
+                compim = compim.crop(bbox)
+                bbox = [
+                    bbox[0] / im.size[0],
+                    bbox[1] / im.size[1],
+                    bbox[2] / im.size[0],
+                    bbox[3] / im.size[1],
+                ]
+                # normalize to original size
+            compim.save(imout)
             return imout, bbox
-        
+
+
 def crop_image(imin):
     with Image2.open(imin) as im:
-        bbox = im.getbbox(); #left,upper,right,lower (left & upper pixel is non-zero corner, right-1 & lower-1 is non-zero corner)
+        bbox = im.getbbox()
+        # left,upper,right,lower (left & upper pixel is non-zero corner, right-1 & lower-1 is non-zero corner)
         if bbox is not None:
-            cropim = im.crop(bbox);
-            bbox = [bbox[0]/im.size[0],bbox[1]/im.size[1],bbox[2]/im.size[0],bbox[3]/im.size[1]]; # normalized to original size
-            cropim.save(imin);
+            cropim = im.crop(bbox)
+            bbox = [
+                bbox[0] / im.size[0],
+                bbox[1] / im.size[1],
+                bbox[2] / im.size[0],
+                bbox[3] / im.size[1],
+            ]
+            # normalized to original size
+            cropim.save(imin)
         return imin, bbox
-    
-    
-def extract_image_simple(node,save_to):
+
+
+def extract_image_simple(node, save_to):
     """Extract the node as if it were an image."""
-    xlink = node.get('xlink:href')
+    xlink = node.get("xlink:href")
     data = xlink[5:]
     try:
         data = xlink[5:]
-        (mimetype, data) = data.split(';', 1)
-        (base, data) = data.split(',', 1)
+        (mimetype, data) = data.split(";", 1)
+        (base, data) = data.split(",", 1)
     except ValueError:
         return None
     file_ext = mime_to_ext(mimetype)
     pathwext = save_to + file_ext
-    with open(pathwext, 'wb') as fhl:
-        fhl.write(decodebytes(data.encode('utf-8')))
+    with open(pathwext, "wb") as fhl:
+        fhl.write(decodebytes(data.encode("utf-8")))
     return pathwext

@@ -1,4 +1,4 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python
 # coding=utf-8
 #
 # Copyright (C) 2021 David Burghoff, dburghoff@nd.edu
@@ -17,98 +17,112 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-EXTENT  = 0.5;      # how far the rectangle should extend from the text, in units of font size
-OPACITY = 0.75;      # how opaque it is (0.0-1.0)
-STDDEV  = 0.5;      # standard deviation of the Gaussian blur as fraction of EXTENT
+EXTENT = 0.5
+# how far the rectangle should extend from the text, in units of font size
+OPACITY = 0.75
+# how opaque it is (0.0-1.0)
+STDDEV = 0.5
+# standard deviation of the Gaussian blur as fraction of EXTENT
 
 import inkex
-import os,sys
-sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0]))) # make sure my directory is on the path
+import os, sys
+
+sys.path.append(
+    os.path.dirname(os.path.realpath(sys.argv[0]))
+)  # make sure my directory is on the path
 import dhelpers as dh
-dispprofile = False;
+
+dispprofile = False
+
 
 class TextGhoster(inkex.EffectExtension):
     def add_arguments(self, pars):
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
 
-    def effect(self): 
-        import random; random.seed(1)  
+    def effect(self):
+        import random
+
+        random.seed(1)
         if dispprofile:
             import cProfile, pstats, io
             from pstats import SortKey
+
             pr = cProfile.Profile()
             pr.enable()
-        
-        sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]; # should work with both v1.0 and v1.1
+
+        sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
+        # should work with both v1.0 and v1.1
         gs = []
-        oldts = dict();
+        oldts = dict()
         for el in sel:
             # Add el to a group
-            g = inkex.Group(); gs.append(g);
-            #myi=el.getparent().index(el);
-            el.getparent().insert(len(el.getparent().getchildren()),g);
-            g.insert(0,el); 
+            g = inkex.Group()
+            gs.append(g)
+            # myi=el.getparent().index(el);
+            el.getparent().insert(len(el.getparent().getchildren()), g)
+            g.insert(0, el)
             # Transfer transform to group
-            g.set('transform',el.get('transform'))
-            el.set('transform',None);
+            g.set("transform", el.get("transform"))
+            el.set("transform", None)
             # Remove transform
-            oldts[g.get_id()] = g.composed_transform();
+            oldts[g.get_id()] = g.composed_transform()
             dh.global_transform(g, -oldts[g.get_id()])
-        
-        bbs = dh.Get_Bounding_Boxes(self,True);
+
+        bbs = dh.Get_Bounding_Boxes(self, True)
 
         # dh.debug(dh.getElementById2(self.svg,'feGaussianBlur3441').typename)
         for g in gs:
-            el = g.getchildren()[0];
-            f=inkex.Filter();
-            el.root.defs.insert(0,f);
-            gb=inkex.Filter.GaussianBlur();
-            f.insert(0,gb)
-            fid = f.get_id();
-            
-            r=inkex.Rectangle();
-            g.insert(0,r);
-            
-            bb=bbs[el.get_id()]
-            ct=el.composed_transform();
-            bb=[v/dh.vscale(self.svg) for v in bb]
-            
-            fss = [];
+            el = g.getchildren()[0]
+            f = inkex.Filter()
+            el.root.defs.insert(0, f)
+            gb = inkex.Filter.GaussianBlur()
+            f.insert(0, gb)
+            fid = f.get_id()
+
+            r = inkex.Rectangle()
+            g.insert(0, r)
+
+            bb = bbs[el.get_id()]
+            ct = el.composed_transform()
+            bb = [v / dh.vscale(self.svg) for v in bb]
+
+            fss = []
             for d in dh.descendants2(el):
-                sty = dh.selected_style_local(d);
-                fs = dh.Get_Style_Comp(sty,'font-size');
+                sty = dh.selected_style_local(d)
+                fs = dh.Get_Style_Comp(sty, "font-size")
                 if fs is not None:
-                    fss.append(dh.Get_Composed_Width(d,'font-size'));
-            if len(fss)>0:
-                fs = max(fss);
+                    fss.append(dh.Get_Composed_Width(d, "font-size"))
+            if len(fss) > 0:
+                fs = max(fss)
             else:
-                fs = 12;
-            border = fs*EXTENT/dh.vscale(self.svg);
-            
-            gb.set('stdDeviation',border*STDDEV)
-            pts = [[bb[0]-border,bb[1]-border],\
-                   [bb[0]+bb[2]+border,bb[1]-border],\
-                   [bb[0]+bb[2]+border,bb[1]+bb[3]+border],\
-                   [bb[0]-border,bb[1]+bb[3]+border],\
-                   [bb[0]-border,bb[1]-border]];
-            xs = []; ys = [];
+                fs = 12
+            border = fs * EXTENT / dh.vscale(self.svg)
+
+            gb.set("stdDeviation", border * STDDEV)
+            pts = [
+                [bb[0] - border, bb[1] - border],
+                [bb[0] + bb[2] + border, bb[1] - border],
+                [bb[0] + bb[2] + border, bb[1] + bb[3] + border],
+                [bb[0] - border, bb[1] + bb[3] + border],
+                [bb[0] - border, bb[1] - border],
+            ]
+            xs = []
+            ys = []
             for p in pts:
-                p = (-ct).apply_to_point(p);
+                p = (-ct).apply_to_point(p)
                 xs.append(p.x)
                 ys.append(p.y)
-            r.set('x',str(min(xs)))
-            r.set('y',str(min(ys)))
-            r.set('width',str(max(xs)-min(xs)))
-            r.set('height',str(max(ys)-min(ys)))
-            r.set('rx',str(border))
+            r.set("x", str(min(xs)))
+            r.set("y", str(min(ys)))
+            r.set("width", str(max(xs) - min(xs)))
+            r.set("height", str(max(ys) - min(ys)))
+            r.set("rx", str(border))
             # r.set('style','fill:#ffffff;filter:url(#'+fid+')')
-            r.lstyle = 'fill:#ffffff;filter:url(#'+fid+')'
-            dh.Set_Style_Comp(r,'opacity',str(OPACITY));
-                
+            r.lstyle = "fill:#ffffff;filter:url(#" + fid + ")"
+            dh.Set_Style_Comp(r, "opacity", str(OPACITY))
+
             dh.global_transform(g, oldts[g.get_id()])
 
-                        
-        
         if dispprofile:
             pr.disable()
             s = io.StringIO()
@@ -116,11 +130,11 @@ class TextGhoster(inkex.EffectExtension):
             ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
             ps.print_stats()
             dh.debug(s.getvalue())
-                        
-        
-if __name__ == '__main__':
-    dh.Version_Check('Text ghoster')
+
+
+if __name__ == "__main__":
+    dh.Version_Check("Text ghoster")
     import warnings
+
     warnings.filterwarnings("ignore")
     TextGhoster().run()
-
