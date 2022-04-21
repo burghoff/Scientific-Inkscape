@@ -101,6 +101,7 @@ class FlattenPlots(inkex.EffectExtension):
         pars.add_argument(
             "--testmode", type=inkex.Boolean, default=False, help="Test mode"
         )
+        pars.add_argument("--v", type=str, default="1.2", help="Version for debugging")
 
     def runflatten(self):
         poprest = self.options.deepungroup
@@ -197,14 +198,8 @@ class FlattenPlots(inkex.EffectExtension):
                             dh.Set_Style_Comp(el, "font-family", ",".join(ff))
 
             if fixshattering or mergesubsuper or splitdistant or mergenearby:
-                if self.options.justification == 1:
-                    justification = "middle"
-                elif self.options.justification == 2:
-                    justification = "start"
-                elif self.options.justification == 3:
-                    justification = "end"
-                elif self.options.justification == 4:
-                    justification = None
+                jdict = {1: "middle", 2: "start", 3: "end", 4: None}
+                justification = jdict[self.options.justification]
                 obs = RemoveKerning.remove_kerning(
                     self,
                     obs,
@@ -238,16 +233,6 @@ class FlattenPlots(inkex.EffectExtension):
                                 and tuple(sf.fill) == (255, 255, 255, 1)
                             ):
                                 dh.deleteup(el)
-
-                        # sty=dh.selected_style_local(el);
-                        # fill = sty.get('fill');
-                        # strk = sty.get('stroke');
-                        # opacity = sty.get('opacity')
-                        # if opacity is None: opacity = 1;
-                        # if (fill in ['#ffffff','white'] and \
-                        #     strk in [None,'none'] and \
-                        #     opacity==1):
-                        #     el.delete()
 
         # Remove any unused clips we made, unnecessary white space in document
         # import time
@@ -318,6 +303,16 @@ class FlattenPlots(inkex.EffectExtension):
 
         if self.options.testmode:
             cprofile = True
+            self.options.deepungroup = True
+            self.options.fixtext = True
+            self.options.removerectw = True
+            self.options.splitdistant = True
+            self.options.mergenearby = True
+            self.options.fixshattering = True
+            self.options.mergesubsuper = True
+            self.options.setreplacement = True
+            self.options.replacement = "sans-serif"
+            self.options.justification = 1
 
         if cprofile or lprofile:
             import io

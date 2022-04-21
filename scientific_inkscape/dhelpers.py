@@ -1866,18 +1866,18 @@ def Version_Check(caller):
     prevvp = [vparse(dv[-6:]) for dv in d]
     if (ivp[0] < minsupp[0] or ivp[1] < minsupp[1]) and not (ivp in prevvp):
         msg = (
-            "Scientific Inkscape requires Inkscape version "
+            "For best results, Scientific Inkscape requires Inkscape version "
             + minsupport
             + " or higher. "
-            + "You are running a less-recent version—it might work, it might not.\n\nThis is a one-time message.\n\n"
+            + "You are running an older version—all features may not work as expected.\n\nThis is a one-time message.\n\n"
         )
         inkex.utils.errormsg(msg)
     if (ivp[0] > maxsupp[0] or ivp[1] > maxsupp[1]) and not (ivp in prevvp):
         msg = (
-            "Scientific Inkscape requires Inkscape version "
+            "For best results, Scientific Inkscape requires Inkscape version "
             + maxsupport
             + " or lower. "
-            + "You are running a more-recent version—you must be from the future!\n\n"
+            + "You are running a newer version—you must be from the future!\n\n"
             + "It might work, it might not. Check if there is a more recent version of Scientific Inkscape available. \n\nThis is a one-time message.\n\n"
         )
         inkex.utils.errormsg(msg)

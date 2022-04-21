@@ -1,18 +1,34 @@
 # coding=utf-8
-# For generating a bunch of test files, run python test_flattener.py
 STORE_REFS = False
 fname = 'Other_tests.svg'
 
-MAXPAPERS = 0
+MAXPAPERS = 0000
 flattentext = 'Text_tests.svg'
 flattenrest = 'Acid_tests.svg';
 priority_flatten = []
 exclude_flatten = ['Ohtani_SA_2019_Deep_group.svg',flattentext,flattenrest,fname]
 
+flattenerargs = [("--id=layer1","--testmode=True")]
+aeargs = ("--testmode=True",)
+
 import sys
 # sys.path += ['C:\\Program Files\\Inkscape\\bin\\python39.zip', 'C:\\Program Files\\Inkscape\\bin', 'C:\\Program Files\\Inkscape\\share\\inkscape\\extensions', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape', 'C:\\Users\\burgh\\AppData\\Roaming\\Python\\Python39\\site-packages', 'C:\\Program Files\\Inkscape\\bin\\lib\\site-packages', 'C:\\Program Files\\Inkscape\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape']
-sys.path += ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\Academic-Inkscape\\scientific_inkscape', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'C:\\Users\\burgh\\Downloads\\inkscape-1.2-alpha1_2022-03-17_5b00caea-x64_now\\inkscape\\share\\inkscape\\extensions', 'C:\\Users\\burgh\\Downloads\\inkscape-1.2-alpha1_2022-03-17_5b00caea-x64_now\\inkscape\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'C:\\Users\\burgh\\Downloads\\inkscape-1.2-alpha1_2022-03-17_5b00caea-x64_now\\inkscape\\lib\\python39.zip', 'C:\\Users\\burgh\\Downloads\\inkscape-1.2-alpha1_2022-03-17_5b00caea-x64_now\\inkscape\\lib\\python3.9', 'C:\\Users\\burgh\\Downloads\\inkscape-1.2-alpha1_2022-03-17_5b00caea-x64_now\\inkscape\\lib\\python3.9\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\Academic-Inkscape\\scientific_inkscape', 'C:\\Users\\burgh\\Downloads\\inkscape-1.2-alpha1_2022-03-17_5b00caea-x64_now\\inkscape\\lib\\python3.9\\site-packages', 'C:\\Users\\burgh\\Downloads\\inkscape-1.2-alpha1_2022-03-17_5b00caea-x64_now\\inkscape\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape']
-sys.path += ['C:\\Users\\burgh\\Downloads\\inkscape-1.2-alpha1_2022-03-17_5b00caea-x64_now\\inkscape\\bin']
+
+version = '1.2'
+
+if version=='1.0':
+    sys.path += ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python38.zip', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\lib-dynload', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\site-packages', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']
+    sys.path += ['D:\\Inkscapes\\inkscape-1.0.2-2-x64\\bin']
+    flattenerargs[0] += ("--v=1.0",)
+    aeargs += ("--v=1.0",)
+elif version == '1.1':
+    sys.path += ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python39.zip', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\site-packages', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']
+    sys.path += ['D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\bin']
+    aeargs += ("--v=1.1",)
+else:
+    sys.path += ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\lib\\python39.zip', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\lib\\python3.9', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\lib\\python3.9\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\lib\\python3.9\\site-packages', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']
+    sys.path += ['D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\bin']
+
 
 from flatten_plots import FlattenPlots
 from scale_plots import ScalePlots
@@ -20,10 +36,12 @@ from text_ghoster import TextGhoster
 from combine_by_color import CombineByColor
 from favorite_markers import FavoriteMarkers
 from homogenizer import Homogenizer
+from autoexporter import AutoExporter
 from inkex.tester import ComparisonMixin, TestCase
 from inkex.tester.filters import CompareWithoutIds,CompareNumericFuzzy
 from inkex.tester.filters import Compare 
 
+# print(flattenerargs)
 
 import os
 def get_files(dirin):
@@ -68,15 +86,40 @@ class CompareNumericFuzzy2(Compare):
 class TestFlattenerText(ComparisonMixin, TestCase):
     effect_class = FlattenPlots
     compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    comparisons = [("--id=layer1","--testmode=True")]
+    comparisons = flattenerargs
     compare_file = ['svg/'+flattentext]
     
 
 class TestFlattenerRest(ComparisonMixin, TestCase):
     effect_class = FlattenPlots
     compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    comparisons = [("--id=layer1","--testmode=True")]
+    comparisons = flattenerargs
     compare_file = ['svg/'+flattenrest]
+    
+
+class TestFlattenerPapers(ComparisonMixin, TestCase):
+    effect_class = FlattenPlots
+    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+    comparisons = flattenerargs
+    allfs = get_files(os.getcwd()+'/data/svg');
+    badfs = [v for v in allfs if any([es in v for es in exclude_flatten])];
+    for b in badfs:
+        allfs.remove(b)
+    fonly = [os.path.split(f)[1] for f in allfs];
+    for p in reversed(priority_flatten):
+        if p in fonly:
+            myi = fonly.index(p);
+            myv = allfs[myi];
+            allfs.remove(myv);
+            allfs=[myv]+allfs
+            myv = fonly[myi];
+            fonly.remove(myv);
+            fonly=[myv]+fonly
+    compare_file = []
+    for f in allfs:
+        spl=os.path.split(f);
+        compare_file.append('svg/'+spl[1])
+    compare_file = compare_file[0:MAXPAPERS]
     
 
 class TestScaleCorrection(ComparisonMixin, TestCase):  
@@ -135,36 +178,19 @@ class TestHomogenizer(ComparisonMixin, TestCase):
     compare_file = ['svg/'+fname]
     comparisons = [
         ("--id=layer1","--fontsize=7","--setfontsize=True","--fixtextdistortion=True","--fontmodes=2", \
-         "--setfontfamily=True","--fontfamily=Avenir",\
-         "--setstroke=True","--setstrokew=0.75","--strokemodes=2","--fusetransforms=True")
+          "--setfontfamily=True","--fontfamily=Avenir",\
+          "--setstroke=True","--setstrokew=0.75","--strokemodes=2","--fusetransforms=True")
+    ]     
+    
+class TestAutoExporter(ComparisonMixin, TestCase):
+    effect_class = AutoExporter
+    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+    compare_file = ['svg/'+fname]
+    comparisons = [
+        aeargs
     ]    
 
- 
-class TestFlattenerPapers(ComparisonMixin, TestCase):
-    effect_class = FlattenPlots
-    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    comparisons = [("--id=layer1","--testmode=True")]
-    
-    allfs = get_files(os.getcwd()+'/data/svg');
-    badfs = [v for v in allfs if any([es in v for es in exclude_flatten])];
-    for b in badfs:
-        allfs.remove(b)
-    fonly = [os.path.split(f)[1] for f in allfs];
-    for p in reversed(priority_flatten):
-        if p in fonly:
-            myi = fonly.index(p);
-            myv = allfs[myi];
-            allfs.remove(myv);
-            allfs=[myv]+allfs
-            myv = fonly[myi];
-            fonly.remove(myv);
-            fonly=[myv]+fonly
-    
-    compare_file = []
-    for f in allfs:
-        spl=os.path.split(f);
-        compare_file.append('svg/'+spl[1])
-    compare_file = compare_file[0:MAXPAPERS]
+
 
 
 if __name__ == "__main__":
@@ -178,7 +204,26 @@ if __name__ == "__main__":
                     fpath = os.path.abspath('data/'+f);
                     args = list(c)+[fpath]
                     
-                    cmpfile = os.path.split(obj().get_compare_cmpfile(list(c) + [str(f)[4:]]))[1]
+                    try:
+                        cmpfile = os.path.split(obj().get_compare_cmpfile(list(c) + [str(f)[4:]]))[1]
+                    except:
+                        # cmpfile = os.path.split(obj().get_compare_outfile(list(c) + [str(f)[4:]]))[1]
+                        # Modified get_compare_outfile from v1.0 and 1.1
+                        import hashlib
+                        myobj = obj();
+                        myargs = list(c) + [str(f)[4:]];
+                       
+                        opstr = '__'.join(myargs)\
+                                    .replace(myobj.tempdir, 'TMP_DIR')\
+                                    .replace(myobj.datadir(), 'DAT_DIR')
+                        opstr = re.sub(r'[^\w-]', '__', opstr)
+                        if opstr:
+                            if len(opstr) > 127:
+                                # avoid filename-too-long error
+                                opstr = hashlib.md5(opstr.encode('latin1')).hexdigest()
+                            opstr = '__' + opstr
+                        cmpfile = os.path.split(f"{myobj.effect_name}{opstr}.out")[1] 
+                        
                     
                     pout = 'data/refs/'+cmpfile
                     pout2 = 'data/svg/outputs/'+cmpfile.replace('.out','.svg')

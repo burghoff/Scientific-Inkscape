@@ -68,8 +68,6 @@ def joinmod(dirc, f):
     return os.path.join(os.path.abspath(dirc), f)
 
 
-# def timenow():
-#     return datetime.datetime.now().timestamp();
 def overwrite_svg(svg, fn):
     try:
         os.remove(fn)
@@ -81,7 +79,7 @@ def overwrite_svg(svg, fn):
 from inkex import load_svg
 
 
-def load_svg_clear_dict(fin):
+def get_svg(fin):
     svg = load_svg(fin).getroot()
     # print(svg.iddict)
     # dh.iddict = None # only valid one svg at a time
@@ -93,25 +91,54 @@ class AutoExporter(inkex.EffectExtension):
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
         pars.add_argument("--watchdir", help="Watch directory")
         pars.add_argument("--writedir", help="Write directory")
-        pars.add_argument("--usepdf", type=inkex.Boolean, help="Export PDF?")
-        pars.add_argument("--usepng", type=inkex.Boolean, help="Export PNG?")
-        pars.add_argument("--useemf", type=inkex.Boolean, help="Export EMF?")
-        pars.add_argument("--useeps", type=inkex.Boolean, help="Export EPS?")
-        pars.add_argument("--usesvg", type=inkex.Boolean, help="Export SVG?")
-        pars.add_argument("--dpi", help="Rasterization DPI")
-        pars.add_argument("--dpi_im", help="Resampling DPI")
+        pars.add_argument(
+            "--usepdf", type=inkex.Boolean, default=False, help="Export PDF?"
+        )
+        pars.add_argument(
+            "--usepng", type=inkex.Boolean, default=False, help="Export PNG?"
+        )
+        pars.add_argument(
+            "--useemf", type=inkex.Boolean, default=False, help="Export EMF?"
+        )
+        pars.add_argument(
+            "--useeps", type=inkex.Boolean, default=False, help="Export EPS?"
+        )
+        pars.add_argument(
+            "--usesvg", type=inkex.Boolean, default=False, help="Export SVG?"
+        )
+        pars.add_argument("--dpi", default=600, help="Rasterization DPI")
+        pars.add_argument("--dpi_im", default=300, help="Resampling DPI")
         pars.add_argument(
             "--imagemode", type=int, default=1, help="Embedded image handling"
         )
         pars.add_argument(
-            "--thinline", type=inkex.Boolean, help="Prevent thin line enhancement"
+            "--thinline",
+            type=inkex.Boolean,
+            default=True,
+            help="Prevent thin line enhancement",
         )
         pars.add_argument(
-            "--texttopath", type=inkex.Boolean, help="Prevent thin line enhancement"
+            "--texttopath", type=inkex.Boolean, default=False, help="Text to paths?"
         )
-        pars.add_argument("--exportnow", type=inkex.Boolean, help="Export me now")
+        pars.add_argument(
+            "--exportnow", type=inkex.Boolean, default=False, help="Export me now"
+        )
+        pars.add_argument(
+            "--testmode", type=inkex.Boolean, default=False, help="Test mode?"
+        )
+        pars.add_argument("--v", type=str, default="1.2", help="Version for debugging")
 
     def effect(self):
+        # self.options.testmode = True;
+        if self.options.testmode:
+            self.options.usesvg = True
+            self.options.thinline = True
+            self.options.imagemode = 1
+            self.options.texttopath = True
+            self.options.exportnow = True
+
+        # dh.idebug(self.options.output.name)
+
         if dispprofile:
             import cProfile, pstats, io
             from pstats import SortKey
@@ -226,7 +253,10 @@ class AutoExporter(inkex.EffectExtension):
                     )
 
         else:
-            pth = dh.Get_Current_File(self)
+            if not (self.options.testmode):
+                pth = dh.Get_Current_File(self)
+            else:
+                pth = self.options.input_file
             options = (
                 False,
                 dpi,
@@ -250,6 +280,45 @@ class AutoExporter(inkex.EffectExtension):
             ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
             ps.print_stats()
             dh.debug(s.getvalue())
+
+        if self.options.testmode:
+            nf = os.path.abspath(pth[0:-4] + "_smaller.svg")
+            # nf2 = nf[0:-12]+'.pdf';
+            stream = self.options.output
+
+            if isinstance(stream, str):
+                # Copy the new file
+                import shutil
+
+                shutil.copyfile(nf, self.options.output)
+            else:
+                # Write to the output stream
+                svg2 = get_svg(nf)
+                import lxml
+
+                newdoc = lxml.etree.tostring(svg2, pretty_print=True)
+                try:
+                    stream.write(newdoc)
+                except TypeError:
+                    # we hope that this happens only when document needs to be encoded
+                    stream.write(newdoc.encode("utf-8"))  # type: ignore
+                self.options.output = None
+
+            os.remove(nf)
+            # if os.path.exists(nf2): os.remove(nf2)
+            # dh.idebug((self.options.output))
+            # raise TypeError
+            # self.options.output = None;
+            # for k in list(self.svg):
+            #     k.delete();
+            # for k in list(svg2):
+            #     self.svg.append(k);
+            # for a in self.svg.attrib.keys():
+            #     del self.svg[a]
+            # for a in svg2.attrib.keys():
+            #     self.svg[a] = svg2[a]
+            # overwrite_svg(svg2, self.options.input_file)
+            # self.options.output = 'testoutput'
 
     def export_all(self, bfn, svgfnin, outtemplate, exp_fmts, options):
         (
@@ -329,7 +398,7 @@ class AutoExporter(inkex.EffectExtension):
         #            print(basetemp)
 
         if thinline_dehancement and notpng:
-            svg = load_svg_clear_dict(fin)
+            svg = get_svg(fin)
             self.Thinline_Dehancement(svg, fformat)
             tmp1 = basetemp.replace(".svg", "_tld" + fformat[0] + ".svg")
             overwrite_svg(svg, tmp1)
@@ -413,7 +482,7 @@ class AutoExporter(inkex.EffectExtension):
             import image_helpers as ih
 
             # print(ih.hasPIL)
-            svg = load_svg_clear_dict(fin)
+            svg = get_svg(fin)
             els = [
                 el
                 for el in dh.visible_descendants(svg)
@@ -599,7 +668,7 @@ class AutoExporter(inkex.EffectExtension):
 
         # if (text_to_paths or thinline_dehancement) and notpng:
         if text_to_paths:
-            svg = load_svg_clear_dict(fin)
+            svg = get_svg(fin)
             ds = dh.visible_descendants(svg)
 
             tels = [
@@ -628,7 +697,7 @@ class AutoExporter(inkex.EffectExtension):
 
             if text_to_paths:
                 # Text converted to paths are a group of characters. Combine them all
-                svg = load_svg_clear_dict(tmp2)
+                svg = get_svg(tmp2)
                 for elid in tels:
                     el = dh.getElementById2(svg, elid)
                     if el is not None and len(list(el)) > 0:

@@ -39,7 +39,7 @@
         
         <label appearance="header">Other options</label>
         <param name="texttopath" type="bool" gui-text="Convert text to paths">false</param> 
-        <label>Conversion of text to paths is recommended for EMFs.</label>      
+        <label>Conversion of text to paths is recommended for EMFs and for SVGs that will be inserted into Office products.</label>      
         <param name="thinline" type="bool" gui-text="Prevent thin line enhancement (recommended)">true</param>  
         <label>Some PDF renderers thicken lines at certain zooms; this option makes your lines impervious to this feature.</label>
         
