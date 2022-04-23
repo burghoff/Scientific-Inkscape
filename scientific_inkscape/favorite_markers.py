@@ -409,7 +409,7 @@ class FavoriteMarkers(inkex.EffectExtension):
                         ),
                     )
                 ]
-                sty = (sel[0].cspecified_style)
+                sty = sel[0].cspecified_style
 
                 ms = self.get_marker_props(sty.get("marker-start"))
                 mm = self.get_marker_props(sty.get("marker-mid"))

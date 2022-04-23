@@ -581,9 +581,6 @@ class LineList:
                             if c.loc.el == k and c.loc.tt == "tail" and c.loc.ind == ii
                         ]
                         if cnt < len(dxy):
-                            # if dxy[cnt]==30: dh.debug(dxysrc.get_id())
-                            # dh.idebug([[c.loc.el.get_id(),c.loc.tt,c.loc.ind] for c in allcs])
-                            # quit()
                             if xy == "dx":
                                 thec[0].dx = dxy[cnt]
                             if xy == "dy":
@@ -1282,7 +1279,7 @@ class tword:
                 c.delc()
 
                 ntype = copy(type)
-                otype = dh.Get_Style_Comp(c.sty, "baseline-shift")
+                otype = c.sty.get("baseline-shift")
                 if otype in ["super", "sub"] and type == "normal":
                     ntype = otype
 
@@ -1697,7 +1694,6 @@ class tchar:
         # actual style
         self.nsty = nsty
         # normalized style
-        # self.nstyc = dh.Set_Style_Comp(nsty,'fill',dh.Get_Style_Comp(sty,'fill')) # with color
         self.loc = loc
         # true location: [parent, 'text' or 'tail', index]
         self.ch = prop.caph

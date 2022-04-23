@@ -152,7 +152,27 @@ class FlattenPlots(inkex.EffectExtension):
             return
 
         if poprest:
-            for g in list(reversed(gs)):
+            # def depth_iter(element):
+            #     stack = []
+            #     stack.append(iter([element]))
+            #     while stack:
+            #         e = next(stack[-1], None)
+            #         if e == None:
+            #             stack.pop()
+            #         else:
+            #             stack.append(iter(e))
+            #             yield (e, len(stack) - 1)
+            # gs2 = []; depths = []
+            # for el in sel:
+            #     for d, depth in depth_iter(el):
+            #         if isinstance(d,(Group)):
+            #             gs2.append(d)
+            #             depths.append(depth)
+            # sgs2 = [x for _, x in sorted(zip(depths, gs2), key=lambda pair: pair[0])]  # ascending depths
+            
+            
+            for g in reversed(gs):
+                # dh.idebug(g.get_id())
                 ks = g.getchildren()
                 if any([isinstance(k, lxml.etree._Comment) for k in ks]) and all(
                     [
@@ -185,7 +205,7 @@ class FlattenPlots(inkex.EffectExtension):
                         isinstance(el, (TextElement, Tspan))
                         and el.getparent() is not None
                     ):  # textelements not deleted
-                        ff = (el.cspecified_style).get("font-family")
+                        ff = el.cspecified_style.get("font-family")
                         dh.Set_Style_Comp(el, "-inkscape-font-specification", None)
                         if ff == None or ff == "none" or ff == "":
                             dh.Set_Style_Comp(el, "font-family", replacement)

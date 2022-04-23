@@ -167,7 +167,7 @@ class Homogenizer(inkex.EffectExtension):
                             mysz = szd[d.get_id()]
                             maxsz = max(maxsz, mysz)
 
-                            sty = (d.ccascaded_style)
+                            sty = d.ccascaded_style
                             bshift = sty.get("baseline-shift")
                             if bshift in ["sub", "super"]:
                                 psz = szd[d.getparent().get_id()]
@@ -203,8 +203,7 @@ class Homogenizer(inkex.EffectExtension):
                     newsize = self.svg.unittouu("1pt") * fontsize
                 else:
                     newsize = actualsize * (fontsize / 100)
-                fs = dh.Get_Style_Comp(el.cstyle, "font-size")
-                # fs = dh.Get_Style_Comp(Style2(el.get('style')),'font-size');
+                fs = el.cstyle.get("font-size")
                 if fs is None or not ("%" in fs):  # keep sub/superscripts relative size
                     dh.Set_Style_Comp(el, "font-size", str(newsize / sf) + "px")
 
@@ -233,19 +232,6 @@ class Homogenizer(inkex.EffectExtension):
                 ):
                     dh.Replace_Non_Ascii_Font(el, "Avenir Next, Arial")
 
-        #        if setreplacement:
-        #            for el in sel:
-        #                ff = dh.Get_Style_Comp(el.get('style'),'font-family');
-        #                if ff==None or ff=='none' or ff=='':
-        #                    dh.Set_Style_Comp(el,'font-family',replacement)
-        #                elif ff==replacement:
-        #                    pass
-        #                else:
-        #                    ff = ff.split(',');
-        #                    ff = [x.strip('\'') for x in ff]
-        #                    ff.append(replacement)
-        #                    ff = ['\''+x+'\'' for x in ff]
-        #                    dh.Set_Style_Comp(el,'font-family',','.join(ff))
 
         if setfontfamily or setfontsize or fixtextdistortion:
             bbs2 = dh.Get_Bounding_Boxes(self, True)
@@ -305,19 +291,6 @@ class Homogenizer(inkex.EffectExtension):
                         el, "stroke-width", str(newsize / sfd[elid]) + "px"
                     )
 
-            # nw = self.svg.unittouu(str(setstrokew)+setstrokeu)
-            # for el in sela:
-            #     sty = (el.cspecified_style);
-            #     strk = sty.get('stroke');
-            #     if strk is not None:
-            #         actw = dh.Get_Composed_Width(el,'stroke-width');
-            #         nomw,u = dh.uparse(dh.Get_Style_Comp(el.style,'stroke-width'));
-            #         if nomw is None or nomw==0 or actw is None or actw==0: # stroke width unassigned
-            #             dh.Set_Style_Comp(el,'stroke-width','1')
-            #             actw = dh.Get_Composed_Width(el,'stroke-width');
-            #             nomw,u = dh.uparse(dh.Get_Style_Comp(el.style,'stroke-width'));
-            #         sw = dh.urender(nw*nomw/actw,u)
-            #         dh.Set_Style_Comp(el,'stroke-width',sw)
 
         if self.options.fusetransforms:
             for el in sela:

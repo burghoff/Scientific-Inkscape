@@ -8,18 +8,16 @@ flattenrest = 'Acid_tests.svg';
 priority_flatten = ['Kazakov_2022_Illustrator_a.svg']
 exclude_flatten = ['Ohtani_SA_2019_Deep_group.svg',flattentext,flattenrest,fname]
 
-flattenerargs = [("--id=layer1","--testmode=True")]
+flattenerargs = ("--id=layer1","--testmode=True")
 aeargs = ("--testmode=True",)
-
-import sys
-# sys.path += ['C:\\Program Files\\Inkscape\\bin\\python39.zip', 'C:\\Program Files\\Inkscape\\bin', 'C:\\Program Files\\Inkscape\\share\\inkscape\\extensions', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape', 'C:\\Users\\burgh\\AppData\\Roaming\\Python\\Python39\\site-packages', 'C:\\Program Files\\Inkscape\\bin\\lib\\site-packages', 'C:\\Program Files\\Inkscape\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape']
 
 version = '1.0'
 
+import sys
 if version=='1.0':
     sys.path += ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python38.zip', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\lib-dynload', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\site-packages', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']
     sys.path += ['D:\\Inkscapes\\inkscape-1.0.2-2-x64\\bin']
-    flattenerargs[0] += ("--v=1.0",)
+    flattenerargs += ("--v=1.0",)
     aeargs += ("--v=1.0",)
 elif version == '1.1':
     sys.path += ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python39.zip', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\site-packages', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']
@@ -38,26 +36,25 @@ from favorite_markers import FavoriteMarkers
 from homogenizer import Homogenizer
 from autoexporter import AutoExporter
 from inkex.tester import ComparisonMixin, TestCase
-from inkex.tester.filters import CompareWithoutIds,CompareNumericFuzzy
+from inkex.tester.filters import CompareWithoutIds
 from inkex.tester.filters import Compare 
 
-# print(flattenerargs)
-
-import os
+import os,re
 def get_files(dirin):
     fs = []
     for f in os.scandir(dirin):
         if f.name[-4:]=='.svg':
             fs.append(os.path.join(os.path.abspath(dirin),f.name))
     return fs
-
-import re
 class CompareNeg0(Compare):
     """Convert negative 0s into regular 0s"""
     @staticmethod
     def filter(contents):
         c2 = re.sub(rb'-0 ', b"0 ", contents)
-        return c2
+        # c3 = re.sub(rb'-0)', b"0)", c2)
+        c3 = c2.replace(b'-0)',b'0)')
+        c4 = re.sub(rb'-0,', b"0,", c3)
+        return c4
 class CompareDx0(Compare):
     """Remove empty dx/dy values"""
     @staticmethod
@@ -68,12 +65,7 @@ class CompareDx0(Compare):
 class CompareNumericFuzzy2(Compare):
     """
     Turn all numbers into shorter standard formats
-
-    1.2345678 -> 1.2346
-    1.2300 -> 1.23, 50.0000 -> 50.0
-    50.0 -> 50
     """
-    # NUM_DIGITS = 1;
     @staticmethod
     def filter(contents):
         func = lambda m: b"%.3f" % (float(m.group(0)))
@@ -86,21 +78,21 @@ class CompareNumericFuzzy2(Compare):
 class TestFlattenerText(ComparisonMixin, TestCase):
     effect_class = FlattenPlots
     compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    comparisons = flattenerargs
+    comparisons = [flattenerargs]
     compare_file = ['svg/'+flattentext]
     
 
 class TestFlattenerRest(ComparisonMixin, TestCase):
     effect_class = FlattenPlots
     compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    comparisons = flattenerargs
+    comparisons = [flattenerargs]
     compare_file = ['svg/'+flattenrest]
     
 
 class TestFlattenerPapers(ComparisonMixin, TestCase):
     effect_class = FlattenPlots
     compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    comparisons = flattenerargs
+    comparisons = [flattenerargs]
     allfs = get_files(os.getcwd()+'/data/svg');
     badfs = [v for v in allfs if any([es in v for es in exclude_flatten])];
     for b in badfs:

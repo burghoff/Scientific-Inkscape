@@ -89,7 +89,7 @@ class TextGhoster(inkex.EffectExtension):
             fss = []
             for d in dh.descendants2(el):
                 sty = d.cspecified_style
-                fs = dh.Get_Style_Comp(sty, "font-size")
+                fs = sty.get("font-size")
                 if fs is not None:
                     fss.append(dh.Get_Composed_Width(d, "font-size"))
             if len(fss) > 0:

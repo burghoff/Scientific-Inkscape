@@ -1,4 +1,5 @@
 # A copy of the v1.1 Style
+# DB: Added some instance checks to reduce number of inits that need to be called
 
 # Copyright (C) 2005 Aaron Spike, aaron@ekips.org
 
@@ -18,7 +19,6 @@
 
 import inkex
 
-
 class Style2(inkex.OrderedDict):
     """A list of style directives"""
 
@@ -27,6 +27,7 @@ class Style2(inkex.OrderedDict):
     unit_props = "stroke-width"
 
     def __init__(self, style=None, callback=None, **kw):
+        # inkex.utils.debug('init')
         # This callback is set twice because this is 'pre-initial' data (no callback)
         self.callback = None
         # Either a string style or kwargs (with dashes as underscores).
@@ -63,7 +64,9 @@ class Style2(inkex.OrderedDict):
     def __add__(self, other):
         """Add two styles together to get a third, composing them"""
         ret = self.copy()
-        ret.update(Style2(other))
+        if not(isinstance(other, Style2)):
+            other = Style2(other)
+        ret.update(other)
         return ret
 
     def __iadd__(self, other):
@@ -96,7 +99,9 @@ class Style2(inkex.OrderedDict):
 
     def update(self, other):
         """Make sure callback is called when updating"""
-        super().update(Style2(other))
+        if not(isinstance(other, Style2)):
+            other = Style2(other)
+        super().update(other)
         if self.callback is not None:
             self.callback(self)
 
@@ -158,3 +163,11 @@ class Style2(inkex.OrderedDict):
         for prop, value in self.items():
             style[prop] = self.interpolate_prop(other, fraction, prop)
         return style
+
+
+# Replace Style wrapped attr with Style2
+inkex.BaseElement.WRAPPED_ATTRS = (
+    ('transform', inkex.Transform),
+    ('style', Style2),
+    ('classes', 'class', inkex.styles.Classes),
+)
