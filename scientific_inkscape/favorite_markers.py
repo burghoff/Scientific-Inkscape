@@ -409,7 +409,7 @@ class FavoriteMarkers(inkex.EffectExtension):
                         ),
                     )
                 ]
-                sty = dh.selected_style_local(sel[0])
+                sty = (sel[0].cspecified_style)
 
                 ms = self.get_marker_props(sty.get("marker-start"))
                 mm = self.get_marker_props(sty.get("marker-mid"))
@@ -447,7 +447,7 @@ class FavoriteMarkers(inkex.EffectExtension):
             inxd = f.write(newinx)
             f.close()
 
-            dh.debug(
+            dh.idebug(
                 "Templates successfully updated! Update will take effect when Inkscape is restarted."
             )
         else:
