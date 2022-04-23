@@ -77,7 +77,7 @@ class CombineByColor(inkex.EffectExtension):
         ]
 
         merged = [False for el in els]
-        stys = [dh.selected_style_local(el) for el in els]
+        stys = [(el.cspecified_style) for el in els]
         sfs = [dh.get_strokefill(els[ii], stys[ii]) for ii in range(len(els))]
         # dh.debug(lightness_threshold)
         for ii in reversed(range(len(els))):  # reversed so that order is preserved

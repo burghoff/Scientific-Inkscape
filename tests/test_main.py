@@ -2,10 +2,10 @@
 STORE_REFS = False
 fname = 'Other_tests.svg'
 
-MAXPAPERS = 0000
+MAXPAPERS = 0
 flattentext = 'Text_tests.svg'
 flattenrest = 'Acid_tests.svg';
-priority_flatten = []
+priority_flatten = ['Kazakov_2022_Illustrator_a.svg']
 exclude_flatten = ['Ohtani_SA_2019_Deep_group.svg',flattentext,flattenrest,fname]
 
 flattenerargs = [("--id=layer1","--testmode=True")]
@@ -14,7 +14,7 @@ aeargs = ("--testmode=True",)
 import sys
 # sys.path += ['C:\\Program Files\\Inkscape\\bin\\python39.zip', 'C:\\Program Files\\Inkscape\\bin', 'C:\\Program Files\\Inkscape\\share\\inkscape\\extensions', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape', 'C:\\Users\\burgh\\AppData\\Roaming\\Python\\Python39\\site-packages', 'C:\\Program Files\\Inkscape\\bin\\lib\\site-packages', 'C:\\Program Files\\Inkscape\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape']
 
-version = '1.2'
+version = '1.0'
 
 if version=='1.0':
     sys.path += ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python38.zip', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\lib-dynload', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\site-packages', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']

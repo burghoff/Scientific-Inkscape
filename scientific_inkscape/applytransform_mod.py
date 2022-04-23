@@ -53,7 +53,7 @@ class ApplyTransform(inkex.EffectExtension):
         if "style" in node.attrib:
             # style = node.attrib.get('style')
             # style = dict(Style2.parse_str(style))
-            style = node.lstyle
+            style = node.cstyle
             update = False
             if "stroke-width" in style:
                 try:
@@ -86,7 +86,7 @@ class ApplyTransform(inkex.EffectExtension):
                     pass
             if update:
                 # node.attrib['style'] = Style2(style).to_str()
-                node.lstyle = style
+                node.cstyle = style
 
     def transform_clipmask(self, el, mask=False):
         if not (mask):
@@ -94,33 +94,31 @@ class ApplyTransform(inkex.EffectExtension):
         else:
             cm = "mask"
         clippathurl = el.get(cm)
-        if clippathurl is not None and el.get("transform") is not None:
-            svg = dh.get_parent_svg(el)
+        if clippathurl is not None and el.ctransform is not None:
+            svg = el.croot
             clippath = dh.getElementById2(svg, clippathurl[5:-1])
             if clippath is not None:
                 d = dh.duplicate2(clippath)
-                el.svg.defs2.append(d)
+                # el.croot.defs2.append(d)
                 # dh.idebug(el.get_id2())
                 clippathurl = "url(#" + d.get_id2() + ")"
                 el.set(cm, clippathurl)
                 dh.fix_css_clipmask(el, mask=mask)
                 for k in d.getchildren():
-                    if k.get("transform") is not None:
-                        tr = Transform(el.get("transform")) @ Transform(
-                            k.get("transform")
-                        )
+                    # if k.get("transform") is not None:
+                    #     tr = Transform(el.get("transform")) @ Transform(
+                    #         k.get("transform")
+                    #     )
+                    # else:
+                    #     tr = Transform(el.get("transform"))
+                    if k.ctransform is not None:
+                        tr = el.ctransform @ k.ctransform
                     else:
-                        tr = Transform(el.get("transform"))
-                    k.ltransform = tr
-                    # k.set('transform',tr);
+                        tr = el.ctransform
+                    k.ctransform = tr
 
     def recursiveFuseTransform(
-        self,
-        node,
-        transf=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-        irange=None,
-        trange=None,
-        applytostroke=True,
+        self, node, transf=NULL_TRANSFORM, irange=None, trange=None, applytostroke=True,
     ):
         # Modification by David Burghoff:
         # When applytostroke enabled, transform goes onto stroke/dashes, keeping it looking the same
@@ -134,10 +132,10 @@ class ApplyTransform(inkex.EffectExtension):
             self.transform_clipmask(node, mask=False)
             self.transform_clipmask(node, mask=True)
 
-            transf = Transform(transf) @ Transform(node.get("transform", None))
-            node.ltransform = None
-            # if 'transform' in node.attrib:
-            #     del node.attrib['transform']
+            transf = (
+                Transform(transf) @ node.ctransform
+            )  # Transform(node.get("transform", None))
+            node.ctransform = None
             node = ApplyTransform.remove_attrs(node)
 
             if not (transf.b == 0 and transf.c == 0) and isinstance(
@@ -157,7 +155,9 @@ class ApplyTransform(inkex.EffectExtension):
                         p = Path(p).to_absolute()
                         pnew = []
                         for ii in range(len(irange)):
-                            xf = trange[ii] @ Transform(node.get("transform", None))
+                            xf = (
+                                trange[ii] @ node.ctransform
+                            )  # Transform(node.get("transform", None))
                             pnew += Path(p[irange[ii][0] : irange[ii][1]]).transform(
                                 xf, True
                             )

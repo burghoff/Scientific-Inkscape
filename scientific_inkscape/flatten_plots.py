@@ -185,7 +185,7 @@ class FlattenPlots(inkex.EffectExtension):
                         isinstance(el, (TextElement, Tspan))
                         and el.getparent() is not None
                     ):  # textelements not deleted
-                        ff = dh.selected_style_local(el).get("font-family")
+                        ff = (el.cspecified_style).get("font-family")
                         dh.Set_Style_Comp(el, "-inkscape-font-specification", None)
                         if ff == None or ff == "none" or ff == "":
                             dh.Set_Style_Comp(el, "font-family", replacement)

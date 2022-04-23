@@ -92,7 +92,7 @@ class LineList:
         self.ismlinkscape = self.isinkscape and len(self.lns) > 1
         # multi-line Inkscape
 
-        sty = dh.selected_style_local(el)
+        sty = el.cspecified_style
         self.issvg2 = (
             sty.get("inline-size") is not None or sty.get("shape-inside") is not None
         )
@@ -309,8 +309,8 @@ class LineList:
                     if tt == 0:
                         sel = pd[tel]
                         # tails get their sty from the parent of the element the tail belongs to
-                    sty = dh.selected_style_local(sel)
-                    ct = sel.lcomposed_transform
+                    sty = sel.cspecified_style
+                    ct = sel.ccomposed_transform
                     fs, sf, ct, ang = dh.Get_Composed_Width(
                         sel, "font-size", 4, styin=sty, ctin=ct
                     )
@@ -506,7 +506,7 @@ class LineList:
     def Position_Check(self):
         if self.lns is not None and len(self.lns) > 0:
             if self.lns[0].xsrc is not None:
-                svg = dh.get_parent_svg(self.lns[0].xsrc)
+                svg = self.lns[0].xsrc.croot
                 # # Word highlight
                 # for ln in self.lns:
                 #     for w in ln.ws:
@@ -1224,7 +1224,7 @@ class tword:
             c.loc = cloc(c.loc.el, c.loc.tt, c.loc.ind + 1)  # updated location
         else:
             c.loc = cloc(totail, "tail", 0)
-        c.sty = dh.specified_style2(c.loc.pel)
+        c.sty = c.loc.pel.cspecified_style
 
         # Add to line
         myi = self.ln.cs.index(lc) + 1  # insert after last character
@@ -1802,8 +1802,8 @@ class tchar:
                 cel = self.loc.pel
                 bshft = 0
                 while cel != self.ln.ll.textel:  # sum all ancestor baseline-shifts
-                    if "baseline-shift" in cel.lstyle:
-                        bshft += tchar.get_baseline(cel.lstyle, cel.getparent())
+                    if "baseline-shift" in cel.cstyle:
+                        bshft += tchar.get_baseline(cel.cstyle, cel.getparent())
                     cel = cel.getparent()
             else:
                 bshft = 0
@@ -1943,11 +1943,11 @@ class tchar:
                 ca.loc = cloc(t, "tail", ii - myi - 1)
         self.loc = cloc(t, "text", 0)  # update my own location
 
-        spfd = dh.specified_style2(t)
+        spfd = t.cspecified_style
         # make sure inheritance doesn't override letter-spacing
         if "letter-spacing" in spfd and "letter-spacing" not in sty:
             sty["letter-spacing"] = "0px"
-        t.lstyle = sty
+        t.cstyle = sty
 
         self.sty = sty
         self.lsp = None
@@ -2186,7 +2186,7 @@ class Character_Table:
                         if tt == 0:
                             sel = pd[tel]
                             # tails get their sty from the parent of the element the tail belongs to
-                        sty = dh.selected_style_local(sel)
+                        sty = sel.cspecified_style
                         sty = Character_Table.normalize_style(sty)
                         ctable[sty] = list(set(ctable.get(sty, []) + list(txt)))
                         if sty not in pctable:
@@ -2473,7 +2473,7 @@ def noneid(el):
 
 
 #     def Parse_Lines(self,el,lns=None,debug=False):
-#         sty = dh.selected_style_local(el);
+#         sty = (el.cspecified_style);
 #         ct = el.composed_transform();
 #         fs,sf,ct,ang = dh.Get_Composed_Width(el,'font-size',4,styin=sty,ctin=ct); #dh.debug(el.get_id()); dh.debug(el.composed_transform())
 #         lh = dh.Get_Composed_LineHeight(el,styin=sty,ctin=ct);

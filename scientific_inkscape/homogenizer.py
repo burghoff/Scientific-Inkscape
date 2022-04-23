@@ -167,7 +167,7 @@ class Homogenizer(inkex.EffectExtension):
                             mysz = szd[d.get_id()]
                             maxsz = max(maxsz, mysz)
 
-                            sty = dh.cascaded_style2(d)
+                            sty = (d.ccascaded_style)
                             bshift = sty.get("baseline-shift")
                             if bshift in ["sub", "super"]:
                                 psz = szd[d.getparent().get_id()]
@@ -203,7 +203,7 @@ class Homogenizer(inkex.EffectExtension):
                     newsize = self.svg.unittouu("1pt") * fontsize
                 else:
                     newsize = actualsize * (fontsize / 100)
-                fs = dh.Get_Style_Comp(el.lstyle, "font-size")
+                fs = dh.Get_Style_Comp(el.cstyle, "font-size")
                 # fs = dh.Get_Style_Comp(Style2(el.get('style')),'font-size');
                 if fs is None or not ("%" in fs):  # keep sub/superscripts relative size
                     dh.Set_Style_Comp(el, "font-size", str(newsize / sf) + "px")
@@ -307,7 +307,7 @@ class Homogenizer(inkex.EffectExtension):
 
             # nw = self.svg.unittouu(str(setstrokew)+setstrokeu)
             # for el in sela:
-            #     sty = dh.selected_style_local(el);
+            #     sty = (el.cspecified_style);
             #     strk = sty.get('stroke');
             #     if strk is not None:
             #         actw = dh.Get_Composed_Width(el,'stroke-width');

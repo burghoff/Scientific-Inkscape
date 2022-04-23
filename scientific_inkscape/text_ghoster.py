@@ -88,7 +88,7 @@ class TextGhoster(inkex.EffectExtension):
 
             fss = []
             for d in dh.descendants2(el):
-                sty = dh.selected_style_local(d)
+                sty = d.cspecified_style
                 fs = dh.Get_Style_Comp(sty, "font-size")
                 if fs is not None:
                     fss.append(dh.Get_Composed_Width(d, "font-size"))
@@ -118,7 +118,7 @@ class TextGhoster(inkex.EffectExtension):
             r.set("height", str(max(ys) - min(ys)))
             r.set("rx", str(border))
             # r.set('style','fill:#ffffff;filter:url(#'+fid+')')
-            r.lstyle = "fill:#ffffff;filter:url(#" + fid + ")"
+            r.cstyle = "fill:#ffffff;filter:url(#" + fid + ")"
             dh.Set_Style_Comp(r, "opacity", str(OPACITY))
 
             dh.global_transform(g, oldts[g.get_id()])

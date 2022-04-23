@@ -305,7 +305,7 @@ class ScalePlots(inkex.EffectExtension):
                     if 3 <= len(xs) <= 5 and len(set(xs)) == 2 and len(set(ys)) == 2:
                         isrect = True
                 if isrect or isinstance(el, (Rectangle)):  # el.typename=='Rectangle':
-                    sty = dh.selected_style_local(el)
+                    sty = el.cspecified_style
                     strk = sty.get("stroke")
                     fill = sty.get("fill")
 
@@ -418,7 +418,7 @@ class ScalePlots(inkex.EffectExtension):
                 dh.global_transform(gsel[i0], iextr)
 
                 # for el in sel:
-                #     t1 = el.composed_transform(); t2 =el.lcomposed_transform;
+                #     t1 = el.composed_transform(); t2 =el.ccomposed_transform;
                 #     if abs(t1.a-t2.a)>.001 or abs(t1.b-t2.b)>.001 or abs(t1.c-t2.c)>.001 or abs(t1.d-t2.d)>.001 or abs(t1.e-t2.e)>.001 or abs(t1.f-t2.f)>.001:
                 #         dh.idebug(el.get_id2())
                 #         dh.idebug(t1)
@@ -546,7 +546,7 @@ class ScalePlots(inkex.EffectExtension):
                 r.set("y", minyp)
                 r.set("width", abs(maxxp - minxp))
                 r.set("height", abs(maxyp - minyp))
-                r.lstyle = "fill-opacity:0.5"
+                r.cstyle = "fill-opacity:0.5"
                 self.svg.append(r)
                 dh.global_transform(r, gtr)
                 dh.debug("Largest vertical line: " + lvl)
@@ -568,7 +568,7 @@ class ScalePlots(inkex.EffectExtension):
 
             # Apply transform and compute corrections (if needed)
             for el in sclels:
-                # t1 = el.composed_transform(); t2 =el.lcomposed_transform;
+                # t1 = el.composed_transform(); t2 =el.ccomposed_transform;
                 # if abs(t1.a-t2.a)>.001 or abs(t1.b-t2.b)>.001 or abs(t1.c-t2.c)>.001 or abs(t1.d-t2.d)>.001 or abs(t1.e-t2.e)>.001 or abs(t1.f-t2.f)>.001:
                 #     dh.idebug(el.get_id2())
                 #     dh.idebug(t1)
@@ -578,7 +578,7 @@ class ScalePlots(inkex.EffectExtension):
                 dh.global_transform(el, gtr)
                 # apply the transform
 
-                # t1 = el.composed_transform(); t2 =el.lcomposed_transform;
+                # t1 = el.composed_transform(); t2 =el.ccomposed_transform;
                 # if abs(t1.a-t2.a)>.001 or abs(t1.b-t2.b)>.001 or abs(t1.c-t2.c)>.001 or abs(t1.d-t2.d)>.001 or abs(t1.e-t2.e)>.001 or abs(t1.f-t2.f)>.001:
                 #     dh.idebug(el.get_id2())
                 #     dh.idebug(t1)
