@@ -98,18 +98,16 @@ def get_defs(svg):
     return d
 
 
-# Get svg files in all subdirectories
-def get_files(dirin, direxclude):
+# Get svg files in directory
+def get_files(dirin):
     fs = []
-    # for d in os.walk(dirin):
-    #     if direxclude is None or not(os.path.abspath(d[0])==os.path.abspath(direxclude)):
-    #         for f in d[2]:
-    #             if f[-4:]=='.svg':
-    #                 fs.append(os.path.join(os.path.abspath(d[0]),f))
-    for f in os.scandir(dirin):
-        if f.name[-4:] == ".svg":
-            fs.append(os.path.join(os.path.abspath(dirin), f.name))
-    return fs
+    try:
+        for f in os.scandir(dirin):
+            if f.name[-4:] == ".svg":
+                fs.append(os.path.join(os.path.abspath(dirin), f.name))
+        return fs
+    except FileNotFoundError:
+        return None # directory missing (cloud drive error?)
 
 
 # Threading class
@@ -139,41 +137,42 @@ class myThread(threading.Thread):
                     print("Rasterization DPI: " + str(PNG_DPI))
                     print("Watch directory: " + self.watchdir)
                     print("Write directory: " + self.writedir)
-                    files = get_files(self.watchdir, None)
+                    files = get_files(self.watchdir)
                     lastmod = [os.path.getmtime(f) for f in files]
                     self.nf = False
                 if time.time() > ltm + 0.25:
                     ltm = time.time()
                     # newfiles = [fn for fn in os.listdir(watchdir) if fn[-3:]=='svg']
-                    newfiles = get_files(self.watchdir, None)
-                    newlastmod = [0 for f in newfiles]
-                    for ii in range(len(newfiles)):
-                        try:
-                            newlastmod[ii] = os.path.getmtime(newfiles[ii])
-                        except FileNotFoundError:
-                            newlastmod[ii] = lastmod[ii]
-
-                    updatefiles = []
-                    if any([not (f in newfiles) for f in files]):
-                        pass
-                        # deleted files;
-                    elif any([not (n in files) for n in newfiles]):
-                        updatefiles += [n for n in newfiles if not (n in files)]
-                        # new files
-                    elif any(
-                        [newlastmod[ii] > lastmod[ii] + 1 for ii in range(len(files))]
-                    ):  # updated files
-                        updatefiles += [
-                            newfiles[ii]
-                            for ii in range(len(files))
-                            if not (lastmod[ii] == newlastmod[ii])
-                        ]
-                        # for ii in range(len(files)):
-                        # if newlastmod[ii]>lastmod[ii]+1:
-                        # print(newlastmod[ii]-lastmod[ii])
-                        # print(files[ii])
-                    files = newfiles
-                    lastmod = newlastmod
+                    newfiles = get_files(self.watchdir)
+                    if newfiles is not None:
+                        newlastmod = [0 for f in newfiles]
+                        for ii in range(len(newfiles)):
+                            try:
+                                newlastmod[ii] = os.path.getmtime(newfiles[ii])
+                            except FileNotFoundError:
+                                newlastmod[ii] = lastmod[ii]
+    
+                        updatefiles = []
+                        if any([not (f in newfiles) for f in files]):
+                            pass
+                            # deleted files;
+                        elif any([not (n in files) for n in newfiles]):
+                            updatefiles += [n for n in newfiles if not (n in files)]
+                            # new files
+                        elif any(
+                            [newlastmod[ii] > lastmod[ii] + 1 for ii in range(len(files))]
+                        ):  # updated files
+                            updatefiles += [
+                                newfiles[ii]
+                                for ii in range(len(files))
+                                if not (lastmod[ii] == newlastmod[ii])
+                            ]
+                            # for ii in range(len(files)):
+                            # if newlastmod[ii]>lastmod[ii]+1:
+                            # print(newlastmod[ii]-lastmod[ii])
+                            # print(files[ii])
+                        files = newfiles
+                        lastmod = newlastmod
 
                     if self.ea:  # export all
                         self.ea = False
@@ -232,9 +231,6 @@ t1 = myThread(1)
 t1.bfn = bfn
 t1.watchdir = watchdir
 t1.writedir = writedir
-# print('TEst')
-# t1.bfn = Validate_Binary(t1.bfn);
-# print('TEst')
 if t1.watchdir is None or t1.writedir is None:
     t1.watchdir, t1.writedir = Get_Directories()
 

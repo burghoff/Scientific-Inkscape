@@ -232,7 +232,6 @@ class Homogenizer(inkex.EffectExtension):
                 ):
                     dh.Replace_Non_Ascii_Font(el, "Avenir Next, Arial")
 
-
         if setfontfamily or setfontsize or fixtextdistortion:
             bbs2 = dh.Get_Bounding_Boxes(self, True)
             for el in sel:
@@ -290,7 +289,6 @@ class Homogenizer(inkex.EffectExtension):
                     dh.Set_Style_Comp(
                         el, "stroke-width", str(newsize / sfd[elid]) + "px"
                     )
-
 
         if self.options.fusetransforms:
             for el in sela:

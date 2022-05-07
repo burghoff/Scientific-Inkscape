@@ -12,7 +12,7 @@
         <param name="usepng" type="bool" gui-text="PNG">true</param>    
         <param name="useemf" type="bool" gui-text="EMF">true</param>   
         <param name="useeps" type="bool" gui-text="EPS">true</param>  
-        <param name="usesvg" type="bool" gui-text="SVG (smaller)">true</param> 
+        <param name="usesvg" type="bool" gui-text="Optimized SVG">true</param> 
         <param name="dpi" type="float" precision="0" min="1" max="9999" gui-text="Rasterization DPI">600</param>
         
         <label appearance="header">Directories</label>   
@@ -38,14 +38,14 @@
         <param name="dpi_im" type="float" precision="0" min="1" max="9999" gui-text="Resampling DPI">300</param>
         
         <label appearance="header">Other options</label>
-        <param name="texttopath" type="bool" gui-text="Convert text to paths">false</param> 
-        <label>Conversion of text to paths is recommended for EMFs and for SVGs that will be inserted into Office products.</label>      
-        <param name="thinline" type="bool" gui-text="Prevent thin line enhancement (recommended)">true</param>  
-        <label>Some PDF renderers thicken lines at certain zooms; this option makes your lines impervious to this feature.</label>
+        <param name="texttopath" type="bool" gui-text="Convert text to paths"
+        gui-description="Conversion of text to paths is recommended for EMFs and for SVGs that will be inserted into Office products.">false</param> 
+        <param name="thinline" type="bool" gui-text="Prevent thin line enhancement (recommended)"
+        gui-description="Some PDF renderers thicken lines at certain zooms; this option makes your lines impervious to this feature.">true</param>  
         
         <label appearance="header">Single export</label>   
-        <param name="exportnow" type="bool" gui-text="Export this document now">false</param>  
-        <label>Export the current document as it is now without running the Autoexporter program (like Save a Copy). Exports will be placed in the same folder as the original.</label>   
+        <param name="exportnow" type="bool" gui-text="Export this document now"
+        gui-description="Export the current document as it is now without running the Autoexporter program (like Save a Copy). Exports will be placed in the same folder as the original.">false</param>
         
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>By David Burghoff, University of Notre Dame</label>

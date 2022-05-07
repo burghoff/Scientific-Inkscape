@@ -98,7 +98,7 @@ class ApplyTransform(inkex.EffectExtension):
             svg = el.croot
             clippath = dh.getElementById2(svg, clippathurl[5:-1])
             if clippath is not None:
-                d = dh.duplicate2(clippath)
+                d = clippath.duplicate2
                 # el.croot.defs2.append(d)
                 # dh.idebug(el.get_id2())
                 clippathurl = "url(#" + d.get_id2() + ")"
@@ -186,13 +186,13 @@ class ApplyTransform(inkex.EffectExtension):
                         return abs(a - b) <= transf.absolute_tolerance
 
                     if node.TAG == "ellipse":
-                        rx = float(node.get("rx"))
-                        ry = float(node.get("ry"))
+                        rx = dh.implicitpx(node.get("rx"))
+                        ry = dh.implicitpx(node.get("ry"))
                     else:
-                        rx = float(node.get("r"))
+                        rx = dh.implicitpx(node.get("r"))
                         ry = rx
-                    cx = float(node.get("cx"))
-                    cy = float(node.get("cy"))
+                    cx = dh.implicitpx(node.get("cx"))
+                    cy = dh.implicitpx(node.get("cy"))
                     sqxy1 = (cx - rx, cy - ry)
                     sqxy2 = (cx + rx, cy - ry)
                     sqxy3 = (cx + rx, cy + ry)
@@ -209,18 +209,24 @@ class ApplyTransform(inkex.EffectExtension):
                         abs(newxy2[0] - newxy3[0]) ** 2
                         + abs(newxy2[1] - newxy3[1]) ** 2
                     )
-                    if node.TAG == "ellipse":
+                    
+                    if isequal(edgex,edgey):
+                        node.tag = "{http://www.w3.org/2000/svg}circle"
+                        node.set("rx", None)
+                        node.set("ry", None)
+                        node.set("r", edgex / 2)
+                    else:
+                        node.tag = "{http://www.w3.org/2000/svg}ellipse"
                         node.set("rx", edgex / 2)
                         node.set("ry", edgey / 2)
-                    else:
-                        node.set("r", edgex / 2)
+                        node.set("r", None)
 
                 # Modficiations by David Burghoff: Added support for lines, rectangles, polylines
                 elif isinstance(node, Line):
-                    x1 = node.get("x1")
-                    x2 = node.get("x2")
-                    y1 = node.get("y1")
-                    y2 = node.get("y2")
+                    x1 = dh.implicitpx(node.get("x1"))
+                    x2 = dh.implicitpx(node.get("x2"))
+                    y1 = dh.implicitpx(node.get("y1"))
+                    y2 = dh.implicitpx(node.get("y2"))
                     p1 = transf.apply_to_point([x1, y1])
                     p2 = transf.apply_to_point([x2, y2])
                     node.set("x1", str(p1[0]))
@@ -229,10 +235,10 @@ class ApplyTransform(inkex.EffectExtension):
                     node.set("y2", str(p2[1]))
 
                 elif isinstance(node, Rectangle):
-                    x = float(node.get("x"))
-                    y = float(node.get("y"))
-                    w = float(node.get("width"))
-                    h = float(node.get("height"))
+                    x = dh.implicitpx(node.get("x"))
+                    y = dh.implicitpx(node.get("y"))
+                    w = dh.implicitpx(node.get("width"))
+                    h = dh.implicitpx(node.get("height"))
                     pts = [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]]
                     xs = []
                     ys = []

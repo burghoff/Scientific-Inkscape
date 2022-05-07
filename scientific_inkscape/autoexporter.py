@@ -17,8 +17,16 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-
+DEBUGGING = False;
 dispprofile = False
+
+SCOUR_OPTIONS = ('--tab=Options', '--set-precision=5', '--simplify-colors=true', 
+        '--style-to-xml=true', '--group-collapsing=true', '--create-groups=true', 
+        '--keep-editor-data=false', '--keep-unreferenced-defs=false', '--renderer-workaround=true', 
+        '--strip-xml-prolog=false', '--remove-metadata=false', '--enable-comment-stripping=false', 
+        '--embed-rasters=true', '--enable-viewboxing=false', '--line-breaks=true', '--indent=space', 
+        '--nindent=1', '--strip-xml-space=false', '--enable-id-stripping=true', '--shorten-ids=true', 
+        '--protect-ids-noninkscape=true', '--scour-version=0.31', '--scour-version-warn-old=false',)
 
 import subprocess
 import inkex
@@ -258,14 +266,14 @@ class AutoExporter(inkex.EffectExtension):
             else:
                 pth = self.options.input_file
             options = (
-                False,
+                DEBUGGING,
                 dpi,
                 imagedpi,
                 reduce_images,
                 tojpg,
                 text_to_paths,
                 thinline_dehancement,
-                False,
+                DEBUGGING,
             )
 
             AutoExporter().export_all(
@@ -282,7 +290,7 @@ class AutoExporter(inkex.EffectExtension):
             dh.debug(s.getvalue())
 
         if self.options.testmode:
-            nf = os.path.abspath(pth[0:-4] + "_smaller.svg")
+            nf = os.path.abspath(pth[0:-4] + "_optimized.svg")
             # nf2 = nf[0:-12]+'.pdf';
             stream = self.options.output
 
@@ -293,9 +301,18 @@ class AutoExporter(inkex.EffectExtension):
                 shutil.copyfile(nf, self.options.output)
             else:
                 # Write to the output stream
+                
+                # nf2 = nf.strip('.svg')+'_copy.svg';
+                # arg2 = [bfn, "--export-filename",nf2,nf]
+                # dh.idebug(arg2)
+                # dh.subprocess_repeat(arg2)
+                
+                # dh.idebug(os.path.exists(nf2))
+                
                 svg2 = get_svg(nf)
+                
+                
                 import lxml
-
                 newdoc = lxml.etree.tostring(svg2, pretty_print=True)
                 try:
                     stream.write(newdoc)
@@ -322,7 +339,7 @@ class AutoExporter(inkex.EffectExtension):
 
     def export_all(self, bfn, svgfnin, outtemplate, exp_fmts, options):
         (
-            DEBUG,
+            debug,
             PNG_DPI,
             imagedpi,
             reduce_images,
@@ -331,6 +348,13 @@ class AutoExporter(inkex.EffectExtension):
             thinline_dehancement,
             prints,
         ) = options
+        
+        # Do png before any preprocessing
+        if 'png' in exp_fmts:
+            finished, tf, myo = AutoExporter().export_file(
+                bfn, svgfnin, outtemplate, 'png', None, options)
+        
+        
         if (reduce_images or text_to_paths) and any(
             [svgfnin in exp_fmts for svgfnin in ["svg", "pdf", "emf", "eps"]]
         ):
@@ -344,14 +368,15 @@ class AutoExporter(inkex.EffectExtension):
 
         newfiles = []
         for fmt in exp_fmts:
-            finished, tf, myo = AutoExporter().export_file(
-                bfn, svgfnin, outtemplate, fmt, ppoutput, options
-            )
+            if fmt != "png":
+                finished, tf, myo = AutoExporter().export_file(
+                    bfn, svgfnin, outtemplate, fmt, ppoutput, options
+                )
             if finished:
                 newfiles.append(myo)
             tempoutputs += tf
 
-        if not (DEBUG):
+        if not (debug):
             for t in list(set(tempoutputs)):
                 os.remove(t)
             if tempdir is not None:
@@ -361,7 +386,7 @@ class AutoExporter(inkex.EffectExtension):
     # Use the Inkscape binary to export the file
     def export_file(self, bfn, fin, fout, fformat, ppoutput, options):
         (
-            DEBUG,
+            debug,
             PNG_DPI,
             imagedpi,
             reduce_images,
@@ -391,9 +416,9 @@ class AutoExporter(inkex.EffectExtension):
                 import tempfile
 
                 tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"))
-                if DEBUG:
+                if debug:
                     if prints:
-                        print("\n    " + joinmod(tempdir, ""))
+                        dh.idebug("\n    " + joinmod(tempdir, ""))
             basetemp = joinmod(tempdir, "tmp.svg")
         #            print(basetemp)
 
@@ -406,7 +431,31 @@ class AutoExporter(inkex.EffectExtension):
             tmpoutputs.append(tmp1)
 
         if smallsvg:  # Convert to pdf, then to a smaller SVG
-            tmp3 = basetemp.replace(".svg", "_tmp_small.pdf")
+            # tmp3 = basetemp.replace(".svg", "_tmp_small.pdf")
+            # arg2 = [
+            #     bfn,
+            #     "--export-background",
+            #     "#ffffff",
+            #     "--export-background-opacity",
+            #     "1.0",
+            #     "--export-dpi",
+            #     str(PNG_DPI),
+            #     "--export-filename",
+            #     tmp3,
+            #     fin,
+            # ]
+            # dh.subprocess_repeat(arg2)
+            # fin = copy.copy(tmp3)
+            # tmpoutputs.append(tmp3)
+            myoutput = myoutput.replace(".svg", "_optimized.svg")
+
+        try:
+            os.remove(myoutput)
+        except:
+            pass
+        
+        
+        if not(smallsvg):
             arg2 = [
                 bfn,
                 "--export-background",
@@ -416,31 +465,63 @@ class AutoExporter(inkex.EffectExtension):
                 "--export-dpi",
                 str(PNG_DPI),
                 "--export-filename",
-                tmp3,
+                myoutput,
                 fin,
             ]
             dh.subprocess_repeat(arg2)
-            fin = copy.copy(tmp3)
-            tmpoutputs.append(tmp3)
-            myoutput = myoutput.replace(".svg", "_smaller.svg")
-
-        try:
-            os.remove(myoutput)
-        except:
-            pass
-        arg2 = [
-            bfn,
-            "--export-background",
-            "#ffffff",
-            "--export-background-opacity",
-            "1.0",
-            "--export-dpi",
-            str(PNG_DPI),
-            "--export-filename",
-            myoutput,
-            fin,
-        ]
-        dh.subprocess_repeat(arg2)
+            
+        else:
+            from output_scour import ScourInkscape                    
+            sargs = SCOUR_OPTIONS+(fin,)
+            
+            
+            # def set_stderr(state):
+            #     import sys, os
+            #     if not(state):
+            #         sys.stderr = open(os.devnull, 'w')
+            #     else:
+            #         sys.stderr.close()
+            #         sys.stderr = sys.__stderr__
+            
+            # set_stderr(False)  # suppresses warnings
+            # ScourInkscape().run(sargs,myoutput)
+            # set_stderr(True)
+            
+            try:
+                ScourInkscape().run(sargs,myoutput)
+            except: # Scour failed
+                dh.idebug('\nWarning: Optimizer failed, converting to PDF and back')
+                # Convert to PDF
+                tmp3 = basetemp.replace(".svg", "_tmp_small.pdf")
+                arg2 = [
+                    bfn,
+                    "--export-background",
+                    "#ffffff",
+                    "--export-background-opacity",
+                    "1.0",
+                    "--export-dpi",
+                    str(PNG_DPI),
+                    "--export-filename",
+                    tmp3,
+                    fin,
+                ]
+                dh.subprocess_repeat(arg2)
+                fin = copy.copy(tmp3)
+                tmpoutputs.append(tmp3)
+                # Convert back to SVG
+                arg2 = [
+                    bfn,
+                    "--export-background",
+                    "#ffffff",
+                    "--export-background-opacity",
+                    "1.0",
+                    "--export-dpi",
+                    str(PNG_DPI),
+                    "--export-filename",
+                    myoutput,
+                    fin,
+                ]
+                dh.subprocess_repeat(arg2)
 
         if prints:
             print(
@@ -454,7 +535,7 @@ class AutoExporter(inkex.EffectExtension):
     # @staticmethod
     def preprocessing(self, bfn, fin, fout, options):
         (
-            DEBUG,
+            debug,
             PNG_DPI,
             imagedpi,
             reduce_images,
@@ -466,16 +547,16 @@ class AutoExporter(inkex.EffectExtension):
         import os, time, copy
 
         if prints:
-            print("    Preprocessing...", end=" ", flush=True)
+            print("    Preprocessing for vector outputs...", end=" ", flush=True)
             timestart = time.time()
         # try:
         tmpoutputs = []
         import tempfile
 
         tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"))
-        if DEBUG:
+        if debug:
             if prints:
-                print("\n    " + joinmod(tempdir, ""))
+                dh.idebug("\n    " + joinmod(tempdir, ""))
         basetemp = joinmod(tempdir, "tmp.svg")
 
         if reduce_images:
@@ -592,7 +673,7 @@ class AutoExporter(inkex.EffectExtension):
 
                             # Calculate what transform is needed to preserve the image's location
                             ct = (
-                                Transform("scale(" + str(dh.vscale(svg)) + ")")
+                                Transform("scale(" + str((svg.cscale)) + ")")
                                 @ el.composed_transform()
                             )
                             bb = bbs[el.get_id()]
@@ -666,30 +747,33 @@ class AutoExporter(inkex.EffectExtension):
                 fin = copy.copy(tmp4)
                 tmpoutputs.append(tmp4)
 
-        # if (text_to_paths or thinline_dehancement) and notpng:
-        if text_to_paths:
+        # if text_to_paths or thinline_dehancement:
+        if text_to_paths or thinline_dehancement:
+            # if text_to_paths:
             svg = get_svg(fin)
             ds = dh.visible_descendants(svg)
 
             tels = [
                 el.get_id() for el in ds if isinstance(el, (inkex.TextElement))
             ]  # text-like
+
             # pels = [el.get_id() for el in ds if isinstance(el,dh.otp_support) or el.get('d') is not None] # path-like
             # stroke to path too buggy for now, don't convert strokes
             convert_els = []
             if text_to_paths:
                 convert_els += tels
-            # if thinline_dehancement:  convert_els+=pels
+            # if thinline_dehancement:
+            #     convert_els+=pels
 
             celsj = ",".join(convert_els)
-            tmp2 = basetemp.replace(".svg", "_stp.svg")
+            tmp = basetemp.replace(".svg", "_stp.svg")
             arg2 = [
                 bfn,
                 "--actions",
                 "select:"
                 + celsj
-                + "; object-stroke-to-path; export-filename:"
-                + tmp2
+                + "; object-to-path; export-filename:"
+                + tmp
                 + "; export-do",
                 fin,
             ]
@@ -697,50 +781,38 @@ class AutoExporter(inkex.EffectExtension):
 
             if text_to_paths:
                 # Text converted to paths are a group of characters. Combine them all
-                svg = get_svg(tmp2)
+                svg = get_svg(tmp)
                 for elid in tels:
                     el = dh.getElementById2(svg, elid)
                     if el is not None and len(list(el)) > 0:
                         dh.combine_paths(list(el))
-                        # dh.ungroup(el)
-                overwrite_svg(svg, tmp2)
-            fin = copy.copy(tmp2)
-            tmpoutputs.append(tmp2)
+                overwrite_svg(svg, tmp)
+            fin = copy.copy(tmp)
+            tmpoutputs.append(tmp)
+            
+        markerfix = True
+        if markerfix:
+            svg = get_svg(fin)
+            self.Marker_Fix(svg)
+            tmp = basetemp.replace(".svg", "_mfix" + ".svg")
+            overwrite_svg(svg, tmp)
+            fin = copy.copy(tmp)
+            tmpoutputs.append(tmp)
+            
         if prints:
             print(
                 "done! (" + str(round(1000 * (time.time() - timestart)) / 1000) + " s)"
             )
         return (fin, tmpoutputs, tempdir)
-        # except:
-        #     pass
 
     def Thinline_Dehancement(self, svg, fformat):
         # Prevents thin-line enhancement in certain bad PDF renderers (*cough* Adobe Acrobat *cough*)
         # For PDFs, turn any straight lines into a Bezier curve
         # For EMFs, add an extra node to straight lines (only works for fills, not strokes currently)
         # Doing both doesn't work: extra nodes removes the Bezier on conversion to PDF, Beziers removed on EMF
-        pth_commands = [
-            "M",
-            "m",
-            "L",
-            "l",
-            "H",
-            "h",
-            "V",
-            "v",
-            "C",
-            "c",
-            "S",
-            "s",
-            "Q",
-            "q",
-            "T",
-            "t",
-            "A",
-            "a",
-            "Z",
-            "z",
-        ]
+        # fmt off
+        pth_commands = ["M","m","L","l","H","h","V","v","C","c","S","s","Q","q","T","t","A","a","Z","z"]
+        # fmt on
         for el in dh.descendants2(svg):
             if isinstance(el, dh.otp_support):
                 dh.object_to_path(el)
@@ -750,6 +822,7 @@ class AutoExporter(inkex.EffectExtension):
             ):
                 if any([cv in d for cv in ["H", "V", "L"]]):
                     d = str(inkex.Path(d).to_relative())
+                # dh.idebug(el.get_id())
                 ds = d.replace(",", " ").split(" ")
                 nexth = False
                 nextv = False
@@ -840,10 +913,39 @@ class AutoExporter(inkex.EffectExtension):
                 newd = newd.replace("  ", " ")
                 el.set("d", newd)
 
+    def Marker_Fix(self, svg):
+        # Fixes the marker bug that occurs with context-stroke and context-fill
+        for el in dh.descendants2(svg):
+            sty = el.cspecified_style;
+            mkrs = []
+            if 'marker-start' in sty: mkrs.append('marker-start')
+            if 'marker-mid'   in sty: mkrs.append('marker-mid')
+            if 'marker-end'   in sty: mkrs.append('marker-end')
+            for m in mkrs:
+                url = sty[m][5:-1]
+                mkrel = dh.getElementById2(svg, url)
+                if mkrel is not None:
+                    mkrds = dh.descendants2(mkrel)
+                    anycontext = any([(a=='stroke' or a=='fill') and 'context' in v for d in mkrds for a,v in d.cspecified_style.items()])
+                    if anycontext:
+                        handled = True;
+                        dup = dh.get_duplicate2(mkrel);
+                        dupds = dh.descendants2(dup)
+                        for d in dupds:
+                            dsty = d.cspecified_style;
+                            for a,v in dsty.items():
+                                if (a=='stroke' or a=='fill') and 'context' in v:
+                                    if v=='context-stroke':
+                                        dh.Set_Style_Comp(d, a, sty.get('stroke'))
+                                    elif v=='context-fill':
+                                        dh.Set_Style_Comp(d, a, sty.get('fill'));
+                                    else: # I don't know what this is
+                                        handled = False
+                        if handled:
+                            dh.Set_Style_Comp(el,m,dup.get_id2(as_url=2))
 
 if __name__ == "__main__":
     dh.Version_Check("Autoexporter")
     import warnings
-
     warnings.filterwarnings("ignore")
     AutoExporter().run()

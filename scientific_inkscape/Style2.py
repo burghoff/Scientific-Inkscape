@@ -19,6 +19,7 @@
 
 import inkex
 
+
 class Style2(inkex.OrderedDict):
     """A list of style directives"""
 
@@ -64,7 +65,7 @@ class Style2(inkex.OrderedDict):
     def __add__(self, other):
         """Add two styles together to get a third, composing them"""
         ret = self.copy()
-        if not(isinstance(other, Style2)):
+        if not (isinstance(other, Style2)):
             other = Style2(other)
         ret.update(other)
         return ret
@@ -99,7 +100,7 @@ class Style2(inkex.OrderedDict):
 
     def update(self, other):
         """Make sure callback is called when updating"""
-        if not(isinstance(other, Style2)):
+        if not (isinstance(other, Style2)):
             other = Style2(other)
         super().update(other)
         if self.callback is not None:
@@ -167,7 +168,7 @@ class Style2(inkex.OrderedDict):
 
 # Replace Style wrapped attr with Style2
 inkex.BaseElement.WRAPPED_ATTRS = (
-    ('transform', inkex.Transform),
-    ('style', Style2),
-    ('classes', 'class', inkex.styles.Classes),
+    ("transform", inkex.Transform),
+    ("style", Style2),
+    ("classes", "class", inkex.styles.Classes),
 )

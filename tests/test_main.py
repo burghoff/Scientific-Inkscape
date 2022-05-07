@@ -1,5 +1,6 @@
 # coding=utf-8
-STORE_REFS = False
+
+STORE_REFS = True
 fname = 'Other_tests.svg'
 
 MAXPAPERS = 0
@@ -12,21 +13,44 @@ flattenerargs = ("--id=layer1","--testmode=True")
 aeargs = ("--testmode=True",)
 
 version = '1.2'
+lprofile = False
 
-import sys
+testflattentext,testflattenrest,testflattenpapers,testscalecorrection,\
+testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer, testae = (False,)*11
+
+testflattentext     = True;
+testflattenrest     = True; 
+testflattenpapers   = True; 
+testscalecorrection = True;
+testscalematching   = True;
+testscalefixed      = True;
+testghoster         = True;
+testcbc             = True;
+testfm              = True;
+testhomogenizer     = True;
+testae              = True;
+
+# import importlib.util
+# spec = importlib.util.spec_from_file_location("module.name", "/path/to/file.py")
+# foo = importlib.util.module_from_spec(spec)
+# spec.loader.exec_module(foo)
+# foo.MyClass()
+
+vpaths = {'1.0' : ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python38.zip', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\lib-dynload', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\site-packages', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']+\
+                  ['D:\\Inkscapes\\inkscape-1.0.2-2-x64\\bin'],
+          '1.1' : ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python39.zip', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\site-packages', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']+\
+                  ['D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\bin'],
+          '1.2' : ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\lib\\python39.zip', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\lib\\python3.9', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\lib\\python3.9\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\lib\\python3.9\\site-packages', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']+\
+                  ['D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\bin']}
+
 if version=='1.0':
-    sys.path += ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python38.zip', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\lib-dynload', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\site-packages', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']
-    sys.path += ['D:\\Inkscapes\\inkscape-1.0.2-2-x64\\bin']
     flattenerargs += ("--v=1.0",)
     aeargs += ("--v=1.0",)
 elif version == '1.1':
-    sys.path += ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python39.zip', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\site-packages', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']
-    sys.path += ['D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\bin']
     aeargs += ("--v=1.1",)
-else:
-    sys.path += ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\lib\\python39.zip', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\lib\\python3.9', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\lib\\python3.9\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\lib\\python3.9\\site-packages', 'D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']
-    sys.path += ['D:\\Inkscapes\\inkscape-1.2-beta_2022-04-05_1b65182ce9-x64\\bin']
 
+import sys; sys.path += vpaths[version]
+import os; os.environ['LINEPROFILE'] = str(lprofile)
 
 from flatten_plots import FlattenPlots
 from scale_plots import ScalePlots
@@ -68,119 +92,126 @@ class CompareNumericFuzzy2(Compare):
     """
     @staticmethod
     def filter(contents):
-        func = lambda m: b"%.3f" % (float(m.group(0)))
+        if version=='1.2':
+            func = lambda m: b"%.3f" % (float(m.group(0)))
+        else:
+            func = lambda m: b"%.2f" % (float(m.group(0)))
         contents = re.sub(rb"\d+\.\d+(e[+-]\d+)?", func, contents)
         contents = re.sub(rb"(\d\.\d+?)0+\b", rb"\1", contents)
         contents = re.sub(rb"(\d)\.0+(?=\D|\b)", rb"\1", contents)
         return contents
-    
- 
-class TestFlattenerText(ComparisonMixin, TestCase):
-    effect_class = FlattenPlots
-    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    comparisons = [flattenerargs]
-    compare_file = ['svg/'+flattentext]
-    
 
-class TestFlattenerRest(ComparisonMixin, TestCase):
-    effect_class = FlattenPlots
-    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    comparisons = [flattenerargs]
-    compare_file = ['svg/'+flattenrest]
-    
+if testflattentext:
+    class TestFlattenerText(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        comparisons = [flattenerargs]
+        compare_file = ['svg/'+flattentext]
 
-class TestFlattenerPapers(ComparisonMixin, TestCase):
-    effect_class = FlattenPlots
-    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    comparisons = [flattenerargs]
-    allfs = get_files(os.getcwd()+'/data/svg');
-    badfs = [v for v in allfs if any([es in v for es in exclude_flatten])];
-    for b in badfs:
-        allfs.remove(b)
-    fonly = [os.path.split(f)[1] for f in allfs];
-    for p in reversed(priority_flatten):
-        if p in fonly:
-            myi = fonly.index(p);
-            myv = allfs[myi];
-            allfs.remove(myv);
-            allfs=[myv]+allfs
-            myv = fonly[myi];
-            fonly.remove(myv);
-            fonly=[myv]+fonly
-    compare_file = []
-    for f in allfs:
-        spl=os.path.split(f);
-        compare_file.append('svg/'+spl[1])
-    compare_file = compare_file[0:MAXPAPERS]
+if testflattenrest:
+    class TestFlattenerRest(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        comparisons = [flattenerargs]
+        compare_file = ['svg/'+flattenrest]
     
+if testflattenpapers:
+    class TestFlattenerPapers(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        comparisons = [flattenerargs]
+        allfs = get_files(os.getcwd()+'/data/svg');
+        badfs = [v for v in allfs if any([es in v for es in exclude_flatten])];
+        for b in badfs:
+            allfs.remove(b)
+        fonly = [os.path.split(f)[1] for f in allfs];
+        for p in reversed(priority_flatten):
+            if p in fonly:
+                myi = fonly.index(p);
+                myv = allfs[myi];
+                allfs.remove(myv);
+                allfs=[myv]+allfs
+                myv = fonly[myi];
+                fonly.remove(myv);
+                fonly=[myv]+fonly
+        compare_file = []
+        for f in allfs:
+            spl=os.path.split(f);
+            compare_file.append('svg/'+spl[1])
+        compare_file = compare_file[0:MAXPAPERS]
+    
+if testscalecorrection:
+    class TestScaleCorrection(ComparisonMixin, TestCase):  
+        effect_class = ScalePlots
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=g5224","--tab=correction")
+        ]
 
-class TestScaleCorrection(ComparisonMixin, TestCase):  
-    effect_class = ScalePlots
-    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    compare_file = ['svg/'+fname]
-    comparisons = [
-        ("--id=g5224","--tab=correction")
-    ]
+if testscalematching:
+    class TestScaleMatching(ComparisonMixin, TestCase):
+        effect_class = ScalePlots
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=rect5248","--id=g4982","--tab=matching")
+        ]
+if testscalefixed:
+    class TestScaleFixed(ComparisonMixin, TestCase):
+        effect_class = ScalePlots
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=g4982","--tab=scaling",'--hscale=120','--vscale=80')
+        ]
+    
+if testghoster:
+    class TestGhoster(ComparisonMixin, TestCase):
+        effect_class = TextGhoster
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=text28136",)
+        ]
+  
+if testcbc:
+    class TestCBC(ComparisonMixin, TestCase):
+        effect_class = CombineByColor
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=layer1",)
+        ]
+    
+if testfm:
+    class TestFM(ComparisonMixin, TestCase):
+        effect_class = FavoriteMarkers
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=path6928","--id=path6952","--smarker=True","--tab=markers")
+        ]
 
-class TestScaleMatching(ComparisonMixin, TestCase):
-    effect_class = ScalePlots
-    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    compare_file = ['svg/'+fname]
-    comparisons = [
-        ("--id=rect5248","--id=g4982","--tab=matching")
-    ]
-class TestScaleFixed(ComparisonMixin, TestCase):
-    effect_class = ScalePlots
-    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    compare_file = ['svg/'+fname]
-    comparisons = [
-        ("--id=g4982","--tab=scaling",'--hscale=120','--vscale=80')
-    ]
-    
-    
-class TestGhoster(ComparisonMixin, TestCase):
-    effect_class = TextGhoster
-    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    compare_file = ['svg/'+fname]
-    comparisons = [
-        ("--id=text28136",)
-    ]
-    
-class TestCBC(ComparisonMixin, TestCase):
-    effect_class = CombineByColor
-    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    compare_file = ['svg/'+fname]
-    comparisons = [
-        ("--id=layer1",)
-    ]
-    
+if testhomogenizer:
+    class TestHomogenizer(ComparisonMixin, TestCase):
+        effect_class = Homogenizer
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=layer1","--fontsize=7","--setfontsize=True","--fixtextdistortion=True","--fontmodes=2", \
+              "--setfontfamily=True","--fontfamily=Avenir",\
+              "--setstroke=True","--setstrokew=0.75","--strokemodes=2","--fusetransforms=True")
+        ]     
 
-class TestFM(ComparisonMixin, TestCase):
-    effect_class = FavoriteMarkers
-    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    compare_file = ['svg/'+fname]
-    comparisons = [
-        ("--id=path6928","--id=path6952","--smarker=True","--tab=markers")
-    ]
-
-
-class TestHomogenizer(ComparisonMixin, TestCase):
-    effect_class = Homogenizer
-    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    compare_file = ['svg/'+fname]
-    comparisons = [
-        ("--id=layer1","--fontsize=7","--setfontsize=True","--fixtextdistortion=True","--fontmodes=2", \
-          "--setfontfamily=True","--fontfamily=Avenir",\
-          "--setstroke=True","--setstrokew=0.75","--strokemodes=2","--fusetransforms=True")
-    ]     
-    
-class TestAutoExporter(ComparisonMixin, TestCase):
-    effect_class = AutoExporter
-    compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-    compare_file = ['svg/'+fname]
-    comparisons = [
-        aeargs
-    ]    
+if testae:
+    class TestAutoExporter(ComparisonMixin, TestCase):
+        effect_class = AutoExporter
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            aeargs
+        ]    
 
 
 

@@ -34,12 +34,13 @@ sys.path.append(
     os.path.dirname(os.path.realpath(sys.argv[0]))
 )  # make sure my directory is on the path
 import dhelpers as dh
+from dhelpers import v2d_simple as iv2d
 
 from copy import copy, deepcopy
 import inkex
 from inkex import TextElement, Tspan, Vector2d, Transform
 from Style2 import Style2
-from inkex import ImmutableVector2d as iv2d
+# from inkex import ImmutableVector2d as iv2d
 import numpy as np
 
 global debug
@@ -102,7 +103,7 @@ class LineList:
     def duplicate(self):
         # Duplicates a LL and its text
         ret = copy(self)
-        ret.textel = dh.duplicate2(self.textel)
+        ret.textel = self.textel.duplicate2
         # d1 = dh.descendants2(self.textel);
         d1 = self.textds
         d2 = dh.descendants2(ret.textel)
@@ -311,13 +312,11 @@ class LineList:
                         # tails get their sty from the parent of the element the tail belongs to
                     sty = sel.cspecified_style
                     ct = sel.ccomposed_transform
-                    fs, sf, ct, ang = dh.Get_Composed_Width(
-                        sel, "font-size", 4, styin=sty, ctin=ct
-                    )
+                    fs, sf, ct, ang = dh.Get_Composed_Width(sel, "font-size", 4)
                     # dh.debug(el.get_id()); dh.debug(el.composed_transform())
 
                     if newsprl:
-                        lh = dh.Get_Composed_LineHeight(sel, styin=sty, ctin=ct)
+                        lh = dh.Get_Composed_LineHeight(sel)
                     nsty = Character_Table.normalize_style(sty)
 
                     # Make a new line if we're sprl or if we have a new x or y
@@ -1009,8 +1008,8 @@ class tline:
                 # Note that it's impossible to change one line without affecting the others
 
             for w in self.ws:
-                minx = min([w.pts_ut[ii][0] for ii in range(4)])
-                maxx = max([w.pts_ut[ii][0] for ii in range(4)])
+                minx = min([w.pts_ut[ii].x for ii in range(4)])
+                maxx = max([w.pts_ut[ii].x for ii in range(4)])
 
                 if w.unrenderedspace and self.cs[-1] in w.cs:
                     maxx -= w.cs[-1].cw / w.cs[-1].sf
@@ -1119,6 +1118,7 @@ class tword:
         self._lsp = self._bshft = self._dxeff = self._charpos = None
         self._cpts_ut = None
         self._cpts_t = None
+        self._ntransform = None
         # self.orig_pts_t = None; self.orig_pts_ut = None; self.orig_bb = None; # for merging later
 
     def addc(self, ii):  # adds an existing char to a word
@@ -1178,6 +1178,12 @@ class tword:
                 return 0
         else:
             return 0
+
+    @property
+    def ntransform(self):
+        if self._ntransform is None:
+            self._ntransform = -self.transform
+        return self._ntransform
 
     # Deletes me from everywhere
     def delw(self):
@@ -1299,7 +1305,7 @@ class tword:
                 newc = self.cs[-1]
 
                 newc.parsed_pts_ut = [
-                    (-self.transform).apply_to_point(p) for p in c.parsed_pts_t
+                    (self.transform).applyI_to_point(p) for p in c.parsed_pts_t
                 ]
                 newc.parsed_pts_t = c.parsed_pts_t
 
@@ -1310,10 +1316,12 @@ class tword:
                     newsty = c.sty
 
                 if ntype in ["super", "sub"]:
-                    if newsty is None:
-                        newsty = Style2("")
-                    else:
-                        newsty = Style2(newsty)
+                    # if newsty is None:
+                    #     newsty = Style2("")
+                    # else:
+                    #     newsty = Style2(newsty)
+                        
+                    newsty = c.sty
 
                     # Nativize super/subscripts
                     if ntype == "super":
@@ -1356,8 +1364,8 @@ class tword:
                     mv = c2uts[ii][0].x
                     ci = ii
 
-        bl2 = (-self.transform).apply_to_point(c2ts[ci][0])
-        tl2 = (-self.transform).apply_to_point(c2ts[ci][1])
+        bl2 = (self.transform).applyI_to_point(c2ts[ci][0])
+        tl2 = (self.transform).applyI_to_point(c2ts[ci][1])
 
         mv = float("-inf")
         ci = None
@@ -1470,7 +1478,6 @@ class tword:
     @property
     def charpos(self):
         # Where characters in a word are relative to the left side of the word, in x units
-        # Unaffected by alignment, only dx and fine kerning
         if self._charpos is None:
             if len(self.cs) > 0:
                 dxl = self.dxeff
@@ -1562,12 +1569,12 @@ class tword:
         if pi is None and self._pts_ut is not None:  # invalidate self and dependees
             self._pts_ut = None
             self.pts_t = None
-            self.cpts_ut = None
+            # self.cpts_ut = None
 
     @property
     def pts_t(self):
         if self._pts_t is None:
-            self._pts_t = [self.transform.apply_to_point(p) for p in self.pts_ut]
+            self._pts_t = [self.transform.apply_to_point(p,simple=True) for p in self.pts_ut]
         return self._pts_t
 
     @pts_t.setter
@@ -1575,7 +1582,7 @@ class tword:
         if pi is None and self._pts_t is not None:  # invalidate self and dependees
             self._pts_t = None
             self.bb = None
-            self.cpts_t = None
+            # self.cpts_t = None
 
     @property
     def bb(self):
@@ -1599,23 +1606,8 @@ class tword:
     @property
     def cpts_ut(self):
         if self._cpts_ut is None:
-            """  Interpolate the pts of a word to get a specific character's pts"""
+            """  Get the characters' pts"""
             (cstrt, cstop, lx, rx, by, ty) = self.charpos
-
-            # ww = cstop[-1];
-            # fracl = cstrt.reshape(-1,1)/ww # col vec
-            # fracr = cstop.reshape(-1,1)/ww
-
-            # ptut = self.pts_ut
-            # ptutb = np.array([[ptut[0].x,ptut[0].y],\
-            #                   [ptut[1].x,ptut[1].y],\
-            #                   [ptut[2].x,ptut[2].y],\
-            #                   [ptut[3].x,ptut[3].y]])
-
-            # self._cpts_ut = [(ptutb[3]-ptutb[0])*fracl+ptutb[0],\
-            #                  (ptutb[2]-ptutb[1])*fracl+ptutb[1],\
-            #                  (ptutb[2]-ptutb[1])*fracr+ptutb[1],\
-            #                  (ptutb[3]-ptutb[0])*fracr+ptut[0]]
 
             self._cpts_ut = [
                 np.hstack((lx, by)),
@@ -1634,27 +1626,10 @@ class tword:
     @property
     def cpts_t(self):
         if self._cpts_t is None:
-            """  Interpolate the pts of a word to get a specific character's pts"""
+            """  Get the characters' pts"""
             (cstrt, cstop, lx, rx, by, ty) = self.charpos
-            # ww = cstop[-1];
-            # fracl = cstrt.reshape(-1,1)/ww # col vec
-            # fracr = cstop.reshape(-1,1)/ww
-            # ptut = self.pts_t
-            # ptutb = np.array([[ptut[0].x,ptut[0].y],\
-            #                   [ptut[1].x,ptut[1].y],\
-            #                   [ptut[2].x,ptut[2].y],\
-            #                   [ptut[3].x,ptut[3].y]])
-            # self._cpts_t = [(ptutb[3]-ptutb[0])*fracl+ptutb[0],\
-            #                  (ptutb[2]-ptutb[1])*fracl+ptutb[1],\
-            #                  (ptutb[2]-ptutb[1])*fracr+ptutb[1],\
-            #                  (ptutb[3]-ptutb[0])*fracr+ptut[0]]
 
             Nc = len(lx)
-            # onev = np.ones([Nc,1])
-            # ps = np.vstack((np.hstack((lx,by,onev)),\
-            #                 np.hstack((lx,ty,onev)),\
-            #                 np.hstack((rx,ty,onev)),\
-            #                 np.hstack((rx,by,onev))));
             ps = np.hstack(
                 (
                     np.vstack((lx, lx, rx, rx)),
@@ -1939,10 +1914,17 @@ class tchar:
                 ca.loc = cloc(t, "tail", ii - myi - 1)
         self.loc = cloc(t, "text", 0)  # update my own location
 
-        spfd = t.cspecified_style
+        # When the specified style has something new span doesn't, are inheriting and
+        # need to explicitly assign the default value
+        newspfd = t.cspecified_style
+        for a in newspfd:
+            if a not in sty:
+                sty[a] = dh.default_style_atts[a]
+                # dh.idebug([t.get_id2(),a,sty])
+
         # make sure inheritance doesn't override letter-spacing
-        if "letter-spacing" in spfd and "letter-spacing" not in sty:
-            sty["letter-spacing"] = "0px"
+        # if "letter-spacing" in newspfd and "letter-spacing" not in sty:
+        #     sty["letter-spacing"] = "0px"
         t.cstyle = sty
 
         self.sty = sty
@@ -2367,35 +2349,51 @@ class Character_Table:
     # 'stroke','stroke-width' do not affect kerning at all
     @staticmethod
     def normalize_style(sty):
-        sty = Style2(sty)
-        stykeys = list(sty.keys())
-        sty2 = Style2("")
+        nones = [None, "none", "None"]
+        sty2 = inkex.OrderedDict();      # we don't need a full Style since we only want the string (for speed)
         for a in Character_Table.textshapeatt:
-            if a in stykeys:
+            if a in sorted(sty):
                 styv = sty.get(a)
                 # if styv is not None and styv.lower()=='none':
                 #     styv=None # actually don't do this because 'none' might be overriding inherited styles
                 if styv is not None:
+                    if a=='font-family' and styv not in nones:
+                        styv = ",".join([v.strip().strip("'") for v in styv.split(",")])
                     sty2[a] = styv
-
-        nones = [None, "none", "None"]
         sty2["font-size"] = "1px"
-        if not (sty2.get("font-family") in nones):
-            sty2["font-family"] = ",".join(
-                [v.strip().strip("'") for v in sty2["font-family"].split(",")]
-            )
-            # strip spaces b/t styles
-        # if sty2.get('font-style').lower()=='normal':
-        #     sty2['font-style']=None;
+        sty2 = ';'.join(["{0}:{1}".format(*seg) for seg in sty2.items()]) # from Style to_str
+        return (sty2)
+        
+        
+        # sty = Style2(sty)
+        # stykeys = list(sty.keys())
+        # sty2 = Style2("")
+        # for a in Character_Table.textshapeatt:
+        #     if a in stykeys:
+        #         styv = sty.get(a)
+        #         # if styv is not None and styv.lower()=='none':
+        #         #     styv=None # actually don't do this because 'none' might be overriding inherited styles
+        #         if styv is not None:
+        #             sty2[a] = styv
 
-        tmp = Style2("")
-        for k in sorted(sty2.keys()):  # be sure key order is alphabetical
-            tmp[k] = sty2[k]
-        sty2 = tmp
+        # nones = [None, "none", "None"]
+        # sty2["font-size"] = "1px"
+        # if not (sty2.get("font-family") in nones):
+        #     sty2["font-family"] = ",".join(
+        #         [v.strip().strip("'") for v in sty2["font-family"].split(",")]
+        #     )
+        #     # strip spaces b/t styles
+        # # if sty2.get('font-style').lower()=='normal':
+        # #     sty2['font-style']=None;
 
-        # dh.debug([sty2.get('stroke'),sty2.get('stroke-width')])
+        # tmp = Style2("")
+        # for k in sorted(sty2.keys()):  # be sure key order is alphabetical
+        #     tmp[k] = sty2[k]
+        # sty2 = tmp
 
-        return str(sty2)
+        # # dh.debug([sty2.get('stroke'),sty2.get('stroke-width')])
+
+        # return str(sty2)
 
 
 # Recursively delete empty elements

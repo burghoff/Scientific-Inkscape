@@ -48,8 +48,8 @@ from inkex import (
     BaseElement,
 )
 from applytransform_mod import ApplyTransform
-import lxml, math, re, copy
-from Style2 import Style2        
+import lxml, math, re
+from Style2 import Style2
 
 
 def descendants2(el, return_tails=False):
@@ -69,7 +69,7 @@ def descendants2(el, return_tails=False):
 
     def getchildren_dict(eli):
         if not (eli in children_dict):
-            children_dict[eli] = list(eli)  
+            children_dict[eli] = list(eli)
             for ii in range(len(children_dict[eli])):
                 index_dict[children_dict[eli][ii]] = ii
                 # store index for later
@@ -136,13 +136,14 @@ BaseElement.descendants2 = property(descendants2)
 
 # Sets a style property
 def Set_Style_Comp(el_or_sty, comp, val):
-    isel = isinstance(el_or_sty, (BaseElement))  # is element
-    if isel:
-        sty = (el_or_sty.cstyle)
-    else:
-        isstr = isinstance(el_or_sty, (str))
-        sty = el_or_sty
-        if isstr: sty = Style2(sty)
+    # isel = isinstance(el_or_sty, (BaseElement))  # is element
+    # if isel:
+    sty = el_or_sty.cstyle
+    # else:
+    #     isstr = isinstance(el_or_sty, (str))
+    #     sty = el_or_sty
+    #     if isstr:
+    #         sty = Style2(sty)
 
     # if sty is not None:
     #     sty = sty.split(";")
@@ -164,29 +165,33 @@ def Set_Style_Comp(el_or_sty, comp, val):
     # else:
     #     if val is not None:
     #         sty = comp + ":" + val
-    
+
     if val is None:
-        if sty.get(comp) is not None: del sty[comp]
-    else:                             sty[comp] = val;
-
-    if isel:
-        el_or_sty.cstyle = sty  # set element style
+        if sty.get(comp) is not None:
+            del sty[comp]
     else:
-        if isstr:
-            return str(sty)  # return style string
-        else:
-            return (sty)  # convert back to Style
+        sty[comp] = val
+
+    # if isel:
+    el_or_sty.cstyle = sty  # set element style
+    # else:
+    #     if isstr:
+    #         return str(sty)  # return style string
+    #     else:
+    #         return sty  # convert back to Style
 
 
-
-def dupe_in_cssdict(oldid, newid, svg):
+def dupe_cssdict_entry(oldid, newid, svg):
     # duplicate a style in cssdict
     if svg is not None:
         csssty = svg.cssdict.get(oldid)
         if csssty is not None:
             svg.cssdict[newid] = csssty
 
-estyle = Style2();
+
+estyle = Style2()
+
+
 def get_cssdict(svg):
     if not (hasattr(svg, "_cssdict")):
         # For certain xpaths such as classes, we can avoid xpath calls
@@ -223,7 +228,7 @@ def get_cssdict(svg):
 
         knownxpaths = dict()
         if hasall or len(simpleclasses) > 0:
-            ds = svg.ldescendants
+            ds = svg.cdescendants
 
             cs = [d.get("class") for d in ds]
             if hasall:
@@ -343,8 +348,6 @@ def get_cstyle(el):
     if not (hasattr(el, "_cstyle")):
         el._cstyle = Style2(el.get("style"))  # el.get() is very efficient
     return el._cstyle
-
-
 def set_cstyle(el, nsty):
     el.style = nsty
     if not(isinstance(nsty,Style2)):
@@ -384,67 +387,70 @@ def set_ctransform(el, newt):
 BaseElement.ctransform = property(get_ctransform, set_ctransform)
 # fmt: on
 
+
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
-def Get_Composed_Width(el, comp, nargout=1, styin=None, ctin=None):
-    # cs = el.composed_style();
-    if styin is None:  # can pass styin to reduce extra style gets
-        cs = el.cspecified_style
-    else:
-        cs = styin
-    if ctin is None:  # can pass ctin to reduce extra composed_transforms
-        ct = el.ccomposed_transform
-    else:
-        ct = ctin
+def Get_Composed_Width(el, comp, nargout=1):
+    cs = el.cspecified_style
+    ct = el.ccomposed_transform
     if nargout == 4:
         ang = math.atan2(ct.c, ct.d) * 180 / math.pi
     svg = el.croot
     docscale = 1
     if svg is not None:
-        docscale = vscale(svg)
+        docscale = svg.cscale
     sc = cs.get(comp)
-    if sc is not None:
-        if "%" in sc:  # relative width, get parent width
-            cel = el
-            while sc != cel.cstyle.get(comp):
-                cel = el.getparent()
-                # figure out ancestor where % is coming from
 
-            sc = float(sc.strip("%")) / 100
-            fs, sf, ct, ang = Get_Composed_Width(cel.getparent(), comp, 4)
-            if nargout == 4:
-                ang = math.atan2(ct.c, ct.d) * 180 / math.pi
-                return fs * sc, sf, ct, ang
-            else:
-                return fs * sc
+    # Get default attribute if empty
+    if sc is None:
+        sc = default_style_atts[comp]
+
+    if "%" in sc:  # relative width, get parent width
+        cel = el
+        while sc != cel.cstyle.get(comp):
+            cel = el.getparent()
+            # figure out ancestor where % is coming from
+
+        sc = float(sc.strip("%")) / 100
+        fs, sf, ct, tmp = Get_Composed_Width(cel.getparent(), comp, 4)
+        if nargout == 4:
+            # ang = math.atan2(ct.c, ct.d) * 180 / math.pi
+            return fs * sc, sf, ct, ang
         else:
-            sw = implicitpx(sc)
-            sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c)) * docscale  # scale factor
-            if nargout == 4:
-                return sw * sf, sf, ct, ang
-            else:
-                return sw * sf
+            return fs * sc
     else:
         if comp == "font-size":
-            sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c)) * docscale  # scale factor
-            returnval = 12 * sf
-            # default font is 12 uu
-        else:
-            returnval = None
-            sf = None
+            sc = {"small": "10px", "medium": "12px", "large": "14px"}.get(sc, sc)
 
+        sw = implicitpx(sc)
+        sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c)) * docscale  # scale factor
         if nargout == 4:
-            return returnval, sf, ct, ang
+            return sw * sf, sf, ct, ang
         else:
-            return returnval
+            return sw * sf
+
+    # if sc is not None:
+    # else:
+    #     if comp == "font-size":
+    #         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c)) * docscale  # scale factor
+    #         returnval = 12 * sf
+    #         # default font is 12 uu
+    #     else:
+    #         returnval = None
+    #         sf = None
+
+    #     if nargout == 4:
+    #         return returnval, sf, ct, ang
+    #     else:
+    #         return returnval
 
 
 # Get line-height in user units
-def Get_Composed_LineHeight(el, styin=None, ctin=None):  # cs = el.composed_style();
-    if styin is None:
-        cs = el.cspecified_style
-    else:
-        cs = styin
+def Get_Composed_LineHeight(el):  # cs = el.composed_style();
+    # if styin is None:
+    cs = el.cspecified_style
+    # else:
+    #     cs = styin
     sc = cs.get("line-height")
     if sc is not None:
         if "%" in sc:  # relative width, get parent width
@@ -456,25 +462,25 @@ def Get_Composed_LineHeight(el, styin=None, ctin=None):  # cs = el.composed_styl
     if sc is None:
         sc = 1.25
         # default line-height is 12 uu
-    fs = Get_Composed_Width(el, "font-size", styin=styin, ctin=ctin)
+    fs = Get_Composed_Width(el, "font-size")
     return sc * fs
 
 
 # For style components that are a list (stroke-dasharray), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms
-def Get_Composed_List(el, comp, nargout=1, styin=None):
+def Get_Composed_List(el, comp, nargout=1):
     # cs = el.composed_style();
-    if styin is None:
-        cs = el.cspecified_style
-    else:
-        cs = styin
+    # if styin is None:
+    cs = el.cspecified_style
+    # else:
+    #     cs = styin
     # ct = el.composed_transform();
     ct = el.ccomposed_transform
     sc = cs.get(comp)
     svg = el.croot
     docscale = 1
     if svg is not None:
-        docscale = vscale(svg)
+        docscale = svg.cscale
     if sc == "none":
         return "none"
     elif sc is not None:
@@ -492,6 +498,56 @@ def Get_Composed_List(el, comp, nargout=1, styin=None):
         else:
             return None, None
 
+
+# fmt: off
+# Modifications to Transform functions for speed
+
+# A simple Vector2d, just a tuple wrapper
+class v2d_simple():
+    def __init__(self,x,y):
+        self.x = x;
+        self.y = y;
+        
+# Applies inverse of transform to point without making a new Transform
+def applyI_to_point(obj, pt):
+    det = (obj.matrix[0][0] * obj.matrix[1][1]) - (obj.matrix[0][1] * obj.matrix[1][0])
+    return v2d_simple(
+        (obj.matrix[1][1]  * (pt.x - obj.matrix[0][2]) + -obj.matrix[0][1] * (pt.y - obj.matrix[1][2])) / det,
+        (-obj.matrix[1][0] * (pt.x - obj.matrix[0][2]) +  obj.matrix[0][0] * (pt.y - obj.matrix[1][2])) / det,
+    )
+inkex.Transform.applyI_to_point = applyI_to_point
+
+# Faster apply_to_point that gets rid of property calls
+def apply_to_point_mod(obj, pt,simple=False):
+    if simple:
+        return v2d_simple(
+            obj.matrix[0][0] * pt.x + obj.matrix[0][1] * pt.y + obj.matrix[0][2],
+            obj.matrix[1][0] * pt.x + obj.matrix[1][1] * pt.y + obj.matrix[1][2],
+        )
+    else:
+        if isinstance(pt,(tuple,list)):
+            ptx = pt[0]; pty=pt[1];
+        else:
+            ptx = pt._x;  pty=pt._y
+        # idebug(ptx)
+        # idebug(pty)
+        return inkex.Vector2d(
+            obj.matrix[0][0] * ptx + obj.matrix[0][1] * pty + obj.matrix[0][2],
+            obj.matrix[1][0] * ptx + obj.matrix[1][1] * pty + obj.matrix[1][2],
+        )
+        # return old_atp(obj,pt)
+old_atp = inkex.Transform.apply_to_point
+inkex.Transform.apply_to_point = apply_to_point_mod
+
+ # A faster bool (built-in bool is slow because it initializes multiple Transforms)
+from math import fabs
+def Tbool(obj):
+    # return any([fabs(v1-v2)>obj.absolute_tolerance for v1,v2 in zip(obj.matrix[0]+obj.matrix[1],Itmat[0]+Itmat[1])])
+    # return any([fabs(obj.matrix[0][0]-1)>obj.absolute_tolerance,fabs(obj.matrix[0][1])>obj.absolute_tolerance,fabs(obj.matrix[0][2])>obj.absolute_tolerance,fabs(obj.matrix[1][0])>obj.absolute_tolerance,fabs(obj.matrix[1][1]-1)>obj.absolute_tolerance,fabs(obj.matrix[1][2])>obj.absolute_tolerance])
+    return obj.matrix!=Itmat     # exact, not within tolerance. I think this is fine
+inkex.Transform.__bool__ = Tbool
+# fmt: on
+        
 
 # Unit parser and renderer
 def uparse(str):
@@ -541,7 +597,7 @@ def get_points(el, irange=None):
     mysvg = el.croot
     docscale = 1
     if mysvg is not None:
-        docscale = vscale(mysvg)
+        docscale = mysvg.cscale
 
     xs = []
     ys = []
@@ -558,7 +614,7 @@ def unlink2(el):
         useid = el.get("xlink:href")
         useel = getElementById2(el.croot, useid[1:])
         if useel is not None:
-            d = duplicate2(useel)
+            d = useel.duplicate2
 
             # xy translation treated as a transform (applied first, then clip/mask, then full xform)
             tx = el.get("x")
@@ -608,22 +664,22 @@ def ungroup(groupnode):
         gclipurl = groupnode.get("clip-path")
         gmaskurl = groupnode.get("mask")
         gstyle = groupnode.ccascaded_style
-    
+
         els = list(groupnode)
         for el in list(reversed(els)):
-    
+
             unlinkclone = False
             if isinstance(el, Use):
                 useid = el.get("xlink:href")
                 if useid is not None:
                     useel = getElementById2(el.croot, useid[1:])
                     unlinkclone = not (isinstance(useel, (inkex.Symbol)))
-    
+
             if unlinkclone:  # unlink clones
                 el = unlink2(el)
             elif isinstance(el, lxml.etree._Comment):  # remove comments
                 groupnode.remove(el)
-    
+
             if not (isinstance(el, unungroupable)):
                 clippedout = compose_all(el, gclipurl, gmaskurl, gtransform, gstyle)
                 if clippedout:
@@ -631,8 +687,10 @@ def ungroup(groupnode):
                 else:
                     gparent.insert(gindex + 1, el)
                     # places above
-    
-            if isinstance(el, Group) and unlinkclone:  # if was a clone, may need to ungroup
+
+            if (
+                isinstance(el, Group) and unlinkclone
+            ):  # if was a clone, may need to ungroup
                 ungroup(el)
         if len(groupnode.getchildren()) == 0:
             groupnode.delete2()
@@ -661,13 +719,11 @@ def compose_all(el, clipurl, maskurl, transform, style):
         fix_css_clipmask(el, mask=True)
 
     if transform is not None:
-        if transform.matrix!=Itmat:
-            if el.ctransform.matrix!=Itmat:
+        if transform.matrix != Itmat:
+            if el.ctransform.matrix != Itmat:
                 el.ctransform = transform @ el.ctransform
             else:
-                el.ctransform = transform;
-                
-
+                el.ctransform = transform
 
     if clipurl is None:
         return False
@@ -718,27 +774,30 @@ def flush_stylesheet_entries(svg):
 
 # Like duplicate, but randomly sets the id of all descendants also
 # Normal duplicate does not
-def duplicate2(el):
+def get_duplicate2(el):
     svg = el.croot
     svg.iddict
     svg.cssdict
     # need to generate now to prevent problems in duplicate_fixed (el.addnext(elem) line, no idea why)
 
     d = duplicate_fixed(el)
-    dupe_in_cssdict(el.get_id2(), d.get_id2(), el.croot)
+    dupe_cssdict_entry(el.get_id2(), d.get_id2(), el.croot)
     add_to_iddict(d)
 
     for k in descendants2(d)[1:]:
         if not (isinstance(k, lxml.etree._Comment)):
             oldid = k.get_id2()
             set_random_id2(k)
-            dupe_in_cssdict(oldid, k.get_id2(), (k.croot))
+            dupe_cssdict_entry(oldid, k.get_id2(), k.croot)
             add_to_iddict(k)
 
     if isinstance(d, (inkex.ClipPath)) or isMask(d):
         # Clip duplications can cause weird issues if they are not appended to the end of Defs
         d.croot.defs2.append(d)
     return d
+
+
+BaseElement.duplicate2 = property(get_duplicate2)
 
 
 def duplicate_fixed(el):  # fixes duplicate's set_random_id
@@ -755,7 +814,7 @@ def new_element(genin, inheritfrom):
     # e.g Rectangle
     inheritfrom.croot.append(g)
     # add to the SVG so we can assign an id
-    dupe_in_cssdict(get_id2(inheritfrom), get_id2(g), inheritfrom.croot)
+    dupe_cssdict_entry(inheritfrom.get_id2(), g.get_id2(), inheritfrom.croot)
     add_to_iddict(g)
     return g
 
@@ -768,13 +827,13 @@ def replace_element(el1, el2):
     myi = list(myp).index(el1)
     myp.insert(myi + 1, el2)
 
-    newid = get_id2(el1)
-    oldid = get_id2(el2)
+    newid = el1.get_id2()
+    oldid = el2.get_id2()
 
     el1.delete2()
     el2.set_id(newid)
     add_to_iddict(el2, todel=oldid)
-    dupe_in_cssdict(oldid, newid, el2.croot)
+    dupe_cssdict_entry(oldid, newid, el2.croot)
 
 
 def intersect_paths(ptha, pthb):
@@ -868,7 +927,7 @@ def merge_clipmask(node, newclipurl, mask=False):
             # Duplicate the new clip and apply node's inverse transform to its children.
             clippath = getElementById2(svg, newclipurl[5:-1])
             if clippath is not None:
-                d = duplicate2(clippath)
+                d = clippath.duplicate2
                 # svg.defs2.append(d)
                 # idebug([d.get_id(),d.getparent().get_id()])
                 if not (hasattr(svg, "newclips")):
@@ -876,7 +935,7 @@ def merge_clipmask(node, newclipurl, mask=False):
                 svg.newclips.append(d)  # for later cleanup
                 for k in list(d):
                     compose_all(k, None, None, -node.ctransform, None)
-                newclipurl = get_id2(d, 2)
+                newclipurl = d.get_id2(2);
 
         newclipnode = getElementById2(svg, newclipurl[5:-1])
         if newclipnode is not None:
@@ -895,14 +954,11 @@ def merge_clipmask(node, newclipurl, mask=False):
                     if isinstance(k, (Use)):
                         k = unlink2(k)
 
-                d = duplicate2(oldclipnode)
-                # very important to use dup2 here
+                d = oldclipnode.duplicate2
                 if not (hasattr(svg, "newclips")):
                     svg.newclips = []
                 svg.newclips.append(d)  # for later cleanup
-                # svg.defs2.append(d)
-                # move to defs
-                node.set(cmstr, get_id2(d, 2))
+                node.set(cmstr, d.get_id2(2))
 
                 newclipisrect = False
                 if newclipnode is not None and len(list(newclipnode)) == 1:
@@ -932,37 +988,30 @@ def merge_clipmask(node, newclipurl, mask=False):
 def getElementById2(svg, elid):
     return svg.iddict.get(elid)
 
-
 def add_to_iddict(el, todel=None):
     svg = el.croot
-    svg.iddict[get_id2(el)] = el
+    svg.iddict[el.get_id2()] = el
     if todel is not None:
         del svg.iddict[todel]
-
-
 def getiddict(svg):
     if not (hasattr(svg, "_iddict")):
         svg._iddict = dict()
         for el in descendants2(svg):
-            svg._iddict[get_id2(el)] = el
+            svg._iddict[el.get_id2()] = el
     return svg._iddict
-
-
 inkex.SvgDocumentElement.iddict = property(getiddict)
 
 # A cached list of all descendants of an svg (not necessarily in order)
-def getldescendants(svg):
+def getcdescendants(svg):
     return list(svg.iddict.values())
-
-
-inkex.SvgDocumentElement.ldescendants = property(getldescendants)
+inkex.SvgDocumentElement.cdescendants = property(getcdescendants)
 
 # Deletes an element from cached dicts on deletion
 def delete2(el):
     svg = el.croot
     if svg is not None:
         try:
-            del svg.iddict[get_id2(el)]
+            del svg.iddict[el.get_id2()]
         except KeyError:
             pass
     el.croot = None
@@ -1026,7 +1075,7 @@ def set_random_id2(el, prefix=None, size=4, backlinks=False):
 
 # Like get_id(), but calls set_random_id2
 # Modified from Inkex's get_id
-def get_id2(el, as_url=0):
+def get_id2_func(el, as_url=0):
     """Get the id for the element, will set a new unique id if not set.
     as_url - If set to 1, returns #{id} as a string
              If set to 2, returns url(#{id}) as a string
@@ -1040,9 +1089,7 @@ def get_id2(el, as_url=0):
     if as_url > 1:
         eid = f"url({eid})"
     return eid
-
-
-BaseElement.get_id2 = get_id2
+BaseElement.get_id2 = get_id2_func
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
 def Get_Bounding_Boxes(
@@ -1286,7 +1333,7 @@ def global_transform(el, trnsfrm, irange=None, trange=None):
         prt = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
     else:
         prt = myp.ccomposed_transform
-    prt = Transform("scale(" + str(vscale(el.croot)) + ")") @ prt
+    prt = Transform("scale(" + str((el.croot.cscale)) + ")") @ prt
     # also include document scaling
 
     myt = el.ctransform
@@ -1350,7 +1397,7 @@ def get_path2(el):
                         self.bottom - ry,
                     )
                 )
-            return "M {0.left},{0.top} h{0.width}v{0.height}h{1} z".format(
+            return "M {0.left},{0.top} h {0.width} v {0.height} h {1} z".format(
                 self, -self.width
             )
 
@@ -1448,11 +1495,11 @@ def combine_paths(els, mergeii=0):
 
 
 # Gets all of the stroke and fill properties from a style
-def get_strokefill(el, styin=None):
-    if styin is None:
-        sty = el.cspecified_style
-    else:
-        sty = styin
+def get_strokefill(el):
+    # if styin is None:
+    sty = el.cspecified_style
+    # else:
+    #     sty = styin
     strk = sty.get("stroke", None)
     fill = sty.get("fill", None)
     op = float(sty.get("opacity", 1.0))
@@ -1488,8 +1535,8 @@ def get_strokefill(el, styin=None):
         fill = None
         filll = None
 
-    sw = Get_Composed_Width(el, "stroke-width", styin=sty)
-    sd = Get_Composed_List(el, "stroke-dasharray", styin=sty)
+    sw = Get_Composed_Width(el, "stroke-width")
+    sd = Get_Composed_List(el, "stroke-dasharray")
     if sd in nones:
         sd = None
     if sw in nones or sw == 0 or strk is None:
@@ -1633,33 +1680,75 @@ def vparse(vstr):
 
 ivp = vparse(inkex_version)
 
-# Version-specific document scale
-def vscale(svg):
-    try:
-        return (
-            svg.oldscale
-        )  # I never change doc size, so it's fine to store it for unnecessary lookups
-    except:
+# def get_viewbox2(self):
+# """Parse and return the document's viewBox attribute"""
+# try:
+#     ret = [
+#         float(unit) for unit in re.split(",\s*|\s+", self.get("viewBox", "0"))
+#     ]
+# except ValueError:
+#     ret = ""
+# if len(ret) != 4:
+#     return [0, 0, 0, 0]
+# return ret
+
+# Cached version-specific document scale
+def get_cscale(svg):
+    if not (hasattr(svg, "_cscale")):
         if ivp[0] <= 1 and ivp[1] < 2:  # pre-1.2: return scale
-            svg.oldscale = svg.scale
+            svg._cscale = svg.scale
         else:  # post-1.2: return old scale
+            vb = svg.get_viewbox();
+            if vb==[0,0,0,0]: # old docs may not have a viewbox
+                vb=[0,0,svg.get("width"),svg.get("height")]
             scale_x = float(
                 (svg.unittouu(svg.get("width"))) or (svg.get_viewbox()[2])
-            ) / float(svg.get_viewbox()[2])
+            ) / float(vb[2])
             scale_y = float(
                 (svg.unittouu(svg.get("height"))) or (svg.get_viewbox()[3])
-            ) / float(svg.get_viewbox()[3])
-            svg.oldscale = max([scale_x, scale_y])
-            return svg.oldscale
-        return svg.oldscale
+            ) / float(vb[3])
+            svg._cscale = max([scale_x, scale_y])
+    return svg._cscale
 
 
-# Add @ multiplication to old versions of Inkex
-It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+inkex.SvgDocumentElement.cscale = property(get_cscale)
+
+
+# Override Transform's __matmul__ to give old versions __matmul__
+# Also optimized for speed
+def matmul2(obj, matrix):
+    if isinstance(matrix, (Transform)):
+        othermat = matrix.matrix
+    elif isinstance(matrix, (tuple)):
+        othermat = matrix
+    else:
+        othermat = Transform(matrix).matrix
+        # I think this is never called
+
+    return Transform(
+        (
+            obj.matrix[0][0] * othermat[0][0] + obj.matrix[0][1] * othermat[1][0],
+            obj.matrix[1][0] * othermat[0][0] + obj.matrix[1][1] * othermat[1][0],
+            obj.matrix[0][0] * othermat[0][1] + obj.matrix[0][1] * othermat[1][1],
+            obj.matrix[1][0] * othermat[0][1] + obj.matrix[1][1] * othermat[1][1],
+            obj.matrix[0][0] * othermat[0][2]
+            + obj.matrix[0][1] * othermat[1][2]
+            + obj.matrix[0][2],
+            obj.matrix[1][0] * othermat[0][2]
+            + obj.matrix[1][1] * othermat[1][2]
+            + obj.matrix[1][2],
+        )
+    )
+
+
+inkex.transforms.Transform.__matmul__ = matmul2
+
+# Get default style attributes
 try:
-    tmp = It @ It
-except TypeError:
-    inkex.transforms.Transform.__matmul__ = lambda a, b: a * b
+    from inkex.properties import all_properties
+except ModuleNotFoundError:
+    from properties2 import all_properties
+default_style_atts = {a: v[1] for a, v in all_properties.items()}
 
 
 def isMask(el):
@@ -1711,7 +1800,7 @@ def vto_xpath(sty):
 
 
 def Version_Check(caller):
-    siv = "v1.4.16"  # Scientific Inkscape version
+    siv = "v1.4.18"  # Scientific Inkscape version
     maxsupport = "1.2.0"
     minsupport = "1.1.0"
 

@@ -127,7 +127,7 @@ class FlattenPlots(inkex.EffectExtension):
         if poprest:
             seldefs = [el for el in seld if isinstance(el, Defs)]
             for el in seldefs:
-                self.svg.defs.append(el)
+                self.svg.defs2.append(el)
                 for d in dh.descendants2(el):
                     if d in seld:
                         seld.remove(d)  # no longer selected
@@ -135,7 +135,7 @@ class FlattenPlots(inkex.EffectExtension):
                 el for el in seld if isinstance(el, (inkex.ClipPath)) or dh.isMask(el)
             ]
             for el in selcm:
-                self.svg.defs.append(el)
+                self.svg.defs2.append(el)
                 for d in dh.descendants2(el):
                     if d in seld:
                         seld.remove(d)  # no longer selected
@@ -169,8 +169,7 @@ class FlattenPlots(inkex.EffectExtension):
             #             gs2.append(d)
             #             depths.append(depth)
             # sgs2 = [x for _, x in sorted(zip(depths, gs2), key=lambda pair: pair[0])]  # ascending depths
-            
-            
+
             for g in reversed(gs):
                 # dh.idebug(g.get_id())
                 ks = g.getchildren()
@@ -258,16 +257,16 @@ class FlattenPlots(inkex.EffectExtension):
         # import time
         # tic = time.time();
         # ds = dh.descendants2(self.svg);
-        ds = self.svg.ldescendants
+        ds = self.svg.cdescendants
         clips = [el.get("clip-path") for el in ds]
         masks = [el.get("mask") for el in ds]
         clips = [url[5:-1] for url in clips if url is not None]
         masks = [url[5:-1] for url in masks if url is not None]
         if hasattr(self.svg, "newclips"):
             for el in self.svg.newclips:
-                if isinstance(el, (inkex.ClipPath)) and not (dh.get_id2(el) in clips):
+                if isinstance(el, (inkex.ClipPath)) and not (el.get_id2() in clips):
                     dh.deleteup(el)
-                elif dh.isMask(el) and not (dh.get_id2(el) in masks):
+                elif dh.isMask(el) and not (el.get_id2() in masks):
                     dh.deleteup(el)
 
         for el in reversed(ds):
@@ -301,7 +300,7 @@ class FlattenPlots(inkex.EffectExtension):
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
         # should work with both v1.0 and v1.1
         for el in sel:
-            d = dh.duplicate2(el)
+            d = el.duplicate2
             el.getparent().insert(list(el.getparent()).index(el), d)
             if d.get("inkscape:label") is not None:
                 el.set("inkscape:label", el.get("inkscape:label") + " flat")
@@ -318,8 +317,8 @@ class FlattenPlots(inkex.EffectExtension):
     def effect(self):
         cprofile = True
         cprofile = False
-        lprofile = True
-        lprofile = False
+
+        lprofile = os.getenv("LINEPROFILE") == "True"
 
         if self.options.testmode:
             cprofile = True
@@ -362,7 +361,7 @@ class FlattenPlots(inkex.EffectExtension):
                 from inspect import getmembers, isfunction, isclass, getmodule
 
                 fns = []
-                for m in [dh, TextParser, RemoveKerning, Style2]:
+                for m in [dh, TextParser, RemoveKerning, Style2, inkex.transforms]:
                     fns += [v[1] for v in getmembers(m, isfunction)]
                     for c in getmembers(m, isclass):
                         if getmodule(c[1]) is m:
