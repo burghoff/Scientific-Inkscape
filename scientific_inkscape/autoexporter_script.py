@@ -18,12 +18,14 @@ writedir = s[1]
 bfn = s[2]
 fmts = s[3]
 sys.path += s[4]
-PNG_DPI = s[5]
-imagedpi = s[6]
-reduce_images = s[7]
-tojpg = s[8]
-text_to_paths = s[9]
-thinline_dehancement = s[10]
+input_options = s[5]
+# PNG_DPI = s[5]
+# imagedpi = s[6]
+# reduce_images = s[7]
+# tojpg = s[8]
+# text_to_paths = s[9]
+# thinline_dehancement = s[10]
+# input_options = s[11]
 
 import inkex
 from inkex import Vector2d, Transform
@@ -134,7 +136,7 @@ class myThread(threading.Thread):
             while not (self.stopped):
                 if self.nf:
                     print("Export formats: " + ", ".join([v.upper() for v in fmts]))
-                    print("Rasterization DPI: " + str(PNG_DPI))
+                    print("Rasterization DPI: " + str(input_options.dpi))
                     print("Watch directory: " + self.watchdir)
                     print("Write directory: " + self.writedir)
                     files = get_files(self.watchdir)
@@ -196,22 +198,14 @@ class myThread(threading.Thread):
                             import autoexporter
                             from autoexporter import AutoExporter
 
-                            options = (
-                                DEBUG,
-                                PNG_DPI,
-                                imagedpi,
-                                reduce_images,
-                                tojpg,
-                                text_to_paths,
-                                thinline_dehancement,
-                                True,
-                            )
+                            input_options.debug = DEBUG
+                            input_options.prints = True
 
                             outtemplate = autoexporter.joinmod(
                                 self.writedir, os.path.split(f)[1]
                             )
                             nfs = AutoExporter().export_all(
-                                self.bfn, f, outtemplate, fmts, options
+                                self.bfn, f, outtemplate, fmts, input_options
                             )
                             genfiles += nfs
 
@@ -256,7 +250,7 @@ while keeprunning:
             t2 = myThread(2)
             t2.start()
         elif t2.ui in ["R", "r"]:
-            PNG_DPI = int(input("Enter new rasterization DPI: "))
+            input_options.dpi = int(input("Enter new rasterization DPI: "))
             t2 = myThread(2)
             t2.start()
         elif t2.ui in ["A", "a"]:

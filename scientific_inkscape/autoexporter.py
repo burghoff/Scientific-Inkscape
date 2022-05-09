@@ -129,6 +129,9 @@ class AutoExporter(inkex.EffectExtension):
             "--texttopath", type=inkex.Boolean, default=False, help="Text to paths?"
         )
         pars.add_argument(
+            "--svgoptpdf", type=inkex.Boolean, default=False, help="Alternate Optimized SVG?"
+        )
+        pars.add_argument(
             "--exportnow", type=inkex.Boolean, default=False, help="Export me now"
         )
         pars.add_argument(
@@ -144,6 +147,7 @@ class AutoExporter(inkex.EffectExtension):
             self.options.imagemode = 1
             self.options.texttopath = True
             self.options.exportnow = True
+            self.options.svgoptpdf = False;
 
         # dh.idebug(self.options.output.name)
 
@@ -167,19 +171,20 @@ class AutoExporter(inkex.EffectExtension):
             if formats[ii]
         ]
 
-        dpi = self.options.dpi
-        imagedpi = self.options.dpi_im
-        reduce_images = self.options.imagemode == 1 or self.options.imagemode == 2
-        tojpg = self.options.imagemode == 2
-        text_to_paths = self.options.texttopath
-        thinline_dehancement = self.options.thinline
-        export_now = self.options.exportnow
+        
+        # Make an options copy we can pass to the external program
+        import copy
+        optcopy = copy.copy(self.options)
+        delattr(optcopy,'output')
+        delattr(optcopy,'input_file')
+        optcopy.reduce_images = self.options.imagemode == 1 or self.options.imagemode == 2
+        optcopy.tojpg         = self.options.imagemode == 2
 
         bfn = dh.Get_Binary_Loc()
         bloc, bnm = os.path.split(bfn)
         pyloc, pybin = os.path.split(sys.executable)
 
-        if not (export_now):
+        if not(self.options.exportnow):
             aepy = os.path.abspath(
                 os.path.join(dh.get_script_path(), "autoexporter_script.py")
             )
@@ -193,17 +198,11 @@ class AutoExporter(inkex.EffectExtension):
                 bfn,
                 formats,
                 sys.path,
-                dpi,
-                imagedpi,
-                reduce_images,
-                tojpg,
-                text_to_paths,
-                thinline_dehancement,
+                optcopy
             ]
             pickle.dump(
                 s, open(os.path.join(dh.get_script_path(), "ae_settings.p"), "wb")
             )
-            # dh.idebug(sys.path)
 
             def escp(x):
                 return x.replace(" ", "\\\\ ")
@@ -265,19 +264,11 @@ class AutoExporter(inkex.EffectExtension):
                 pth = dh.Get_Current_File(self)
             else:
                 pth = self.options.input_file
-            options = (
-                DEBUGGING,
-                dpi,
-                imagedpi,
-                reduce_images,
-                tojpg,
-                text_to_paths,
-                thinline_dehancement,
-                DEBUGGING,
-            )
+            optcopy.debug = DEBUGGING
+            optcopy.prints = DEBUGGING
 
             AutoExporter().export_all(
-                bfn, self.options.input_file, pth, formats, options
+                bfn, self.options.input_file, pth, formats, optcopy
             )
             # overwrite_svg(self.svg,pth)
 
@@ -337,28 +328,18 @@ class AutoExporter(inkex.EffectExtension):
             # overwrite_svg(svg2, self.options.input_file)
             # self.options.output = 'testoutput'
 
-    def export_all(self, bfn, svgfnin, outtemplate, exp_fmts, options):
-        (
-            debug,
-            PNG_DPI,
-            imagedpi,
-            reduce_images,
-            tojpg,
-            text_to_paths,
-            thinline_dehancement,
-            prints,
-        ) = options
+    def export_all(self, bfn, svgfnin, outtemplate, exp_fmts, input_options):
         
         # Do png before any preprocessing
         if 'png' in exp_fmts:
             finished, tf, myo = AutoExporter().export_file(
-                bfn, svgfnin, outtemplate, 'png', None, options)
+                bfn, svgfnin, outtemplate, 'png', None, input_options)
         
         
-        if (reduce_images or text_to_paths) and any(
+        if (input_options.reduce_images or input_options.texttopath) and any(
             [svgfnin in exp_fmts for svgfnin in ["svg", "pdf", "emf", "eps"]]
         ):
-            ppoutput = self.preprocessing(bfn, svgfnin, outtemplate, options)
+            ppoutput = self.preprocessing(bfn, svgfnin, outtemplate, input_options)
             tempoutputs = ppoutput[1]
             tempdir = ppoutput[2]
         else:
@@ -370,13 +351,13 @@ class AutoExporter(inkex.EffectExtension):
         for fmt in exp_fmts:
             if fmt != "png":
                 finished, tf, myo = AutoExporter().export_file(
-                    bfn, svgfnin, outtemplate, fmt, ppoutput, options
+                    bfn, svgfnin, outtemplate, fmt, ppoutput, input_options
                 )
             if finished:
                 newfiles.append(myo)
             tempoutputs += tf
 
-        if not (debug):
+        if not (input_options.debug):
             for t in list(set(tempoutputs)):
                 os.remove(t)
             if tempdir is not None:
@@ -384,21 +365,11 @@ class AutoExporter(inkex.EffectExtension):
         return newfiles
 
     # Use the Inkscape binary to export the file
-    def export_file(self, bfn, fin, fout, fformat, ppoutput, options):
-        (
-            debug,
-            PNG_DPI,
-            imagedpi,
-            reduce_images,
-            tojpg,
-            text_to_paths,
-            thinline_dehancement,
-            prints,
-        ) = options
+    def export_file(self, bfn, fin, fout, fformat, ppoutput, input_options):
         import os, time, copy
 
         myoutput = fout[0:-4] + "." + fformat
-        if prints:
+        if input_options.prints:
             print("    To " + fformat + "...", end=" ", flush=True)
         timestart = time.time()
 
@@ -411,18 +382,18 @@ class AutoExporter(inkex.EffectExtension):
         # try:
         smallsvg = fformat == "svg"
         notpng = not (fformat == "png")
-        if (thinline_dehancement or smallsvg) and notpng:
+        if (input_options.thinline or smallsvg) and notpng:
             if tempdir is None:
                 import tempfile
 
                 tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"))
-                if debug:
-                    if prints:
+                if input_options.debug:
+                    if input_options.prints:
                         dh.idebug("\n    " + joinmod(tempdir, ""))
             basetemp = joinmod(tempdir, "tmp.svg")
         #            print(basetemp)
 
-        if thinline_dehancement and notpng:
+        if input_options.thinline and notpng:
             svg = get_svg(fin)
             self.Thinline_Dehancement(svg, fformat)
             tmp1 = basetemp.replace(".svg", "_tld" + fformat[0] + ".svg")
@@ -430,23 +401,7 @@ class AutoExporter(inkex.EffectExtension):
             fin = copy.copy(tmp1)
             tmpoutputs.append(tmp1)
 
-        if smallsvg:  # Convert to pdf, then to a smaller SVG
-            # tmp3 = basetemp.replace(".svg", "_tmp_small.pdf")
-            # arg2 = [
-            #     bfn,
-            #     "--export-background",
-            #     "#ffffff",
-            #     "--export-background-opacity",
-            #     "1.0",
-            #     "--export-dpi",
-            #     str(PNG_DPI),
-            #     "--export-filename",
-            #     tmp3,
-            #     fin,
-            # ]
-            # dh.subprocess_repeat(arg2)
-            # fin = copy.copy(tmp3)
-            # tmpoutputs.append(tmp3)
+        if smallsvg: 
             myoutput = myoutput.replace(".svg", "_optimized.svg")
 
         try:
@@ -463,7 +418,7 @@ class AutoExporter(inkex.EffectExtension):
                 "--export-background-opacity",
                 "1.0",
                 "--export-dpi",
-                str(PNG_DPI),
+                str(input_options.dpi),
                 "--export-filename",
                 myoutput,
                 fin,
@@ -487,11 +442,43 @@ class AutoExporter(inkex.EffectExtension):
             # ScourInkscape().run(sargs,myoutput)
             # set_stderr(True)
             
-            try:
-                ScourInkscape().run(sargs,myoutput)
-            except: # Scour failed
-                dh.idebug('\nWarning: Optimizer failed, converting to PDF and back')
-                # Convert to PDF
+            if not(input_options.svgoptpdf):
+                try:
+                    ScourInkscape().run(sargs,myoutput)
+                except: # Scour failed
+                    dh.idebug('\nWarning: Optimizer failed, converting to PDF and back')
+                    # Convert to PDF
+                    tmp3 = basetemp.replace(".svg", "_tmp_small.pdf")
+                    arg2 = [
+                        bfn,
+                        "--export-background",
+                        "#ffffff",
+                        "--export-background-opacity",
+                        "1.0",
+                        "--export-dpi",
+                        str(input_options.dpi),
+                        "--export-filename",
+                        tmp3,
+                        fin,
+                    ]
+                    dh.subprocess_repeat(arg2)
+                    fin = copy.copy(tmp3)
+                    tmpoutputs.append(tmp3)
+                    # Convert back to SVG
+                    arg2 = [
+                        bfn,
+                        "--export-background",
+                        "#ffffff",
+                        "--export-background-opacity",
+                        "1.0",
+                        "--export-dpi",
+                        str(input_options.dpi),
+                        "--export-filename",
+                        myoutput,
+                        fin,
+                    ]
+                    dh.subprocess_repeat(arg2)
+            else:
                 tmp3 = basetemp.replace(".svg", "_tmp_small.pdf")
                 arg2 = [
                     bfn,
@@ -500,7 +487,7 @@ class AutoExporter(inkex.EffectExtension):
                     "--export-background-opacity",
                     "1.0",
                     "--export-dpi",
-                    str(PNG_DPI),
+                    str(input_options.dpi),
                     "--export-filename",
                     tmp3,
                     fin,
@@ -516,14 +503,14 @@ class AutoExporter(inkex.EffectExtension):
                     "--export-background-opacity",
                     "1.0",
                     "--export-dpi",
-                    str(PNG_DPI),
+                    str(input_options.dpi),
                     "--export-filename",
                     myoutput,
                     fin,
                 ]
                 dh.subprocess_repeat(arg2)
 
-        if prints:
+        if input_options.prints:
             print(
                 "done! (" + str(round(1000 * (time.time() - timestart)) / 1000) + " s)"
             )
@@ -533,20 +520,10 @@ class AutoExporter(inkex.EffectExtension):
         #     return False, tmpoutputs, None
 
     # @staticmethod
-    def preprocessing(self, bfn, fin, fout, options):
-        (
-            debug,
-            PNG_DPI,
-            imagedpi,
-            reduce_images,
-            tojpg,
-            text_to_paths,
-            thinline_dehancement,
-            prints,
-        ) = options
+    def preprocessing(self, bfn, fin, fout, input_options):
         import os, time, copy
 
-        if prints:
+        if input_options.prints:
             print("    Preprocessing for vector outputs...", end=" ", flush=True)
             timestart = time.time()
         # try:
@@ -554,12 +531,12 @@ class AutoExporter(inkex.EffectExtension):
         import tempfile
 
         tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"))
-        if debug:
-            if prints:
+        if input_options.debug:
+            if input_options.prints:
                 dh.idebug("\n    " + joinmod(tempdir, ""))
         basetemp = joinmod(tempdir, "tmp.svg")
 
-        if reduce_images:
+        if input_options.reduce_images:
             import image_helpers as ih
 
             # print(ih.hasPIL)
@@ -591,7 +568,7 @@ class AutoExporter(inkex.EffectExtension):
                         "export-id:"
                         + el.get_id()
                         + "; export-id-only; export-dpi:"
-                        + str(imagedpi)
+                        + str(input_options.dpi_im)
                         + "; export-filename:"
                         + tmpimg
                         + "; export-do; "
@@ -600,14 +577,14 @@ class AutoExporter(inkex.EffectExtension):
                         "export-id:"
                         + el.get_id()
                         + "; export-dpi:"
-                        + str(imagedpi)
+                        + str(input_options.dpi_im)
                         + "; export-filename:"
                         + tmpimg2
                         + "; export-background-opacity:1.0; export-do; "
                     )  # export all w/background
                 arg2 = [bfn, "--actions", acts, fin]
                 dh.subprocess_repeat(arg2)
-                if tojpg and ih.hasPIL:
+                if input_options.tojpg and ih.hasPIL:
                     arg2 = [bfn, "--actions", acts2, fin]
                     dh.subprocess_repeat(arg2)
 
@@ -618,7 +595,7 @@ class AutoExporter(inkex.EffectExtension):
                     if os.path.exists(tmpimg):
                         tmpoutputs.append(tmpimg)
                         if ih.hasPIL:
-                            if tojpg:
+                            if input_options.tojpg:
                                 tmpoutputs.append(tmpimg2)
                                 tmpjpg = tmpimg.replace(".png", ".jpg")
                                 ret, bbox = ih.to_jpeg(tmpimg, tmpimg2, tmpjpg)
@@ -748,7 +725,7 @@ class AutoExporter(inkex.EffectExtension):
                 tmpoutputs.append(tmp4)
 
         # if text_to_paths or thinline_dehancement:
-        if text_to_paths or thinline_dehancement:
+        if input_options.texttopath or input_options.thinline:
             # if text_to_paths:
             svg = get_svg(fin)
             ds = dh.visible_descendants(svg)
@@ -760,7 +737,7 @@ class AutoExporter(inkex.EffectExtension):
             # pels = [el.get_id() for el in ds if isinstance(el,dh.otp_support) or el.get('d') is not None] # path-like
             # stroke to path too buggy for now, don't convert strokes
             convert_els = []
-            if text_to_paths:
+            if input_options.texttopath:
                 convert_els += tels
             # if thinline_dehancement:
             #     convert_els+=pels
@@ -779,7 +756,7 @@ class AutoExporter(inkex.EffectExtension):
             ]
             dh.subprocess_repeat(arg2)
 
-            if text_to_paths:
+            if input_options.texttopath:
                 # Text converted to paths are a group of characters. Combine them all
                 svg = get_svg(tmp)
                 for elid in tels:
@@ -799,7 +776,7 @@ class AutoExporter(inkex.EffectExtension):
             fin = copy.copy(tmp)
             tmpoutputs.append(tmp)
             
-        if prints:
+        if input_options.prints:
             print(
                 "done! (" + str(round(1000 * (time.time() - timestart)) / 1000) + " s)"
             )
@@ -814,7 +791,7 @@ class AutoExporter(inkex.EffectExtension):
         pth_commands = ["M","m","L","l","H","h","V","v","C","c","S","s","Q","q","T","t","A","a","Z","z"]
         # fmt on
         for el in dh.descendants2(svg):
-            if isinstance(el, dh.otp_support):
+            if isinstance(el, dh.otp_support) and not(isinstance(el,(PathElement))):
                 dh.object_to_path(el)
             d = el.get("d")
             if d is not None and any(

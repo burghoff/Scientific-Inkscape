@@ -210,7 +210,7 @@ class Homogenizer(inkex.EffectExtension):
         if fixtextdistortion:
             # make a new transform that removes bad scaling and shearing (see General_affine_transformation.nb)
             for el in sel:
-                ct = el.composed_transform()
+                ct = el.ccomposed_transform
                 detv = ct.a * ct.d - ct.b * ct.c
                 signdet = -1 * (detv < 0) + (detv >= 0)
                 sqrtdet = math.sqrt(abs(detv))

@@ -1435,6 +1435,7 @@ otp_support = (
     inkex.Polygon,
     inkex.Polyline,
     inkex.Line,
+    inkex.PathElement
 )
 
 
@@ -1800,7 +1801,7 @@ def vto_xpath(sty):
 
 
 def Version_Check(caller):
-    siv = "v1.4.18"  # Scientific Inkscape version
+    siv = "v1.2.21"  # Scientific Inkscape version
     maxsupport = "1.2.0"
     minsupport = "1.1.0"
 
