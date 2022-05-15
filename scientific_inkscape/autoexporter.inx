@@ -8,12 +8,14 @@
         <label>Mac users: You may get a security prompt asking whether to allow Inkscape to open a Terminal. Make sure you allow it.</label>
         <label>Linux users: This extension cannot run as an AppImage or as a Snap installation.</label>
         <label appearance="header">Formats to export</label>
-        <param name="usepdf" type="bool" gui-text="PDF">true</param>   
+        <param name="usepdf" type="bool" gui-text="PDF"
+         gui-description="Filters will be rasterized for PDF exports.">true</param>   
         <param name="usepng" type="bool" gui-text="PNG">true</param>    
         <param name="useemf" type="bool" gui-text="EMF">true</param>   
         <param name="useeps" type="bool" gui-text="EPS">true</param>  
         <param name="usesvg" type="bool" gui-text="Optimized SVG">true</param> 
-        <param name="dpi" type="float" precision="0" min="1" max="9999" gui-text="Rasterization DPI">600</param>
+        <param name="dpi" type="float" precision="0" min="1" max="9999" gui-text="Rasterization DPI"
+        gui-description="Resolution for PNG output and PDF filter rasterization.">600</param>
         
         <label appearance="header">Directories</label>   
         <param type="path" name="watchdir" gui-text="Watch directory" mode="folder"/>
@@ -50,6 +52,21 @@
         <param name="exportnow" type="bool" gui-text="Export this document now"
         gui-description="Export the current document as it is now without running the Autoexporter program (like Save a Copy). Exports will be placed in the same folder as the original.">false</param>
         
+        <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+        <label>By David Burghoff, University of Notre Dame</label>
+        </page>
+        
+        <page name="rasterizer" gui-text="Rasterizer">
+        <label appearance="header">Object rasterizer</label>   
+        <label>By running the extension with this tab selected, selected objects can be marked for rasterization (conversion to bitmap). They will remain as normal objects in your SVG, but the Autoexporter will rasterize them during export.</label>
+        <label> </label>
+        <label>This can be useful if you notice that certain objects make the size of the export large and less responsive, such as paths that contain tens of thousands of nodes.</label>           
+        <label> </label>
+        <param name="rasterizermode" type="optiongroup" appearance="combo"
+                gui-text="Mark selected objects as">
+                   <option value="1">Raster objects</option>
+                   <option value="2">Normal objects</option>
+                </param>
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>By David Burghoff, University of Notre Dame</label>
         </page>

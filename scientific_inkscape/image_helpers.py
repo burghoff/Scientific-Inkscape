@@ -106,7 +106,7 @@ except ImportError:
     from base64 import encodestring as encodebytes
 
 
-def embed_image(node, svg_path):
+def embed_image(node, svg_dir):
     """Embed the data of the selected Image Tag element"""
     xlink = node.get("xlink:href")
     if xlink is not None and xlink[:5] == "data:":
@@ -123,7 +123,7 @@ def embed_image(node, svg_path):
 
     # Primary location always the filename itself, we allow this
     # call to search the user's home folder too.
-    path = absolute_href(href or "", svg_path)
+    path = absolute_href2(href or "", svg_dir)
 
     # Backup directory where we can find the image
     if not os.path.isfile(path):
@@ -157,46 +157,42 @@ def embed_image(node, svg_path):
             )
 
 
-def embed_external_image(node, path):
+def embed_external_image(el, filename):
     """Embed the data of the selected Image Tag element"""
-    xlink = node.get("xlink:href")
-
-    url = urlparse.urlparse(xlink)
-    href = urllib.url2pathname(url.path)
-
-    with open(path, "rb") as handle:
-        # Don't read the whole file to check the header
-        file_type = get_type(path, handle.read(10))
-        handle.seek(0)
-
-        if file_type:
-            # Future: Change encodestring to encodebytes when python3 only
-            node.set(
-                "xlink:href",
-                "data:{};base64,{}".format(
-                    file_type, encodebytes(handle.read()).decode("ascii")
-                ),
-            )
-            node.pop("sodipodi:absref")
-        else:
-            inkex.errormsg(
-                _(
-                    "%s is not of type image/png, image/jpeg, "
-                    "image/bmp, image/gif, image/tiff, or image/x-icon"
+    if filename is not None:
+        with open(filename, "rb") as handle:
+            # Don't read the whole file to check the header
+            file_type = get_type(filename, handle.read(10))
+            handle.seek(0)
+            
+            if file_type:
+                # Future: Change encodestring to encodebytes when python3 only
+                el.set(
+                    "xlink:href",
+                    "data:{};base64,{}".format(
+                        file_type, encodebytes(handle.read()).decode("ascii")
+                    ),
                 )
-                % path
-            )
+                el.pop("sodipodi:absref")
+            else:
+                inkex.errormsg(
+                    _(
+                        "%s is not of type image/png, image/jpeg, "
+                        "image/bmp, image/gif, image/tiff, or image/x-icon"
+                    )
+                    % filename
+                )
 
 
 # Check if image is linked or embedded. If linked, check if path is valid
-def check_linked(node, svg_path):
+def check_linked(node, svg_dir):
     """Embed the data of the selected Image Tag element"""
     xlink = node.get("xlink:href")
     if xlink is not None and xlink[:5] == "data:":
         return False, None
     url = urlparse.urlparse(xlink)
     href = urllib.url2pathname(url.path)
-    path = absolute_href(href or "", svg_path)
+    path = absolute_href2(href or "", svg_dir)
     if not os.path.isfile(path):
         path = node.get("sodipodi:absref", path)
     fileexists = os.path.isfile(path)
@@ -207,7 +203,7 @@ def check_linked(node, svg_path):
 
 
 # Gets the type of an image element
-def get_image_type(node, svg_path):
+def get_image_type(node, svg_dir):
     xlink = node.get("xlink:href")
 
     if not xlink.startswith("data:"):
@@ -225,7 +221,7 @@ def get_image_type(node, svg_path):
 
         # Primary location always the filename itself, we allow this
         # call to search the user's home folder too.
-        path = absolute_href(href or "", svg_path)
+        path = absolute_href2(href or "", svg_dir)
 
         # Backup directory where we can find the image
         if not os.path.isfile(path):
@@ -282,8 +278,9 @@ def get_type(path, header):
 # if __name__ == '__main__':
 #     EmbedImage().run()
 
-
-def absolute_href(filename, svg_path, default="~/"):
+# Modification to the built-in absolute_href function that doesn't require an
+# extension class
+def absolute_href2(filename, svg_dir, default="~/"):
     """
     Process the filename such that it's turned into an absolute filename
     with the working directory being the directory of the loaded svg.
@@ -298,55 +295,63 @@ def absolute_href(filename, svg_path, default="~/"):
     if not os.path.isabs(filename):
         filename = os.path.expanduser(filename)
     if not os.path.isabs(filename):
-        filename = os.path.join(svg_path, filename)
+        filename = os.path.join(svg_dir, filename)
     return os.path.realpath(os.path.expanduser(filename))
+
 
 
 # Stuff by David Burghoff
 try:
-    from PIL import Image as Image2
+    from PIL import Image as ImagePIL
 
     hasPIL = True
 except:
     hasPIL = False
 
 # def remove_alpha(imin):
-#     background = Image2.new('RGBA', imin.size, (255,255,255))
-#     alpha_composite = Image2.alpha_composite(background, imin)
+#     background = ImagePIL.new('RGBA', imin.size, (255,255,255))
+#     alpha_composite = ImagePIL.alpha_composite(background, imin)
 #     alpha_composite_3 = alpha_composite.convert('RGB')
 #     return alpha_composite_3
 
 
-def remove_alpha(imin, background):
-    # background = Image2.new('RGBA', imin.size, (255,255,255))
-    alpha_composite = Image2.alpha_composite(background, imin)
-    alpha_composite_3 = alpha_composite.convert("RGB")
-    return alpha_composite_3
+# def remove_alpha(imin, background):
+#     # background = ImagePIL.new('RGBA', imin.size, (255,255,255))
+#     alpha_composite = ImagePIL.alpha_composite(background, imin)
+#     alpha_composite_3 = alpha_composite.convert("RGB")
+#     return alpha_composite_3
 
+# Convert and crop transparent image to JPG
+# Requires the transparent version (imin) as well as the opaque version (opaqueimin)
+# def to_jpeg(imin, opaqueimin, imout):
+#     with ImagePIL.open(imin) as im:
+#         with ImagePIL.open(opaqueimin) as oim:
+#             bbox = im.getbbox()
+#             # # Composite to remove transparent regions
+#             # compim = remove_alpha(im, imb)
+            
+#             # Crop to non-transparent region only
+#             # left,upper,right,lower (left & upper pixel is non-zero corner, right-1 & lower-1 is non-zero corner)
+#             if bbox is not None:
+#                 oim = oim.crop(bbox)
+#                 bbox = [
+#                     bbox[0] / im.size[0],
+#                     bbox[1] / im.size[1],
+#                     bbox[2] / im.size[0],
+#                     bbox[3] / im.size[1],
+#                 ]
+#                 # normalize to original size
+#             oim.convert('RGB').save(imout)
+#             return imout, bbox
+        
 
-def to_jpeg(imin, background, imout):
-    with Image2.open(imin) as im:
-        with Image2.open(background) as imb:
-            # Composite to remove transparent regions
-            compim = remove_alpha(im, imb)
-            # Crop to non-transparent region only
-            bbox = im.getbbox()
-            # left,upper,right,lower (left & upper pixel is non-zero corner, right-1 & lower-1 is non-zero corner)
-            if bbox is not None:
-                compim = compim.crop(bbox)
-                bbox = [
-                    bbox[0] / im.size[0],
-                    bbox[1] / im.size[1],
-                    bbox[2] / im.size[0],
-                    bbox[3] / im.size[1],
-                ]
-                # normalize to original size
-            compim.save(imout)
-            return imout, bbox
+def to_jpeg(imin,imout):
+    with ImagePIL.open(imin) as im:
+        im.convert('RGB').save(imout)
 
 
 def crop_image(imin):
-    with Image2.open(imin) as im:
+    with ImagePIL.open(imin) as im:
         bbox = im.getbbox()
         # left,upper,right,lower (left & upper pixel is non-zero corner, right-1 & lower-1 is non-zero corner)
         if bbox is not None:
@@ -361,8 +366,8 @@ def crop_image(imin):
             cropim.save(imin)
         return imin, bbox
 
-
-def extract_image_simple(node, save_to):
+# Extract an embedded image
+def extract_image_simple(node, save_to_base):
     """Extract the node as if it were an image."""
     xlink = node.get("xlink:href")
     data = xlink[5:]
@@ -373,7 +378,183 @@ def extract_image_simple(node, save_to):
     except ValueError:
         return None
     file_ext = mime_to_ext(mimetype)
-    pathwext = save_to + file_ext
+    pathwext = save_to_base + file_ext
+    # inkex.utils.debug(pathwext)
     with open(pathwext, "wb") as fhl:
         fhl.write(decodebytes(data.encode("utf-8")))
     return pathwext
+
+# Get the size of an embedded image
+def embedded_size(node):
+    xlink = node.get("xlink:href")
+    try:
+        data = xlink[5:]
+        (mimetype, data) = data.split(";", 1)
+        (base, data) = data.split(",", 1)
+        return len(decodebytes(data.encode("utf-8")))
+    except (ValueError, TypeError):
+        return None
+
+# Get just the alpha channel of an image, which can be turned into a mask
+# def make_alpha_mask(fin,maskout):
+#     from PIL import Image, ImageOps
+#     with Image.open(fin) as im:
+#         (r,g,b,a)=im.split()
+#         # (r,g,b)=Image.new('RGB',im.size,'black').split()
+#         # nim = Image.merge('RGBA',(r,g,b,ImageOps.invert(a)))
+#         # (r,g,b)=Image.new('RGB',im.size,'black').split()
+#         nim = Image.merge('L',(a,))
+#         nim.save(maskout)
+        
+# # Get just the alpha channel of an image, which can be turned into a mask
+# def make_rgb(fin,rgbout):
+#     from PIL import Image, ImageOps
+#     with Image.open(fin) as im:
+#         (r,g,b,a)=im.split()
+#         # (r,g,b)=Image.new('RGB',im.size,'black').split()
+#         # nim = Image.merge('RGBA',(r,g,b,ImageOps.invert(a)))
+#         # (r,g,b)=Image.new('RGB',im.size,'black').split()
+#         nim = Image.merge('RGB',(r,g,b))
+#         nim.save(rgbout)
+        
+# Extracts embedded images or returns the path of linked ones        
+def extract_img_file(el,svg_dir,newpath):
+    islinked, validpath = check_linked(el, svg_dir)
+    if islinked and validpath is not None:
+        impath = validpath;
+        madenew = False
+    elif islinked and validpath is None:
+        impath = None
+        madenew = False
+    else:
+        def strip_ext(fnin):
+            # strip existing extension
+            if fnin[-4:].lower() in ['.png','.gif','jpg','tif']:
+                fnin = fnin[0:-4]
+            if fnin[-5:].lower() in ['jpeg','tiff']:
+                fnin = fnin[0:-5]
+            return fnin
+        
+        # inkex.utils.debug(newpath)
+        extract = extract_image_simple(el, strip_ext(newpath))
+        if extract is not None:
+            impath = extract
+            madenew = True
+        else:
+            impath = None
+            madenew = False
+    return impath, islinked
+
+
+# For images with alpha=0 pixels, set the RGB of those pixels based on another
+# image. This is usually the same image with a background and with other objects.
+# For those pixels, alpha is then set to 1 (out of 255), which prevents the PDF
+# renderer from replacing those pixels with black. This avoids the 'gray ring'
+# issue that can happen on PDF exports.
+def Set_Alpha0_RGB(img,imgref):
+    im1 =  ImagePIL.open(img).convert('RGBA')
+    im2 =  ImagePIL.open(imgref).convert('RGBA')
+    import numpy as np
+    d1 = np.asarray(im1)
+    d2 = np.asarray(im2)
+    a = d1[:,:,3];
+    nd = np.stack((np.where(a==0,d2[:,:,0],d1[:,:,0]),
+                   np.where(a==0,d2[:,:,1],d1[:,:,1]),
+                   np.where(a==0,d2[:,:,2],d1[:,:,2]),
+                   np.where(a==0,1*np.ones_like(a),a)),2);
+    ImagePIL.fromarray(nd).save(img)
+    # inkex.utils.debug(img)
+    anyalpha0 = np.where(a==0,True,False).any()
+    return anyalpha0
+
+# Crop a list of images based on the transparency of the first one
+# Returns the normalized bounding box, which we need later 
+def crop_images(ims_in):
+    bbox = None
+    with ImagePIL.open(ims_in[0]) as ref_im:
+        bbox = ref_im.getbbox()
+        nsz = ref_im.size
+        
+    if bbox is not None:
+        # left,upper,right,lower (left & upper pixel is non-zero corner, right-1 & lower-1 is non-zero corner)
+        nbbox = [
+            bbox[0] / nsz[0],
+            bbox[1] / nsz[1],
+            bbox[2] / nsz[0],
+            bbox[3] / nsz[1],
+        ]  # normalize to original size
+        for imf in ims_in:
+            with ImagePIL.open(imf) as im: 
+                im.crop(bbox).save(imf)
+        return nbbox
+    else:
+        return None
+
+# Get the absolute locations of all linked images when called by an extension
+# Needed because the temp file has a different location from the actual one
+def get_linked_locations(slf):
+    llocations = dict()
+    images = slf.svg.xpath('//svg:image')
+    for node in images:
+        xlink = node.get("xlink:href")
+        if xlink is not None and xlink[:5] != "data:":
+            try:
+                import urllib.request as urllib
+                import urllib.parse as urlparse
+            except ImportError:
+                # python2 compatibility, remove when python3 only.
+                import urllib
+                import urlparse
+    
+            url = urlparse.urlparse(xlink)
+            href = urllib.url2pathname(url.path)
+    
+            # Look relative to the *temporary* filename instead of the original filename.
+            try:    # v1.2 forward
+                path = slf.absolute_href(
+                    href or "", cwd=os.path.dirname(slf.options.input_file)
+                )
+            except: # pre-v1.2
+                # Primary location always the filename itself, we allow this
+                # call to search the user's home folder too.
+                path = slf.absolute_href(href or '')
+    
+            # Backup directory where we can find the image
+            if not os.path.isfile(path):
+                path = node.get("sodipodi:absref", path)
+                
+            if os.path.isfile(path):
+                llocations[node.get_id()]  = path;
+            else:
+                llocations[node.get_id()]  = None;
+    return llocations
+
+# Get the absolute locations of all linked images when the absolute path is known
+def get_linked_locations_file(fin,svg):
+    llocations = dict()
+    images = svg.xpath('//svg:image')
+    for node in images:
+        xlink = node.get("xlink:href")
+        if xlink is not None and xlink[:5] != "data:":
+            try:
+                import urllib.request as urllib
+                import urllib.parse as urlparse
+            except ImportError:
+                # python2 compatibility, remove when python3 only.
+                import urllib
+                import urlparse
+    
+            url = urlparse.urlparse(xlink)
+            href = urllib.url2pathname(url.path)
+    
+            path = absolute_href2(href or "", os.path.dirname(fin))
+    
+            # Backup directory where we can find the image
+            if not os.path.isfile(path):
+                path = node.get("sodipodi:absref", path)
+                
+            if os.path.isfile(path):
+                llocations[node.get_id()]  = path;
+            else:
+                llocations[node.get_id()]  = None;
+    return llocations

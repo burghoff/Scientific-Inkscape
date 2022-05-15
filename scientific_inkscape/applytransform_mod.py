@@ -209,8 +209,8 @@ class ApplyTransform(inkex.EffectExtension):
                         abs(newxy2[0] - newxy3[0]) ** 2
                         + abs(newxy2[1] - newxy3[1]) ** 2
                     )
-                    
-                    if isequal(edgex,edgey):
+
+                    if isequal(edgex, edgey):
                         node.tag = "{http://www.w3.org/2000/svg}circle"
                         node.set("rx", None)
                         node.set("ry", None)

@@ -109,7 +109,7 @@ def get_files(dirin):
                 fs.append(os.path.join(os.path.abspath(dirin), f.name))
         return fs
     except FileNotFoundError:
-        return None # directory missing (cloud drive error?)
+        return None  # directory missing (cloud drive error?)
 
 
 # Threading class
@@ -153,7 +153,7 @@ class myThread(threading.Thread):
                                 newlastmod[ii] = os.path.getmtime(newfiles[ii])
                             except FileNotFoundError:
                                 newlastmod[ii] = lastmod[ii]
-    
+
                         updatefiles = []
                         if any([not (f in newfiles) for f in files]):
                             pass
@@ -162,7 +162,10 @@ class myThread(threading.Thread):
                             updatefiles += [n for n in newfiles if not (n in files)]
                             # new files
                         elif any(
-                            [newlastmod[ii] > lastmod[ii] + 1 for ii in range(len(files))]
+                            [
+                                newlastmod[ii] > lastmod[ii] + 1
+                                for ii in range(len(files))
+                            ]
                         ):  # updated files
                             updatefiles += [
                                 newfiles[ii]

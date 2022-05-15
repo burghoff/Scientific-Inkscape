@@ -40,6 +40,7 @@ from copy import copy, deepcopy
 import inkex
 from inkex import TextElement, Tspan, Vector2d, Transform
 from Style2 import Style2
+
 # from inkex import ImmutableVector2d as iv2d
 import numpy as np
 
@@ -1320,7 +1321,7 @@ class tword:
                     #     newsty = Style2("")
                     # else:
                     #     newsty = Style2(newsty)
-                        
+
                     newsty = c.sty
 
                     # Nativize super/subscripts
@@ -1574,7 +1575,9 @@ class tword:
     @property
     def pts_t(self):
         if self._pts_t is None:
-            self._pts_t = [self.transform.apply_to_point(p,simple=True) for p in self.pts_ut]
+            self._pts_t = [
+                self.transform.apply_to_point(p, simple=True) for p in self.pts_ut
+            ]
         return self._pts_t
 
     @pts_t.setter
@@ -2350,21 +2353,23 @@ class Character_Table:
     @staticmethod
     def normalize_style(sty):
         nones = [None, "none", "None"]
-        sty2 = inkex.OrderedDict();      # we don't need a full Style since we only want the string (for speed)
+        sty2 = inkex.OrderedDict()
+        # we don't need a full Style since we only want the string (for speed)
         for a in Character_Table.textshapeatt:
             if a in sorted(sty):
                 styv = sty.get(a)
                 # if styv is not None and styv.lower()=='none':
                 #     styv=None # actually don't do this because 'none' might be overriding inherited styles
                 if styv is not None:
-                    if a=='font-family' and styv not in nones:
+                    if a == "font-family" and styv not in nones:
                         styv = ",".join([v.strip().strip("'") for v in styv.split(",")])
                     sty2[a] = styv
         sty2["font-size"] = "1px"
-        sty2 = ';'.join(["{0}:{1}".format(*seg) for seg in sty2.items()]) # from Style to_str
-        return (sty2)
-        
-        
+        sty2 = ";".join(
+            ["{0}:{1}".format(*seg) for seg in sty2.items()]
+        )  # from Style to_str
+        return sty2
+
         # sty = Style2(sty)
         # stykeys = list(sty.keys())
         # sty2 = Style2("")

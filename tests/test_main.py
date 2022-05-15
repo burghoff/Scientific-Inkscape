@@ -1,6 +1,6 @@
 # coding=utf-8
 
-STORE_REFS = False
+STORE_REFS = True
 fname = 'Other_tests.svg'
 
 MAXPAPERS = 0
@@ -92,10 +92,18 @@ class CompareNumericFuzzy2(Compare):
     """
     @staticmethod
     def filter(contents):
+        # def func(x):
+        #     if b'matrix' in x:
+        #         c2 = contents.strip(b'matrix(').strip(b')').split(b' ')
+        #         c3 = b' '.join([b"%.3f" % (float(cv.group(0))) for cv in c2])
+        #         return b'matrix('+c3+b')'
+        #     else:
+        #         return b"%.3f" % (float(x.group(0)))
+            
         if version=='1.2':
             func = lambda m: b"%.3f" % (float(m.group(0)))
         else:
-            func = lambda m: b"%.2f" % (float(m.group(0)))
+            func = lambda m: b"%.0f" % (float(m.group(0)))
         contents = re.sub(rb"\d+\.\d+(e[+-]\d+)?", func, contents)
         contents = re.sub(rb"(\d\.\d+?)0+\b", rb"\1", contents)
         contents = re.sub(rb"(\d)\.0+(?=\D|\b)", rb"\1", contents)

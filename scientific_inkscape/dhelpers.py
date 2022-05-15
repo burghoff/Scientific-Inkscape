@@ -547,7 +547,7 @@ def Tbool(obj):
     return obj.matrix!=Itmat     # exact, not within tolerance. I think this is fine
 inkex.Transform.__bool__ = Tbool
 # fmt: on
-        
+
 
 # Unit parser and renderer
 def uparse(str):
@@ -612,6 +612,7 @@ def get_points(el, irange=None):
 def unlink2(el):
     if isinstance(el, (Use)):
         useid = el.get("xlink:href")
+        # idebug([el.croot,el.root])
         useel = getElementById2(el.croot, useid[1:])
         if useel is not None:
             d = useel.duplicate2
@@ -648,10 +649,15 @@ def unlink2(el):
     else:
         return el
 
+# Unlinks a clone, then searches the descendants of the clone to unlink any
+# other clones that are found.
+def recursive_unlink2(el):
+    el = unlink2(el)
+    for d in el.descendants2:
+        if isinstance(el, (Use)):
+            recursive_unlink2(el)
 
 unungroupable = (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment)
-
-
 def ungroup(groupnode):
     # Pops a node out of its group, unless it's already in a layer or the base
     # Unlink any clones that aren't glyphs
@@ -935,7 +941,7 @@ def merge_clipmask(node, newclipurl, mask=False):
                 svg.newclips.append(d)  # for later cleanup
                 for k in list(d):
                     compose_all(k, None, None, -node.ctransform, None)
-                newclipurl = d.get_id2(2);
+                newclipurl = d.get_id2(2)
 
         newclipnode = getElementById2(svg, newclipurl[5:-1])
         if newclipnode is not None:
@@ -986,24 +992,34 @@ def merge_clipmask(node, newclipurl, mask=False):
 # Repeated getElementById lookups can be really slow, so instead create a cached iddict property.
 # When an element is created that may be needed later, it must be added using add_to_iddict.
 def getElementById2(svg, elid):
-    return svg.iddict.get(elid)
+    if svg is not None:
+        return svg.iddict.get(elid)
+    else:
+        return None
+
 
 def add_to_iddict(el, todel=None):
     svg = el.croot
     svg.iddict[el.get_id2()] = el
     if todel is not None:
         del svg.iddict[todel]
+
+
 def getiddict(svg):
     if not (hasattr(svg, "_iddict")):
         svg._iddict = dict()
         for el in descendants2(svg):
             svg._iddict[el.get_id2()] = el
     return svg._iddict
+
+
 inkex.SvgDocumentElement.iddict = property(getiddict)
 
 # A cached list of all descendants of an svg (not necessarily in order)
 def getcdescendants(svg):
     return list(svg.iddict.values())
+
+
 inkex.SvgDocumentElement.cdescendants = property(getcdescendants)
 
 # Deletes an element from cached dicts on deletion
@@ -1089,6 +1105,8 @@ def get_id2_func(el, as_url=0):
     if as_url > 1:
         eid = f"url({eid})"
     return eid
+
+
 BaseElement.get_id2 = get_id2_func
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
@@ -1126,6 +1144,16 @@ def Get_Bounding_Boxes(
             # skip warnings (version 1.0 only?)
         data = [float(x.strip("'")) * pxinuu for x in str(d).split(",")[1:]]
         bbs[key] = data
+    
+    # Inkscape reports a relative bounding box.
+    # The true bounding box is independent of viewbox x and y
+    if s is None: svg = svg_from_file(filename);
+    else:         svg = s.svg;
+    vb = svg.get_viewbox2();
+    for k in bbs:
+        bbs[k][0] += vb[0]*svg.cscale
+        bbs[k][1] += vb[1]*svg.cscale
+        
     return bbs
 
 
@@ -1142,6 +1170,11 @@ def commandqueryall(fn, inkscape_binary=None):
     tFStR = p.stdout
     return tFStR
 
+# Get SVG from file
+from inkex import load_svg
+def svg_from_file(fin):
+    svg = load_svg(fin).getroot()
+    return svg
 
 # In the event of a timeout, repeat subprocess call several times
 def subprocess_repeat(argin):
@@ -1435,7 +1468,7 @@ otp_support = (
     inkex.Polygon,
     inkex.Polyline,
     inkex.Line,
-    inkex.PathElement
+    inkex.PathElement,
 )
 
 
@@ -1699,20 +1732,24 @@ def get_cscale(svg):
         if ivp[0] <= 1 and ivp[1] < 2:  # pre-1.2: return scale
             svg._cscale = svg.scale
         else:  # post-1.2: return old scale
-            vb = svg.get_viewbox();
-            if vb==[0,0,0,0]: # old docs may not have a viewbox
-                vb=[0,0,svg.get("width"),svg.get("height")]
+            vb = svg.get_viewbox2()
             scale_x = float(
-                (svg.unittouu(svg.get("width"))) or (svg.get_viewbox()[2])
+                svg.unittouu(svg.get("width")) or vb[2]
             ) / float(vb[2])
             scale_y = float(
-                (svg.unittouu(svg.get("height"))) or (svg.get_viewbox()[3])
+                svg.unittouu(svg.get("height")) or vb[3]
             ) / float(vb[3])
             svg._cscale = max([scale_x, scale_y])
     return svg._cscale
-
-
 inkex.SvgDocumentElement.cscale = property(get_cscale)
+
+# Returns viewboxes for old docs that don't have one
+def get_viewbox2_fcn(svg):
+    vb = svg.get_viewbox()
+    if vb == [0, 0, 0, 0]: 
+        vb = [0, 0, svg.get("width"), svg.get("height")]
+    return vb
+inkex.SvgDocumentElement.get_viewbox2 = get_viewbox2_fcn
 
 
 # Override Transform's __matmul__ to give old versions __matmul__
@@ -1740,8 +1777,6 @@ def matmul2(obj, matrix):
             + obj.matrix[1][2],
         )
     )
-
-
 inkex.transforms.Transform.__matmul__ = matmul2
 
 # Get default style attributes
@@ -1801,7 +1836,7 @@ def vto_xpath(sty):
 
 
 def Version_Check(caller):
-    siv = "v1.2.21"  # Scientific Inkscape version
+    siv = "v1.2.22"  # Scientific Inkscape version
     maxsupport = "1.2.0"
     minsupport = "1.1.0"
 
