@@ -1166,6 +1166,8 @@ def commandqueryall(fn, inkscape_binary=None,extra_args = []):
         bfn = inkscape_binary
     arg2 = [bfn, "--query-all"]+extra_args+[fn]
 
+    # idebug(arg2)
+
     p = subprocess_repeat(arg2)
     tFStR = p.stdout
     return tFStR

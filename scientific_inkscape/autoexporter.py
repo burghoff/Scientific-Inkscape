@@ -563,11 +563,12 @@ class AutoExporter(inkex.EffectExtension):
         tmpoutputs = []
         import tempfile
 
-        tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"))
+        tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
         if input_options.debug:
             if input_options.prints:
                 dh.idebug("\n    " + joinmod(tempdir, ""))
-        basetemp = joinmod(tempdir, "tmp.svg")
+        temphead = "tmp.svg"
+        basetemp = joinmod(tempdir, temphead)
         
         # SVG modifications that should be done prior to any binary calls
         svg = get_svg(fin)
@@ -595,7 +596,7 @@ class AutoExporter(inkex.EffectExtension):
         raster_ids = []; image_ids = [];
         for el in dh.visible_descendants(svg):
             if input_options.do_pdf_fixes:
-                sty = el.cspecified_style;
+                sty = el.cstyle; # only want the object with the filter
                 if sty.get('filter') is not None:
                     filt_url = sty.get('filter')[5:-1];
                     if dh.getElementById2(svg, filt_url) is not None:
@@ -617,7 +618,7 @@ class AutoExporter(inkex.EffectExtension):
             svg = get_svg(fin)
 
             vds = dh.visible_descendants(svg);
-            els = [el for el in vds if el.get_id2() in raster_ids+image_ids]
+            els = [el for el in vds if el.get_id2() in list(set(raster_ids+image_ids))]
             if len(els) > 0:
                 # bbs = dh.Get_Bounding_Boxes(
                 #     filename=fin, pxinuu=svg.unittouu("1px"), inkscape_binary=bfn
@@ -629,9 +630,10 @@ class AutoExporter(inkex.EffectExtension):
                 ti2s = []
                 for el in els:
                     elid = el.get_id2();
-                    tmpimg = basetemp.replace(".svg", "_im_" + elid + "." + imgtype)
+                    # dh.idebug([elid,el.croot])
+                    tmpimg = temphead.replace(".svg", "_im_" + elid + "." + imgtype)
                     tis.append(tmpimg)
-                    tmpimg2 = basetemp.replace(".svg", "_imbg_" + elid + "." + imgtype)
+                    tmpimg2 = temphead.replace(".svg", "_imbg_" + elid + "." + imgtype)
                     ti2s.append(tmpimg2)
                     
                     if elid in raster_ids:
@@ -665,9 +667,15 @@ class AutoExporter(inkex.EffectExtension):
                     # args = [bfn, "--actions", acts, fin];  
                 # dh.subprocess_repeat(args)
                 
+                
+                oldwd = os.getcwd();
+                os.chdir(tempdir); # use relative paths to reduce arg length
                 bbs = dh.Get_Bounding_Boxes(
                     filename=fin, pxinuu=svg.unittouu("1px"), inkscape_binary=bfn, extra_args = args
                 )
+                os.chdir(oldwd);
+                tis = [os.path.join(tempdir,t)  for t in tis]
+                ti2s = [os.path.join(tempdir,t) for t in ti2s]
                 # print(bbs)
                 
                 # if ih.hasPIL:
@@ -703,11 +711,23 @@ class AutoExporter(inkex.EffectExtension):
                         osz = ih.embedded_size(el);
                         if osz is None: osz = float("inf")
                         nsz = os.path.getsize(tmpimg)
-                        embedimg = (nsz < osz) or (anyalpha0 and input_options.do_pdf_fixes)
+                        hasmask = el.get('mask') is not None  # PDF masking bad
+                        embedimg = (nsz < osz) or (input_options.do_pdf_fixes and (anyalpha0 or hasmask))
+
+                        # Ungroup until no ancestors have masks
+                        # Rasterization already contains any masking
+                        while any([anc.get('mask') is not None for anc in el.ancestors()]) and el.getparent()!=el.croot:
+                            embedimg = True;
+                            if len(list(el.getparent()))==1: # I don't know how to ungroup a mask with multiple items (impossible?)
+                                dh.ungroup(el.getparent());
+                            else:
+                                break;
 
                         if embedimg:                 
-                            self.Replace_with_Raster(el,tmpimg,bbs[el.get_id()],bbox)
+                            self.Replace_with_Raster(el,tmpimg,bbs[el.get_id2()],bbox)
 
+                
+                dh.flush_stylesheet_entries(svg) # since we ungrouped
                 tmp4 = basetemp.replace(".svg", "_eimg.svg")
                 overwrite_svg(svg, tmp4)
                 fin = copy.copy(tmp4)
@@ -926,6 +946,10 @@ class AutoExporter(inkex.EffectExtension):
                             
     def Replace_with_Raster(self,el,imgloc,bb,imgbbox):
         svg = el.croot;
+        if svg is None: # in case we were already rasterized within ancestor
+            return
+        # dh.idebug(el.get_id())
+        # dh.idebug(svg)
         ih.embed_external_image(el, imgloc)
 
         # The exported image has a different size and shape than the original
@@ -938,9 +962,9 @@ class AutoExporter(inkex.EffectExtension):
         # move image to group
         g.set("transform", el.get("transform"))
         el.set("transform", None)
-        g.set("clip-path", el.get("clip-path"))
+        # g.set("clip-path", el.get("clip-path"))   # conversion to bitmap already includes clips
         el.set("clip-path", None)
-        g.set("mask", el.get("mask"))
+        # g.set("mask", el.get("mask"))             # conversion to bitmap already includes masks
         el.set("mask", None)
 
         # Calculate what transform is needed to preserve the image's location
