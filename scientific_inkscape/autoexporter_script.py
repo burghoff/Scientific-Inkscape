@@ -194,7 +194,7 @@ class myThread(threading.Thread):
                     loopme = True
                     genfiles
                     while loopme:
-                        for f in updatefiles:
+                        for f in sorted(updatefiles):
                             # while not(self.stopped):
                             print("\nExporting " + f + "")
 

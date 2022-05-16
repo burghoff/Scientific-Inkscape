@@ -651,40 +651,40 @@ def unlink2(el):
 
 # Unlinks a clone, then searches the descendants of the clone to unlink any
 # other clones that are found.
-def recursive_unlink2(el):
-    el = unlink2(el)
-    for d in el.descendants2:
-        if isinstance(el, (Use)):
-            recursive_unlink2(el)
+# def recursive_unlink2(el):
+#     el = unlink2(el)
+#     for d in el.descendants2:
+#         if isinstance(el, (Use)):
+#             recursive_unlink2(el)
 
 unungroupable = (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment)
-def ungroup(groupnode):
-    # Pops a node out of its group, unless it's already in a layer or the base
-    # Unlink any clones that aren't glyphs
-    # Remove any comments, Preserves style, clipping, and masking
+def ungroup(groupel):
+    # Ungroup a group, preserving style, clipping, and masking
+    # Remove any comments
 
-    if groupnode.croot is not None:
-        gparent = groupnode.getparent()
-        gindex = list(gparent).index(groupnode)  # group's location in parent
-        gtransform = groupnode.ctransform
-        gclipurl = groupnode.get("clip-path")
-        gmaskurl = groupnode.get("mask")
-        gstyle = groupnode.ccascaded_style
+    if groupel.croot is not None:
+        gparent = groupel.getparent()
+        gindex = list(gparent).index(groupel)  # group's location in parent
+        gtransform = groupel.ctransform
+        gclipurl = groupel.get("clip-path")
+        gmaskurl = groupel.get("mask")
+        gstyle = groupel.ccascaded_style
 
-        els = list(groupnode)
+        els = list(groupel)
         for el in list(reversed(els)):
 
-            unlinkclone = False
-            if isinstance(el, Use):
-                useid = el.get("xlink:href")
-                if useid is not None:
-                    useel = getElementById2(el.croot, useid[1:])
-                    unlinkclone = not (isinstance(useel, (inkex.Symbol)))
+            # unlinkclone = False
+            # if isinstance(el, Use):
+            #     useid = el.get("xlink:href")
+            #     if useid is not None:
+            #         useel = getElementById2(el.croot, useid[1:])
+            #         unlinkclone = not (isinstance(useel, (inkex.Symbol)))
 
-            if unlinkclone:  # unlink clones
-                el = unlink2(el)
-            elif isinstance(el, lxml.etree._Comment):  # remove comments
-                groupnode.remove(el)
+            # if unlinkclone:  # unlink clones
+            #     idebug('c2 '+el.get_id2())
+            #     el = unlink2(el)
+            if isinstance(el, lxml.etree._Comment):  # remove comments
+                groupel.remove(el)
 
             if not (isinstance(el, unungroupable)):
                 clippedout = compose_all(el, gclipurl, gmaskurl, gtransform, gstyle)
@@ -694,12 +694,12 @@ def ungroup(groupnode):
                     gparent.insert(gindex + 1, el)
                     # places above
 
-            if (
-                isinstance(el, Group) and unlinkclone
-            ):  # if was a clone, may need to ungroup
-                ungroup(el)
-        if len(groupnode.getchildren()) == 0:
-            groupnode.delete2()
+            # if (
+            #     isinstance(el, Group) and unlinkclone
+            # ):  # if was a clone, may need to ungroup
+            #     ungroup(el)
+        if len(groupel.getchildren()) == 0:
+            groupel.delete2()
 
 
 # For composing a group's properties onto its children (also group-like objects like Uses)
@@ -1111,7 +1111,7 @@ BaseElement.get_id2 = get_id2_func
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
 def Get_Bounding_Boxes(
-    s=None, getnew=False, filename=None, pxinuu=None, inkscape_binary=None
+    s=None, getnew=False, filename=None, pxinuu=None, inkscape_binary=None,extra_args = []
 ):
     # Gets all of a document's bounding boxes (by ID), in user units
     # Note that this uses a command line call, so by default it will only get the values from BEFORE the extension is called
@@ -1123,11 +1123,11 @@ def Get_Bounding_Boxes(
 
     # Query Inkscape
     if not (getnew):
-        tFStR = commandqueryall(filename, inkscape_binary=inkscape_binary)
+        tFStR = commandqueryall(filename, inkscape_binary=inkscape_binary,extra_args=extra_args)
     else:
         tmpname = filename + "_tmp"
         command.write_svg(s.svg, tmpname)
-        tFStR = commandqueryall(tmpname, inkscape_binary=inkscape_binary)
+        tFStR = commandqueryall(tmpname, inkscape_binary=inkscape_binary,extra_args=extra_args)
         import os
 
         os.remove(tmpname)
@@ -1159,12 +1159,12 @@ def Get_Bounding_Boxes(
 
 # 2022.02.03: I think the occasional hangs come from the call to command.
 # I think this is more robust. Make a tally below if it freezes:
-def commandqueryall(fn, inkscape_binary=None):
+def commandqueryall(fn, inkscape_binary=None,extra_args = []):
     if inkscape_binary is None:
         bfn = Get_Binary_Loc()
     else:
         bfn = inkscape_binary
-    arg2 = [bfn, "--query-all", fn]
+    arg2 = [bfn, "--query-all"]+extra_args+[fn]
 
     p = subprocess_repeat(arg2)
     tFStR = p.stdout

@@ -585,17 +585,27 @@ class AutoExporter(inkex.EffectExtension):
         # Unlink any clones for the PDF image and marker fixes 
         for el in dh.visible_descendants(svg):
             if isinstance(el,(inkex.Use)):
-                dh.recursive_unlink2(el)
+                dh.unlink2(el)
                 
         # Fix marker export bug
         if input_options.do_pdf_fixes:
             self.Marker_Fix(svg)
             
-        # Determine if any objects will be rasterized
-        any_rasters = False
+        # Find out which objects need to be rasterized
+        raster_ids = []; image_ids = [];
         for el in dh.visible_descendants(svg):
+            if input_options.do_pdf_fixes:
+                sty = el.cspecified_style;
+                if sty.get('filter') is not None:
+                    filt_url = sty.get('filter')[5:-1];
+                    if dh.getElementById2(svg, filt_url) is not None:
+                        raster_ids.append(el.get_id2())
             if el.get('autoexporter_rasterize')=='True':
-                any_rasters = True;
+                raster_ids.append(el.get_id2());
+            if (input_options.reduce_images or input_options.do_pdf_fixes) and isinstance(el, (inkex.Image)):
+                image_ids.append(el.get_id2());
+        if not(input_options.reduce_images) and input_options.do_pdf_fixes:
+            input_options.dpi_im = input_options.dpi
                 
         tmp = basetemp.replace(".svg", "_mod.svg")
         overwrite_svg(svg, tmp)
@@ -603,51 +613,28 @@ class AutoExporter(inkex.EffectExtension):
         tmpoutputs.append(tmp)
 
         # Rasterizations
-        if input_options.reduce_images or input_options.do_pdf_fixes or any_rasters:
+        if len(raster_ids+image_ids)>0:
             svg = get_svg(fin)
-            
-            # Find out which objects need to be rasterized
-            raster_objects = []
-            for el in dh.visible_descendants(svg):
-                if input_options.do_pdf_fixes:
-                    sty = el.cspecified_style;
-                    if sty.get('filter') is not None:
-                        filt_url = sty.get('filter')[5:-1];
-                        if dh.getElementById2(svg, filt_url) is not None:
-                            raster_objects.append(el)
-                if el.get('autoexporter_rasterize')=='True':
-                    raster_objects.append(el);
-            
-            
-            if not(input_options.reduce_images) and input_options.do_pdf_fixes:
-                input_options.dpi_im = input_options.dpi
 
-            els = [
-                el
-                for el in dh.visible_descendants(svg)
-                if isinstance(el, (inkex.Image)) or el in raster_objects
-            ]
+            vds = dh.visible_descendants(svg);
+            els = [el for el in vds if el.get_id2() in raster_ids+image_ids]
             if len(els) > 0:
-                # dh.idebug('here')
-                bbs = dh.Get_Bounding_Boxes(
-                    filename=fin, pxinuu=svg.unittouu("1px"), inkscape_binary=bfn
-                )
+                # bbs = dh.Get_Bounding_Boxes(
+                #     filename=fin, pxinuu=svg.unittouu("1px"), inkscape_binary=bfn
+                # )
                 imgtype = "png"
                 acts = ""
                 acts2 = ""
                 tis = []
                 ti2s = []
                 for el in els:
-                    tmpimg = basetemp.replace(
-                        ".svg", "_im_" + el.get_id() + "." + imgtype
-                    )
+                    elid = el.get_id2();
+                    tmpimg = basetemp.replace(".svg", "_im_" + elid + "." + imgtype)
                     tis.append(tmpimg)
-                    tmpimg2 = basetemp.replace(
-                        ".svg", "_imbg_" + el.get_id() + "." + imgtype
-                    )
+                    tmpimg2 = basetemp.replace(".svg", "_imbg_" + elid + "." + imgtype)
                     ti2s.append(tmpimg2)
                     
-                    if el in raster_objects:
+                    if elid in raster_ids:
                         mydpi = input_options.dpi
                     else:
                         mydpi = input_options.dpi_im
@@ -659,7 +646,7 @@ class AutoExporter(inkex.EffectExtension):
                         + str(mydpi)
                         + "; export-filename:"
                         + tmpimg
-                        + "; export-do; "
+                        + "; export-background-opacity:0.0; export-do; "
                     )  # export item only
                     acts2 += (
                         "export-id:"
@@ -670,11 +657,22 @@ class AutoExporter(inkex.EffectExtension):
                         + tmpimg2
                         + "; export-background-opacity:1.0; export-do; "
                     )  # export all w/background
-                args = [bfn, "--actions", acts, fin]
-                dh.subprocess_repeat(args)
                 if ih.hasPIL:
-                    args = [bfn, "--actions", acts2, fin]
-                    dh.subprocess_repeat(args)
+                    args = ["--actions", acts2+acts];  # export-id-onlys need to go last
+                    # args = [bfn, "--actions", acts2+acts, fin];  
+                else:
+                    args = ["--actions", acts]
+                    # args = [bfn, "--actions", acts, fin];  
+                # dh.subprocess_repeat(args)
+                
+                bbs = dh.Get_Bounding_Boxes(
+                    filename=fin, pxinuu=svg.unittouu("1px"), inkscape_binary=bfn, extra_args = args
+                )
+                # print(bbs)
+                
+                # if ih.hasPIL:
+                #     args = [bfn, "--actions", acts2, fin]
+                #     dh.subprocess_repeat(args)
                     
                 # Add any generated images to the temp output list
                 for ii in range(len(els)):
@@ -682,7 +680,7 @@ class AutoExporter(inkex.EffectExtension):
                         tmpoutputs.append(tis[ii])
                     if os.path.exists(ti2s[ii]):
                         tmpoutputs.append(ti2s[ii])
-                    
+                  
 
                 for ii in range(len(els)):
                     el = els[ii]
@@ -716,22 +714,15 @@ class AutoExporter(inkex.EffectExtension):
                 tmpoutputs.append(tmp4)
 
         # if text_to_paths or thinline_dehancement:
-        if input_options.texttopath or input_options.thinline:
-            # if text_to_paths:
+        if input_options.texttopath:
             svg = get_svg(fin)
-            ds = dh.visible_descendants(svg)
+            vd = dh.visible_descendants(svg)
 
             tels = [
-                el.get_id() for el in ds if isinstance(el, (inkex.TextElement))
+                el.get_id() for el in vd if isinstance(el, (inkex.TextElement))
             ]  # text-like
 
-            # pels = [el.get_id() for el in ds if isinstance(el,dh.otp_support) or el.get('d') is not None] # path-like
-            # stroke to path too buggy for now, don't convert strokes
-            convert_els = []
-            if input_options.texttopath:
-                convert_els += tels
-            # if thinline_dehancement:
-            #     convert_els+=pels
+            convert_els = tels
 
             celsj = ",".join(convert_els)
             tmp = basetemp.replace(".svg", "_stp.svg")
@@ -747,14 +738,14 @@ class AutoExporter(inkex.EffectExtension):
             ]
             dh.subprocess_repeat(arg2)
 
-            if input_options.texttopath:
-                # Text converted to paths are a group of characters. Combine them all
-                svg = get_svg(tmp)
-                for elid in tels:
-                    el = dh.getElementById2(svg, elid)
-                    if el is not None and len(list(el)) > 0:
-                        dh.combine_paths(list(el))
-                overwrite_svg(svg, tmp)
+            # Text converted to paths are a group of characters. Combine them all
+            svg = get_svg(tmp)
+            for elid in tels:
+                el = dh.getElementById2(svg, elid)
+                if el is not None and len(list(el)) > 0:
+                    dh.combine_paths(list(el))
+                    
+            overwrite_svg(svg, tmp)
             fin = copy.copy(tmp)
             tmpoutputs.append(tmp)
 

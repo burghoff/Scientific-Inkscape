@@ -139,19 +139,38 @@ class FlattenPlots(inkex.EffectExtension):
                 for d in dh.descendants2(el):
                     if d in seld:
                         seld.remove(d)  # no longer selected
-
+        
+        
+        ignores = (NamedView, Defs, Metadata, ForeignObject)
         gs = [el for el in seld if isinstance(el, Group)]
-        obs = [
-            el
-            for el in seld
-            if not (isinstance(el, (NamedView, Defs, Metadata, ForeignObject, Group)))
-        ]
+        ngs = [el for el in seld if not(isinstance(el, ignores+(Group,)))]
 
-        if len(gs) == 0 and len(obs) == 0:
+        if len(gs) == 0 and len(ngs) == 0:
             inkex.utils.errormsg("No objects selected!")
             return
 
         if poprest:
+            # Unlink all clones
+            nels = []; oels = [] 
+            for el in seld:
+                if isinstance(el, inkex.Use):
+                    useid = el.get("xlink:href")
+                    if useid is not None:
+                        useel = dh.getElementById2(el.croot, useid[1:])
+                        if not(isinstance(useel, (inkex.Symbol))):
+                            # dh.idebug('c1 '+el.get_id2())
+                            ul = dh.unlink2(el)
+                            nels.append(ul);
+                            oels.append(el);
+            for nel in nels:
+                seld += nel.descendants2
+            for oel in oels:
+                seld.remove(oel)
+            gs = [el for el in seld if isinstance(el, Group)]
+            ngs = [el for el in seld if not(isinstance(el, ignores+(Group,)))]
+            
+            
+            
             # def depth_iter(element):
             #     stack = []
             #     stack.append(iter([element]))
@@ -199,7 +218,7 @@ class FlattenPlots(inkex.EffectExtension):
 
         if self.options.fixtext:
             if setreplacement:
-                for el in obs:
+                for el in ngs:
                     if (
                         isinstance(el, (TextElement, Tspan))
                         and el.getparent() is not None
@@ -219,9 +238,9 @@ class FlattenPlots(inkex.EffectExtension):
             if fixshattering or mergesubsuper or splitdistant or mergenearby:
                 jdict = {1: "middle", 2: "start", 3: "end", 4: None}
                 justification = jdict[self.options.justification]
-                obs = RemoveKerning.remove_kerning(
+                ngs = RemoveKerning.remove_kerning(
                     self,
-                    obs,
+                    ngs,
                     fixshattering,
                     mergesubsuper,
                     splitdistant,
@@ -230,28 +249,29 @@ class FlattenPlots(inkex.EffectExtension):
                 )
 
         if removerectw:
-            for el in obs:
+            for el in ngs:
                 if isinstance(el, (PathElement, Rectangle, Line)):
-                    pts = list(Path(dh.get_path2(el)).end_points)
-                    xs = [p.x for p in pts]
-                    ys = [p.y for p in pts]
-
-                    if len(xs) > 0:
-                        maxsz = max(max(xs) - min(xs), max(ys) - min(ys))
-                        tol = 1e-3 * maxsz
-                        if (
-                            isinstance(el, (Rectangle))
-                            or 4 <= len(xs) <= 5
-                            and len(dh.uniquetol(xs, tol)) == 2
-                            and len(dh.uniquetol(ys, tol)) == 2
-                        ):  # is a rectangle
-                            sf = dh.get_strokefill(el)
+                    if not(isinstance(el.getparent(),(FlowPara, FlowRegion, FlowRoot))):
+                        pts = list(Path(dh.get_path2(el)).end_points)
+                        xs = [p.x for p in pts]
+                        ys = [p.y for p in pts]
+    
+                        if len(xs) > 0:
+                            maxsz = max(max(xs) - min(xs), max(ys) - min(ys))
+                            tol = 1e-3 * maxsz
                             if (
-                                sf.stroke is None
-                                and sf.fill is not None
-                                and tuple(sf.fill) == (255, 255, 255, 1)
-                            ):
-                                dh.deleteup(el)
+                                isinstance(el, (Rectangle))
+                                or 4 <= len(xs) <= 5
+                                and len(dh.uniquetol(xs, tol)) == 2
+                                and len(dh.uniquetol(ys, tol)) == 2
+                            ):  # is a rectangle
+                                sf = dh.get_strokefill(el)
+                                if (
+                                    sf.stroke is None
+                                    and sf.fill is not None
+                                    and tuple(sf.fill) == (255, 255, 255, 1)
+                                ):
+                                    dh.deleteup(el)
 
         # Remove any unused clips we made, unnecessary white space in document
         # import time
