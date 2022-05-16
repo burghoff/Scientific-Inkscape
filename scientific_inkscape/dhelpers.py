@@ -1178,6 +1178,16 @@ def svg_from_file(fin):
     svg = load_svg(fin).getroot()
     return svg
 
+# Version of ancestors that works in v1.0
+def get_ancestors(el):
+    anc = []; cel = el;
+    while cel.getparent() is not None:
+        cel = cel.getparent()
+        anc.append(cel)
+    return anc;
+    myp = el.get_parent()
+BaseElement.ancestors2 = get_ancestors
+
 # In the event of a timeout, repeat subprocess call several times
 def subprocess_repeat(argin):
     BASE_TIMEOUT = 60

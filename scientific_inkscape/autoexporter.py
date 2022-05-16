@@ -181,7 +181,7 @@ class AutoExporter(inkex.EffectExtension):
             self.options.imagemode = 1
             self.options.texttopath = True
             self.options.exportnow = True
-            self.options.svgoptpdf = False
+            self.options.svgoptpdf = True
 
         if dispprofile:
             import cProfile, pstats, io
@@ -716,7 +716,7 @@ class AutoExporter(inkex.EffectExtension):
 
                         # Ungroup until no ancestors have masks
                         # Rasterization already contains any masking
-                        while any([anc.get('mask') is not None for anc in el.ancestors()]) and el.getparent()!=el.croot:
+                        while any([anc.get('mask') is not None for anc in el.ancestors2()]) and el.getparent()!=el.croot:
                             embedimg = True;
                             if len(list(el.getparent()))==1: # I don't know how to ungroup a mask with multiple items (impossible?)
                                 dh.ungroup(el.getparent());
