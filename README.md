@@ -52,7 +52,7 @@ The Homogenizer is a utility that can set all fonts, font sizes, and stroke widt
 <p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Homogenizer.svg" alt="drawing" ></img></p>
 
 # Auto-Exporter
-When you are saving figures, you would generally like to export them whenever you save. Often you are working on several figures at once and are iterating between writing and making figure adjustments. The Auto-Exporter makes this easy: the Auto-Exporter runs in the background and watches a directory. Whenever any SVGs are changed, it automatically converts them to the formats you specify. Just select (a) the formats you would like to export, (b) what directory you would like it to watch, and (c) where you would like it to put the exports.
+When writing, it is common to iterate between figure adjustment and writing. The Auto-Exporter makes this easy, automatically exporting files to their final form as they are saved. It runs in the background and watches a directory; whenever any SVGs are changed, it automatically converts them to the specified formats. Just select (a) the formats you would like to export, (b) what directory you would like it to watch, and (c) where you would like it to put the exports. This is especially convenient for documents typset in LaTeX: edits to your SVGs can automatically show up in your document.  
 
 The Advanced options can be used to configure how images and text are stored. It can also generate SVGs resistant to Microsoft Office rendering bugs that can be directly inserted into Powerpoint and Word, as well as PDFs that are immune to Adobe Acrobat's rendering bugs. It also provides additional options for rasterizing certain elements during the export.
 
