@@ -528,7 +528,7 @@ def apply_to_point_mod(obj, pt,simple=False):
         if isinstance(pt,(tuple,list)):
             ptx = pt[0]; pty=pt[1];
         else:
-            ptx = pt._x;  pty=pt._y
+            ptx = pt.x;  pty=pt.y
         # idebug(ptx)
         # idebug(pty)
         return inkex.Vector2d(
@@ -1848,7 +1848,7 @@ def vto_xpath(sty):
 
 
 def Version_Check(caller):
-    siv = "v1.2.22"  # Scientific Inkscape version
+    siv = "v1.2.24"  # Scientific Inkscape version
     maxsupport = "1.2.0"
     minsupport = "1.1.0"
 

@@ -30,8 +30,10 @@ from inkex import Image
 
 try:
     from base64 import decodebytes
+    from base64 import b64encode
 except ImportError:
     from base64 import decodestring as decodebytes
+    from base64 import b64encode
 
 
 def mime_to_ext(mime):
@@ -395,6 +397,94 @@ def embedded_size(node):
     except (ValueError, TypeError):
         return None
 
+# Get the data string of an embedded image with the alpha stripped out
+# This allows images to be identified after conversion to PDF
+def Stripped_Alpha_String(el):
+    import tempfile
+    tf = tempfile.NamedTemporaryFile().name;
+    fullpath = extract_image_simple(el, tf)
+    
+    with ImagePIL.open(fullpath) as im:
+        newfile = strip_ext(fullpath)+'.png'
+        
+        return str(im.size)
+        
+    #     im.convert('RGB').save(newfile)
+        
+    #     with open(newfile, "rb") as handle:
+    #         # Don't read the whole file to check the header
+    #         file_type = get_type(newfile, handle.read(10))
+    #         handle.seek(0)
+            
+    #         if file_type:
+    #             return "data:{};base64,{}".format(
+    #                     file_type, encodebytes(handle.read()).decode("ascii"))
+    # return None
+    
+
+def Make_Data_Image(datastr):
+    data = [ord(c) for c in datastr]
+    # inkex.utils.debug(data)
+    import numpy as np
+    im = ImagePIL.fromarray(np.array([data],dtype='uint8'));
+    
+    import tempfile
+    tf = tempfile.NamedTemporaryFile().name;
+    newfile = tf+'.png'
+    im.save(newfile)
+    
+    with open(newfile, "rb") as handle:
+        # Don't read the whole file to check the header
+        file_type = get_type(newfile, handle.read(10))
+        handle.seek(0)
+        
+        if file_type:
+            return "data:{};base64,{}".format(
+                    file_type, encodebytes(handle.read()).decode("ascii"))
+    return None
+
+def Read_Data_Image(imstr):
+    data = imstr[5:]
+    (mimetype, data) = data.split(";", 1)
+    (base, data) = data.split(",", 1)
+    import io
+    im=ImagePIL.open(io.BytesIO(decodebytes(data.encode("utf-8"))))
+    
+    import numpy as np
+    npa = np.asarray(im)
+    if len(npa.shape)==3:
+        data = npa[:,:,0]
+    else:
+        data = npa
+    return ''.join([chr(v) for v in list(data.ravel())])
+
+
+import io
+def str_to_ImagePIL(imstr):
+    try:
+        data = imstr[5:]
+        (mimetype, data) = data.split(";", 1)
+        (base, data) = data.split(",", 1)
+        im = ImagePIL.open(io.BytesIO(decodebytes(data.encode("utf-8"))))
+        return im
+    except:
+        return None
+    
+def ImagePIL_to_str(im):
+    try:
+        img_byte_arr = io.BytesIO()
+        im.save(img_byte_arr,format='png')
+        vals = img_byte_arr.getvalue()
+        file_type = get_type(None, vals[0:10])
+        if file_type:
+            return "data:{};base64,{}".format(
+                    file_type, encodebytes(vals).decode("ascii")
+                )
+    except:
+        return None
+  
+        
+
 # Get just the alpha channel of an image, which can be turned into a mask
 # def make_alpha_mask(fin,maskout):
 #     from PIL import Image, ImageOps
@@ -416,6 +506,15 @@ def embedded_size(node):
 #         # (r,g,b)=Image.new('RGB',im.size,'black').split()
 #         nim = Image.merge('RGB',(r,g,b))
 #         nim.save(rgbout)
+
+# Strips image extensions
+def strip_ext(fnin):
+    # strip existing extension
+    if fnin[-4:].lower() in ['.png','.gif','jpg','tif']:
+        fnin = fnin[0:-4]
+    if fnin[-5:].lower() in ['jpeg','tiff']:
+        fnin = fnin[0:-5]
+    return fnin
         
 # Extracts embedded images or returns the path of linked ones        
 def extract_img_file(el,svg_dir,newpath):
@@ -427,13 +526,6 @@ def extract_img_file(el,svg_dir,newpath):
         impath = None
         madenew = False
     else:
-        def strip_ext(fnin):
-            # strip existing extension
-            if fnin[-4:].lower() in ['.png','.gif','jpg','tif']:
-                fnin = fnin[0:-4]
-            if fnin[-5:].lower() in ['jpeg','tiff']:
-                fnin = fnin[0:-5]
-            return fnin
         
         # inkex.utils.debug(newpath)
         extract = extract_image_simple(el, strip_ext(newpath))

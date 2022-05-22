@@ -498,7 +498,7 @@ class LineList:
                 if x.lower() == "none":
                     tmp.append(None)
                 else:
-                    tmp.append(float(x))
+                    tmp.append(dh.implicitpx(x))
             val = tmp
         return val
 
@@ -769,20 +769,6 @@ class LineList:
 
         return newtxt, nll
 
-    # Deletes empty elements from the doc. Generally this is done last
-    def Delete_Empty(self):
-        dxl = [c.dx for ln in self.lns for c in ln.cs]
-        dyl = [c.dy for ln in self.lns for c in ln.cs]
-        deleteempty(self.textel)
-        cnt = 0
-        for ln in self.lns:
-            for c in ln.cs:
-                c.dx = dxl[cnt]
-                c.dy = dyl[cnt]
-                cnt += 1
-        if self._hasdx or self._hasdy:
-            self.Update_Delta(forceupdate=True)
-            # force an update, could have deleted sodipodi lines
 
     def Split_Off_Characters(self, cs):
         nll = self.duplicate()
@@ -843,6 +829,22 @@ class LineList:
         nll.Update_Delta()
 
         return newtxt, nll
+    
+    
+    # Deletes empty elements from the doc. Generally this is done last
+    def Delete_Empty(self):
+        dxl = [c.dx for ln in self.lns for c in ln.cs]
+        dyl = [c.dy for ln in self.lns for c in ln.cs]
+        deleteempty(self.textel)
+        cnt = 0
+        for ln in self.lns:
+            for c in ln.cs:
+                c.dx = dxl[cnt]
+                c.dy = dyl[cnt]
+                cnt += 1
+        if self._hasdx or self._hasdy:
+            self.Update_Delta(forceupdate=True)
+            # force an update, could have deleted sodipodi lines
 
 
 # For lines, words, and chars
@@ -1791,8 +1793,19 @@ class tchar:
             # if self.w is not None:
             #     self.w.bshft = None
 
-    # @staticmethod
-    # def calc_letter_spacing(styin):
+    @property
+    def actual_font(self):
+        myfont = self.sty.get('font-family')
+        if myfont is not None:
+            myfont = ",".join([v.strip().strip("'") for v in myfont.split(",")])
+        if myfont is None or myfont=='' or myfont=='sans-serif':
+            ret = 'sans-serif'
+        else:
+            # dh.idebug(self.ln.ll.ctable.docfonts)
+            # dh.idebug(myfont)
+            ret = self.ln.ll.ctable.docfonts[myfont]
+        return ret
+            
 
     @staticmethod
     def get_baseline(styin, fsel):
@@ -2128,7 +2141,8 @@ class cloc:
 class Character_Table:
     def __init__(self, els, caller):
         self.caller = caller
-        self.ctable, self.bbs = self.measure_character_widths2(els)
+        self.fonttestchars = 'pIaA10mMvo' # don't need that many, just to figure out which fonts we have
+        self.ctable, self.bbs, self.docfonts = self.measure_character_widths2(els)
 
     def get_prop(self, char, sty):
         if sty in list(self.ctable.keys()):
@@ -2178,7 +2192,32 @@ class Character_Table:
                             )
         for sty in ctable:  # make sure they have spaces
             ctable[sty] = list(set(ctable[sty] + [" "]))
-        return ctable, pctable
+        
+        # Make a dictionary of all font specs in the document, along with the backup fonts in those specs
+        # e.g. {'': ['sans-serif'], 'Calibri,Arial': ['Calibri', 'Arial', 'sans-serif']}
+        # Add these to the table so we can check which fonts the system has
+        docfonts = dict()
+        for sty in ctable:
+            if 'font-family' in sty:
+                sspl = sty.split(';');
+                ffii = [ii for ii in range(len(sspl)) if 'font-family' in sspl[ii]][0]
+                allffs = sspl[ffii].split(':')[1]
+                ffs = [x.strip("'").strip() for x in allffs.split(",")]
+            else:
+                ffs = []
+                allffs = ''
+            if 'sans-serif' not in ffs:
+                ffs.append('sans-serif')
+            docfonts[allffs]=ffs
+        bfs = list(set([v for lst in list(docfonts.values()) for v in lst]))
+        for bf in list(set(bfs+list(docfonts.keys()))):
+            if bf!='':
+                sty = 'font-family:'+bf
+                ctable[sty] = list(set(ctable.get(sty, []) + list(self.fonttestchars)))
+                if sty not in pctable:
+                    pctable[sty] = dict()
+            
+        return ctable, pctable, docfonts
 
     def measure_character_widths2(self, els):
         # Measure the width of all characters of a given style by generating copies with two and three extra spaces.
@@ -2186,7 +2225,7 @@ class Character_Table:
         # This includes any spaces between characters as well.
         # The width will be the width of a character whose composed font size is 1 uu.
         # ct = self.generate_character_table(els,None);
-        ct, pct = self.generate_character_table2(els)
+        ct, pct, dfs = self.generate_character_table2(els)
         # dh.idebug(pct)
 
         pI1 = "pI  "
@@ -2223,6 +2262,7 @@ class Character_Table:
                 f.write(svgtexts.encode("utf8"))
                 svgtexts = ""
             return "text" + str(cnt)
+    
 
         ct2 = dict()
         for s in list(ct.keys()):
@@ -2244,14 +2284,28 @@ class Character_Table:
             ct2[s][pI1] = [pI1, 0, t, dict()]
             t = Make_Character2(pI2, s)
             ct2[s][pI2] = [pI2, 0, t, dict()]
+            
+            # Add backup fonts to the table so we can figure out what our font really is
+            # font_backups(s)
+
         ct = ct2
         f.write((svgtexts + svgstop).encode("utf8"))
         f.close()
 
         nbb = dh.Get_Bounding_Boxes(filename=tmpname, pxinuu=pxinuu)
         import os
-
         os.remove(tmpname)
+
+        # Figure out effective fonts by matching doc fonts to backup fonts
+        for df in dfs:
+            match = 'sans-serif'
+            if df!='':
+                bbdf  = [ nbb[ct['font-family:'+df][ii][2]] for ii in self.fonttestchars]                   # doc font bbs
+                bbbfs = [[nbb[ct['font-family:'+v ][ii][2]] for ii in self.fonttestchars] for v in dfs[df]] # backup font bbs
+                matches = [ii for ii in range(len(dfs[df])) if bbdf==bbbfs[ii]]
+                if len(matches)!=len(dfs[df]):
+                    match = dfs[df][matches[0]]
+            dfs[df] = match
 
         dkern = dict()
         for s in list(ct.keys()):
@@ -2330,10 +2384,8 @@ class Character_Table:
             # dh.debug(dkernscl)
             # ct[s] = ct[s][0:Nl]
 
-        # for s in list(ct.keys()):
-        #     txts[s].delete();
-        # dh.debug(ct)
-        return ct, nbb
+            
+        return ct, nbb, dfs
 
     # For generating test characters, we want to normalize the style so that we don't waste time
     # generating a bunch of identical characters whose font-sizes are different. A style is generated
@@ -2362,6 +2414,7 @@ class Character_Table:
                 #     styv=None # actually don't do this because 'none' might be overriding inherited styles
                 if styv is not None:
                     if a == "font-family" and styv not in nones:
+                        # dh.idebug([styv,",".join([v.strip().strip("'") for v in styv.split(",")])])
                         styv = ",".join([v.strip().strip("'") for v in styv.split(",")])
                     sty2[a] = styv
         sty2["font-size"] = "1px"

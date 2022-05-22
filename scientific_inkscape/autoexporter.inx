@@ -9,11 +9,13 @@
         <label>Linux users: This extension cannot run as an AppImage or as a Snap installation.</label>
         <label appearance="header">Formats to export</label>
         <param name="usepdf" type="bool" gui-text="PDF"
-         gui-description="Filters will be rasterized for PDF exports.">true</param>   
-        <param name="usepng" type="bool" gui-text="PNG">true</param>    
-        <param name="useemf" type="bool" gui-text="EMF">true</param>   
-        <param name="useeps" type="bool" gui-text="EPS">true</param>  
-        <param name="usesvg" type="bool" gui-text="Optimized SVG">true</param> 
+         gui-description="Filters and gradients will be rasterized.">true</param>   
+        <param name="usepng" type="bool" gui-text="PNG">false</param>    
+        <param name="useemf" type="bool" gui-text="EMF"
+         gui-description="Recommended for older versions of Microsoft Office that do not support SVG.">false</param>   
+        <param name="useeps" type="bool" gui-text="EPS">false</param>  
+        <param name="usepsvg" type="bool" gui-text="Portable SVG"
+          gui-description="SVG that has been converted to PDF and back. &#13;Recommended for newer versions of Microsoft Office that support SVG.">false</param> 
         <param name="dpi" type="float" precision="0" min="1" max="9999" gui-text="Rasterization DPI"
         gui-description="Resolution for PNG output and PDF filter rasterization.">600</param>
         
@@ -45,9 +47,7 @@
         gui-description="Conversion of text to paths can help guarantee that it looks identical on all platforms. Recommended for EMFs.">false</param> 
         <param name="thinline" type="bool" gui-text="Prevent thin line enhancement (recommended)"
         gui-description="Some PDF renderers thicken lines at certain zooms; this option makes your lines impervious to this feature.">true</param>  
-        <param name="svgoptpdf" type="bool" gui-text="Optimize SVGs by converting to PDF and back" xml:space="preserve"
-        gui-description="Alternate export for Optimized SVGs. Recommended for when the standard Optimized SVG has problems.&#13;&#13;Also recommended for SVGs that will be inserted into Microsoft Office products.">false</param>  
-        
+
         <label appearance="header">Single export</label>   
         <param name="exportnow" type="bool" gui-text="Export this document now"
         gui-description="Export the current document as it is now without running the Autoexporter program (like Save a Copy). Exports will be placed in the same folder as the original.">false</param>

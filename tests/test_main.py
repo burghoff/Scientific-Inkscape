@@ -1,6 +1,6 @@
 # coding=utf-8
 
-STORE_REFS = True
+STORE_REFS = False
 fname = 'Other_tests.svg'
 
 MAXPAPERS = 0
