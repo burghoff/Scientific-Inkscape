@@ -184,6 +184,9 @@ class AutoExporter(inkex.EffectExtension):
             self.options.imagemode = 1
             self.options.texttopath = True
             self.options.exportnow = True
+            
+            import random
+            random.seed(1)
             # self.options.svgoptpdf = True
 
         if dispprofile:
@@ -485,11 +488,13 @@ class AutoExporter(inkex.EffectExtension):
                 elif isinstance(d,(inkex.Image)):
                     if ih.hasPIL:
                         self.Merge_Mask(d)
-                    # while d.getparent()!=d.croot: # causes problems and doesn't help
-                    #     dh.ungroup(d.getparent());
+                    while d.getparent()!=d.croot: # causes problems and doesn't help
+                        dh.ungroup(d.getparent());
                 elif isinstance(d,(inkex.Group)):
                     if len(d)==0:
                         dh.deleteup(d)
+            
+            dh.flush_stylesheet_entries(svg) # since we ungrouped
             overwrite_svg(svg, myoutput)
 
         if input_options.prints:
@@ -532,7 +537,7 @@ class AutoExporter(inkex.EffectExtension):
         raster_ids = []; image_ids = [];
         for el in dh.visible_descendants(svg):
             # Unlink any clones for the PDF image and marker fixes 
-            if isinstance(el,(inkex.Use)):
+            if isinstance(el,(inkex.Use)) and not(isinstance(el, (inkex.Symbol))):
                 el = dh.unlink2(el)
             
             # Fix marker export bug for PDFs
@@ -922,12 +927,13 @@ class AutoExporter(inkex.EffectExtension):
         s=1/minsz*100
         
         # Make a dummy group so we can properly compose the transform
-        g = dh.new_element(inkex.Group, el)
-        el.getparent().insert(list(el.getparent()).index(el) + 1, g)
-        g.append(el)
-        g.ctransform = el.ctransform; el.ctransform = None;
-        g.set("clip-path", el.get("clip-path"));   el.set("clip-path", None)
-        g.set("mask", el.get("mask"))          ;   el.set("mask", None)
+        # g = dh.new_element(inkex.Group, el)
+        # el.getparent().insert(list(el.getparent()).index(el) + 1, g)
+        # g.append(el)
+        # g.ctransform = el.ctransform; el.ctransform = None;
+        # g.set("clip-path", el.get("clip-path"));   el.set("clip-path", None)
+        # g.set("mask", el.get("mask"))          ;   el.set("mask", None)
+        g = dh.group([el],moveTCM=True)
         
         for d in reversed(el.descendants2):
             xv = LineList.GetXY(d,'x')
@@ -1001,25 +1007,17 @@ class AutoExporter(inkex.EffectExtension):
         # dh.idebug(svg)
         ih.embed_external_image(el, imgloc)
 
+        
         # The exported image has a different size and shape than the original
         # Correct by putting transform/clip/mask on a new parent group, then fix location, then ungroup
-        g = inkex.Group()
-        myi = list(el.getparent()).index(el)
-        el.getparent().insert(myi + 1, g)
-        # place group above
-        g.insert(0, el)
-        # move image to group
-        g.set("transform", el.get("transform"))
-        el.set("transform", None)
-        # g.set("clip-path", el.get("clip-path"))   # conversion to bitmap already includes clips
-        el.set("clip-path", None)
-        # g.set("mask", el.get("mask"))             # conversion to bitmap already includes masks
-        el.set("mask", None)
+        g = dh.group([el],moveTCM=True)
+        g.set("clip-path", None); # conversion to bitmap already includes clips
+        g.set("mask", None)       # conversion to bitmap already includes masks
 
         # Calculate what transform is needed to preserve the image's location
         ct = (
             Transform("scale(" + str((svg.cscale)) + ")")
-            @ el.composed_transform()
+            @ el.ccomposed_transform
         )
         # bb = bbs[el.get_id()]
         pbb = [

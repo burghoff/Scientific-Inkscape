@@ -643,6 +643,12 @@ def unlink2(el):
             d.set("unlinked_clone", True)
             for k in descendants2(d)[1:]:
                 unlink2(k)
+                
+            # To match Unlink Clone behavior, convert Symbol to Group
+            if isinstance(d,(inkex.Symbol)):
+                g = group(list(d))
+                ungroup(d)
+                d = g;
             return d
         else:
             return el
@@ -673,16 +679,6 @@ def ungroup(groupel):
         els = list(groupel)
         for el in list(reversed(els)):
 
-            # unlinkclone = False
-            # if isinstance(el, Use):
-            #     useid = el.get("xlink:href")
-            #     if useid is not None:
-            #         useel = getElementById2(el.croot, useid[1:])
-            #         unlinkclone = not (isinstance(useel, (inkex.Symbol)))
-
-            # if unlinkclone:  # unlink clones
-            #     idebug('c2 '+el.get_id2())
-            #     el = unlink2(el)
             if isinstance(el, lxml.etree._Comment):  # remove comments
                 groupel.remove(el)
 
@@ -694,18 +690,29 @@ def ungroup(groupel):
                     gparent.insert(gindex + 1, el)
                     # places above
 
-            # if (
-            #     isinstance(el, Group) and unlinkclone
-            # ):  # if was a clone, may need to ungroup
-            #     ungroup(el)
         if len(groupel.getchildren()) == 0:
             groupel.delete2()
 
+# Group a list of elements, placing the group in the location of the first element            
+def group(el_list,moveTCM=False):
+    g = new_element(inkex.Group, el_list[0], dupecss=False)
+    myi = list(el_list[0].getparent()).index(el_list[0])
+    el_list[0].getparent().insert(myi + 1, g)
+    for el in el_list:
+        g.append(el)
+        
+    # If moveTCM is set and grouping one element, can move transform/clip/mask to group
+    # Handy for adding and properly composing transforms/clips/masks
+    if moveTCM and len(el_list)==1:
+        g.ctransform = el.ctransform;              el.ctransform = None;
+        g.set("clip-path", el.get("clip-path"));   el.set("clip-path", None)
+        g.set("mask", el.get("mask"))          ;   el.set("mask", None)
+    return g
 
-# For composing a group's properties onto its children (also group-like objects like Uses)
+
 Itmat = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
 
-
+# For composing a group's properties onto its children (also group-like objects like Uses)
 def compose_all(el, clipurl, maskurl, transform, style):
     if style is not None:  # style must go first since we may change it with CSS
         mysty = el.ccascaded_style
@@ -716,6 +723,7 @@ def compose_all(el, clipurl, maskurl, transform, style):
         el.cstyle = compsty
 
     if clipurl is not None:
+        # idebug([el.get_id2(),clipurl])
         cout = merge_clipmask(el, clipurl)  # clip applied before transform, fix first
     if maskurl is not None:
         merge_clipmask(el, maskurl, mask=True)
@@ -815,12 +823,11 @@ def duplicate_fixed(el):  # fixes duplicate's set_random_id
 
 
 # Makes a new object and adds it to the dicts, inheriting CSS dict entry from another element
-def new_element(genin, inheritfrom):
-    g = genin()
-    # e.g Rectangle
-    inheritfrom.croot.append(g)
-    # add to the SVG so we can assign an id
-    dupe_cssdict_entry(inheritfrom.get_id2(), g.get_id2(), inheritfrom.croot)
+def new_element(classin, inheritfrom,dupecss=True):
+    g = classin()                # e.g Rectangle
+    inheritfrom.croot.append(g)  # add to the SVG so we can assign an id
+    if dupecss:
+        dupe_cssdict_entry(inheritfrom.get_id2(), g.get_id2(), inheritfrom.croot)
     add_to_iddict(g)
     return g
 
@@ -904,6 +911,18 @@ def merge_clipmask(node, newclipurl, mask=False):
                 and len(uniquetol(ys, tol)) == 2
             ):
                 isrect = True
+        
+        # if I am clipped I may not be a rectangle
+        if isrect:
+            if el.get('clip-path') is not None:
+                myclip = getElementById2(el.croot,el.get('clip-path')[5:-1])
+                if myclip is not None:
+                    isrect = False
+            if el.get('mask') is not None:
+                mymask = getElementById2(el.croot,el.get('mask')[5:-1])
+                if mymask is not None:
+                    isrect = False
+                
         if isrect:
             return True, pth
         else:
@@ -920,6 +939,9 @@ def merge_clipmask(node, newclipurl, mask=False):
             p.set("d", newpath)
         el.delete2()
         return isempty  # if clipped out, safe to delete element
+    
+    
+    # idebug([node.get_id2(),newclipurl])
 
     if newclipurl is not None:
         svg = node.croot
@@ -949,8 +971,11 @@ def merge_clipmask(node, newclipurl, mask=False):
                 if isinstance(k, (Use)):
                     k = unlink2(k)
 
+        
+
         oldclipurl = node.get(cmstr)
         clipinvalid = True
+        
         if oldclipurl is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
             oldclipnode = getElementById2(svg, oldclipurl[5:-1])
@@ -965,6 +990,9 @@ def merge_clipmask(node, newclipurl, mask=False):
                     svg.newclips = []
                 svg.newclips.append(d)  # for later cleanup
                 node.set(cmstr, d.get_id2(2))
+                
+                
+                # idebug([d.get_id2()])
 
                 newclipisrect = False
                 if newclipnode is not None and len(list(newclipnode)) == 1:
@@ -977,6 +1005,7 @@ def merge_clipmask(node, newclipurl, mask=False):
                         # For rectangular clips, we can compose them easily
                         # Since most clips are rectangles this semi-fixes the PDF clip export bug
                         cout = compose_clips(k, newclippth, oldclippth)
+                        # idebug('here')
                     else:
                         cout = merge_clipmask(k, newclipurl, mask)
                     couts.append(cout)
@@ -985,6 +1014,9 @@ def merge_clipmask(node, newclipurl, mask=False):
         if clipinvalid:
             node.set(cmstr, newclipurl)
             cout = False
+
+        
+        # idebug([node.get_id2(),clipinvalid,oldclipurl])
 
         return cout
 
@@ -1482,6 +1514,7 @@ otp_support = (
     inkex.Line,
     inkex.PathElement,
 )
+flow_types = (inkex.FlowRoot,inkex.FlowPara,inkex.FlowRegion,inkex.FlowSpan,)
 
 
 def object_to_path(el):
@@ -1759,7 +1792,7 @@ inkex.SvgDocumentElement.cscale = property(get_cscale)
 def get_viewbox2_fcn(svg):
     vb = svg.get_viewbox()
     if vb == [0, 0, 0, 0]: 
-        vb = [0, 0, svg.get("width"), svg.get("height")]
+        vb = [0, 0, implicitpx(svg.get("width")), implicitpx(svg.get("height"))]
     return vb
 inkex.SvgDocumentElement.get_viewbox2 = get_viewbox2_fcn
 

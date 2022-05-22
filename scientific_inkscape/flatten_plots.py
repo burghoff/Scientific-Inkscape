@@ -104,6 +104,9 @@ class FlattenPlots(inkex.EffectExtension):
         pars.add_argument("--v", type=str, default="1.2", help="Version for debugging")
 
     def runflatten(self):
+        import random
+        random.seed(1)
+        
         poprest = self.options.deepungroup
         removerectw = self.options.removerectw
         splitdistant = self.options.splitdistant and self.options.fixtext
@@ -300,11 +303,8 @@ class FlattenPlots(inkex.EffectExtension):
                         StyleElement,
                         TextElement,
                         Tspan,
-                        FlowRoot,
-                        FlowPara,
-                        FlowRegion,
                         TextPath,
-                    ),
+                    )+dh.flow_types,
                 )
             ):
                 if el.text is not None:
