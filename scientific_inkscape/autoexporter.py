@@ -533,13 +533,23 @@ class AutoExporter(inkex.EffectExtension):
             el = dh.getElementById2(svg,k)
             ih.embed_external_image(el, lls[k])
         
-        
+        vds = dh.visible_descendants(svg);
         raster_ids = []; image_ids = [];
-        for el in dh.visible_descendants(svg):
+        for el in vds:
             # Unlink any clones for the PDF image and marker fixes 
             if isinstance(el,(inkex.Use)) and not(isinstance(el, (inkex.Symbol))):
                 el = dh.unlink2(el)
             
+            # Remove trivial groups inside masks/transparent objects
+            if isinstance(el,(inkex.Group)) and len(list(el))==1 and\
+                any([anc.get_link('mask',svg) is not None \
+                     or (el.ccascaded_style.get('opacity') is not None and \
+                         float(el.ccascaded_style.get('opacity'))<1) \
+                         for anc in el.ancestors2(includeme=True)]):
+                dh.ungroup(el)
+            
+        for el in vds:
+            elid = el.get_id2();
             # Fix marker export bug for PDFs
             self.Marker_Fix(el)
             
@@ -548,20 +558,22 @@ class AutoExporter(inkex.EffectExtension):
             
             # Find out which objects need to be rasterized
             sty = el.cstyle; # only want the object with the filter
-            if sty.get('filter'):
-                filt_url = sty.get('filter')[5:-1];
-                if dh.getElementById2(svg, filt_url) is not None:
-                    raster_ids.append(el.get_id2())
+            if sty.get_link('filter',svg) is not None:                          
+                raster_ids.append(elid)               # filtered objects (always rasterized at PDF)
             if (sty.get('fill') is not None   and 'url' in sty.get('fill')) or \
                (sty.get('stroke') is not None and 'url' in sty.get('stroke')):
-                    raster_ids.append(el.get_id2())
+                raster_ids.append(elid)               # gradient objects  
+            if el.get_link('mask') is not None:
+                raster_ids.append(elid)               # masked objects (always rasterized at PDF)
             if el.get('autoexporter_rasterize')=='True':
-                raster_ids.append(el.get_id2());
+                raster_ids.append(elid);              # rasterizer-marked
             if isinstance(el, (inkex.Image)):
-                image_ids.append(el.get_id2());
+                image_ids.append(elid);
         if not(input_options.reduce_images):
             input_options.dpi_im = input_options.dpi
                 
+        
+        dh.flush_stylesheet_entries(svg) # since we ungrouped
         tmp = basetemp.replace(".svg", "_mod.svg")
         overwrite_svg(svg, tmp)
         fin = copy.copy(tmp)
@@ -659,17 +671,8 @@ class AutoExporter(inkex.EffectExtension):
                         osz = ih.embedded_size(el);
                         if osz is None: osz = float("inf")
                         nsz = os.path.getsize(tmpimg)
-                        hasmaskclip = el.get('mask') is not None or el.get('clip-path') is not None  # clipping and masking
+                        hasmaskclip = el.get_link('mask') is not None or el.get_link('clip-path') is not None  # clipping and masking
                         embedimg = (nsz < osz) or (anyalpha0 or hasmaskclip)
-
-                        # Ungroup until no ancestors have masks
-                        # Rasterization already contains any masking
-                        while any([anc.get('mask') is not None for anc in el.ancestors2()]) and el.getparent()!=el.croot:
-                            embedimg = True;
-                            if len(list(el.getparent()))==1: # I don't know how to ungroup a mask with multiple items (impossible?)
-                                dh.ungroup(el.getparent());
-                            else:
-                                break;
 
                         if embedimg:                 
                             self.Replace_with_Raster(el,tmpimg,bbs[el.get_id2()],bbox)
@@ -895,8 +898,6 @@ class AutoExporter(inkex.EffectExtension):
     def Opacity_Fix(self, el):
         # Fuse opacity onto fill and stroke for path-like elements
         # Prevents rasterization-at-PDF for Office products
-        # for el in dh.descendants2(svg):
-        # svg = el.croot
         sty = el.cspecified_style;
         if sty.get('opacity') is not None and isinstance(el,dh.otp_support):
             sf = dh.get_strokefill(el) # fuses opacity and stroke-opacity/fill-opacity
@@ -955,15 +956,12 @@ class AutoExporter(inkex.EffectExtension):
                 if othv is not None:
                     dh.Set_Style_Comp(d, oth, str(dh.implicitpx(othv)*s))
                 
-            si = d.ccascaded_style.get('shape-inside');
-            if si is not None:
-                siurl = si[5:-1]
-                shape = dh.getElementById2(svg, siurl)
-                if shape is not None:
-                    dup = shape.duplicate2;
-                    svg.defs2.append(dup);
-                    dup.ctransform = inkex.Transform((s,0,0,s,0,0)) @ dup.ctransform
-                    dh.Set_Style_Comp(d, 'shape-inside', dup.get_id2(as_url=2))
+            shape = d.ccascaded_style.get_link('shape-inside',svg);
+            if shape is not None:
+                dup = shape.duplicate2;
+                svg.defs2.append(dup);
+                dup.ctransform = inkex.Transform((s,0,0,s,0,0)) @ dup.ctransform
+                dh.Set_Style_Comp(d, 'shape-inside', dup.get_id2(as_url=2))
 
         el.ctransform = inkex.Transform((1/s,0,0,1/s,0,0))
         dh.ungroup(g)
@@ -973,31 +971,27 @@ class AutoExporter(inkex.EffectExtension):
     def Merge_Mask(self,el):
         # Office will poorly rasterize masked elements at PDF-time
         # Revert alpha masks made by PDFication back to alpha
-        svg = el.croot
-        mymask = el.get('mask')
-        if mymask is not None:
-            murl = mymask[5:-1]
-            mel = dh.getElementById2(svg, murl)
+        mymask = el.get_link('mask')
+        if mymask is not None and len(list(mymask))==1:
             # only if one object in mask
-            if mel is not None and len(list(mel))==1:
-                if isinstance(list(mel)[0], inkex.Image):
-                    mask = list(mel)[0];
-                    if mask.get('height')=='1' and mask.get('width')=='1':
-                        im1 = ih.str_to_ImagePIL(el.get('xlink:href')).convert('RGBA')
-                        im2 = ih.str_to_ImagePIL(mask.get('xlink:href')).convert('RGBA')
-                        # only if mask the same size
-                        if im1.size==im2.size:
-                            import numpy as np
-                            d1 = np.asarray(im1)
-                            d2 = np.asarray(im2)
-                            # only if image is opaque
-                            if np.where(d1[:,:,3]==255,True,False).all():
-                                nd = np.stack((d1[:,:,0],d1[:,:,1],d1[:,:,2],d2[:,:,0]),2);
-                                from PIL import Image as ImagePIL
-                                newstr = ih.ImagePIL_to_str(ImagePIL.fromarray(nd))
-                                el.set('xlink:href',newstr)
-                                mask.delete2();
-                                el.set('mask',None)
+            mask = list(mymask)[0]
+            if isinstance(mask, inkex.Image):
+                if mask.get('height')=='1' and mask.get('width')=='1':
+                    im1 = ih.str_to_ImagePIL(el.get('xlink:href')).convert('RGBA')
+                    im2 = ih.str_to_ImagePIL(mask.get('xlink:href')).convert('RGBA')
+                    # only if mask the same size
+                    if im1.size==im2.size:
+                        import numpy as np
+                        d1 = np.asarray(im1)
+                        d2 = np.asarray(im2)
+                        # only if image is opaque
+                        if np.where(d1[:,:,3]==255,True,False).all():
+                            nd = np.stack((d1[:,:,0],d1[:,:,1],d1[:,:,2],d2[:,:,0]),2);
+                            from PIL import Image as ImagePIL
+                            newstr = ih.ImagePIL_to_str(ImagePIL.fromarray(nd))
+                            el.set('xlink:href',newstr)
+                            mask.delete2();
+                            el.set('mask',None)
                             
     def Replace_with_Raster(self,el,imgloc,bb,imgbbox):
         svg = el.croot;

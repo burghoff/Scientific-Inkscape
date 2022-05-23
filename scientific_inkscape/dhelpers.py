@@ -1211,14 +1211,29 @@ def svg_from_file(fin):
     return svg
 
 # Version of ancestors that works in v1.0
-def get_ancestors(el):
+def get_ancestors(el,includeme=False):
     anc = []; cel = el;
     while cel.getparent() is not None:
         cel = cel.getparent()
         anc.append(cel)
-    return anc;
-    myp = el.get_parent()
+    if includeme:
+        return [el]+anc;
+    else:
+        return anc
 BaseElement.ancestors2 = get_ancestors
+
+# Reference a URL (return None if invalid)
+def get_link_fcn(el,typestr,svg=None):
+    if svg is None:
+        svg = el.croot   # need to specify svg for Styles but not BaseElements
+    if el.get(typestr) is not None:
+        urlid = el.get(typestr)[5:-1]
+        urlel = getElementById2(svg, urlid)
+        if urlel is not None:
+            return urlel
+    return None
+BaseElement.get_link = get_link_fcn
+Style2.get_link      = get_link_fcn
 
 # In the event of a timeout, repeat subprocess call several times
 def subprocess_repeat(argin):
