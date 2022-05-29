@@ -104,7 +104,7 @@ class LineList:
     def duplicate(self):
         # Duplicates a LL and its text
         ret = copy(self)
-        ret.textel = self.textel.duplicate2
+        ret.textel = self.textel.duplicate2()
         # d1 = dh.descendants2(self.textel);
         d1 = self.textds
         d2 = dh.descendants2(ret.textel)

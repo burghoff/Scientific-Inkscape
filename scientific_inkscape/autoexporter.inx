@@ -19,9 +19,13 @@
         <param name="dpi" type="float" precision="0" min="1" max="9999" gui-text="Rasterization DPI"
         gui-description="Resolution for PNG output and PDF filter rasterization.">600</param>
         
-        <label appearance="header">Directories</label>   
+        <label appearance="header">What to export</label>   
         <param type="path" name="watchdir" gui-text="Watch directory" mode="folder"/>
         <param type="path" name="writedir" gui-text="Write directory" mode="folder"/>
+         
+        <param name="exportnow" type="bool" gui-text="Export this document now (without running the Autoexporter)"
+        gui-description="Export the current document as it is now (like Save a Copy). Exports will be placed in the same folder as the original.">false</param>
+                
         
         
         
@@ -32,7 +36,7 @@
         <page name="advanced" gui-text="Advanced">
 
         <label appearance="header">Embedded image handling</label> 
-        <label>Embedded images can be resampled and cropped when doing so reduces output file sizes.</label>           
+        <label>Embedded images can be resampled and cropped to reduce output file sizes.</label>           
         <param name="imagemode" type="optiongroup" appearance="combo"
                 gui-text="Store images as">
                    <option value="1">Cropped and resampled PNG</option>
@@ -48,10 +52,11 @@
         <param name="thinline" type="bool" gui-text="Prevent thin line enhancement (recommended)"
         gui-description="Some PDF renderers thicken lines at certain zooms; this option makes your lines impervious to this feature.">true</param>  
 
-        <label appearance="header">Single export</label>   
-        <param name="exportnow" type="bool" gui-text="Export this document now"
-        gui-description="Export the current document as it is now without running the Autoexporter program (like Save a Copy). Exports will be placed in the same folder as the original.">false</param>
+
+        <param name="margin" type="float" precision="1" min="-9999" max="9999" gui-text="Extra margin (mm)"
+        gui-description="Adds a margin to the export. A small margin can ensure that edges are not clipped off.">0.3</param>
         
+
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>By David Burghoff, University of Notre Dame</label>
         </page>

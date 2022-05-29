@@ -1,7 +1,8 @@
 # coding=utf-8
 
-STORE_REFS = False
+STORE_REFS = True
 fname = 'Other_tests.svg'
+aename = 'Autoexporter_tests.svg'
 
 MAXPAPERS = 0
 flattentext = 'Text_tests.svg'
@@ -216,7 +217,7 @@ if testae:
     class TestAutoExporter(ComparisonMixin, TestCase):
         effect_class = AutoExporter
         compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
-        compare_file = ['svg/'+fname]
+        compare_file = ['svg/'+aename]
         comparisons = [
             aeargs
         ]    

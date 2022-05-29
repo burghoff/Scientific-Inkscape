@@ -615,7 +615,7 @@ def unlink2(el):
         # idebug([el.croot,el.root])
         useel = getElementById2(el.croot, useid[1:])
         if useel is not None:
-            d = useel.duplicate2
+            d = useel.duplicate2()
 
             # xy translation treated as a transform (applied first, then clip/mask, then full xform)
             tx = el.get("x")
@@ -794,7 +794,7 @@ def get_duplicate2(el):
     svg.cssdict
     # need to generate now to prevent problems in duplicate_fixed (el.addnext(elem) line, no idea why)
 
-    d = duplicate_fixed(el)
+    d = duplicate_fixed(el);
     dupe_cssdict_entry(el.get_id2(), d.get_id2(), el.croot)
     add_to_iddict(d)
 
@@ -811,14 +811,22 @@ def get_duplicate2(el):
     return d
 
 
-BaseElement.duplicate2 = property(get_duplicate2)
+BaseElement.duplicate2 = (get_duplicate2)
 
 
 def duplicate_fixed(el):  # fixes duplicate's set_random_id
-    """Like copy(), but the copy stays in the tree and sets a random id"""
+    # Like copy(), but the copy stays in the tree and sets a random id
+    # Does not duplicate tail
+    eltail = el.tail;
+    if eltail is not None:
+        el.tail = None;
+        
     elem = el.copy()
     el.addnext(elem)
     set_random_id2(elem)
+    
+    if eltail is not None:
+        el.tail = eltail
     return elem
 
 
@@ -955,7 +963,7 @@ def merge_clipmask(node, newclipurl, mask=False):
             # Duplicate the new clip and apply node's inverse transform to its children.
             clippath = getElementById2(svg, newclipurl[5:-1])
             if clippath is not None:
-                d = clippath.duplicate2
+                d = clippath.duplicate2()
                 # svg.defs2.append(d)
                 # idebug([d.get_id(),d.getparent().get_id()])
                 if not (hasattr(svg, "newclips")):
@@ -985,7 +993,7 @@ def merge_clipmask(node, newclipurl, mask=False):
                     if isinstance(k, (Use)):
                         k = unlink2(k)
 
-                d = oldclipnode.duplicate2
+                d = oldclipnode.duplicate2()
                 if not (hasattr(svg, "newclips")):
                     svg.newclips = []
                 svg.newclips.append(d)  # for later cleanup
@@ -1296,6 +1304,14 @@ def write_debug():
 def idebug(x):
     inkex.utils.debug(x)
 
+import time
+global lasttic
+def tic():
+    global lasttic
+    lasttic = time.time()
+def toc():
+    global lasttic
+    idebug(time.time()-lasttic)
 
 # def get_parent_svg(el):
 #     if not (hasattr(el, "svg")):
@@ -1896,7 +1912,7 @@ def vto_xpath(sty):
 
 
 def Version_Check(caller):
-    siv = "v1.2.24"  # Scientific Inkscape version
+    siv = "v1.2.25"  # Scientific Inkscape version
     maxsupport = "1.2.0"
     minsupport = "1.1.0"
 

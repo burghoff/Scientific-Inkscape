@@ -320,7 +320,7 @@ class FlattenPlots(inkex.EffectExtension):
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
         # should work with both v1.0 and v1.1
         for el in sel:
-            d = el.duplicate2
+            d = el.duplicate2()
             el.getparent().insert(list(el.getparent()).index(el), d)
             if d.get("inkscape:label") is not None:
                 el.set("inkscape:label", el.get("inkscape:label") + " flat")

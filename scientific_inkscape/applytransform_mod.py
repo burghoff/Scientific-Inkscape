@@ -98,7 +98,7 @@ class ApplyTransform(inkex.EffectExtension):
             svg = el.croot
             clippath = dh.getElementById2(svg, clippathurl[5:-1])
             if clippath is not None:
-                d = clippath.duplicate2
+                d = clippath.duplicate2()
                 # el.croot.defs2.append(d)
                 # dh.idebug(el.get_id2())
                 clippathurl = "url(#" + d.get_id2() + ")"
