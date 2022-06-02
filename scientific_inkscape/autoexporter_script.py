@@ -9,23 +9,14 @@ import numpy as np
 
 mypath = os.path.dirname(os.path.realpath(sys.argv[0]))
 f = open(os.path.join(mypath, "ae_settings.p"), "rb")
-s = pickle.load(f)
+input_options = pickle.load(f)
 f.close()
 os.remove(os.path.join(mypath, "ae_settings.p"))
 
-watchdir = s[0]
-writedir = s[1]
-bfn = s[2]
-fmts = s[3]
-sys.path += s[4]
-input_options = s[5]
-# PNG_DPI = s[5]
-# imagedpi = s[6]
-# reduce_images = s[7]
-# tojpg = s[8]
-# text_to_paths = s[9]
-# thinline_dehancement = s[10]
-# input_options = s[11]
+watchdir  = input_options.watchdir
+writedir  = input_options.writedir
+bfn       = input_options.inkscape_bfn
+sys.path += input_options.syspath
 
 import inkex
 from inkex import Vector2d, Transform
@@ -135,7 +126,7 @@ class myThread(threading.Thread):
             genfiles = []
             while not (self.stopped):
                 if self.nf:
-                    print("Export formats: " + ", ".join([v.upper() for v in fmts]))
+                    print("Export formats: " + ", ".join([v.upper() for v in input_options.formats]))
                     print("Rasterization DPI: " + str(input_options.dpi))
                     print("Watch directory: " + self.watchdir)
                     print("Write directory: " + self.writedir)
@@ -208,7 +199,7 @@ class myThread(threading.Thread):
                                 self.writedir, os.path.split(f)[1]
                             )
                             nfs = AutoExporter().export_all(
-                                self.bfn, f, outtemplate, fmts, input_options
+                                self.bfn, f, outtemplate, input_options.formats, input_options
                             )
                             genfiles += nfs
 

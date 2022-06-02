@@ -4,7 +4,7 @@
     <id>burghoff.autoexporter</id>
     <param name="tab" type="notebook">        
         <page name="scaling" gui-text="Options">
-        <label>Runs the Autoexporter, an external program that watches a directory for changes to any SVG and then exports copies in the selected formats.</label>
+        <label>Launches the Autoexporter, a background program that watches a directory for changes to any SVG and then writes exports in the selected formats.</label>
         <label>Mac users: You may get a security prompt asking whether to allow Inkscape to open a Terminal. Make sure you allow it.</label>
         <label>Linux users: This extension cannot run as an AppImage or as a Snap installation.</label>
         <label appearance="header">Formats to export</label>
@@ -22,6 +22,9 @@
         <label appearance="header">What to export</label>   
         <param type="path" name="watchdir" gui-text="Watch directory" mode="folder"/>
         <param type="path" name="writedir" gui-text="Write directory" mode="folder"/>
+        
+        <param name="watchhere" type="bool" gui-text="Watch and write to this document's location instead"
+        gui-description="Ignore selections above and use this document's directory">false</param>
          
         <param name="exportnow" type="bool" gui-text="Export this document now (without running the Autoexporter)"
         gui-description="Export the current document as it is now (like Save a Copy). Exports will be placed in the same folder as the original.">false</param>
@@ -65,7 +68,7 @@
         <label appearance="header">Object rasterizer</label>   
         <label>By running the extension with this tab selected, selected objects can be marked for rasterization (conversion to bitmap). They will remain as normal objects in your SVG, but the Autoexporter will rasterize them during export.</label>
         <label> </label>
-        <label>This can be useful if you notice that certain objects make the size of the export large and less responsive, such as paths that contain tens of thousands of nodes.</label>           
+        <label>This can be useful for certain objects that make the export large and sluggish, such as paths that contain tens of thousands of nodes.</label>           
         <label> </label>
         <param name="rasterizermode" type="optiongroup" appearance="combo"
                 gui-text="Mark selected objects as">

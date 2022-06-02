@@ -895,47 +895,43 @@ def uniquetol(A, tol):
     ret = Aa[~(np.triu(np.abs(Aa[:, None] - Aa) <= tol, 1)).any(0)]
     return type(A)(ret)
 
+# Determines if an element is rectangle-like
+# If it is one, also return Path
+def isrectangle(el):
+    isrect = False
+    if isinstance(el, (PathElement, Rectangle, Line, Polyline)):
+        pth = Path(get_path2(el)).to_absolute()
+        pth = pth.transform(el.ctransform)
 
-def merge_clipmask(node, newclipurl, mask=False):
-    # Modified from Deep Ungroup
-    def isrectangle(el):
-        isrect = False
-        if isinstance(el, (PathElement, Rectangle, Line, Polyline)):
-            pth = Path(get_path2(el)).to_absolute()
-            pth = pth.transform(el.ctransform)
+        pts = list(pth.end_points)
+        cpts = list(pth.control_points)
+        xs = [p.x for p in pts]
+        ys = [p.y for p in pts]
 
-            pts = list(pth.control_points)
-            xs = []
-            ys = []
-            for p in pts:
-                xs.append(p.x)
-                ys.append(p.y)
-
+        if len(xs)>0:
             maxsz = max(max(xs) - min(xs), max(ys) - min(ys))
             tol = 1e-3 * maxsz
             if (
-                4 <= len(xs) <= 5
+                4 <= len(xs) <= 5 and 4 <= len(cpts) <= 5
                 and len(uniquetol(xs, tol)) == 2
                 and len(uniquetol(ys, tol)) == 2
             ):
                 isrect = True
-        
-        # if I am clipped I may not be a rectangle
-        if isrect:
-            if el.get('clip-path') is not None:
-                myclip = getElementById2(el.croot,el.get('clip-path')[5:-1])
-                if myclip is not None:
-                    isrect = False
-            if el.get('mask') is not None:
-                mymask = getElementById2(el.croot,el.get('mask')[5:-1])
-                if mymask is not None:
-                    isrect = False
-                
-        if isrect:
-            return True, pth
-        else:
-            return False, None
+    
+    # if I am clipped I may not be a rectangle
+    if isrect:
+        if el.get_link('clip-path') is not None:
+            isrect = False
+        if el.get_link('mask') is not None:
+            isrect = False
+            
+    if isrect:
+        return True, pth
+    else:
+        return False, None
 
+def merge_clipmask(node, newclipurl, mask=False):
+    # Modified from Deep Ungroup
     def compose_clips(el, ptha, pthb):
         newpath = intersect_paths(ptha, pthb)
         isempty = str(newpath) == ""
@@ -947,9 +943,6 @@ def merge_clipmask(node, newclipurl, mask=False):
             p.set("d", newpath)
         el.delete2()
         return isempty  # if clipped out, safe to delete element
-    
-    
-    # idebug([node.get_id2(),newclipurl])
 
     if newclipurl is not None:
         svg = node.croot
@@ -1230,7 +1223,7 @@ def get_ancestors(el,includeme=False):
         return anc
 BaseElement.ancestors2 = get_ancestors
 
-# Reference a URL (return None if invalid)
+# Reference a URL (return None if does not exist or invalid)
 def get_link_fcn(el,typestr,svg=None):
     if svg is None:
         svg = el.croot   # need to specify svg for Styles but not BaseElements
@@ -1747,7 +1740,7 @@ def Get_Binary_Loc():
 
 
 # Get document location or prompt
-def Get_Current_File(ext):
+def Get_Current_File(ext,msgstr):
     tooearly = ivp[0] <= 1 and ivp[1] < 1
     if not (tooearly):
         myfile = ext.document_path()
@@ -1756,10 +1749,10 @@ def Get_Current_File(ext):
 
     if myfile is None or myfile == "":
         if tooearly:
-            msg = "Direct export requires version 1.1.0 of Inkscape or higher."
+            msg = msgstr + "Inkscape must be version 1.1.0 or higher."
         else:
             msg = (
-                "Direct export requires the SVG be saved first. Please save and retry."
+                msgstr + "the SVG must first be saved. Please retry after you have done so."
             )
         inkex.utils.errormsg(msg)
         quit()
@@ -1816,6 +1809,7 @@ def get_cscale(svg):
                 svg.unittouu(svg.get("height")) or vb[3]
             ) / float(vb[3])
             svg._cscale = max([scale_x, scale_y])
+            # idebug([svg.unittouu(svg.get("width")),vb[2],svg.unit])
     return svg._cscale
 inkex.SvgDocumentElement.cscale = property(get_cscale)
 

@@ -179,6 +179,9 @@ class AutoExporter(inkex.EffectExtension):
         #     help="Alternate Optimized SVG?",
         # )
         pars.add_argument(
+            "--watchhere", type=inkex.Boolean, default=False, help="Watch here"
+        )
+        pars.add_argument(
             "--exportnow", type=inkex.Boolean, default=False, help="Export me now"
         )
         pars.add_argument(
@@ -254,20 +257,21 @@ class AutoExporter(inkex.EffectExtension):
             aepy = os.path.abspath(
                 os.path.join(dh.get_script_path(), "autoexporter_script.py")
             )
+            
+            if self.options.watchhere:
+                pth = dh.Get_Current_File(self,"To watch this document's location, ");
+                optcopy.watchdir = os.path.dirname(pth)
+                optcopy.writedir = os.path.dirname(pth)
 
             # Pass settings using a config file. Include the current path so Inkex can be called if needed.
             import pickle
 
-            s = [
-                self.options.watchdir,
-                self.options.writedir,
-                bfn,
-                formats,
-                sys.path,
-                optcopy,
-            ]
+            optcopy.inkscape_bfn = bfn;
+            optcopy.formats = formats;
+            optcopy.syspath = sys.path;
+
             pickle.dump(
-                s, open(os.path.join(dh.get_script_path(), "ae_settings.p"), "wb")
+                optcopy, open(os.path.join(dh.get_script_path(), "ae_settings.p"), "wb")
             )
 
             def escp(x):
@@ -327,7 +331,7 @@ class AutoExporter(inkex.EffectExtension):
 
         else:
             if not (self.options.testmode):
-                pth = dh.Get_Current_File(self)
+                pth = dh.Get_Current_File(self,"To do a direct export, ")
             else:
                 pth = self.options.input_file
             optcopy.debug = DEBUGGING
