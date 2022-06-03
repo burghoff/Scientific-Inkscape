@@ -658,8 +658,8 @@ class AutoExporter(inkex.EffectExtension):
                 #     filename=fin, pxinuu=svg.unittouu("1px"), inkscape_binary=bfn
                 # )
                 imgtype = "png"
-                acts = ""
-                acts2 = ""
+                acts = []
+                acts2 = []
                 tis = []
                 ti2s = []
                 for el in els:
@@ -677,7 +677,7 @@ class AutoExporter(inkex.EffectExtension):
                     else:
                         mydpi = input_options.dpi_im
                     
-                    acts += (
+                    acts.append(
                         "export-id:"
                         + el.get_id()
                         + "; export-id-only; export-dpi:"
@@ -686,7 +686,7 @@ class AutoExporter(inkex.EffectExtension):
                         + tmpimg
                         + "; export-background-opacity:0.0; export-do; "
                     )  # export item only
-                    acts2 += (
+                    acts2.append(
                         "export-id:"
                         + el.get_id()
                         + "; export-dpi:"
@@ -696,17 +696,33 @@ class AutoExporter(inkex.EffectExtension):
                         + "; export-background-opacity:1.0; export-do; "
                     )  # export all w/background
                 if ih.hasPIL:
-                    args = ["--actions", acts2+acts];  # export-id-onlys need to go last
+                    acts = acts2+acts  # export-id-onlys need to go last
+                    # args = ["--actions", acts2+acts];  # export-id-onlys need to go last
                     # args = [bfn, "--actions", acts2+acts, fin];  
-                else:
-                    args = ["--actions", acts]
+                # else:
+                #     args = ["--actions", acts]
                     # args = [bfn, "--actions", acts, fin];  
                 
+                # Windows cannot handle arguments that are too long. If this happens,
+                # split the export actions in half and run on each
+                def Split_Acts(filename, pxinuu, inkscape_binary, acts):
+                    try:
+                        bbs = dh.Get_Bounding_Boxes(
+                            filename=filename, pxinuu=pxinuu, inkscape_binary=inkscape_binary, extra_args = ["--actions",''.join(acts)]
+                        )
+                    except FileNotFoundError:
+                        import math
+                        acts1 = acts[:math.ceil(len(acts)/2)]
+                        acts2 = acts[math.ceil(len(acts)/2):]
+                        bbs = Split_Acts(filename=filename, pxinuu=pxinuu, inkscape_binary=inkscape_binary, acts=acts1);
+                        bbs = Split_Acts(filename=filename, pxinuu=pxinuu, inkscape_binary=inkscape_binary, acts=acts2);
+                    return bbs;
+                            
                 
                 oldwd = os.getcwd();
                 os.chdir(tempdir); # use relative paths to reduce arg length
-                bbs = dh.Get_Bounding_Boxes(
-                    filename=fin, pxinuu=svg.unittouu("1px"), inkscape_binary=bfn, extra_args = args
+                bbs = Split_Acts(
+                    filename=fin, pxinuu=svg.unittouu("1px"), inkscape_binary=bfn, acts=acts
                 )
                 os.chdir(oldwd);
                 tis = [os.path.join(tempdir,t)  for t in tis]
