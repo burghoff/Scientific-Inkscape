@@ -5,8 +5,8 @@
    version="1.1"
    id="svg2"
    width="637.43884"
-   height="297.13092"
-   viewBox="0 0 637.43883 297.13091"
+   height="302.18008"
+   viewBox="0 0 637.43883 302.18008"
    sodipodi:docname="Scale example.svg"
    inkscape:version="1.2 (dc2aedaf03, 2022-05-15)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
@@ -65,9 +65,9 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      showgrid="false"
-     inkscape:zoom="1.7288921"
-     inkscape:cx="316.96599"
-     inkscape:cy="143.44446"
+     inkscape:zoom="1.2225113"
+     inkscape:cx="254.39437"
+     inkscape:cy="99.794576"
      inkscape:window-width="1920"
      inkscape:window-height="1017"
      inkscape:window-x="-8"
@@ -80,9 +80,9 @@
        y="0"
        id="page8"
        width="637.43884"
-       height="297.13089" />
+       height="302.18008" />
     <sodipodi:guide
-       position="407.15627,167.33569"
+       position="407.15627,172.38486"
        orientation="0,-1"
        id="guide29892"
        inkscape:locked="false" />
@@ -1610,7 +1610,7 @@
        sodipodi:nodetypes="cc" />
     <text
        xml:space="preserve"
-       transform="matrix(0.9998,0,0,0.9998,234.57109,274.70405)"
+       transform="matrix(1.1545347,0,0,1.1545347,230.71776,274.3013)"
        style="font-variant:normal;font-weight:normal;font-size:8.00493px;font-family:'Segoe UI';text-align:center;writing-mode:lr-tb;text-anchor:middle;fill:#262626;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.562614"
        id="text400-76"
        x="24.746489"
@@ -1627,7 +1627,7 @@
          id="tspan44619" /></text>
     <text
        xml:space="preserve"
-       transform="matrix(0.9998,0,0,0.9998,234.37961,289.88722)"
+       transform="matrix(1.1545347,0,0,1.1545347,230.49664,291.8343)"
        style="font-variant:normal;font-weight:normal;font-size:8.00493px;font-family:'Segoe UI';text-align:center;writing-mode:lr-tb;text-anchor:middle;fill:#262626;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.562614"
        id="text44639"
        x="24.746489"
