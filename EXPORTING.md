@@ -14,5 +14,5 @@ Text from a normal SVG is rendered very poorly by Powerpoint, while the EMF has 
 
 ## LaTeX and Overleaf
 
-LaTeX has long supported vector graphics. Currently, it is recommended that you export your figures as PDFs. The Autoexporter can make this process automatic: if you store your SVGs somewhere and have the Autoexporter automatically write the exports to your LaTeX document's directory, changes to your SVGs will automatically be reflected in your final document. If you use Overleaf, you can do this by linking your Overleaf account to a Dropbox account.
+LaTeX has long supported vector graphics and has had excellent support for PDFs. The Autoexporter was actually designed with LaTeX in mind and makes this very convenient. If you store your SVGs somewhere and have the Autoexporter automatically write the exports to your LaTeX document's directory, changes to your SVGs will automatically be reflected in your final document. If you use Overleaf, you can do this by linking your Overleaf account to a Dropbox account.
 
