@@ -41,7 +41,7 @@ The Flattener removes unwanted structure from figures imported into Inkscape. Se
 <ol>
 <li><i>Split distant text and lines</i>: It is often the case that PDF/EPS generation creates text strangely clumped into a single text object. For example, all of the x-axis ticks might be one object, all of the y-axis ticks might be another, and the title and labels may be another. Internally, each letter is positioned independently. This looks fine, but causes issues when trying to scale or do anything nontrivial.</li>
 <li><i>Merge nearby text</i>: The opposite can also occur: text that should be one line is split into multiple objects. This option reverses that.
-<li><i>Remove manual kerning</i>: Text in PDFs is typically kerned—its letters are positioned individually, so it is difficult to edit. This option reverses that.</li>
+<li><i>Remove manual kerning</i>: Text in PDFs is typically manually kerned—its letters are positioned individually, so it is difficult to edit. This option reverses that.</li>
 <p align="center"><img src="https://github.com/burghoff/Scientific-Inkscape/blob/main/examples/kerning_removalb.svg" alt="drawing" ></img></p>
 <li><i>Merge superscripts and subscripts</i>: Detect likely subscripts and superscripts, replacing them with native SVG versions.</li>
 <li><i>Final text justification</i>: Lets you set the justification of all text without changing its position.
