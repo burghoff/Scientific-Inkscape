@@ -13,7 +13,7 @@ In general, Word and Powerpoint have poor support for vector graphics. Historica
 Text from a normal SVG is rendered very poorly by Powerpoint, while the EMF has lost its transparency. However, the Portable SVG is rendered well most of the time. If you notice a problematic element, you can mark it for Rasterization—this will rasterize just that element while leaving the rest of the vector graphics intact.
 
 ### LaTeX and Overleaf
-LaTeX has long supported vector graphics and has had excellent support for PDFs. The Autoexporter was actually designed with LaTeX in mind and makes this very convenient. If you store your SVGs somewhere and have the Autoexporter automatically write the exports to your LaTeX document's directory, changes to your SVGs will automatically be reflected in your final document. If you use Overleaf, you can do this by linking your Overleaf account to a Dropbox account.
+LaTeX has long supported vector graphics and has had excellent support for PDFs. The Autoexporter was actually designed with LaTeX in mind and makes this convenient. If you store your SVGs somewhere and have the Autoexporter automatically write the exports to your LaTeX document's directory, changes to your SVGs will automatically be reflected in your final document. If you use Overleaf, you can do this by linking your Overleaf account to a Dropbox account.
 
 ## Object-specific considerations
 
