@@ -27,7 +27,7 @@ DEBUG_MERGE = False
 NUM_SPACES = 1.0
 # number of spaces beyond which text will be merged/split
 XTOLEXT = 0.6  # x tolerance (number of spaces), let be big since there are kerning inaccuracies (as big as -0.56 in Whitney)
-YTOLEXT = 0.2  # y tolerance (number of spaces), should be pretty small
+YTOLEXT = 0.1  # y tolerance (fraction of cap height), should be pretty small
 XTOLMKN = 0.99 * 1000  # left tolerance for manual kerning removal, should be huge
 XTOLMKP = (
     0.99  # right tolerance for manual kerning removal, should be fairly open-minded
@@ -414,7 +414,7 @@ def External_Merges(lls, os, mergenearby, mergesupersub):
 
         dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs) / w.sf
         xtol = XTOLEXT * w.sw / w.sf
-        ytol = YTOLEXT * w.sw / w.sf
+        ytol = YTOLEXT * w.ch / w.sf
 
         # calculate 2's coords in 1's system
         tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
