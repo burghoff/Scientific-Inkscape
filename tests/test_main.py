@@ -1,6 +1,6 @@
 # coding=utf-8
 
-STORE_REFS = True
+STORE_REFS = False
 fname = 'Other_tests.svg'
 aename = 'Autoexporter_tests.svg'
 
@@ -21,15 +21,15 @@ testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer, tes
 
 testflattentext     = True;
 testflattenrest     = True; 
-testflattenpapers   = True; 
-testscalecorrection = True;
-testscalematching   = True;
-testscalefixed      = True;
-testghoster         = True;
-testcbc             = True;
-testfm              = True;
-testhomogenizer     = True;
-testae              = True;
+# testflattenpapers   = True; 
+# testscalecorrection = True;
+# testscalematching   = True;
+# testscalefixed      = True;
+# testghoster         = True;
+# testcbc             = True;
+# testfm              = True;
+# testhomogenizer     = True;
+# testae              = True;
 
 # import importlib.util
 # spec = importlib.util.spec_from_file_location("module.name", "/path/to/file.py")

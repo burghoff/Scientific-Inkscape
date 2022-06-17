@@ -27,13 +27,13 @@ DEBUG_MERGE = False
 NUM_SPACES = 1.0
 # number of spaces beyond which text will be merged/split
 XTOLEXT = 0.6  # x tolerance (number of spaces), let be big since there are kerning inaccuracies (as big as -0.56 in Whitney)
-YTOLEXT = 0.03  # y tolerance (number of spaces), should be really small
+YTOLEXT = 0.2  # y tolerance (number of spaces), should be pretty small
 XTOLMKN = 0.99 * 1000  # left tolerance for manual kerning removal, should be huge
 XTOLMKP = (
     0.99  # right tolerance for manual kerning removal, should be fairly open-minded
 )
 XTOLSPLIT = 0.5  # tolerance for manual kerning splitting, should be fairly tight
-SUBSUPER_THR = 1.0
+SUBSUPER_THR = 0.99
 # ensuring sub/superscripts are smaller helps reduce false merges
 SUBSUPER_YTHR = 1 / 3
 # superscripts must be at least 1/3 of the way above the baseline to merge (1/3 below cap for sub)
@@ -437,13 +437,12 @@ def External_Merges(lls, os, mergenearby, mergesupersub):
                 aboveline = (
                     br1.y * (1 - SUBSUPER_YTHR) + tr1.y * SUBSUPER_YTHR + ytol >= bl2.y
                 )
-                # dh.idebug(aboveline)
-                if w2.fs < w.fs * (SUBSUPER_THR - 0.01):  # new smaller, expect super
+                if w2.fs < w.fs * SUBSUPER_THR:  # new smaller, expect super
                     if aboveline:
                         type = "super"
-                elif w.fs < w2.fs * (SUBSUPER_THR - 0.01):  # old smaller, expect reutrn
+                elif w.fs < w2.fs * SUBSUPER_THR:  # old smaller, expect reutrn
                     type = "subreturn"
-                else:
+                elif SUBSUPER_THR==1:
                     if aboveline:
                         if len(w2.ln.txt()) > 2:  # long text, probably not super
                             type = "subreturn"
@@ -456,14 +455,12 @@ def External_Merges(lls, os, mergenearby, mergesupersub):
                 belowline = (
                     tl2.y >= br1.y * SUBSUPER_YTHR + tr1.y * (1 - SUBSUPER_YTHR) - ytol
                 )
-                if w2.fs < w.fs * (SUBSUPER_THR - 0.01):  # new smaller, expect sub
+                if w2.fs < w.fs * SUBSUPER_THR:  # new smaller, expect sub
                     if belowline:
                         type = "sub"
-                elif w.fs < w2.fs * (
-                    SUBSUPER_THR + 0.01
-                ):  # old smaller, expect superreturn
+                elif w.fs < w2.fs * SUBSUPER_THR:  # old smaller, expect superreturn
                     type = "superreturn"
-                else:
+                elif SUBSUPER_THR==1:
                     if belowline:
                         if len(w2.ln.txt()) > 2:  # long text, probably not sub
                             type = "superreturn"
