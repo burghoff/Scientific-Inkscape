@@ -8,7 +8,7 @@ MAXPAPERS = 0
 flattentext = 'Text_tests.svg'
 flattenrest = 'Acid_tests.svg';
 priority_flatten = ['Kazakov_2022_Illustrator_a.svg']
-exclude_flatten = ['Ohtani_SA_2019_Deep_group.svg',flattentext,flattenrest,fname]
+exclude_flatten = ['Ohtani_SA_2019_Deep_group.svg',flattentext,flattenrest,fname,aename]
 
 flattenerargs = ("--id=layer1","--testmode=True")
 aeargs = ("--testmode=True",)

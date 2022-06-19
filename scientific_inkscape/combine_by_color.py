@@ -82,10 +82,11 @@ class CombineByColor(inkex.EffectExtension):
         # dh.debug(lightness_threshold)
         for ii in reversed(range(len(els))):  # reversed so that order is preserved
             sf1 = sfs[ii]
-            if (
-                sf1.stroke is not None
-                and sf1.stroke.efflightness >= lightness_threshold
-            ):
+            # if (
+            #     sf1.stroke is not None
+            #     and sf1.stroke.efflightness >= lightness_threshold
+            # ):
+            if (sf1.stroke is None or sf1.stroke.efflightness >= lightness_threshold) and (sf1.fill is None or sf1.fill.efflightness >= lightness_threshold) :
                 merges = [ii]
                 merged[ii] = True
                 for jj in range(ii):
