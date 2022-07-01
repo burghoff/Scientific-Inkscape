@@ -47,6 +47,7 @@ import numpy as np
 global debug
 debug = False
 
+TEXTSIZE = 100;
 
 # A text element that has been parsed into a list of lines
 class LineList:
@@ -1276,6 +1277,7 @@ class tword:
                 numsp = min(numsp, maxspaces)
 
             # dh.idebug([self.txt(),nw.txt(),(bl2.x-br1.x)/(lc.sw/self.sf)])
+            # dh.idebug([self.txt(),nw.txt(),lc.sw,lc.cw])
             for ii in range(numsp):
                 self.appendc(" ", lc.sw, -lc.lsp, 0)
 
@@ -1312,18 +1314,12 @@ class tword:
                 ]
                 newc.parsed_pts_t = c.parsed_pts_t
 
-                # We cannot yet apply any styles. Instead, add the character and add a pending style
-                # that will be applied at the end
+                # Update the style
                 newsty = None
                 if c.sty != newc.sty:
                     newsty = c.sty
 
                 if ntype in ["super", "sub"]:
-                    # if newsty is None:
-                    #     newsty = Style2("")
-                    # else:
-                    #     newsty = Style2(newsty)
-
                     newsty = c.sty
 
                     # Nativize super/subscripts
@@ -1332,16 +1328,21 @@ class tword:
                     else:
                         newsty["baseline-shift"] = "sub"
 
-                    # Leave size unchanged
                     newsty["font-size"] = "65%"
+                    # Leave size unchanged
                     # sz = round(c.sw/newc.sw*100)
                     # newsty['font-size'] = str(sz)+'%';
 
                     # Leave baseline unchanged (works, but do I want it?)
-                #                shft = round(-(bl2.y-br1.y)/self.fs*100*self.sf);
-                #                newsty['baseline-shift']= str(shft)+'%';
+                    # shft = round(-(bl2.y-br1.y)/self.fs*100*self.sf);
+                    # newsty['baseline-shift']= str(shft)+'%';
+                elif c.sf != newc.sf:
+                    # Prevent accidental font size changes when differently transformed
+                    sz = round(c.sw/newc.sw*100)
+                    newsty['font-size'] = str(sz)+'%';
 
                 if newsty is not None:
+                    # dh.idebug(newsty)
                     newc.add_style(newsty)
                 prevc = newc
 
@@ -1938,9 +1939,6 @@ class tchar:
                 sty[a] = dh.default_style_atts[a]
                 # dh.idebug([t.get_id2(),a,sty])
 
-        # make sure inheritance doesn't override letter-spacing
-        # if "letter-spacing" in newspfd and "letter-spacing" not in sty:
-        #     sty["letter-spacing"] = "0px"
         t.cstyle = sty
 
         self.sty = sty
@@ -2081,14 +2079,12 @@ def sortnone(x):  # sorts an x with Nones (skip Nones)
 
 # A class representing the properties of a single character
 class cprop:
-    def __init__(self, char, cw, sw, xo, ch, dr, dkerns):
+    def __init__(self, char, cw, sw, ch, dr, dkerns):
         self.char = char
         self.charw = cw
         # character width
         self.spacew = sw
         # space width
-        self.xoffset = xo
-        # x offset from anchor
         self.caph = ch
         # cap height
         self.descrh = dr
@@ -2106,7 +2102,6 @@ class cprop:
             self.char,
             self.charw * scl,
             self.spacew * scl,
-            self.xoffset * scl,
             self.caph * scl,
             self.descrh * scl,
             dkern2,
@@ -2220,27 +2215,26 @@ class Character_Table:
         return ctable, pctable, docfonts
 
     def measure_character_widths2(self, els):
-        # Measure the width of all characters of a given style by generating copies with two and three extra spaces.
-        # We take the difference to get the width of a space, then subtract that to get the character's full width.
+        # Measure the width of all characters of a given style by generating copies with a prefix and suffix.
+        # We take the difference with a blank that does not contain any character.
         # This includes any spaces between characters as well.
         # The width will be the width of a character whose composed font size is 1 uu.
         # ct = self.generate_character_table(els,None);
         ct, pct, dfs = self.generate_character_table2(els)
         # dh.idebug(pct)
 
-        pI1 = "pI  "
-        # pI with 2 spaces
-        pI2 = "pI   "
-        # pI with 3 spaces
+        prefix = 'I '
+        suffix = ' I'
+        
+        blnk = prefix+    suffix
+        spc  = prefix+' '+suffix
+        pI = "pI"
         # We add pI as test characters because p gives the font's descender (how much the tail descends)
         # and I gives its cap height (how tall capital letters are).
 
-        # In this version, a new document is generated instead of using the existing one. This can be much
-        # faster as we are not parsing an entire element tree
+        # A new document is generated instead of using the existing one. We don't have to parse an entire element tree
         pxinuu = inkex.units.convert_unit("1px", "mm")
         # test document has uu = 1 mm (210 mm / 210)
-        docscale = 1
-        # test doc has no scale
         svgstart = '<svg width="210mm" height="297mm" viewBox="0 0 210 297" id="svg60386" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"> <defs id="defs60383" /> <g id="layer1">'
         svgstop = "</g> </svg>"
         txt1 = '<text xml:space="preserve" style="'
@@ -2269,21 +2263,21 @@ class Character_Table:
             ct2[s] = dict()
             for ii in range(len(ct[s])):
                 myc = ct[s][ii]
-                t = Make_Character2(myc + "  ", s)
+                t = Make_Character2(prefix + myc + suffix, s)
                 # character with 2 spaces (last space not rendered)
                 dkern = dict()
                 if KERN_TABLE:
                     for jj in range(len(ct[s])):
                         pc = ct[s][jj]
                         if myc in pct[s] and pc in pct[s][myc]:
-                            t2 = Make_Character2(pc + myc + "  ", s)
+                            t2 = Make_Character2(prefix + pc+myc + suffix, s)
                             # precede by all chars of the same style
                             dkern[pc] = [pc, 0, t2]
                 ct2[s][myc] = [myc, 0, t, dkern]
-            t = Make_Character2(pI1, s)
-            ct2[s][pI1] = [pI1, 0, t, dict()]
-            t = Make_Character2(pI2, s)
-            ct2[s][pI2] = [pI2, 0, t, dict()]
+
+            ct2[s][pI]   = [pI,   0, Make_Character2(pI,   s), dict()]
+            ct2[s][blnk] = [blnk, 0, Make_Character2(blnk, s), dict()]
+            ct2[s][spc]  = [spc , 0, Make_Character2(spc , s), dict()]
             
             # Add backup fonts to the table so we can figure out what our font really is
             # font_backups(s)
@@ -2332,55 +2326,50 @@ class Character_Table:
             if KERN_TABLE:
                 dkern[s] = dict()
                 for ii in ct[s].keys():
-                    sw = ct[s][pI2][1] - ct[s][pI1][1]
-                    mcw = ct[s][ii][1] - sw
+                    sw = ct[s][spc][1] - ct[s][blnk][1]
+                    mcw = ct[s][ii][1] - ct[s][blnk][1]
                     # my character width
                     if ii == " ":
                         mcw = sw
                     for jj in ct[s][ii][-1].keys():
                         # myi = mycs.index(jj);
-                        pcw = ct[s][jj][1] - sw
+                        pcw = ct[s][jj][1] - ct[s][blnk][1]
                         # preceding char width
                         if ct[s][jj][0] == " ":
                             pcw = sw
-                        bcw = ct[s][ii][-1][jj] - sw
+                        bcw = ct[s][ii][-1][jj] - ct[s][blnk][1]
                         # both char widths
                         dkern[s][jj, ct[s][ii][0]] = bcw - pcw - mcw
                         # preceding char, then next char
 
         for s in list(ct.keys()):
+            blnkwd = ct[s][blnk][1];
             sw = (
-                ct[s][pI2][1] - ct[s][pI1][1]
+                ct[s][spc][1] - blnkwd
             )  # space width is the difference in widths of the last two
-            ch = ct[s][pI2][3]  # cap height
-            dr = ct[s][pI2][4]  # descender
+            # dh.idebug(s)
+            # dh.idebug(sw)
+            ch = ct[s][pI][3]  # cap height
+            dr = ct[s][pI][4]  # descender
             for ii in ct[s].keys():
-                cw = ct[s][ii][1] - sw
+                cw = ct[s][ii][1] - blnkwd
                 # character width (full, including extra space on each side)
-                xo = ct[s][ii][2]  # x offset: how far it starts from the left anchor
+                
                 if ct[s][ii][0] == " ":
                     cw = sw
-                    xo = 0
-
-                # dh.debug([ii,cw,sw])
 
                 dkernscl = dict()
                 if KERN_TABLE:
                     for k in dkern[s].keys():
-                        dkernscl[k] = dkern[s][k] / docscale
-                # dh.debug([ct[s][ii][0],dkern])
-                # dh.debug([ct[s][ii][0],cw,docscale])
+                        dkernscl[k] = dkern[s][k]/TEXTSIZE
                 ct[s][ii] = cprop(
                     ct[s][ii][0],
-                    cw / docscale,
-                    sw / docscale,
-                    xo / docscale,
-                    ch / docscale,
-                    dr / docscale,
+                    cw/TEXTSIZE,
+                    sw/TEXTSIZE,
+                    ch/TEXTSIZE,
+                    dr/TEXTSIZE,
                     dkernscl,
                 )
-                # Because a nominal 1 px font is docscale px tall, we need to divide by the docscale to get the true width
-
             # dh.debug(dkernscl)
             # ct[s] = ct[s][0:Nl]
 
@@ -2417,7 +2406,7 @@ class Character_Table:
                         # dh.idebug([styv,",".join([v.strip().strip("'") for v in styv.split(",")])])
                         styv = ",".join([v.strip().strip("'") for v in styv.split(",")])
                     sty2[a] = styv
-        sty2["font-size"] = "1px"
+        sty2["font-size"] = str(TEXTSIZE)+"px"
         sty2 = ";".join(
             ["{0}:{1}".format(*seg) for seg in sty2.items()]
         )  # from Style to_str

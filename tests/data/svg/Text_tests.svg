@@ -6,7 +6,7 @@
    viewBox="0 0 306.05757 207.30648"
    version="1.1"
    id="svg26"
-   inkscape:version="1.1.2 (b8e25be833, 2022-02-05)"
+   inkscape:version="1.2 (dc2aedaf03, 2022-05-15)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -108,9 +108,9 @@
      inkscape:document-rotation="0"
      inkscape:current-layer="layer1"
      inkscape:document-units="mm"
-     inkscape:cy="249.29319"
-     inkscape:cx="368.39268"
-     inkscape:zoom="1.5323323"
+     inkscape:cy="194.35047"
+     inkscape:cx="353.75463"
+     inkscape:zoom="1.631074"
      inkscape:pageshadow="2"
      inkscape:pageopacity="0.0"
      borderopacity="1.0"
@@ -122,7 +122,9 @@
      inkscape:window-height="1017"
      inkscape:window-x="-8"
      inkscape:window-y="-8"
-     inkscape:window-maximized="1" />
+     inkscape:window-maximized="1"
+     inkscape:showpageshadow="2"
+     inkscape:deskcolor="#d1d1d1" />
   <metadata
      id="metadata23">
     <rdf:RDF>
@@ -866,41 +868,41 @@
          transform="translate(13.59746,3.7093356)"><tspan
            x="0"
            y="11.480255"
-           id="tspan116368"><tspan
+           id="tspan659174"><tspan
              style="stroke-width:0.5"
-             id="tspan116366">This is an SVG2 </tspan></tspan><tspan
+             id="tspan659172">This is an SVG2 </tspan></tspan><tspan
            x="0"
            y="15.449005"
-           id="tspan116372"><tspan
+           id="tspan659178"><tspan
              style="stroke-width:0.5"
-             id="tspan116370">flowed text. </tspan></tspan><tspan
+             id="tspan659176">flowed text. </tspan></tspan><tspan
            x="0"
            y="19.417755"
-           id="tspan116380"><tspan
+           id="tspan659186"><tspan
              style="stroke-width:0.5"
-             id="tspan116374">(inlin</tspan><tspan
+             id="tspan659180">(inlin</tspan><tspan
              dx="-0.27516687"
              style="letter-spacing:0.275167px"
-             id="tspan116376">e siz</tspan><tspan
+             id="tspan659182">e siz</tspan><tspan
              dx="0.27516711"
              style="stroke-width:0.5"
-             id="tspan116378">e)
+             id="tspan659184">e)
 </tspan></tspan><tspan
            x="0"
            y="23.386505"
-           id="tspan116384"><tspan
+           id="tspan659190"><tspan
              style="stroke-width:0.5"
-             id="tspan116382">This is a line </tspan></tspan><tspan
+             id="tspan659188">This is a line </tspan></tspan><tspan
            x="0"
            y="27.355255"
-           id="tspan116388"><tspan
+           id="tspan659194"><tspan
              style="stroke-width:0.5"
-             id="tspan116386">break inside that </tspan></tspan><tspan
+             id="tspan659192">break inside that </tspan></tspan><tspan
            x="0"
            y="31.324005"
-           id="tspan116392"><tspan
+           id="tspan659198"><tspan
              style="stroke-width:0.5"
-             id="tspan116390">text.</tspan></tspan></text>
+             id="tspan659196">text.</tspan></tspan></text>
       <text
          xml:space="preserve"
          style="font-size:3.175px;line-height:125%;font-family:Arial;-inkscape-font-specification:Arial;letter-spacing:0.0343958px;fill:#000000;stroke-width:0.499999;stroke-linecap:round;stroke-linejoin:round"
@@ -990,13 +992,13 @@
          transform="matrix(0.13229167,0,0,0.13229167,-0.66073416,-0.33036706)"><tspan
            x="106.13281"
            y="317.54389"
-           id="tspan116394">This is an SVG2 </tspan><tspan
+           id="tspan659200">This is an SVG2 </tspan><tspan
            x="106.13281"
            y="347.54389"
-           id="tspan116396">flowed text (shape </tspan><tspan
+           id="tspan659202">flowed text (shape </tspan><tspan
            x="106.13281"
            y="377.54389"
-           id="tspan116398">inside)</tspan></text>
+           id="tspan659204">inside)</tspan></text>
       <text
          xml:space="preserve"
          style="font-size:5.33333px;line-height:125%;font-family:Arial;-inkscape-font-specification:Arial;writing-mode:lr-tb;direction:ltr;fill:#000000;stroke-width:1.88976;stroke-linecap:round;stroke-linejoin:round"
@@ -2825,6 +2827,30 @@
            y="729.5694"
            style="font-size:40px;line-height:1.25"
            id="tspan978">LWIR</tspan></tspan></text>
+    <text
+       transform="matrix(0,-0.41539531,0.41539531,0,103.51967,-120.24693)"
+       style="font-style:oblique;font-variant:normal;font-size:10.6735px;font-family:Whitney;text-align:center;writing-mode:lr-tb;text-anchor:middle;fill:#262626;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.75"
+       id="text1903"
+       x="-452.0502"
+       y="93.195396"
+       xml:space="preserve"><tspan
+         x="-452.0502"
+         y="93.195396"
+         id="tspan1901"
+         style="font-style:normal;font-family:Whitney;text-align:center;text-anchor:middle;stroke-width:0.75"
+         sodipodi:role="line">FSR</tspan></text>
+    <text
+       transform="matrix(0,-0.5536762,0.5536762,0,142.23273,62.598879)"
+       style="font-variant:normal;font-weight:normal;font-size:8.00781px;font-family:Whitney;text-align:center;writing-mode:lr-tb;text-anchor:middle;fill:#262626;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.562687"
+       id="text1907"
+       x="10.220904"
+       y="0"
+       xml:space="preserve"><tspan
+         x="10.220904"
+         y="0"
+         id="tspan1905"
+         style="font-family:Whitney;text-align:center;text-anchor:middle"
+         sodipodi:role="line">(GHz)</tspan></text>
   </g>
   <style
      type="text/css"
