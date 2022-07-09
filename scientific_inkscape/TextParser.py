@@ -2187,6 +2187,7 @@ class Character_Table:
                             )
         for sty in ctable:  # make sure they have spaces
             ctable[sty] = list(set(ctable[sty] + [" "]))
+            # dh.idebug(' ' in ctable[sty])
         
         # Make a dictionary of all font specs in the document, along with the backup fonts in those specs
         # e.g. {'': ['sans-serif'], 'Calibri,Arial': ['Calibri', 'Arial', 'sans-serif']}
@@ -2208,7 +2209,7 @@ class Character_Table:
         for bf in list(set(bfs+list(docfonts.keys()))):
             if bf!='':
                 sty = 'font-family:'+bf
-                ctable[sty] = list(set(ctable.get(sty, []) + list(self.fonttestchars)))
+                ctable[sty] = list(set(ctable.get(sty, [' ']) + list(self.fonttestchars)))
                 if sty not in pctable:
                     pctable[sty] = dict()
             
@@ -2216,18 +2217,17 @@ class Character_Table:
 
     def measure_character_widths2(self, els):
         # Measure the width of all characters of a given style by generating copies with a prefix and suffix.
-        # We take the difference with a blank that does not contain any character.
-        # This includes any spaces between characters as well.
+        # To get the character width we compare this to a blank that does not contain any character.
+        # Note that this is the "pen width," the width including intercharacter space
         # The width will be the width of a character whose composed font size is 1 uu.
-        # ct = self.generate_character_table(els,None);
         ct, pct, dfs = self.generate_character_table2(els)
-        # dh.idebug(pct)
 
         prefix = 'I '
         suffix = ' I'
+        # We use a space to get rid of differential kerning effects, then another character to make 
+        # sure the space isn't leading/trailing
         
-        blnk = prefix+    suffix
-        spc  = prefix+' '+suffix
+        blnk = prefix+suffix
         pI = "pI"
         # We add pI as test characters because p gives the font's descender (how much the tail descends)
         # and I gives its cap height (how tall capital letters are).
@@ -2256,7 +2256,12 @@ class Character_Table:
                 f.write(svgtexts.encode("utf8"))
                 svgtexts = ""
             return "text" + str(cnt)
-    
+        
+        class StringInfo:
+            def __init__(self, strval,strid,dkern):
+                self.strval = strval
+                self.strid = strid;
+                self.dkern = dkern;
 
         ct2 = dict()
         for s in list(ct.keys()):
@@ -2264,7 +2269,6 @@ class Character_Table:
             for ii in range(len(ct[s])):
                 myc = ct[s][ii]
                 t = Make_Character2(prefix + myc + suffix, s)
-                # character with 2 spaces (last space not rendered)
                 dkern = dict()
                 if KERN_TABLE:
                     for jj in range(len(ct[s])):
@@ -2272,15 +2276,12 @@ class Character_Table:
                         if myc in pct[s] and pc in pct[s][myc]:
                             t2 = Make_Character2(prefix + pc+myc + suffix, s)
                             # precede by all chars of the same style
-                            dkern[pc] = [pc, 0, t2]
-                ct2[s][myc] = [myc, 0, t, dkern]
+                            dkern[pc] = t2
+                # ct2[s][myc] = [myc, 0, t, dkern]
+                ct2[s][myc] = StringInfo(myc, t, dkern)
 
-            ct2[s][pI]   = [pI,   0, Make_Character2(pI,   s), dict()]
-            ct2[s][blnk] = [blnk, 0, Make_Character2(blnk, s), dict()]
-            ct2[s][spc]  = [spc , 0, Make_Character2(spc , s), dict()]
-            
-            # Add backup fonts to the table so we can figure out what our font really is
-            # font_backups(s)
+            ct2[s][pI]   = StringInfo(pI,   Make_Character2(pI,   s), dict())
+            ct2[s][blnk] = StringInfo(blnk, Make_Character2(blnk, s), dict())
 
         ct = ct2
         f.write((svgtexts + svgstop).encode("utf8"))
@@ -2294,8 +2295,8 @@ class Character_Table:
         for df in dfs:
             match = 'sans-serif'
             if df!='':
-                bbdf  = [ nbb[ct['font-family:'+df][ii][2]] for ii in self.fonttestchars]                   # doc font bbs
-                bbbfs = [[nbb[ct['font-family:'+v ][ii][2]] for ii in self.fonttestchars] for v in dfs[df]] # backup font bbs
+                bbdf  = [ nbb[ct['font-family:'+df][ii].strid] for ii in self.fonttestchars]                   # doc font bbs
+                bbbfs = [[nbb[ct['font-family:'+v ][ii].strid] for ii in self.fonttestchars] for v in dfs[df]] # backup font bbs
                 matches = [ii for ii in range(len(dfs[df])) if bbdf==bbbfs[ii]]
                 if len(matches)!=len(dfs[df]):
                     match = dfs[df][matches[0]]
@@ -2304,81 +2305,50 @@ class Character_Table:
         dkern = dict()
         for s in list(ct.keys()):
             for ii in ct[s].keys():
-                # dh.debug(nbb)
-                bb = nbb[ct[s][ii][2]]
-                wdth = bb[0] + bb[2]
-                caphgt = -bb[1]
-                bbstrt = bb[0]
-                dscnd = bb[1] + bb[3]
-
+                ct[s][ii].bb = bbox(nbb[ct[s][ii].strid])
                 if KERN_TABLE:
                     precwidth = dict()
-                    for jj in ct[s][ii][-1].keys():
-                        bb = nbb[ct[s][ii][-1][jj][2]]
-                        wdth2 = bb[0] + bb[2]
-                        precwidth[jj] = wdth2
+                    for jj in ct[s][ii].dkern.keys():
+                        precwidth[jj] = bbox(nbb[ct[s][ii].dkern[jj]]).w
                         # width including the preceding character and extra kerning
-                    #                        ct[s][ii][-1][jj][1].delete();
-                    ct[s][ii] = [ct[s][ii][0], wdth, bbstrt, caphgt, dscnd, precwidth]
-                else:
-                    ct[s][ii] = [ct[s][ii][0], wdth, bbstrt, caphgt, dscnd]
+                    ct[s][ii].precwidth = precwidth
 
             if KERN_TABLE:
                 dkern[s] = dict()
                 for ii in ct[s].keys():
-                    sw = ct[s][spc][1] - ct[s][blnk][1]
-                    mcw = ct[s][ii][1] - ct[s][blnk][1]
-                    # my character width
-                    if ii == " ":
-                        mcw = sw
-                    for jj in ct[s][ii][-1].keys():
+                    mcw = ct[s][ii].bb.w  - ct[s][blnk].bb.w # my character width
+                    for jj in ct[s][ii].precwidth.keys():
                         # myi = mycs.index(jj);
-                        pcw = ct[s][jj][1] - ct[s][blnk][1]
-                        # preceding char width
-                        if ct[s][jj][0] == " ":
-                            pcw = sw
-                        bcw = ct[s][ii][-1][jj] - ct[s][blnk][1]
-                        # both char widths
-                        dkern[s][jj, ct[s][ii][0]] = bcw - pcw - mcw
-                        # preceding char, then next char
+                        pcw = ct[s][jj].bb.w - ct[s][blnk].bb.w          # preceding char width
+                        bcw = ct[s][ii].precwidth[jj] - ct[s][blnk].bb.w  # both char widths
+                        dkern[s][jj, ct[s][ii].strval] = bcw - pcw - mcw   # preceding char, then next char
 
         for s in list(ct.keys()):
-            blnkwd = ct[s][blnk][1];
-            sw = (
-                ct[s][spc][1] - blnkwd
-            )  # space width is the difference in widths of the last two
-            # dh.idebug(s)
-            # dh.idebug(sw)
-            ch = ct[s][pI][3]  # cap height
-            dr = ct[s][pI][4]  # descender
+            blnkwd = ct[s][blnk].bb.w;
+            sw = ct[s][' '].bb.w - blnkwd  # space width
+            ch = -ct[s][pI].bb.y1          # cap height
+            dr =  ct[s][pI].bb.y2          # descender
             for ii in ct[s].keys():
-                cw = ct[s][ii][1] - blnkwd
-                # character width (full, including extra space on each side)
-                
-                if ct[s][ii][0] == " ":
-                    cw = sw
-
+                cw = ct[s][ii].bb.w - blnkwd # character width (full, including extra space on each side)
                 dkernscl = dict()
                 if KERN_TABLE:
                     for k in dkern[s].keys():
                         dkernscl[k] = dkern[s][k]/TEXTSIZE
                 ct[s][ii] = cprop(
-                    ct[s][ii][0],
+                    ct[s][ii].strval,
                     cw/TEXTSIZE,
                     sw/TEXTSIZE,
                     ch/TEXTSIZE,
                     dr/TEXTSIZE,
                     dkernscl,
                 )
-            # dh.debug(dkernscl)
-            # ct[s] = ct[s][0:Nl]
 
             
         return ct, nbb, dfs
 
     # For generating test characters, we want to normalize the style so that we don't waste time
     # generating a bunch of identical characters whose font-sizes are different. A style is generated
-    # with a 1px font-size, and only with presentation attributes that affect character shape.
+    # with a single font-size, and only with presentation attributes that affect character shape.
     textshapeatt = [
         "font-family",
         "font-size-adjust",
@@ -2411,36 +2381,6 @@ class Character_Table:
             ["{0}:{1}".format(*seg) for seg in sty2.items()]
         )  # from Style to_str
         return sty2
-
-        # sty = Style2(sty)
-        # stykeys = list(sty.keys())
-        # sty2 = Style2("")
-        # for a in Character_Table.textshapeatt:
-        #     if a in stykeys:
-        #         styv = sty.get(a)
-        #         # if styv is not None and styv.lower()=='none':
-        #         #     styv=None # actually don't do this because 'none' might be overriding inherited styles
-        #         if styv is not None:
-        #             sty2[a] = styv
-
-        # nones = [None, "none", "None"]
-        # sty2["font-size"] = "1px"
-        # if not (sty2.get("font-family") in nones):
-        #     sty2["font-family"] = ",".join(
-        #         [v.strip().strip("'") for v in sty2["font-family"].split(",")]
-        #     )
-        #     # strip spaces b/t styles
-        # # if sty2.get('font-style').lower()=='normal':
-        # #     sty2['font-style']=None;
-
-        # tmp = Style2("")
-        # for k in sorted(sty2.keys()):  # be sure key order is alphabetical
-        #     tmp[k] = sty2[k]
-        # sty2 = tmp
-
-        # # dh.debug([sty2.get('stroke'),sty2.get('stroke-width')])
-
-        # return str(sty2)
 
 
 # Recursively delete empty elements
@@ -2509,180 +2449,3 @@ def noneid(el):
         return None
     else:
         return el.get("id")
-
-    # Seperate a text element into a group of lines
-
-
-#     def Parse_Lines(self,el,lns=None,debug=False):
-#         sty = (el.cspecified_style);
-#         ct = el.composed_transform();
-#         fs,sf,ct,ang = dh.Get_Composed_Width(el,'font-size',4,styin=sty,ctin=ct); #dh.debug(el.get_id()); dh.debug(el.composed_transform())
-#         lh = dh.Get_Composed_LineHeight(el,styin=sty,ctin=ct);
-#         nsty=Character_Table.normalize_style(sty);
-#         tv = el.text;
-
-#         xv = LineList.GetXY(el,'x'); xsrc = el;
-#         yv = LineList.GetXY(el,'y'); ysrc = el;
-
-#         # Notes on sodipodi:role line
-#         # If a top-level Tspan has sodipodi:role set to line, its position is inherited based on the previous line.
-#         # The x value is taken from the previous line's x value.
-#         # The y value is taken by adding the line height to the previous y value.
-#         # However, inheritance is disabled by the presence of multiple x values or multiple y values.
-#         # (Multiple dx or dy values does not disable this inheritance.)
-#         # If sodipodi:role is not line, its anchoring/alignment will be inherited from the previous line.
-
-#         # Detect if inheriting position
-#         nspr = el.get('sodipodi:role');
-
-#         toplevelTspan = isinstance(el,Tspan) and isinstance(el.getparent(),TextElement);
-#         myi = el.getparent().getchildren().index(el);
-
-#         if toplevelTspan:                tlvlno=myi;
-#         elif isinstance(el,TextElement): tlvlno=0;
-#         else:                            tlvlno=None;
-
-#         sprl = (nspr=='line');
-#         multiplepos = len(xv)>1 or len(yv)>1;           # multiple x or y values disable sodipodi:role line
-#         inheritx = (sprl and not(multiplepos)) or (xv[0] is None)
-#         inherity = (sprl and not(multiplepos)) or (yv[0] is None)
-
-#         # Determine if new line
-#         newline = False;
-#         if isinstance(el,TextElement):
-#             newline = True
-#         elif toplevelTspan: # top level Tspans
-#             if (sprl      and (not(inheritx) or not(inherity) or not(myi==0)))\
-#             or (not(sprl) and (not(inheritx) or not(inherity))):
-#                 # if not inheriting, continue previous line
-#                 newline = True
-#         elif isinstance(el,Tspan):                      # nested Tspans: become a new line with an explicit x or y
-#             if el.get('x') is not None:
-#                 newline = True; inheritx=False;
-#             if el.get('y') is not None:
-#                 newline = True; inherity=False;
-
-#         # dh.debug(el.get_id() + str(inheritx))
-#         # dh.debug(el.get_id())
-#         # dh.debug(len(el.text))
-#         # dh.debug(newline)
-#         # dh.debug(inheritx)
-#         # dh.debug(inherity)
-#         # dh.debug((nspr=='line' and not(multiplepos)) or (yv[0] is None))
-#         # dh.debug(' ')
-# #        dh.debug(toplevelTspan)
-
-#         # debug = True
-#         if debug:
-#             dh.debug(el.get_id())
-#             dh.debug(tv)
-#             dh.debug(newline)
-#             dh.debug(fs)
-#             dh.debug(xv)
-#             # dh.debug(inheritx)
-
-#         if newline:
-#             continuex = False;
-#             if lns is None:
-#                 lns=[];
-#             else:
-#                 if inheritx:
-#                     if len(lns)==0 or len(lns[-1].x)==0: return None
-#                     else:
-#                         if toplevelTspan and myi>0: # inheriting from previous top-level line
-#                             lastln = [ln for ln in lns if ln.tlvlno==tlvlno-1][-1];
-#                             xv   = [lastln.x[0]];
-#                             xsrc = lastln.xsrc;
-#                             if lastln.x[0] is None:
-#                                 lli=[ii for ii in range(len(lns)) if lns[ii].x[0] is not None]
-#                                 if len(lli)>0:
-#                                     xv = [lns[max(lli)].x[0]]
-#                                     xsrc = lns[max(lli)].xsrc
-#                         else:                       # continuing previous line
-#                             xv   = [None];
-#                             xsrc = lns[-1].xsrc;
-#                             continuex = True;
-# #                        ct   = lns[-1].transform; # I don't think these do anything (2021.10.18)
-# #                        ang  = lns[-1].angle;
-#                 if inherity:
-#                     if len(lns)==0 or len(lns[-1].y)==0: return None
-#                     else:
-#                         if toplevelTspan and myi>0: # inheriting from previous top-level line
-#                             lastln = [ln for ln in lns if ln.tlvlno==tlvlno-1][-1];
-#                             offs = lh/sf;
-#                             if lns[-1].y[0] is not None:
-#                                 if lastln.y[0] is None:
-#                                     lli=[ii for ii in range(len(lns)) if lns[ii].y[0] is not None]
-#                                     if len(lli)>0: lyv = lns[max(lli)].y[0]
-#                                     else: lyv=0
-#                                 else:
-#                                     lyv = lastln.y[0]
-#                                 yv   = [lyv+offs];
-#                             else: yv = [None];
-#                             ysrc = lastln.ysrc;
-#                         else:                       # continuing previous line
-#                             yv   = [lns[-1].y[0]];
-#                             ysrc = lns[-1].ysrc;
-
-#             anch = sty.get('text-anchor')
-#             if len(lns)!=0 and nspr!='line':
-#                 if lns[-1].anchor is not None:
-#                     anch = lns[-1].anchor    # non-spr lines inherit the previous line's anchor
-#             lns.append(tline(xv,yv,inheritx,nspr,anch,ct,ang,el,xsrc,ysrc,tlvlno,sty,continuex))
-
-#         # First line anchor should be the Tspan style if there are no characters in the text
-#         if toplevelTspan and myi==0:
-#             if len(lns)==1 and len(lns[0].cs)==0:
-#                 lns[0].anchor = sty.get('text-anchor');
-
-#         ctable = self.ctable
-#         if tv is not None and tv!='' and len(tv)>0:
-#             for ii in range(len(tv)):
-#                 # if fs is None: return None # bail if there is text without font
-#                 prop = ctable.get_prop(tv[ii],nsty)*fs;
-#                 lns[-1].addc(tchar(tv[ii],fs,sf,prop,sty,nsty,cloc(el,'text',ii)));
-
-#         ks = el.getchildren();
-#         # if debug:
-#         #     dh.debug(ks)
-#         for k in ks:
-#             lns = self.Parse_Lines(k,lns,debug=debug);
-#             tv = k.tail;
-#             if tv is not None and tv!='':
-#                 for ii in range(len(tv)):
-#                     # if fs is None: return None # bail if there is text without font
-#                     prop = ctable.get_prop(tv[ii],nsty)*fs;
-#                     lns[-1].addc(tchar(tv[ii],fs,sf,prop,sty,nsty,cloc(k,'tail',ii)));
-
-#         return lns
-
-#     def Finish_Lines(self):
-#         if self.lns is not None:
-#             self.Get_Delta(self.lns,self.textel,'dx');
-#             self.Get_Delta(self.lns,self.textel,'dy');
-#             for ii in range(len(self.lns)):
-#                 ln = self.lns[ii];
-#                 if ln.x[0] is None: # no x ever assigned
-#                     if ln.continuex and ii>0 and len(self.lns[ii-1].ws)>0:
-#                         self.lns[ii-1].ws[-1].calcprops();
-#                         ln.x[0] = self.lns[ii-1].ws[-1].pts_ut[3].x
-#                     else:
-#                         ln.x[0] = 0;
-#                 if ln.y[0] is None: # no y ever assigned
-#                     ln.y[0] = 0;
-#                 ln.parse_words()
-#             for ln in reversed(self.lns):
-#                 if len(ln.cs)==0:
-#                     self.lns.remove(ln); # prune empty lines
-#             for ln in self.lns:
-#                 ln.ll = self;
-
-#             # Assign nextw for single-word lines sharing a y (Illustrator SVGs usually have one Tspan per character)
-#             ys = [ln.y[0] for ln in self.lns if ln.y is not None and len(ln.y)>0]
-#             for uy in list(set(ys)):
-#                 samey = [self.lns[ii] for ii in range(len(self.lns)) if ys[ii]==uy];
-#                 xs = [ln.x for ln in samey]
-#                 slns = [x for _, x in sorted(zip(xs, samey), key=lambda pair: pair[0])] # words sorted in ascending x
-#                 for ii in range(len(slns)-1):
-#                     if len(slns[ii].ws)==1 and len(slns[ii+1].ws)==1:
-#                         slns[ii].ws[-1].nextw = slns[ii+1].ws[0]
