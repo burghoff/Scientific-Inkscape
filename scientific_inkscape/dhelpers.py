@@ -48,7 +48,7 @@ from inkex import (
     BaseElement,
 )
 from applytransform_mod import ApplyTransform
-import lxml, math, re
+import lxml, math, re, sys, os
 from Style2 import Style2
 
 
@@ -1667,9 +1667,6 @@ def get_strokefill(el):
 
 
 # Gets the caller's location
-import os, sys
-
-
 def get_script_path():
     return os.path.dirname(os.path.realpath(sys.argv[0]))
 
@@ -1691,52 +1688,37 @@ def visible_descendants(svg):
 # Gets the location of the Inkscape binary
 # Functions copied from command.py
 # Copyright (C) 2019 Martin Owens
+global bloc
+bloc = None
 def Get_Binary_Loc():
-    INKSCAPE_EXECUTABLE_NAME = os.environ.get("INKSCAPE_COMMAND")
-    if INKSCAPE_EXECUTABLE_NAME == None:
-        if sys.platform == "win32":
-            # prefer inkscape.exe over inkscape.com which spawns a command window
-            INKSCAPE_EXECUTABLE_NAME = "inkscape.exe"
-        else:
-            INKSCAPE_EXECUTABLE_NAME = "inkscape"
-
-    class CommandNotFound(IOError):
-        pass
-
-    def which(program):
-        if os.path.isabs(program) and os.path.isfile(program):
-            return program
-        try:
-            # Python2 and python3, but must have distutils and may not always
-            # work on windows versions (depending on the version)
-            from distutils.spawn import find_executable
-
-            prog = find_executable(program)
-            if prog:
-                return prog
-        except ImportError:
+    global bloc
+    if bloc is None:
+        INKSCAPE_EXECUTABLE_NAME = os.environ.get("INKSCAPE_COMMAND")
+        if INKSCAPE_EXECUTABLE_NAME == None:
+            if sys.platform == "win32":
+                # prefer inkscape.exe over inkscape.com which spawns a command window
+                INKSCAPE_EXECUTABLE_NAME = "inkscape.exe"
+            else:
+                INKSCAPE_EXECUTABLE_NAME = "inkscape"
+        class CommandNotFound(IOError):
             pass
-        try:
-            # Python3 only version of which
-            from shutil import which as warlock
-
-            prog = warlock(program)
-            if prog:
-                return prog
-        except ImportError:
-            pass  # python2
-        try:
-            import sys
-
-            for sp in sys.path:
-                prog = find_executable(program, path=sp)
-                if prog:
-                    return prog
-        except ImportError:
-            pass
-        raise CommandNotFound(f"Can not find the command: '{program}'")
-
-    return which(INKSCAPE_EXECUTABLE_NAME)
+        def which2(program):
+            try:
+                return inkex.command.which(program)
+            except:
+                # Search the path as a backup (primarily for testing)
+                try:
+                    from shutil import which as warlock
+                    for sp in sys.path:
+                        if sys.platform == "win32":
+                            prog = warlock(program, path=os.environ["PATH"] + ";" + sp)
+                            if prog:
+                                return prog
+                except ImportError:
+                    pass
+                raise CommandNotFound(f"Can not find the command: '{program}'")
+        bloc = which2(INKSCAPE_EXECUTABLE_NAME)
+    return bloc
 
 
 # Get document location or prompt
@@ -1771,7 +1753,6 @@ except:
     except:
         try:
             from inkex.paths import Path, CubicSuperPath
-
             inkex_version = "1.0.0"
         except:
             inkex_version = "0.92.4"
