@@ -122,7 +122,8 @@ def get_files(dirin):
     fs = []
     try:
         for f in os.scandir(dirin):
-            if f.name[-4:] == ".svg":
+            exclude = '_portable.svg'
+            if f.name[-4:] == ".svg" and f.name[-len(exclude):] != exclude:
                 fs.append(os.path.join(os.path.abspath(dirin), f.name))
         return fs
     except FileNotFoundError:

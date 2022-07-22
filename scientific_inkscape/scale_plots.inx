@@ -23,6 +23,8 @@
             </label>
             <param name="hmatch" type="bool" gui-text="Match width?">true</param>
             <param name="vmatch" type="bool" gui-text="Match height?">true</param>
+            <param name="firstisplot" type="bool" gui-text="First selection is a grouped plot to which the plot area should be matched"
+            gui-description="Select this if you want to match the plot area of one plot to another.">false</param>
             <spacer/><param name="wholeplot2" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
             <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>

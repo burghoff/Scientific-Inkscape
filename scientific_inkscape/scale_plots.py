@@ -76,6 +76,52 @@ def geometric_bbox(el, vis_bbox, irange=None):
     return bbox(gbb)
 
 
+# Determines plot area from a list of elements and their geometric bounding boxes 
+def Find_Plot_Area(els,bbs):
+    vl = dict()      # vertical lines
+    hl = dict()      # horizontal lines
+    boxes = dict()
+    solids = dict()
+    for el in list(reversed(els)):
+        isrect = False
+        if isinstance(el, (PathElement, Rectangle, Line, Polyline)):
+            bb = bbs[el.get_id2()]
+            xs, ys = dh.get_points(el)
+            if (max(xs) - min(xs)) < 0.001 * bb[3]:
+                vl[el.get_id2()] = bb
+            if (max(ys) - min(ys)) < 0.001 * bb[2]: 
+                hl[el.get_id2()] = bb
+
+            tol = 1e-3 * max(max(xs) - min(xs), max(ys) - min(ys))
+            if 3 <= len(xs) <= 5 and dh.uniquetol(xs, tol) == 2 and dh.uniquetol(ys, tol) == 2:
+                isrect = True
+        if isrect or isinstance(el, (Rectangle)):
+            sf = dh.get_strokefill(el);
+            hasfill   = sf.fill is not None   and sf.fill  !=[255, 255, 255,1]
+            hasstroke = sf.stroke is not None and sf.stroke!=[255, 255, 255,1]
+            
+            if hasfill and (not(hasstroke) or sf.stroke == sf.fill):  # solid rectangle
+                solids[el.get_id2()] = bb
+            elif hasstroke:                                           # framed rectangle
+                boxes[el.get_id2()]  = bb
+    
+    vels = dict()
+    hels = dict()
+    for k,bb in vl.items():
+        vels[k] = bb[3]
+    for k,bb in hl.items():
+        hels[k] = bb[2]
+    for k,bb in boxes.items():
+        hels[k] = bb[2]
+        vels[k] = bb[3]
+    
+    lvel = lhel = None
+    if len(vels) != 0:
+        lvel = max(vels, key=vels.get)   # largest vertical
+    if len(hels) != 0:
+        lhel = max(hels, key=hels.get)   # largest horizontal
+    return vl, hl, lvel, lhel
+
 class bbox:
     def __init__(self, bb):
         self.x1 = bb[0]
@@ -100,7 +146,29 @@ class bbox:
                 max(tr1[1], tr2[1]) - min(tr1[1], tr2[1]),
             ]
         )
+    
+    def union(self, bb2):
+        minx = min([self.x1, self.x2, bb2.x1, bb2.x2])
+        maxx = max([self.x1, self.x2, bb2.x1, bb2.x2])
+        miny = min([self.y1, self.y2, bb2.y1, bb2.y2])
+        maxy = max([self.y1, self.y2, bb2.y1, bb2.y2])
+        return bbox([minx, miny, maxx - minx, maxy - miny])
 
+# Get the proper suffix for an integer (1st, 2nd, 3rd, etc.)
+def appendInt(num):
+    if num > 9:
+        secondToLastDigit = str(num)[-2]
+        if secondToLastDigit == "1":
+            return "th"
+    lastDigit = num % 10
+    if lastDigit == 1:
+        return "st"
+    elif lastDigit == 2:
+        return "nd"
+    elif lastDigit == 3:
+        return "rd"
+    else:
+        return "th"
 
 class ScalePlots(inkex.EffectExtension):
     def add_arguments(self, pars):
@@ -161,6 +229,13 @@ class ScalePlots(inkex.EffectExtension):
             default=False,
             help="Treat whole selection as plot area?",
         )
+        pars.add_argument(
+            "--firstisplot",
+            type=inkex.Boolean,
+            default=False,
+            help="First selection is a plot to whom the area should be matched?",
+        )
+        
 
     def effect(self):
         import random
@@ -275,86 +350,28 @@ class ScalePlots(inkex.EffectExtension):
             sel = [k for k in sel if k.get_id2() in list(fbbs.keys())]
             # only work on objects with a BB
             bbs = dict()
-            for el in [firstsel] + sel + sfels:
+            for el in [firstsel] + sel + sfels + list(firstsel):
                 if el.get_id2() in list(fbbs.keys()):
                     bbs[el.get_id2()] = geometric_bbox(el, fbbs[el.get_id2()]).sbb
 
-            # Find horizontal and vertical lines (to within .001 rad), elements to be used in plot area calculations
-            vl = dict()
-            hl = dict()
-            boxes = dict()
-            solids = dict()
-            vels = dict()
-            hels = dict()
-            for el in list(reversed(sel)):
-                isrect = False
-                if isinstance(el, (PathElement, Rectangle, Line, Polyline)):
-                    bb = bbs[el.get_id2()]
-                    xs, ys = dh.get_points(el)
-                    if (max(xs) - min(xs)) < 0.001 * bb[3]:  # vertical line
-                        vl[el.get_id2()] = bb[3]
-                        # lines only
-                        vels[el.get_id2()] = bb[3]
-                        # lines and rectangles
-                    if (max(ys) - min(ys)) < 0.001 * bb[2]:  # horizontal line
-                        hl[el.get_id2()] = bb[2]
-                        # lines only
-                        hels[el.get_id2()] = bb[2]
-                        # lines and rectangles
-
-                    if 3 <= len(xs) <= 5 and len(set(xs)) == 2 and len(set(ys)) == 2:
-                        isrect = True
-                if isrect or isinstance(el, (Rectangle)):  # el.typename=='Rectangle':
-                    sty = el.cspecified_style
-                    strk = sty.get("stroke")
-                    fill = sty.get("fill")
-
-                    nones = [None, "none", "white", "#ffffff"]
-                    if not (fill in nones) and (
-                        strk in nones or strk == fill
-                    ):  # solid rectangle
-                        solids[el.get_id2()] = [bb[2], bb[3]]
-                    elif not (strk in nones):  # framed box
-                        boxes[el.get_id2()] = [bb[2], bb[3]]
-                        vels[el.get_id2()] = bb[3]
-                        hels[el.get_id2()] = bb[2]
-
-            if len(vels) == 0 or len(hels) == 0 or wholesel:
+            vl, hl, lvel, lhel = Find_Plot_Area(sel,bbs)   
+            if lvel is None or lhel is None or wholesel:
                 noplotarea = True
-                lvl = None
-                lhl = None
-                if (len(vels) == 0 or len(hels) == 0) and not (wholesel):
+                lvel = None
+                lhel = None
+                if not (wholesel):
                     # Display warning message
-                    def appendInt(num):
-                        if num > 9:
-                            secondToLastDigit = str(num)[-2]
-                            if secondToLastDigit == "1":
-                                return "th"
-                        lastDigit = num % 10
-                        if lastDigit == 1:
-                            return "st"
-                        elif lastDigit == 2:
-                            return "nd"
-                        elif lastDigit == 3:
-                            return "rd"
-                        else:
-                            return "th"
-
                     numgroup = str(i0 + 1) + appendInt(i0 + 1)
                     inkex.utils.errormsg(
                         "A box-like plot area could not be automatically detected on the "
                         + numgroup
                         + " selected plot (group ID "
                         + gsel[i0].get_id2()
-                        + ").\n\n Draw an outlined box to define the plot area."
-                        + "\nScaling will still be performed, but the results will be less ideal."
+                        + ").\n\nDraw an outlined box to define the plot area."
+                        + "\nScaling will still be performed, but the results may not be ideal."
                     )
             else:
                 noplotarea = False
-                lvl = max(vels, key=vels.get)
-                # largest vertical
-                lhl = max(hels, key=hels.get)
-                # largest horizontal
 
             # Determine the bounding box of the whole selection and the plot area
             minx = miny = minxp = minyp = fminxp = fminyp = fminx = fminy = float("inf")
@@ -372,7 +389,7 @@ class ScalePlots(inkex.EffectExtension):
                 fminy = min(fminy, fbb[1])
                 fmaxx = max(fmaxx, fbb[0] + fbb[2])
                 fmaxy = max(fmaxy, fbb[1] + fbb[3])
-                if el.get_id2() in [lvl, lhl] or noplotarea:
+                if el.get_id2() in [lvel, lhel] or noplotarea:
                     minyp = min(minyp, bb[1])
                     maxyp = max(maxyp, bb[1] + bb[3])
                     minxp = min(minxp, bb[0])
@@ -468,7 +485,7 @@ class ScalePlots(inkex.EffectExtension):
                     fminy = min(fminy, fbb[1])
                     fmaxx = max(fmaxx, fbb[0] + fbb[2])
                     fmaxy = max(fmaxy, fbb[1] + fbb[3])
-                    if el.get_id2() in [lvl, lhl] or noplotarea:
+                    if el.get_id2() in [lvel, lhel] or noplotarea:
                         minyp = min(minyp, bb[1])
                         maxyp = max(maxyp, bb[1] + bb[3])
                         minxp = min(minxp, bb[0])
@@ -509,7 +526,23 @@ class ScalePlots(inkex.EffectExtension):
                         refy = ofminy + dyl
 
             if self.options.tab == "matching":
-                bbfirst = bbs[firstsel.get_id2()]
+                
+                bbfirst = None;
+                if self.options.firstisplot:
+                    vl0, hl0, lvel0, lhel0 = Find_Plot_Area(list(firstsel),bbs)   
+                    if lvel0 is None or lhel0 is None:
+                        inkex.utils.errormsg(
+                            "A box-like plot area could not be automatically detected on the "
+                            + "first selected object (group ID "
+                            + firstsel.get_id2()
+                            + ").\n\nDraw an outlined box to define the plot area."
+                            + "\nScaling will still be performed, but the results may not be ideal."
+                        )
+                    else:
+                        bbfirst = bbox(bbs[lvel0]).union(bbox(bbs[lhel0])).sbb;
+                    
+                if bbfirst is None:
+                    bbfirst = bbs[firstsel.get_id2()]
                 if hmatch:
                     scalex = bbfirst[2] / (maxxp - minxp)
                 else:
@@ -549,8 +582,8 @@ class ScalePlots(inkex.EffectExtension):
                 r.cstyle = "fill-opacity:0.5"
                 self.svg.append(r)
                 dh.global_transform(r, gtr)
-                dh.debug("Largest vertical line: " + lvl)
-                dh.debug("Largest horizontal line: " + lhl)
+                dh.debug("Largest vertical line: " + lvel)
+                dh.debug("Largest horizontal line: " + lhel)
 
             # Make a list of elements to be transformed
             sclels = []

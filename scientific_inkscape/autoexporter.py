@@ -498,12 +498,16 @@ class AutoExporter(inkex.EffectExtension):
             
   
 
-        try:
-            os.remove(myoutput)
-        except:
-            pass
+        # try:
+        #     os.remove(myoutput)
+        # except:
+        #     pass
         
-        def make_output(filein,fileout):
+        def overwrite_output(filein,fileout):      
+            try:
+                os.remove(fileout)
+            except:
+                pass
             arg2 = [
                 bfn,
                 "--export-background",
@@ -517,6 +521,36 @@ class AutoExporter(inkex.EffectExtension):
                 filein,
             ]
             dh.subprocess_repeat(arg2)
+        
+        
+        def make_output(filein,fileout):
+            if filein[-3:]=='svg':
+                svg = get_svg(filein);
+                pgs = self.Get_Pages(svg)
+                
+                if len(pgs)>1:
+                    outputs = [];
+                    for ii in range(len(pgs)):
+                        # match the viewbox to each page and delete them
+                        svgpg = get_svg(filein);
+                        pgs2 = self.Get_Pages(svgpg);
+                                                
+                        self.Change_Viewbox_To_Page(svgpg, pgs[ii])
+                        for jj in reversed(range(len(pgs2))):
+                            pgs2[jj].delete2();    
+                          
+                        pnum = str(ii+1);   
+                        svgpgfn = tempbase+'_page_'+pnum+'.svg';
+                        overwrite_svg(svgpg,svgpgfn)
+                        
+                        outparts = fileout.split('.')
+                        pgout = '.'.join(outparts[:-1])+'_page_'+pnum+'.'+outparts[-1]
+                        overwrite_output(svgpgfn,pgout);
+                        outputs.append(pgout)
+                    return outputs
+            overwrite_output(filein,fileout)
+            return [fileout]
+                                
 
         if not (smallsvg):
             make_output(fin,myoutput)
@@ -524,37 +558,48 @@ class AutoExporter(inkex.EffectExtension):
             # Make PDF if necessary
             if not(input_options.usepdf):
                 tmp = tempbase+"_tmp_small.pdf"
-                make_output(fin,tmp)
-                fin = copy.copy(tmp)
-                # tmpoutputs.append(tmp)
+                pdfs = make_output(fin,tmp)
             else:
-                fin = myoutput.replace("_portable.svg",".pdf")
+                # Already made PDFs, just get them
+                mydir  = os.path.split(myoutput.replace("_portable.svg",""))[0]
+                myname = os.path.split(myoutput.replace("_portable.svg",""))[1]
+                pdfs = []
+                for f in os.scandir(mydir):
+                    if f.name[0:len(myname)]==myname and f.name[-4:]=='.pdf':
+                        pdfs.append(os.path.join(os.path.abspath(mydir), f.name))
                 
-            # Convert back to SVG
-            tmp = tempbase+"_fin" + ".svg"
-            make_output(fin,tmp)
-            fin = copy.copy(tmp)
-            # tmpoutputs.append(tmp)
-            
-            # Post PDFication cleanup for Office products
-            svg = get_svg(fin)
-            vds = dh.visible_descendants(svg)
-            for d in vds:
-                if isinstance(d,(TextElement)):
-                    self.Scale_Text(d)
-                elif isinstance(d,(inkex.Image)):
-                    if ih.hasPIL:
-                        self.Merge_Mask(d)
-                    while d.getparent()!=d.croot and d.getparent() is not None and d.croot is not None: # causes problems and doesn't help
-                        dh.ungroup(d.getparent());
-                elif isinstance(d,(inkex.Group)):
-                    if len(d)==0:
-                        dh.deleteup(d)
-            
-            if input_options.thinline:
+            for pdf in pdfs:
+                # Convert back to SVG
+                tmp = tempbase+"_fin" + ".svg"
+                make_output(pdf,tmp)
+                # fin = copy.copy(tmp)
+                # tmpoutputs.append(tmp)
+                
+                # Post PDFication cleanup for Office products
+                svg = get_svg(tmp)
+                vds = dh.visible_descendants(svg)
                 for d in vds:
-                    self.Bezier_to_Split(d)   
-            overwrite_svg(svg, myoutput)
+                    if isinstance(d,(TextElement)):
+                        self.Scale_Text(d)
+                    elif isinstance(d,(inkex.Image)):
+                        if ih.hasPIL:
+                            self.Merge_Mask(d)
+                        while d.getparent()!=d.croot and d.getparent() is not None and d.croot is not None: # causes problems and doesn't help
+                            dh.ungroup(d.getparent());
+                    elif isinstance(d,(inkex.Group)):
+                        if len(d)==0:
+                            dh.deleteup(d)
+                
+                if input_options.thinline:
+                    for d in vds:
+                        self.Bezier_to_Split(d)   
+                        
+                if len(pdfs)==1:
+                    finalname = myoutput
+                else:
+                    pnum = pdf.split('_page_')[-1].strip('.pdf');
+                    finalname = myoutput.replace('_portable.svg','_page_'+pnum+'_portable.svg')
+                overwrite_svg(svg, finalname)
 
         if input_options.prints:
             toc = time.time() - timestart;
@@ -1183,53 +1228,47 @@ class AutoExporter(inkex.EffectExtension):
             el.set("height", str((imgbbox[3] - imgbbox[1]) * myh))
         dh.ungroup(g)
         
-    def Add_Margin(self,svg,amt_mm):
-        m = inkex.units.convert_unit(str(amt_mm)+'mm','px');
-        
+    def Get_Pages(self,svg):
         try:
             nvs = [el for el in list(svg) if isinstance(el,inkex.NamedView)]
             pgs = [el for nv in nvs for el in list(nv) if isinstance(el,inkex.Page)]
         except:
             pgs = [];
-            
+        return pgs
+        
+    def Add_Margin(self,svg,amt_mm):
+        m = inkex.units.convert_unit(str(amt_mm)+'mm','px');
+        uuw, uuh, wu, hu = svg.uusz        
+        pgs = self.Get_Pages(svg)
+        
         if len(pgs)>0:
             # Has Pages
             for pg in pgs:
-                x = dh.implicitpx(pg.get('x'))
-                y = dh.implicitpx(pg.get('y'))
-                w = dh.implicitpx(pg.get('width'))
-                h = dh.implicitpx(pg.get('height'))
+                x = dh.implicitpx(pg.get('x'))*uuw
+                y = dh.implicitpx(pg.get('y'))*uuh
+                w = dh.implicitpx(pg.get('width'))*uuw
+                h = dh.implicitpx(pg.get('height'))*uuh
                 
-                pg.set('x',str(x-m))
-                pg.set('y',str(y-m))
-                pg.set('width', str(w+2*m))
-                pg.set('height',str(h+2*m))
+                pg.set('x',str((x-m)/uuw))
+                pg.set('y',str((y-m)/uuh))
+                pg.set('width', str((w+2*m)/uuw))
+                pg.set('height',str((h+2*m)/uuh))
         
         else:
             # If an old version of Inkscape or has no Pages, defined by viewbox
             vb = svg.get_viewbox2()
-            w = inkex.units.convert_unit(svg.get('width'),'px')
-            h = inkex.units.convert_unit(svg.get('height'),'px')
+            nvb = [vb[0]-m/uuw,vb[1]-m/uuh,vb[2]+2*m/uuw,vb[3]+2*m/uuh]
+            svg.set_viewbox(nvb)
             
-            wn = w + 2*m
-            hn = h + 2*m
-            
-            wu = inkex.units.parse_unit(svg.get('width'))
-            if wu is not None:
-                wu = wu[1]
-            else:
-                wu = 'px'
-                
-            svg.set('width',str(inkex.units.convert_unit(str(wn)+'px', wu))+wu)
-            svg.set('height',str(inkex.units.convert_unit(str(hn)+'px', wu))+wu)
-            
-            deltaw = (wn/w-1)*vb[2];
-            deltah = (hn/h-1)*vb[3]; 
-    
-            nvb = [vb[0]-deltaw/2,vb[1]-deltah/2,vb[2]+deltaw,vb[3]+deltah]
-            svg.set('viewBox',' '.join([str(v) for v in nvb]))
         
-
+    def Change_Viewbox_To_Page(self,svg,pg):
+        newvb = [dh.implicitpx(pg.get('x')),\
+                 dh.implicitpx(pg.get('y')),\
+                 dh.implicitpx(pg.get('width')),\
+                 dh.implicitpx(pg.get('height'))]
+        svg.set_viewbox(newvb)
+        
+        
 
 
 if __name__ == "__main__":

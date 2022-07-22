@@ -1598,6 +1598,8 @@ def combine_paths(els, mergeii=0):
 
 
 # Gets all of the stroke and fill properties from a style
+# Alpha is its effective alpha including opacity
+# Note to self: inkex.Color inherits from list
 def get_strokefill(el):
     # if styin is None:
     sty = el.cspecified_style
@@ -1801,6 +1803,35 @@ def get_viewbox2_fcn(svg):
         vb = [0, 0, implicitpx(svg.get("width")), implicitpx(svg.get("height"))]
     return vb
 inkex.SvgDocumentElement.get_viewbox2 = get_viewbox2_fcn
+
+# Gets the absolute size of a uu in pixels
+# Also returns the unit the document width & height are specified in
+def get_uusz(svg):
+    if not (hasattr(svg, "_ccuuszpx")):
+        vb = svg.get_viewbox2()
+        wunit = inkex.units.parse_unit(svg.get('width'))
+        if wunit is not None:
+            wunit = wunit[1]                  # document width unit
+        else:
+            wunit = 'px'
+        hunit = inkex.units.parse_unit(svg.get('height'))
+        if hunit is not None:
+            hunit = hunit[1]                  # document height unit
+        else:
+            hunit = 'px'
+        uuw = inkex.units.convert_unit(svg.get('width'),'px')/vb[2]    # uu width in px
+        uuh = inkex.units.convert_unit(svg.get('height'),'px')/vb[3]   # uu height in px
+        svg._ccuuszpx = (uuw,uuh,wunit,hunit)
+    return svg._ccuuszpx
+inkex.SvgDocumentElement.uusz = property(get_uusz)
+
+# Sets the viewbox of a document, updating its width and height correspondingly
+def set_viewbox_fcn(svg,newvb):
+    uuw,uuh,wunit,hunit = svg.uusz
+    svg.set('width', str(inkex.units.convert_unit(str(newvb[2]*uuw)+'px', wunit))+wunit)
+    svg.set('height',str(inkex.units.convert_unit(str(newvb[3]*uuh)+'px', hunit))+hunit)
+    svg.set('viewBox',' '.join([str(v) for v in newvb]))
+inkex.SvgDocumentElement.set_viewbox = set_viewbox_fcn
 
 
 # Override Transform's __matmul__ to give old versions __matmul__

@@ -227,7 +227,7 @@ class Homogenizer(inkex.EffectExtension):
             for el in reversed(sel):
                 dh.Set_Style_Comp(el, "font-family", fontfamily)
                 dh.Set_Style_Comp(el, "-inkscape-font-specification", None)
-                if fontfamily in ["Avenir", "Whitney", "Whitney Book"] and isinstance(
+                if fontfamily.lower() in ["avenir", "whitney", "whitney book"] and isinstance(
                     el, (TextElement, FlowRoot)
                 ):
                     dh.Replace_Non_Ascii_Font(el, "Avenir Next, Arial")
