@@ -47,14 +47,13 @@ from inkex import (
 
 import lxml
 
-import os, sys
+import os, sys, math, copy
 
 sys.path.append(
     os.path.dirname(os.path.realpath(sys.argv[0]))
 )  # make sure my directory is on the path
 import dhelpers as dh
-
-import copy
+from dhelpers import bbox
 
 It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
@@ -77,7 +76,7 @@ def geometric_bbox(el, vis_bbox, irange=None):
 
 
 # Determines plot area from a list of elements and their geometric bounding boxes 
-def Find_Plot_Area(els,bbs):
+def Find_Plot_Area(els,gbbs):
     vl = dict()      # vertical lines
     hl = dict()      # horizontal lines
     boxes = dict()
@@ -85,15 +84,15 @@ def Find_Plot_Area(els,bbs):
     for el in list(reversed(els)):
         isrect = False
         if isinstance(el, (PathElement, Rectangle, Line, Polyline)):
-            bb = bbs[el.get_id2()]
+            gbb = gbbs[el.get_id2()]
             xs, ys = dh.get_points(el)
-            if (max(xs) - min(xs)) < 0.001 * bb[3]:
-                vl[el.get_id2()] = bb
-            if (max(ys) - min(ys)) < 0.001 * bb[2]: 
-                hl[el.get_id2()] = bb
+            if (max(xs) - min(xs)) < 0.001 * gbb[3]:
+                vl[el.get_id2()] = gbb
+            if (max(ys) - min(ys)) < 0.001 * gbb[2]: 
+                hl[el.get_id2()] = gbb
 
             tol = 1e-3 * max(max(xs) - min(xs), max(ys) - min(ys))
-            if 3 <= len(xs) <= 5 and dh.uniquetol(xs, tol) == 2 and dh.uniquetol(ys, tol) == 2:
+            if 3 <= len(xs) <= 5 and len(dh.uniquetol(xs, tol)) == 2 and len(dh.uniquetol(ys, tol)) == 2:
                 isrect = True
         if isrect or isinstance(el, (Rectangle)):
             sf = dh.get_strokefill(el);
@@ -101,19 +100,22 @@ def Find_Plot_Area(els,bbs):
             hasstroke = sf.stroke is not None and sf.stroke!=[255, 255, 255,1]
             
             if hasfill and (not(hasstroke) or sf.stroke == sf.fill):  # solid rectangle
-                solids[el.get_id2()] = bb
+                solids[el.get_id2()] = gbb
             elif hasstroke:                                           # framed rectangle
-                boxes[el.get_id2()]  = bb
+                boxes[el.get_id2()]  = gbb
+                
+#        if el.get_id2()=='path1034':
+#            dh.idebug(dh.uniquetol(xs, tol))
     
     vels = dict()
     hels = dict()
-    for k,bb in vl.items():
-        vels[k] = bb[3]
-    for k,bb in hl.items():
-        hels[k] = bb[2]
-    for k,bb in boxes.items():
-        hels[k] = bb[2]
-        vels[k] = bb[3]
+    for k,gbb in vl.items():
+        vels[k] = gbb[3]
+    for k,gbb in hl.items():
+        hels[k] = gbb[2]
+    for k,gbb in boxes.items():
+        hels[k] = gbb[2]
+        vels[k] = gbb[3]
     
     lvel = lhel = None
     if len(vels) != 0:
@@ -122,37 +124,37 @@ def Find_Plot_Area(els,bbs):
         lhel = max(hels, key=hels.get)   # largest horizontal
     return vl, hl, lvel, lhel
 
-class bbox:
-    def __init__(self, bb):
-        self.x1 = bb[0]
-        self.x2 = bb[0] + bb[2]
-        self.y1 = bb[1]
-        self.y2 = bb[1] + bb[3]
-        self.xc = (self.x1 + self.x2) / 2
-        self.yc = (self.y1 + self.y2) / 2
-        self.w = bb[2]
-        self.h = bb[3]
-        self.sbb = [self.x1, self.y1, self.w, self.h]
-        # standard bbox
+# class bbox:
+#     def __init__(self, bb):
+#         self.x1 = bb[0]
+#         self.x2 = bb[0] + bb[2]
+#         self.y1 = bb[1]
+#         self.y2 = bb[1] + bb[3]
+#         self.xc = (self.x1 + self.x2) / 2
+#         self.yc = (self.y1 + self.y2) / 2
+#         self.w = bb[2]
+#         self.h = bb[3]
+#         self.sbb = [self.x1, self.y1, self.w, self.h]
+#         # standard bbox
 
-    def transform(self, xform):
-        tr1 = xform.apply_to_point([self.x1, self.y1])
-        tr2 = xform.apply_to_point([self.x2, self.y2])
-        return bbox(
-            [
-                min(tr1[0], tr2[0]),
-                min(tr1[1], tr2[1]),
-                max(tr1[0], tr2[0]) - min(tr1[0], tr2[0]),
-                max(tr1[1], tr2[1]) - min(tr1[1], tr2[1]),
-            ]
-        )
+#     def transform(self, xform):
+#         tr1 = xform.apply_to_point([self.x1, self.y1])
+#         tr2 = xform.apply_to_point([self.x2, self.y2])
+#         return bbox(
+#             [
+#                 min(tr1[0], tr2[0]),
+#                 min(tr1[1], tr2[1]),
+#                 max(tr1[0], tr2[0]) - min(tr1[0], tr2[0]),
+#                 max(tr1[1], tr2[1]) - min(tr1[1], tr2[1]),
+#             ]
+#         )
     
-    def union(self, bb2):
-        minx = min([self.x1, self.x2, bb2.x1, bb2.x2])
-        maxx = max([self.x1, self.x2, bb2.x1, bb2.x2])
-        miny = min([self.y1, self.y2, bb2.y1, bb2.y2])
-        maxy = max([self.y1, self.y2, bb2.y1, bb2.y2])
-        return bbox([minx, miny, maxx - minx, maxy - miny])
+#     def union(self, bb2):
+#         minx = min([self.x1, self.x2, bb2.x1, bb2.x2])
+#         maxx = max([self.x1, self.x2, bb2.x1, bb2.x2])
+#         miny = min([self.y1, self.y2, bb2.y1, bb2.y2])
+#         maxy = max([self.y1, self.y2, bb2.y1, bb2.y2])
+#         return bbox([minx, miny, maxx - minx, maxy - miny])
 
 # Get the proper suffix for an integer (1st, 2nd, 3rd, etc.)
 def appendInt(num):
@@ -169,6 +171,11 @@ def appendInt(num):
         return "rd"
     else:
         return "th"
+    
+def TrTransform(x,y):
+    return Transform("translate(" + str(x) + ", " + str(y) + ")")
+def SclTransform(x,y):
+    return Transform("scale(" + str(x) + ", " + str(y) + ")")
 
 class ScalePlots(inkex.EffectExtension):
     def add_arguments(self, pars):
@@ -194,8 +201,12 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument(
             "--figuremode", type=int, default=1, help="Scale by bounding box?"
         )
-        pars.add_argument("--hdrag2", type=int, default=1, help="Horizontal scaling")
-        pars.add_argument("--vdrag2", type=int, default=1, help="Vertical scaling")
+        pars.add_argument(
+            "--matchwhat", type=int, default=2, help="Match what?"
+        )
+        pars.add_argument(
+            "--matchto", type=int, default=1, help="Match to?"
+        )
 
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
         pars.add_argument(
@@ -228,12 +239,6 @@ class ScalePlots(inkex.EffectExtension):
             type=inkex.Boolean,
             default=False,
             help="Treat whole selection as plot area?",
-        )
-        pars.add_argument(
-            "--firstisplot",
-            type=inkex.Boolean,
-            default=False,
-            help="First selection is a plot to whom the area should be matched?",
         )
         
 
@@ -277,22 +282,16 @@ class ScalePlots(inkex.EffectExtension):
         if self.options.tab == "scaling":
             hscale = self.options.hscale
             vscale = self.options.vscale
-            hdrag = self.options.hdrag
-            vdrag = self.options.vdrag
             scalex = hscale / 100
             scaley = vscale / 100
             matchingmode = False
             wholesel = self.options.wholeplot1
         elif self.options.tab == "matching":
-            hdrag = self.options.hdrag2
-            vdrag = self.options.vdrag2
             hmatch = self.options.hmatch
             vmatch = self.options.vmatch
             matchingmode = True
             wholesel = self.options.wholeplot2
         elif self.options.tab == "correction":
-            hdrag = 1
-            vdrag = 1
             scalex = 1
             scaley = 1
             matchingmode = False
@@ -309,6 +308,9 @@ class ScalePlots(inkex.EffectExtension):
         else:
             inkex.utils.errormsg("Select Scaling, Matching, or Correction mode")
             return
+        self.options.matchwhat = {1:'bbox',2:'plotarea'}[self.options.matchwhat]
+        self.options.matchto   = {1:'firstbbox',2:'firstplotarea',3:'meanbbox',4:'meanplotarea'}[self.options.matchto]
+        
 
         if wholesel:
             tickcorrect = False
@@ -342,19 +344,19 @@ class ScalePlots(inkex.EffectExtension):
             # groups
             trs = [Transform(s.get("transform")) for s in sel]
             # for correction mode
-            asel = [list(s.getchildren()) for s in sel]
+            asel = [list(s) for s in sel]
 
         for i0 in range(len(asel)):  # sel in asel:
             sel = asel[i0]
             # Calculate geometric (tight) bounding boxes of selected items
             sel = [k for k in sel if k.get_id2() in list(fbbs.keys())]
             # only work on objects with a BB
-            bbs = dict()
+            gbbs = dict()
             for el in [firstsel] + sel + sfels + list(firstsel):
                 if el.get_id2() in list(fbbs.keys()):
-                    bbs[el.get_id2()] = geometric_bbox(el, fbbs[el.get_id2()]).sbb
+                    gbbs[el.get_id2()] = geometric_bbox(el, fbbs[el.get_id2()]).sbb
 
-            vl, hl, lvel, lhel = Find_Plot_Area(sel,bbs)   
+            vl, hl, lvel, lhel = Find_Plot_Area(sel,gbbs)   
             if lvel is None or lhel is None or wholesel:
                 noplotarea = True
                 lvel = None
@@ -372,42 +374,31 @@ class ScalePlots(inkex.EffectExtension):
                     )
             else:
                 noplotarea = False
-
-            # Determine the bounding box of the whole selection and the plot area
-            minx = miny = minxp = minyp = fminxp = fminyp = fminx = fminy = float("inf")
-            maxx = maxy = maxxp = maxyp = fmaxxp = fmaxyp = fmaxx = fmaxy = float(
-                "-inf"
-            )
+            
+            # A class that contains geometric and full bounding boxes
+            class bbox2:
+                def __init__(self,g,f):
+                    if isinstance(g,list) or g is None:
+                        g = bbox(g)
+                    if isinstance(f,list) or f is None:
+                        f = bbox(f)
+                    self.g = g;
+                    self.f = f;
+                def union(self, g,f):
+                    return(bbox2(self.g.union(g),self.f.union(f)));
+                
+                    
+            bba = bbox2(None,None);    # all elements
+            bbp = bbox2(None,None);    # plot area
             for el in sel:
-                bb = bbs[el.get_id2()]
-                minx = min(minx, bb[0])
-                miny = min(miny, bb[1])
-                maxx = max(maxx, bb[0] + bb[2])
-                maxy = max(maxy, bb[1] + bb[3])
-                fbb = fbbs[el.get_id2()]
-                fminx = min(fminx, fbb[0])
-                fminy = min(fminy, fbb[1])
-                fmaxx = max(fmaxx, fbb[0] + fbb[2])
-                fmaxy = max(fmaxy, fbb[1] + fbb[3])
+                bba  = bba.union(gbbs[el.get_id2()],fbbs[el.get_id2()])
                 if el.get_id2() in [lvel, lhel] or noplotarea:
-                    minyp = min(minyp, bb[1])
-                    maxyp = max(maxyp, bb[1] + bb[3])
-                    minxp = min(minxp, bb[0])
-                    maxxp = max(maxxp, bb[0] + bb[2])
-                    fbb = fbbs[el.get_id2()]
-                    fminyp = min(fminyp, fbb[1])
-                    fmaxyp = max(fmaxyp, fbb[1] + fbb[3])
-                    fminxp = min(fminxp, fbb[0])
-                    fmaxxp = max(fmaxxp, fbb[0] + fbb[2])
+                    bbp  = bbp.union(gbbs[el.get_id2()],fbbs[el.get_id2()])
 
             if self.options.tab == "correction":
                 # Invert the existing transform so we can run the rest of the code regularly
                 extr = trs[i0]
                 # existing transform
-
-                # scalex = extr.a
-                # scaley = extr.d
-                import math
 
                 sx = math.sqrt(extr.a ** 2 + extr.b ** 2)
                 sy = (-extr.b * extr.c + extr.a * extr.d) / math.sqrt(
@@ -421,164 +412,131 @@ class ScalePlots(inkex.EffectExtension):
                 # allow for rotations
 
                 if not (figuremode):
-                    refx = (minxp + maxxp) / 2
-                    refy = (minyp + maxyp) / 2
+                    refx = (bbp.g.x1 + bbp.g.x2) / 2
+                    refy = (bbp.g.y1 + bbp.g.y2) / 2
                 else:
-                    refx = fminx
-                    refy = fminy
-                trl = Transform("translate(" + str(refx) + ", " + str(refy) + ")")
-                scl = Transform(
-                    "scale(" + str(1 / scalex) + ", " + str(1 / scaley) + ")"
-                )
+                    refx = bba.f.x1
+                    refy = bba.f.y1
+                trl = TrTransform(refx,refy)
+                scl = SclTransform(1 / scalex, 1 / scaley)
                 iextr = trl @ scl @ (-trl)
                 # invert existing transform
                 dh.global_transform(gsel[i0], iextr)
-
-                # for el in sel:
-                #     t1 = el.composed_transform(); t2 =el.ccomposed_transform;
-                #     if abs(t1.a-t2.a)>.001 or abs(t1.b-t2.b)>.001 or abs(t1.c-t2.c)>.001 or abs(t1.d-t2.d)>.001 or abs(t1.e-t2.e)>.001 or abs(t1.f-t2.f)>.001:
-                #         dh.idebug(el.get_id2())
-                #         dh.idebug(t1)
-                #         dh.idebug(t2)
-                #         raise TypeError
 
                 # Invert the transform on the bounding boxes (fix later)
                 import copy
 
                 actfbbs = copy.deepcopy(fbbs)
-                actbbs = copy.deepcopy(bbs)
+                actgbbs = copy.deepcopy(gbbs)
                 for elid in fbbs.keys():
                     fbbs[elid] = bbox(fbbs[elid]).transform(iextr).sbb
-                for elid in bbs.keys():
-                    bbs[elid] = bbox(bbs[elid]).transform(iextr).sbb
-                ominx = minx
-                ominy = miny
-                omaxx = maxx
-                omaxy = maxy
-                # store for later for figure mode
-                ominyp = minyp
-                omaxyp = maxyp
-                ominxp = minxp
-                omaxxp = maxxp
-                ofminyp = fminyp
-                ofmaxyp = fmaxyp
-                ofminxp = fminxp
-                ofmaxxp = fmaxxp
-                ofminx = fminx
-                ofminy = fminy
-                ofmaxx = fmaxx
-                ofmaxy = fmaxy
-                minx = miny = minxp = minyp = fminxp = fminyp = fminx = fminy = float(
-                    "inf"
-                )
-                maxx = maxy = maxxp = maxyp = fmaxxp = fmaxyp = fmaxx = fmaxy = float(
-                    "-inf"
-                )
+                for elid in gbbs.keys():
+                    gbbs[elid] = bbox(gbbs[elid]).transform(iextr).sbb
+                
+                tr_bba = bba;   # bb with transform to be corrected
+                        
+                bba = bbox2(None,None);    # bbox of all elements
+                bbp = bbox2(None,None);    # bbox of plot area
                 for el in sel:
-                    bb = bbs[el.get_id2()]
-                    minx = min(minx, bb[0])
-                    miny = min(miny, bb[1])
-                    maxx = max(maxx, bb[0] + bb[2])
-                    maxy = max(maxy, bb[1] + bb[3])
-                    fbb = fbbs[el.get_id2()]
-                    fminx = min(fminx, fbb[0])
-                    fminy = min(fminy, fbb[1])
-                    fmaxx = max(fmaxx, fbb[0] + fbb[2])
-                    fmaxy = max(fmaxy, fbb[1] + fbb[3])
+                    bba  = bba.union(gbbs[el.get_id2()],fbbs[el.get_id2()])
                     if el.get_id2() in [lvel, lhel] or noplotarea:
-                        minyp = min(minyp, bb[1])
-                        maxyp = max(maxyp, bb[1] + bb[3])
-                        minxp = min(minxp, bb[0])
-                        maxxp = max(maxxp, bb[0] + bb[2])
-                        fbb = fbbs[el.get_id2()]
-                        fminyp = min(fminyp, fbb[1])
-                        fmaxyp = max(fmaxyp, fbb[1] + fbb[3])
-                        fminxp = min(fminxp, fbb[0])
-                        fmaxxp = max(fmaxxp, fbb[0] + fbb[2])
+                        bbp  = bbp.union(gbbs[el.get_id2()],fbbs[el.get_id2()])
+                
                 if figuremode:
                     oscalex = scalex
                     oscaley = scaley
-                    scalex = ((ofmaxx - ofminx) - (fmaxx - fminx - (maxxp - minxp))) / (
-                        (maxxp - minxp)
+                    scalex = ((tr_bba.f.x2 - tr_bba.f.x1) - (bba.f.x2 - bba.f.x1 - (bbp.g.x2 - bbp.g.x1))) / (
+                        (bbp.g.x2 - bbp.g.x1)
                     )
-                    scaley = ((ofmaxy - ofminy) - (fmaxy - fminy - (maxyp - minyp))) / (
-                        (maxyp - minyp)
+                    scaley = ((tr_bba.f.y2 - tr_bba.f.y1) - (bba.f.y2 - bba.f.y1 - (bbp.g.y2 - bbp.g.y1))) / (
+                        (bbp.g.y2 - bbp.g.y1)
                     )
 
-                    tlx = (ofminx - refx) / oscalex + refx
+                    tlx = (tr_bba.f.x1 - refx) / oscalex + refx
                     # where top left is now
-                    dxl = minxp - tlx
-                    # tlx = (minxp-refx)*scalex+refx-dxl;    # where top-left will be after scaling
+                    dxl = bbp.g.x1 - tlx
                     if scalex != 1:
-                        refx = (ofminx + dxl - minxp * scalex) / (1 - scalex)
+                        refx = (tr_bba.f.x1 + dxl - bbp.g.x1 * scalex) / (1 - scalex)
                         # what refx needs to be to maintain top-left
                     else:
-                        refx = ofminx + dxl
+                        refx = tr_bba.f.x1 + dxl
 
-                    tly = (ofminy - refy) / oscaley + refy
+                    tly = (tr_bba.f.y1 - refy) / oscaley + refy
                     # where top left is now
-                    dyl = minyp - tly
-                    # tlyp = (minyp-refy)*scaley+refy-dyl;    # where top-left of plot will be after scaling
+                    dyl = bbp.g.y1 - tly
                     if scaley != 1:
-                        refy = (ofminy + dyl - minyp * scaley) / (1 - scaley)
+                        refy = (tr_bba.f.y1 + dyl - bbp.g.y1 * scaley) / (1 - scaley)
                         # what refx needs to be to maintain top-left
                     else:
-                        refy = ofminy + dyl
+                        refy = tr_bba.f.y1 + dyl
 
             if self.options.tab == "matching":
                 
-                bbfirst = None;
-                if self.options.firstisplot:
-                    vl0, hl0, lvel0, lhel0 = Find_Plot_Area(list(firstsel),bbs)   
+                bbmatch = None
+                if self.options.matchto == 'firstbbox':
+                    bbmatch = bbox(gbbs[firstsel.get_id2()]);
+                elif self.options.matchto == 'firstplotarea':
+                    vl0, hl0, lvel0, lhel0 = Find_Plot_Area(list(firstsel),gbbs)   
                     if lvel0 is None or lhel0 is None:
                         inkex.utils.errormsg(
                             "A box-like plot area could not be automatically detected on the "
-                            + "first selected object (group ID "
+                            + "first selected object (ID "
                             + firstsel.get_id2()
-                            + ").\n\nDraw an outlined box to define the plot area."
-                            + "\nScaling will still be performed, but the results may not be ideal."
+                            + ").\n\nIts bounding box will be matched instead. If this is not ideal,"
+                            + " draw an outlined box to define the plot area.\n"
                         )
+                        bbmatch = bbox(gbbs[firstsel.get_id2()]);
                     else:
-                        bbfirst = bbox(bbs[lvel0]).union(bbox(bbs[lhel0])).sbb;
-                    
-                if bbfirst is None:
-                    bbfirst = bbs[firstsel.get_id2()]
+                        bbmatch = bbox(gbbs[lvel0]).union(bbox(gbbs[lhel0]));
+                elif self.options.matchto == 'meanbbox':
+                    pass
+                elif self.options.matchto == 'meanplotarea':
+                    pass
+                
+                scalex = scaley = 1
                 if hmatch:
-                    scalex = bbfirst[2] / (maxxp - minxp)
-                else:
-                    scalex = 1
+                    if self.options.matchwhat == 'plotarea':
+                        scalex = bbmatch.w / bbp.g.w;
+                    elif self.options.matchwhat == 'bbox':
+                        scalex = (bbmatch.w + bbp.g.w - bba.g.w)/bbp.g.w
                 if vmatch:
-                    scaley = bbfirst[3] / (maxyp - minyp)
-                else:
-                    scaley = 1
+                    if self.options.matchwhat == 'plotarea':
+                        scaley = bbmatch.h / bbp.g.h
+                    elif self.options.matchwhat == 'bbox':
+                        scaley = (bbmatch.h + bbp.g.h - bba.g.h)/bbp.g.h
+            
 
             # Compute global transformation
             if self.options.tab != "correction":
-                if hdrag == 1:  # right
-                    refx = minx
-                else:  # left
-                    refx = maxx
-                if vdrag == 1:  # bottom
-                    refy = miny
-                else:  # top
-                    refy = maxy
-            trl = Transform("translate(" + str(refx) + ", " + str(refy) + ")")
-            scl = Transform("scale(" + str(scalex) + ", " + str(scaley) + ")")
+                if self.options.hdrag == 1:     # right
+                    refx = bba.g.x1
+                elif self.options.hdrag == 2:   # left
+                    refx = bba.g.x2
+                else:                           # center
+                    refx = (bba.g.x1+bba.g.x2)/2
+                if self.options.vdrag == 1:     # bottom
+                    refy = bba.g.y1
+                elif self.options.vdrag == 2:   # top
+                    refy = bba.g.y2
+                else:                           # center
+                    refy = (bba.g.y1+bba.g.y2)/2
+            trl = TrTransform(refx,refy);
+            scl = SclTransform(scalex, scaley)
 
             gtr = trl @ scl @ (-trl)
             # global transformation
-            iscl = Transform("scale(" + str(1 / scalex) + ", " + str(1 / scaley) + ")")
-            trul = gtr.apply_to_point([minxp, minyp])  # transformed upper-left
-            trbr = gtr.apply_to_point([maxxp, maxyp])  # transformed bottom-right
+            iscl = SclTransform(1 / scalex, 1 / scaley)
+            trul = gtr.apply_to_point([bbp.g.x1, bbp.g.y1])  # transformed upper-left
+            trbr = gtr.apply_to_point([bbp.g.x2, bbp.g.y2])  # transformed bottom-right
 
             # Diagnostic mode
             diagmode = False
             if diagmode:
                 r = Rectangle()
-                r.set("x", minxp)
-                r.set("y", minyp)
-                r.set("width", abs(maxxp - minxp))
-                r.set("height", abs(maxyp - minyp))
+                r.set("x", bbp.g.x1)
+                r.set("y", bbp.g.y1)
+                r.set("width", abs(bbp.g.x2 - bbp.g.x1))
+                r.set("height", abs(bbp.g.y2 - bbp.g.y1))
                 r.cstyle = "fill-opacity:0.5"
                 self.svg.append(r)
                 dh.global_transform(r, gtr)
@@ -601,36 +559,20 @@ class ScalePlots(inkex.EffectExtension):
 
             # Apply transform and compute corrections (if needed)
             for el in sclels:
-                # t1 = el.composed_transform(); t2 =el.ccomposed_transform;
-                # if abs(t1.a-t2.a)>.001 or abs(t1.b-t2.b)>.001 or abs(t1.c-t2.c)>.001 or abs(t1.d-t2.d)>.001 or abs(t1.e-t2.e)>.001 or abs(t1.f-t2.f)>.001:
-                #     dh.idebug(el.get_id2())
-                #     dh.idebug(t1)
-                #     dh.idebug(t2)
-                #     raise TypeError
-
                 dh.global_transform(el, gtr)
                 # apply the transform
 
-                # t1 = el.composed_transform(); t2 =el.ccomposed_transform;
-                # if abs(t1.a-t2.a)>.001 or abs(t1.b-t2.b)>.001 or abs(t1.c-t2.c)>.001 or abs(t1.d-t2.d)>.001 or abs(t1.e-t2.e)>.001 or abs(t1.f-t2.f)>.001:
-                #     dh.idebug(el.get_id2())
-                #     dh.idebug(t1)
-                #     dh.idebug(t2)
-                #     raise TypeError
-
-                # if el.get('clip-path') is not None:
-                #     dh.idebug(el.get_id2())
                 elid = el.get_id2()
 
-                bb = bbs[elid]
+                gbb = gbbs[elid]
                 fbb = fbbs[elid]
                 isalwayscorr = isinstance(el, (TextElement, Group, FlowRoot))
                 # els always corrected
                 isoutsideplot = (
-                    fbb[0] > fmaxxp
-                    or fbb[0] + fbb[2] < fminxp
-                    or fbb[1] > fmaxyp
-                    or fbb[1] + fbb[3] < fminyp
+                    fbb[0] > bbp.f.x2
+                    or fbb[0] + fbb[2] < bbp.f.x1
+                    or fbb[1] > bbp.f.y2
+                    or fbb[1] + fbb[3] < bbp.f.y1
                 )
                 # els outside plot
                 issf = el in sfels
@@ -643,78 +585,54 @@ class ScalePlots(inkex.EffectExtension):
                 ):
                     isvert = elid in list(vl.keys())
                     ishorz = elid in list(hl.keys())
-                    bb = bbs[elid]
-                    if isvert and bb[3] < tickthr * (maxyp - minyp):  # vertical tick
-                        if bb[1] + bb[3] < minyp + tickthr * (maxyp - minyp):
+                    gbb = gbbs[elid]
+                    if isvert and gbb[3] < tickthr * (bbp.g.y2 - bbp.g.y1):  # vertical tick
+                        if gbb[1] + gbb[3] < bbp.g.y1 + tickthr * (bbp.g.y2 - bbp.g.y1):
                             vtickt = True
-                        elif bb[1] > maxyp - tickthr * (maxyp - minyp):
+                        elif gbb[1] > bbp.g.y2 - tickthr * (bbp.g.y2 - bbp.g.y1):
                             vtickb = True
-                    if ishorz and bb[2] < tickthr * (maxxp - minxp):  # horizontal tick
-                        if bb[0] + bb[2] < minxp + tickthr * (maxxp - minxp):
+                    if ishorz and gbb[2] < tickthr * (bbp.g.x2 - bbp.g.x1):  # horizontal tick
+                        if gbb[0] + gbb[2] < bbp.g.x1 + tickthr * (bbp.g.x2 - bbp.g.x1):
                             htickl = True
-                        elif bb[0] > maxxp - tickthr * (maxxp - minxp):
+                        elif gbb[0] > bbp.g.x2 - tickthr * (bbp.g.x2 - bbp.g.x1):
                             htickr = True
 
                 if any([vtickt, vtickb, htickl, htickr]):
                     # If a tick, scale using the edge as a reference point
-                    bb_tr = bbox(bb).transform(gtr)
-                    cx = bb_tr.xc
-                    cy = bb_tr.yc
+                    gbb_tr = bbox(gbb).transform(gtr)
+                    cx = gbb_tr.xc
+                    cy = gbb_tr.yc
 
                     if vtickt:
                         if cy > trul[1]:
-                            trl = Transform(
-                                "translate(" + str(cx) + ", " + str(bb_tr.y1) + ")"
-                            )
-                            # inner tick
+                            trl = TrTransform(cx,gbb_tr.y1)   # inner tick
                         else:
-                            trl = Transform(
-                                "translate(" + str(cx) + ", " + str(bb_tr.y2) + ")"
-                            )
-                            # outer tick
+                            trl = TrTransform(cx,gbb_tr.y2)   # outer tick
                     elif vtickb:
                         if cy < trbr[1]:
-                            trl = Transform(
-                                "translate(" + str(cx) + ", " + str(bb_tr.y2) + ")"
-                            )
-                            # inner tick
+                            trl = TrTransform(cx,gbb_tr.y2)     # inner tick
                         else:
-                            trl = Transform(
-                                "translate(" + str(cx) + ", " + str(bb_tr.y1) + ")"
-                            )
-                            # outer tick
+                            trl = TrTransform(cx,gbb_tr.y1)    # outer tick
                     elif htickl:
                         if cx > trul[0]:
-                            trl = Transform(
-                                "translate(" + str(bb_tr.x1) + ", " + str(cy) + ")"
-                            )
-                            # inner tick
+                            trl = TrTransform(gbb_tr.x1,cy)    # inner tick
                         else:
-                            trl = Transform(
-                                "translate(" + str(bb_tr.x2) + ", " + str(cy) + ")"
-                            )
-                            # outer tick
+                            trl = TrTransform(gbb_tr.x2,cy)    # outer tick
                     elif htickr:
                         if cx < trbr[0]:
-                            trl = Transform(
-                                "translate(" + str(bb_tr.x2) + ", " + str(cy) + ")"
-                            )
-                            # inner tick
+                            trl = TrTransform(gbb_tr.x2,cy)   # inner tick
                         else:
-                            trl = Transform(
-                                "translate(" + str(bb_tr.x1) + ", " + str(cy) + ")"
-                            )
-                            # outer tick
+                            trl = TrTransform(gbb_tr.x1,cy)   # outer tick
                     tr1 = trl @ iscl @ (-trl)
                     dh.global_transform(el, tr1)
                 elif isalwayscorr or isoutsideplot or issf:
                     # Invert the transformation for text/groups, anything outside the plot, scale-free
                     cbc = el.get("inkscape-academic-combined-by-color")
                     if cbc is None:
-                        bb_tr = bbox(bb).transform(gtr)
-                        cx = bb_tr.xc
-                        cy = bb_tr.yc
-                        trl = Transform("translate(" + str(cx) + ", " + str(cy) + ")")
+                        gbb_tr = bbox(gbb).transform(gtr)
+                        cx = gbb_tr.xc
+                        cy = gbb_tr.yc
+                        trl = TrTransform(cx,cy)
                         tr1 = trl @ iscl @ (-trl)
 
                         # For elements outside the plot area, adjust position to maintain
@@ -722,18 +640,18 @@ class ScalePlots(inkex.EffectExtension):
                         dx = 0
                         dy = 0
                         if cx < trul[0]:
-                            ox = bb[0] + bb[2] / 2 - minxp
+                            ox = gbb[0] + gbb[2] / 2 - bbp.g.x1
                             dx = ox - (cx - trul[0])
                         if cx > trbr[0]:
-                            ox = bb[0] + bb[2] / 2 - maxxp
+                            ox = gbb[0] + gbb[2] / 2 - bbp.g.x2
                             dx = ox - (cx - trbr[0])
                         if cy < trul[1]:
-                            oy = bb[1] + bb[3] / 2 - minyp
+                            oy = gbb[1] + gbb[3] / 2 - bbp.g.y1
                             dy = oy - (cy - trul[1])
                         if cy > trbr[1]:
-                            oy = bb[1] + bb[3] / 2 - maxyp
+                            oy = gbb[1] + gbb[3] / 2 - bbp.g.y2
                             dy = oy - (cy - trbr[1])
-                        tr2 = Transform("translate(" + str(dx) + ", " + str(dy) + ")")
+                        tr2 = TrTransform(dx,dy)
                         dh.global_transform(el, (tr2 @ tr1))
 
                     else:  # If previously combined, apply to subpaths instead
@@ -742,33 +660,29 @@ class ScalePlots(inkex.EffectExtension):
                         irng = []
                         trng = []
                         for ii in range(len(cbc) - 1):
-                            bb_tr = geometric_bbox(
+                            gbb_tr = geometric_bbox(
                                 el, fbb_tr, irange=[cbc[ii], cbc[ii + 1]]
                             )
-                            bb = bb_tr.transform(-gtr).sbb
-                            cx = bb_tr.xc
-                            cy = bb_tr.yc
-                            trl = Transform(
-                                "translate(" + str(cx) + ", " + str(cy) + ")"
-                            )
+                            gbb = gbb_tr.transform(-gtr).sbb
+                            cx = gbb_tr.xc
+                            cy = gbb_tr.yc
+                            trl = TrTransform(cx,cy)
                             tr1 = trl @ iscl @ (-trl)
                             dx = 0
                             dy = 0
                             if cx < trul[0]:
-                                ox = bb[0] + bb[2] / 2 - minxp
+                                ox = gbb[0] + gbb[2] / 2 - bbp.g.x1
                                 dx = ox - (cx - trul[0])
                             if cx > trbr[0]:
-                                ox = bb[0] + bb[2] / 2 - maxxp
+                                ox = gbb[0] + gbb[2] / 2 - bbp.g.x2
                                 dx = ox - (cx - trbr[0])
                             if cy < trul[1]:
-                                oy = bb[1] + bb[3] / 2 - minyp
+                                oy = gbb[1] + gbb[3] / 2 - bbp.g.y1
                                 dy = oy - (cy - trul[1])
                             if cy > trbr[1]:
-                                oy = bb[1] + bb[3] / 2 - maxyp
+                                oy = gbb[1] + gbb[3] / 2 - bbp.g.y2
                                 dy = oy - (cy - trbr[1])
-                            tr2 = Transform(
-                                "translate(" + str(dx) + ", " + str(dy) + ")"
-                            )
+                            tr2 = TrTransform(dx,dy)
                             irng.append([cbc[ii], cbc[ii + 1]])
                             trng.append((tr2 @ tr1))
                         dh.global_transform(el, It, irange=irng, trange=trng)
@@ -776,7 +690,7 @@ class ScalePlots(inkex.EffectExtension):
             # restore bbs
             if self.options.tab == "correction":
                 fbbs = actfbbs
-                bbs = actbbs
+                gbbs = actgbbs
 
         #        pr.disable()
         #        s = io.StringIO()

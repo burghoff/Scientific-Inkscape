@@ -35,6 +35,7 @@ sys.path.append(
 )  # make sure my directory is on the path
 import dhelpers as dh
 from dhelpers import v2d_simple as iv2d
+from dhelpers import bbox
 
 from copy import copy, deepcopy
 import inkex
@@ -2022,31 +2023,31 @@ class tchar:
 
 
 # A modified bounding box class
-class bbox:
-    def __init__(self, bb):
-        self.x1 = bb[0]
-        self.x2 = bb[0] + bb[2]
-        self.y1 = bb[1]
-        self.y2 = bb[1] + bb[3]
-        self.xc = (self.x1 + self.x2) / 2
-        self.yc = (self.y1 + self.y2) / 2
-        self.w = bb[2]
-        self.h = bb[3]
+# class bbox:
+#     def __init__(self, bb):
+#         self.x1 = bb[0]
+#         self.x2 = bb[0] + bb[2]
+#         self.y1 = bb[1]
+#         self.y2 = bb[1] + bb[3]
+#         self.xc = (self.x1 + self.x2) / 2
+#         self.yc = (self.y1 + self.y2) / 2
+#         self.w = bb[2]
+#         self.h = bb[3]
 
-    def intersect(self, bb2):
-        return (abs(self.xc - bb2.xc) * 2 < (self.w + bb2.w)) and (
-            abs(self.yc - bb2.yc) * 2 < (self.h + bb2.h)
-        )
+#     def intersect(self, bb2):
+#         return (abs(self.xc - bb2.xc) * 2 < (self.w + bb2.w)) and (
+#             abs(self.yc - bb2.yc) * 2 < (self.h + bb2.h)
+#         )
 
-    def union(self, bb2):
-        minx = min([self.x1, self.x2, bb2.x1, bb2.x2])
-        maxx = max([self.x1, self.x2, bb2.x1, bb2.x2])
-        miny = min([self.y1, self.y2, bb2.y1, bb2.y2])
-        maxy = max([self.y1, self.y2, bb2.y1, bb2.y2])
-        return bbox([minx, miny, maxx - minx, maxy - miny])
+#     def union(self, bb2):
+#         minx = min([self.x1, self.x2, bb2.x1, bb2.x2])
+#         maxx = max([self.x1, self.x2, bb2.x1, bb2.x2])
+#         miny = min([self.y1, self.y2, bb2.y1, bb2.y2])
+#         maxy = max([self.y1, self.y2, bb2.y1, bb2.y2])
+#         return bbox([minx, miny, maxx - minx, maxy - miny])
 
-    def __deepcopy__(self, memo):
-        return bbox([self.x1, self.y1, self.w, self.h])
+#     def __deepcopy__(self, memo):
+#         return bbox([self.x1, self.y1, self.w, self.h])
 
 
 def del2(x, ind):  # deletes an index from a list
