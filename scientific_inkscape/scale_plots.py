@@ -124,37 +124,6 @@ def Find_Plot_Area(els,gbbs):
         lhel = max(hels, key=hels.get)   # largest horizontal
     return vl, hl, lvel, lhel
 
-# class bbox:
-#     def __init__(self, bb):
-#         self.x1 = bb[0]
-#         self.x2 = bb[0] + bb[2]
-#         self.y1 = bb[1]
-#         self.y2 = bb[1] + bb[3]
-#         self.xc = (self.x1 + self.x2) / 2
-#         self.yc = (self.y1 + self.y2) / 2
-#         self.w = bb[2]
-#         self.h = bb[3]
-#         self.sbb = [self.x1, self.y1, self.w, self.h]
-#         # standard bbox
-
-#     def transform(self, xform):
-#         tr1 = xform.apply_to_point([self.x1, self.y1])
-#         tr2 = xform.apply_to_point([self.x2, self.y2])
-#         return bbox(
-#             [
-#                 min(tr1[0], tr2[0]),
-#                 min(tr1[1], tr2[1]),
-#                 max(tr1[0], tr2[0]) - min(tr1[0], tr2[0]),
-#                 max(tr1[1], tr2[1]) - min(tr1[1], tr2[1]),
-#             ]
-#         )
-    
-#     def union(self, bb2):
-#         minx = min([self.x1, self.x2, bb2.x1, bb2.x2])
-#         maxx = max([self.x1, self.x2, bb2.x1, bb2.x2])
-#         miny = min([self.y1, self.y2, bb2.y1, bb2.y2])
-#         maxy = max([self.y1, self.y2, bb2.y1, bb2.y2])
-#         return bbox([minx, miny, maxx - minx, maxy - miny])
 
 # Get the proper suffix for an integer (1st, 2nd, 3rd, etc.)
 def appendInt(num):
@@ -246,24 +215,7 @@ class ScalePlots(inkex.EffectExtension):
         import random
 
         random.seed(1)
-        # v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
-        # if v1:
-        #    inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
-        #    return
-        # # gpe= dh.get_mod(self.svg.selection)
-        # # sel =[gpe[k] for k in gpe.id_dict().keys()];
-        # else:
-        #    sel = [v for el in self.svg.selection for v in dh.descendants2(el)];
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
-        # should work with both v1.0 and v1.1
-
-        # print([el.get_id2() for el in sel])
-        # sel = [v for el in sel for v in dh.descendants2(el)];
-
-        # starttime = time.time();
-        # sel = self.svg.selection;                     # an ElementList
-        # inkex.utils.debug(sel)
-        # sel=[sel[k] for k in sel.id_dict().keys()];
         sel = [
             k
             for k in sel
@@ -284,22 +236,15 @@ class ScalePlots(inkex.EffectExtension):
             vscale = self.options.vscale
             scalex = hscale / 100
             scaley = vscale / 100
-            matchingmode = False
             wholesel = self.options.wholeplot1
         elif self.options.tab == "matching":
             hmatch = self.options.hmatch
             vmatch = self.options.vmatch
-            matchingmode = True
             wholesel = self.options.wholeplot2
         elif self.options.tab == "correction":
             scalex = 1
             scaley = 1
-            matchingmode = False
             wholesel = self.options.wholeplot3
-            if self.options.figuremode == 1:
-                figuremode = False
-            else:
-                figuremode = True
             if not (all([isinstance(k, Group) for k in sel])):
                 inkex.utils.errormsg(
                     "Correction mode requires that every selected object be a group that has already been scaled."
@@ -310,7 +255,7 @@ class ScalePlots(inkex.EffectExtension):
             return
         self.options.matchwhat = {1:'bbox',2:'plotarea'}[self.options.matchwhat]
         self.options.matchto   = {1:'firstbbox',2:'firstplotarea',3:'meanbbox',4:'meanplotarea'}[self.options.matchto]
-        
+        self.options.figuremode= {1:False,2:True}[self.options.figuremode]
 
         if wholesel:
             tickcorrect = False
@@ -334,29 +279,25 @@ class ScalePlots(inkex.EffectExtension):
         fbbs = dh.Get_Bounding_Boxes(self, False)
         # full visual bbs
         firstsel = sel[0]
-        if matchingmode:
+        if self.options.tab == "matching":
             sel = sel[1:]
-        groupedmode = all([isinstance(k, Group) for k in sel])
-        if not (groupedmode):
-            asel = [sel]
-        else:
-            gsel = sel
-            # groups
+        
+        all_pels = [sel]
+        if all([isinstance(k, Group) for k in sel]): # grouped mode
             trs = [Transform(s.get("transform")) for s in sel]
             # for correction mode
-            asel = [list(s) for s in sel]
+            all_pels = [list(s) for s in sel]
 
-        for i0 in range(len(asel)):  # sel in asel:
-            sel = asel[i0]
-            # Calculate geometric (tight) bounding boxes of selected items
-            sel = [k for k in sel if k.get_id2() in list(fbbs.keys())]
-            # only work on objects with a BB
+        for i0 in range(len(all_pels)):  # sel in asel:
+            pels = [k for k in all_pels[i0] if k.get_id2() in list(fbbs.keys())]  # plot elements list
+            
+            # Calculate geometric (tight) bounding boxes of plot elements
             gbbs = dict()
-            for el in [firstsel] + sel + sfels + list(firstsel):
-                if el.get_id2() in list(fbbs.keys()):
+            for el in [firstsel] + pels + sfels + list(firstsel):
+                if el.get_id2() in fbbs:
                     gbbs[el.get_id2()] = geometric_bbox(el, fbbs[el.get_id2()]).sbb
 
-            vl, hl, lvel, lhel = Find_Plot_Area(sel,gbbs)   
+            vl, hl, lvel, lhel = Find_Plot_Area(pels,gbbs)   
             if lvel is None or lhel is None or wholesel:
                 noplotarea = True
                 lvel = None
@@ -368,7 +309,7 @@ class ScalePlots(inkex.EffectExtension):
                         "A box-like plot area could not be automatically detected on the "
                         + numgroup
                         + " selected plot (group ID "
-                        + gsel[i0].get_id2()
+                        + sel[i0].get_id2()
                         + ").\n\nDraw an outlined box to define the plot area."
                         + "\nScaling will still be performed, but the results may not be ideal."
                     )
@@ -390,7 +331,7 @@ class ScalePlots(inkex.EffectExtension):
                     
             bba = bbox2(None,None);    # all elements
             bbp = bbox2(None,None);    # plot area
-            for el in sel:
+            for el in pels:
                 bba  = bba.union(gbbs[el.get_id2()],fbbs[el.get_id2()])
                 if el.get_id2() in [lvel, lhel] or noplotarea:
                     bbp  = bbp.union(gbbs[el.get_id2()],fbbs[el.get_id2()])
@@ -411,7 +352,7 @@ class ScalePlots(inkex.EffectExtension):
                 scaley = sy
                 # allow for rotations
 
-                if not (figuremode):
+                if not (self.options.figuremode):
                     refx = (bbp.g.x1 + bbp.g.x2) / 2
                     refy = (bbp.g.y1 + bbp.g.y2) / 2
                 else:
@@ -421,7 +362,7 @@ class ScalePlots(inkex.EffectExtension):
                 scl = SclTransform(1 / scalex, 1 / scaley)
                 iextr = trl @ scl @ (-trl)
                 # invert existing transform
-                dh.global_transform(gsel[i0], iextr)
+                dh.global_transform(sel[i0], iextr)
 
                 # Invert the transform on the bounding boxes (fix later)
                 import copy
@@ -437,12 +378,12 @@ class ScalePlots(inkex.EffectExtension):
                         
                 bba = bbox2(None,None);    # bbox of all elements
                 bbp = bbox2(None,None);    # bbox of plot area
-                for el in sel:
+                for el in pels:
                     bba  = bba.union(gbbs[el.get_id2()],fbbs[el.get_id2()])
                     if el.get_id2() in [lvel, lhel] or noplotarea:
                         bbp  = bbp.union(gbbs[el.get_id2()],fbbs[el.get_id2()])
                 
-                if figuremode:
+                if self.options.figuremode:
                     oscalex = scalex
                     oscaley = scaley
                     scalex = ((tr_bba.f.x2 - tr_bba.f.x1) - (bba.f.x2 - bba.f.x1 - (bbp.g.x2 - bbp.g.x1))) / (
@@ -545,7 +486,7 @@ class ScalePlots(inkex.EffectExtension):
 
             # Make a list of elements to be transformed
             sclels = []
-            for el in sel:
+            for el in pels:
                 if (
                     el in sfgs
                 ):  # Is a scale-free group, apply transform to children instead

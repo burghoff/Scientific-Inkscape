@@ -808,6 +808,7 @@ def get_duplicate2(el):
     if isinstance(d, (inkex.ClipPath)) or isMask(d):
         # Clip duplications can cause weird issues if they are not appended to the end of Defs
         d.croot.defs2.append(d)
+        # idebug(d.get_id2())
     return d
 
 
@@ -856,6 +857,14 @@ def replace_element(el1, el2):
     add_to_iddict(el2, todel=oldid)
     dupe_cssdict_entry(oldid, newid, el2.croot)
 
+
+# Like list(set(lst)), but preserves order
+def unique(lst):
+    lst2 = [];
+    for ii in reversed(range(len(lst))):
+        if lst[ii] not in lst[:ii]:
+            lst2.insert(0,lst[ii]) 
+    return lst2
 
 def intersect_paths(ptha, pthb):
     # Intersect two rectangular paths. Could be generalized later
@@ -957,8 +966,6 @@ def merge_clipmask(node, newclipurl, mask=False):
             clippath = getElementById2(svg, newclipurl[5:-1])
             if clippath is not None:
                 d = clippath.duplicate2()
-                # svg.defs2.append(d)
-                # idebug([d.get_id(),d.getparent().get_id()])
                 if not (hasattr(svg, "newclips")):
                     svg.newclips = []
                 svg.newclips.append(d)  # for later cleanup
@@ -974,50 +981,38 @@ def merge_clipmask(node, newclipurl, mask=False):
 
         
 
-        oldclipurl = node.get(cmstr)
-        clipinvalid = True
-        
-        if oldclipurl is not None:
+        oldclip = node.get_link(cmstr)
+        if oldclip is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
-            oldclipnode = getElementById2(svg, oldclipurl[5:-1])
-            if oldclipnode is not None:
-                clipinvalid = False
-                for k in list(oldclipnode):
-                    if isinstance(k, (Use)):
-                        k = unlink2(k)
+            for k in list(oldclip):
+                if isinstance(k, (Use)):
+                    k = unlink2(k)
 
-                d = oldclipnode.duplicate2()
-                if not (hasattr(svg, "newclips")):
-                    svg.newclips = []
-                svg.newclips.append(d)  # for later cleanup
-                node.set(cmstr, d.get_id2(2))
-                
-                
-                # idebug([d.get_id2()])
+            d = oldclip.duplicate2()
+            if not (hasattr(svg, "newclips")):
+                svg.newclips = []
+            svg.newclips.append(d)  # for later cleanup
+            node.set(cmstr, d.get_id2(2))
 
-                newclipisrect = False
-                if newclipnode is not None and len(list(newclipnode)) == 1:
-                    newclipisrect, newclippth = isrectangle(list(newclipnode)[0])
+            newclipisrect = False
+            if newclipnode is not None and len(list(newclipnode)) == 1:
+                newclipisrect, newclippth = isrectangle(list(newclipnode)[0])
 
-                couts = []
-                for k in reversed(list(d)):  # may be deleting, so reverse
-                    oldclipisrect, oldclippth = isrectangle(k)
-                    if newclipisrect and oldclipisrect and mask == False:
-                        # For rectangular clips, we can compose them easily
-                        # Since most clips are rectangles this semi-fixes the PDF clip export bug
-                        cout = compose_clips(k, newclippth, oldclippth)
-                        # idebug('here')
-                    else:
-                        cout = merge_clipmask(k, newclipurl, mask)
-                    couts.append(cout)
-                cout = all(couts)
+            couts = []
+            for k in reversed(list(d)):  # may be deleting, so reverse
+                oldclipisrect, oldclippth = isrectangle(k)
+                if newclipisrect and oldclipisrect and mask == False:
+                    # For rectangular clips, we can compose them easily
+                    # Since most clips are rectangles this semi-fixes the PDF clip export bug
+                    cout = compose_clips(k, newclippth, oldclippth)
+                else:
+                    cout = merge_clipmask(k, newclipurl, mask)
+                couts.append(cout)
+            cout = all(couts)
 
-        if clipinvalid:
+        if oldclip is None:
             node.set(cmstr, newclipurl)
             cout = False
-
-        
-        # idebug([node.get_id2(),clipinvalid,oldclipurl])
 
         return cout
 

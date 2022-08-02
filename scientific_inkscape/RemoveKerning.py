@@ -604,8 +604,8 @@ def Perform_Merges(ws, mk=False):
             alltxt = "".join([w.txt()] + [w2.txt() for w2 in w.merges])
             hasspaces = " " in alltxt
 
+            mels = []
             for ii in range(maxii):
-
                 maxspaces = None
                 if mk and hasspaces and w.merges[ii].prevsametspan:
                     maxspaces = 0
@@ -617,11 +617,32 @@ def Perform_Merges(ws, mk=False):
                 ]:  # no extra spaces for sub/supers or if there's already one
                     maxspaces = 0
 
+                mels.append(w.merges[ii].ln.ll.textel)
                 w.appendw(w.merges[ii], w.wtypes[ii + 1], maxspaces)
-            # for c in w.cs:
-            #     if c.pending_style is not None:
-            #         # dh.idebug([c.c,c.pending_style])
-            #         c.applypending();
+                
+            # Union clips if necessary
+            mels = dh.unique([w.ln.ll.textel]+mels)
+            if len(mels)>1:
+                clips = [el.get_link('clip-path') for el in mels]
+                if any([c is None for c in clips]):
+                    w.ln.ll.textel.set('clip-path',None)
+                else:
+                    # Duplicate main clip
+                    dc = clips[0].duplicate2();
+                    wt = mels[0].ccomposed_transform;
+                    for ii in range(1,len(mels)):
+                        # Duplicate merged clip, group contents, move to main dupe
+                        dc2 = clips[ii].duplicate2();
+                        ng = dh.group(list(dc2))
+                        dc.append(ng);
+                        ng.ctransform = (-wt) @ mels[ii].ccomposed_transform
+                        dc2.delete2();
+                    mels[0].set('clip-path',dc.get_id2(2))
+                
+    # Clear out clips
+    # for el in set(mels):
+    #     if el.get_link('clip-path') is not None:
+    #         el.set('clip-path',None)
 
 
 # Check if text represents a number

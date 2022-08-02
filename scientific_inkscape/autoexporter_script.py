@@ -129,6 +129,19 @@ def get_files(dirin):
     except FileNotFoundError:
         return None  # directory missing (cloud drive error?)
 
+# Get a dict of the files and their modified times
+def get_modtimes(dirin):
+    fs = get_files(dirin)
+    if fs is not None:
+        modtimes = dict()
+        for f in fs:
+            try:
+                modtimes[f] = os.path.getmtime(f);
+            except:
+                pass
+        return modtimes
+    else:
+        return None
 
 # Threading class
 class myThread(threading.Thread):
@@ -157,49 +170,25 @@ class myThread(threading.Thread):
                     print("Rasterization DPI: " + str(input_options.dpi))
                     print("Watch directory: " + self.watchdir)
                     print("Write directory: " + self.writedir)
-                    files = get_files(self.watchdir)
-                    lastmod = [os.path.getmtime(f) for f in files]
+                    lastmod = get_modtimes(self.watchdir)
                     self.nf = False
                 if time.time() > ltm + 0.25:
                     ltm = time.time()
-                    # newfiles = [fn for fn in os.listdir(watchdir) if fn[-3:]=='svg']
-                    newfiles = get_files(self.watchdir)
-                    if newfiles is not None:
-                        newlastmod = [0 for f in newfiles]
-                        for ii in range(len(newfiles)):
-                            try:
-                                newlastmod[ii] = os.path.getmtime(newfiles[ii])
-                            except FileNotFoundError:
-                                newlastmod[ii] = lastmod[ii]
-
-                        updatefiles = []
-                        if any([not (f in newfiles) for f in files]):
-                            pass
-                            # deleted files;
-                        elif any([not (n in files) for n in newfiles]):
-                            updatefiles += [n for n in newfiles if not (n in files)]
-                            # new files
-                        elif any(
-                            [
-                                newlastmod[ii] > lastmod[ii] + 1
-                                for ii in range(len(files))
-                            ]
-                        ):  # updated files
-                            updatefiles += [
-                                newfiles[ii]
-                                for ii in range(len(files))
-                                if not (lastmod[ii] == newlastmod[ii])
-                            ]
-                            # for ii in range(len(files)):
-                            # if newlastmod[ii]>lastmod[ii]+1:
-                            # print(newlastmod[ii]-lastmod[ii])
-                            # print(files[ii])
-                        files = newfiles
-                        lastmod = newlastmod
+                    
+                    updatefiles = []
+                    if lastmod is not None:
+                        newmod = get_modtimes(self.watchdir)
+                        if newmod is not None:
+                            for n in newmod:
+                                if n not in lastmod or newmod[n] > lastmod[n]+1:
+                                    updatefiles.append(n)
+                            lastmod = newmod
+                    else:
+                        lastmod = get_modtimes(self.watchdir)
 
                     if self.ea:  # export all
                         self.ea = False
-                        updatefiles = files
+                        updatefiles = list(lastmod.keys())
                     elif self.es:
                         self.es = False
                         updatefiles = [self.selectedfile]
@@ -210,7 +199,6 @@ class myThread(threading.Thread):
                             updatefiles.remove(fn)
 
                     loopme = True
-                    genfiles
                     while loopme:
                         for f in sorted(updatefiles):
                             # while not(self.stopped):
