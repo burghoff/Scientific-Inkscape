@@ -17,11 +17,12 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+# for debugging TextParser
 DEBUG_PARSER = True
 DEBUG_PARSER = False
 
-DEBUG_MERGE = True
 # for checking why elements aren't merging
+DEBUG_MERGE = True
 DEBUG_MERGE = False
 
 NUM_SPACES = 1.0
@@ -50,68 +51,65 @@ import dhelpers as dh
 
 
 def remove_kerning(
-    caller,
-    os,
+    els,
     removemanual,
     mergesupersub,
     splitdistant,
     mergenearby,
     justification=None,
 ):
-    ct = TextParser.Character_Table(os, caller)
-    lls = []
-    for el in os:
-        if isinstance(el, inkex.TextElement) and el.getparent() is not None:
-            lls.append(TextParser.LineList(el, ct, debug=False))
-            if DEBUG_PARSER:
-                lls[-1].Position_Check()
-
-    if not (DEBUG_PARSER):
+    tels = [el for el in els if isinstance(el, inkex.TextElement)]
+    if len(tels)>0:
+        tels[0].croot.make_char_table(tels)
+    if DEBUG_PARSER:
+        for el in tels:
+            el.parsed_text.Make_Highlights('fullink')
+    else:
         # Do merges first (deciding based on original position)
         if removemanual:
-            lls, os = Remove_Manual_Kerning(lls, os, mergesupersub)
+            tels = Remove_Manual_Kerning(tels, mergesupersub)
         if mergenearby or mergesupersub:
-            lls, os = External_Merges(lls, os, mergenearby, mergesupersub)
-        # # Then do splits (deciding based on current position, not original position, since merges intentionally change position)
+            tels = External_Merges(tels, mergenearby, mergesupersub)
+        # Then do splits (deciding based on current position, not original position,
+        # since merges intentionally change position)
         if splitdistant:
-            lls, os = Split_Distant_Words(lls, os)
-        # for ll in lls: ll.Position_Check()
+            tels = Split_Distant_Words(tels)
         if splitdistant:
-            lls, os = Split_Distant_Intraword(lls, os)
+            tels = Split_Distant_Intraword(tels)
         if splitdistant:
-            lls, os = Split_Lines(lls, os)
+            tels = Split_Lines(tels)
         # Final tweaks
-        lls, os = Change_Justification(lls, os, justification)
-        # for ll in lls:
-        #     ll.Position_Check()
-        #     dh.idebug(ll.txt())
+        tels = Change_Justification(tels, justification)
         if removemanual or mergenearby or mergesupersub:
-            lls, os = Fix_Merge_Positions(lls, os)
-        lls, os = Remove_Trailing_Leading_Spaces(lls, os)
-        lls, os = Make_All_Editable(lls, os)
-        lls, os = Final_Cleanup(lls, os)
-    return os
+            tels = Fix_Merge_Positions(tels)
+        tels = Remove_Trailing_Leading_Spaces(tels)
+        tels = Make_All_Editable(tels)
+        tels = Final_Cleanup(tels)
+    return dh.unique(els+tels)
 
 
-def Final_Cleanup(lls, os):
-    for ll in lls:
+def ellls(els):
+    return [el.parsed_text for el in els]
+
+def Final_Cleanup(els):
+    for el in els:
         # ll.Position_Check()
-        ll.Delete_Empty()
-    return lls, os
+        el.parsed_text.Delete_Empty()
+    return els
 
 
-def Fix_Merge_Positions(lls, os):
-    for ll in lls:
-        for ln in ll.lns:
+def Fix_Merge_Positions(els):
+    for el in els:
+        for ln in el.parsed_text.lns:
             for w in ln.ws:
                 w.fix_merged_position()
-    return lls, os
+    return els
 
 
-def Remove_Trailing_Leading_Spaces(lls, os):
-    for ll in lls:
-        if not (ll.ismlinkscape) and not (ll.issvg2):  # skip Inkscape-generated text
-            for ln in ll.lns:
+def Remove_Trailing_Leading_Spaces(els):
+    for el in els:
+        if not (el.parsed_text.ismlinkscape) and not (el.parsed_text.issvg2):  # skip Inkscape-generated text
+            for ln in el.parsed_text.lns:
                 mtxt = ln.txt()
                 ii = len(mtxt) - 1
                 while ii >= 0 and mtxt[ii] == " ":
@@ -123,18 +121,18 @@ def Remove_Trailing_Leading_Spaces(lls, os):
                 while ii < len(mtxt) and mtxt[ii] == " ":
                     ln.cs[0].delc()
                     ii += 1
-    return lls, os
+    return els
 
 
-def Make_All_Editable(lls, os):
-    for ll in lls:
-        ll.Make_Editable()
-    return lls, os
+def Make_All_Editable(els):
+    for el in els:
+        el.parsed_text.Make_Editable()
+    return els
 
 
-def Change_Justification(lls, os, justification):
+def Change_Justification(els, justification):
     if justification is not None:
-        for ll in lls:
+        for ll in ellls(els):
             # ll.Position_Check()
             if not (ll.ismlinkscape) and not (
                 ll.issvg2
@@ -145,12 +143,13 @@ def Change_Justification(lls, os, justification):
                 alignd = {"start": "start", "middle": "center", "end": "end"}
                 dh.Set_Style_Comp(ll.textel, "text-align", alignd[justification])
             # ll.Position_Check()
-    return lls, os
+    return els
 
 
 # Split different lines
-def Split_Lines(lls, os):
-    newlls = []
+def Split_Lines(els):
+    # newlls = []
+    lls = ellls(els);
     for jj in range(len(lls)):
         ll = lls[jj]
         if (
@@ -160,17 +159,17 @@ def Split_Lines(lls, os):
             and not (ll.issvg2)
         ):
             for il in reversed(range(1, len(ll.lns))):
-                newtxt, nll = ll.Split_Off_Words(ll.lns[il].ws)
-                os.append(newtxt)
-                newlls.append(nll)
-    lls += newlls
-    return lls, os
+                newtxt = ll.Split_Off_Words(ll.lns[il].ws)
+                els.append(newtxt)
+                # newlls.append(newtxt.parsed_text)
+    # lls += newlls
+    return els
 
 
 # Generate splitting of distantly-kerned text
-def Split_Distant_Words(lls, os):
-    newlls = []
-    for ll in lls:
+def Split_Distant_Words(els):
+    # newlls = []
+    for ll in ellls(els):
         if ll.lns is not None:
             for il in reversed(range(len(ll.lns))):
                 ln = ll.lns[il]
@@ -208,17 +207,17 @@ def Split_Distant_Words(lls, os):
                         else:
                             sstop = len(ln.ws)
 
-                        newtxt, nll = ll.Split_Off_Words(sws[sstart:sstop])
-                        os.append(newtxt)
-                        newlls.append(nll)
-    lls += newlls
-    return lls, os
+                        newtxt = ll.Split_Off_Words(sws[sstart:sstop])
+                        els.append(newtxt)
+                        # newlls.append(newtxt.parsed_text)
+    # lls += newlls
+    return els
 
 
 # Generate splitting of distantly-kerned text
-def Split_Distant_Intraword(lls, os):
-    newlls = []
-    for ll in lls:
+def Split_Distant_Intraword(els):
+    # newlls = []
+    for ll in ellls(els):
         if ll.lns is not None and not (ll.ismlinkscape) and not (ll.issvg2):
             for ln in ll.lns:
                 for w in ln.ws:
@@ -276,18 +275,19 @@ def Split_Distant_Intraword(lls, os):
                                     sstop = len(w.cs)
 
                                 # dh.idebug(w.txt()[sstart:sstop])
-                                newtxt, nll = ll.Split_Off_Characters(
+                                newtxt = ll.Split_Off_Characters(
                                     w.cs[sstart:sstop]
                                 )
-                                os.append(newtxt)
-                                newlls.append(nll)
-    lls += newlls
-    return lls, os
+                                els.append(newtxt)
+                                # newlls.append(nll)
+    # lls += newlls
+    return els
 
 
-def Remove_Manual_Kerning(lls, os, mergesupersub):
+def Remove_Manual_Kerning(els, mergesupersub):
     # Generate list of merges
     ws = []
+    lls = ellls(els);
     for ll in lls:
         if ll.lns is not None:
             ws += [w for ln in ll.lns for w in ln.ws]
@@ -327,10 +327,10 @@ def Remove_Manual_Kerning(lls, os, mergesupersub):
     for ll in lls:
         for ln in ll.lns:
             while len(ln.ws) > 1:
-                newtxt, nll = ll.Split_Off_Words([ln.ws[-1]])
-                os.append(newtxt)
-                newlls.append(nll)
-    lls += newlls
+                newtxt = ll.Split_Off_Words([ln.ws[-1]])
+                els.append(newtxt)
+                newlls.append(newtxt.parsed_text)
+    # lls += newlls
 
     # newlls=[];
     # for ll in lls:
@@ -344,16 +344,16 @@ def Remove_Manual_Kerning(lls, os, mergesupersub):
     #                     newlls.append(nll)
     # lls+=newlls
 
-    return lls, os
+    return els
 
 
 import numpy as np
 
 
-def External_Merges(lls, os, mergenearby, mergesupersub):
+def External_Merges(els, mergenearby, mergesupersub):
     # Generate list of merges
     ws = []
-    for ll in lls:
+    for ll in ellls(els):
         if ll.lns is not None:
             ws += [w for ln in ll.lns for w in ln.ws]
         # ll.Position_Check()
@@ -428,7 +428,7 @@ def External_Merges(lls, os, mergenearby, mergesupersub):
             if abs(bl2.y - br1.y) < ytol and abs(w.fs - w2.fs) < 0.001 and mergenearby:
                 if not (isnumeric(w.ln.txt())) or not (
                     isnumeric(w2.ln.txt(), True)
-                ):  # or w.ln.ll.inittextel==w2.ln.ll.inittextel: # don't merge two numbers (may be ticks)
+                ):  # or w.ln.pt.inittextel==w2.ln.pt.inittextel: # don't merge two numbers (may be ticks)
                     type = "same"
                 # dh.debug(w.txt()+' '+w2.txt())
             elif (
@@ -493,7 +493,7 @@ def External_Merges(lls, os, mergenearby, mergesupersub):
                     dh.idebug("Merged as " + type)
 
     Perform_Merges(ws)
-    return lls, os
+    return els
 
 
 def Perform_Merges(ws, mk=False):
@@ -617,15 +617,15 @@ def Perform_Merges(ws, mk=False):
                 ]:  # no extra spaces for sub/supers or if there's already one
                     maxspaces = 0
 
-                mels.append(w.merges[ii].ln.ll.textel)
+                mels.append(w.merges[ii].ln.pt.textel)
                 w.appendw(w.merges[ii], w.wtypes[ii + 1], maxspaces)
                 
             # Union clips if necessary
-            mels = dh.unique([w.ln.ll.textel]+mels)
+            mels = dh.unique([w.ln.pt.textel]+mels)
             if len(mels)>1:
                 clips = [el.get_link('clip-path') for el in mels]
                 if any([c is None for c in clips]):
-                    w.ln.ll.textel.set('clip-path',None)
+                    w.ln.pt.textel.set('clip-path',None)
                 else:
                     # Duplicate main clip
                     dc = clips[0].duplicate2();

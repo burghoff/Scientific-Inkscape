@@ -242,7 +242,6 @@ class FlattenPlots(inkex.EffectExtension):
                 jdict = {1: "middle", 2: "start", 3: "end", 4: None}
                 justification = jdict[self.options.justification]
                 ngs = RemoveKerning.remove_kerning(
-                    self,
                     ngs,
                     fixshattering,
                     mergesubsuper,

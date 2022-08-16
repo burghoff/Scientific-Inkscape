@@ -1425,6 +1425,9 @@ class bbox:
     def __init__(self, bb):
         self.isnull = bb is None
         if not(self.isnull):
+            if len(bb)==2:       # allow tuple of two points ((x1,y1),(x2,y2))
+                bb = [min(bb[0][0],bb[1][0]),min(bb[0][1],bb[1][1]),
+                      abs(bb[0][0]-bb[1][0]),abs(bb[0][1]-bb[1][1])]
             self.x1 = bb[0]
             self.x2 = bb[0] + bb[2]
             self.y1 = bb[1]

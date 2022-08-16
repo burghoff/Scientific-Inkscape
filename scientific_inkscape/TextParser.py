@@ -16,42 +16,81 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-#
+
 
 # The TextParser parses text in a document according to the way Inkscape handles it.
-# In short, every TextElement is parsed into a LineList.
-# Each LineList contains a collection of tlines, representing one line of text.
+# In short, every TextElement is parsed into a ParsedText.
+# Each ParsedText contains a collection of tlines, representing one line of text.
 # Each tline contains a collection of tchars, representing a single character.
-# Characters are also grouped into twords, which represent groups of characters with the same position.
+# Characters are also grouped into twords, which represent groups of characters 
+# sharing an anchor (may or may not be actual words).
+#
+# These functions allow text metrics and bounding boxes to be calculated without binary
+# calls to Inkscape. It can calculate both the ink bounding box (i.e., where characters'
+# ink is) as well as the extent bounding box (i.e, its logical location).
+# The extent of a character is defined as extending between cursor positions in the 
+# x-direction and between the baseline and capital height in the y-direction.
+# 
+# Some examples:
+# el.parsed_text.get_full_inkbbox(): gets the untransformed bounding box of the whole element
+# el.parsed_text.get_char_extents(): gets all characters' untransformed extents
+# el.parse_text.lns[0].cs[0].pts_ut: the untransformed points of the extent of the first character of the first line
+# el.parse_text.lns[0].cs[0].pts_t : the transformed points of the extent of the first character of the first line
+#
+# Before parsing is done, a character table must be generated to determine the properties
+# of all the characters present. This is done automatically by the first invocation of .parsed_text,
+# which automatically analyzes the whole document and adds it to the SVG. If you are only 
+# parsing a few text elements, this can be sped up by calling svg.make_char_table(els).
+# This can occasionally fail: when this happens, a command call is performed instead as a fallback.
 
 
-KERN_TABLE = True
-# if enabled, generates a fine kerning table for each font (more accurate)
+KERN_TABLE = True # generate a fine kerning table for each font?
+TEXTSIZE = 100;   # size of rendered text
 
 import os, sys
+import numpy as np
 
 sys.path.append(
     os.path.dirname(os.path.realpath(sys.argv[0]))
 )  # make sure my directory is on the path
 import dhelpers as dh
-from dhelpers import v2d_simple as iv2d
+from dhelpers import v2d_simple as v2ds
 from dhelpers import bbox
+
+from pango_renderer import PangoRenderer
+pr = PangoRenderer();
 
 from copy import copy, deepcopy
 import inkex
-from inkex import TextElement, Tspan, Vector2d, Transform
-from Style2 import Style2
+from inkex import TextElement, Tspan, Transform
 
-# from inkex import ImmutableVector2d as iv2d
-import numpy as np
 
-global debug
-debug = False
+# Add parsed_text property to TextElements
+def get_parsed_text(el):
+    if not (hasattr(el, "_parsed_text")):
+        el._parsed_text = ParsedText(el, el.croot.char_table);
+    return el._parsed_text
+inkex.TextElement.parsed_text = property(get_parsed_text)
 
-TEXTSIZE = 100;
+# Add character table property and function to SVG
+def make_char_table_fcn(svg,els=None):
+    # Can be called with els argument to examine list of elements only 
+    # (otherwise use entire SVG)
+    if els is None: 
+        tels = [d for d in svg.cdescendants if isinstance(d,TextElement)];
+    else:           
+        tels = [d for d in els              if isinstance(d,TextElement)]
+    svg._char_table = Character_Table(tels)
+def get_char_table(svg):
+    if not (hasattr(svg, "_char_table")):
+        svg.make_char_table()
+    return svg._char_table
+inkex.SvgDocumentElement.make_char_table = make_char_table_fcn
+inkex.SvgDocumentElement.char_table = property(get_char_table)
+
 
 # A text element that has been parsed into a list of lines
-class LineList:
+class ParsedText:
     def __init__(self, el, ctable, debug=False):
         self.ctable = ctable
         self.textel = el
@@ -59,8 +98,8 @@ class LineList:
         # self.lns = self.Parse_Lines(el,debug=debug);
         # self.Finish_Lines();
 
-        self.lns = self.Parse_Lines2()
-        self.Finish_Lines2()
+        self.lns = self.Parse_Lines()
+        self.Finish_Lines()
 
         for ln in self.lns:
             for w in ln.ws:
@@ -101,10 +140,9 @@ class LineList:
             sty.get("inline-size") is not None or sty.get("shape-inside") is not None
         )
         # svg2 flows
-        # self._cdx = None;
 
     def duplicate(self):
-        # Duplicates a LL and its text
+        # Duplicates a PT and its text
         ret = copy(self)
         ret.textel = self.textel.duplicate2()
         # d1 = dh.descendants2(self.textel);
@@ -144,7 +182,7 @@ class LineList:
                 prop.charw = c.cw
                 #                    prop = self.ctable.get_prop(' ',c.nsty)*c.fs # cannot just use old one for some reason???
                 ret.lns[-1].addc(tchar(c.c, c.fs, c.sf, prop, c.sty, c.nsty, newloc))
-        ret.Finish_Lines2()
+        ret.Finish_Lines()
         # generates the new words
         for ii in range(len(self.lns)):
             for jj in range(len(self.lns[ii].ws)):
@@ -170,7 +208,7 @@ class LineList:
     # Every text element in an SVG can be thought of as a group of lines.
     # A line is a collection of text that gets its position from a single source element.
     # This position may be directly set, continued from a previous line, or inherited from a previous line
-    def Parse_Lines2(self, srcsonly=False):
+    def Parse_Lines(self, srcsonly=False):
         el = self.textel
         # First we get the tree structure of the text and do all our gets
         ds, pts, cd, pd = dh.descendants2(el, True)
@@ -184,8 +222,8 @@ class LineList:
             # do not count el's tail
 
         # Next we find the top-level sodipodi:role lines
-        xs = [LineList.GetXY(d, "x") for d in ds]
-        ys = [LineList.GetXY(d, "y") for d in ds]
+        xs = [ParsedText.GetXY(d, "x") for d in ds]
+        ys = [ParsedText.GetXY(d, "y") for d in ds]
         nspr = [d.get("sodipodi:role") for d in ds]
         nspr[0] = None
         sprl = [
@@ -444,7 +482,7 @@ class LineList:
 
         return lns
 
-    def Finish_Lines2(self):
+    def Finish_Lines(self):
         if self.lns is not None:
             self.Get_Delta(self.lns, self.textel, "dx")
             self.Get_Delta(self.lns, self.textel, "dy")
@@ -459,7 +497,7 @@ class LineList:
 
             for ii in range(len(self.lns)):
                 ln = self.lns[ii]
-                ln.ll = self
+                ln.pt = self
                 ln.parse_words()
 
             for ln in reversed(self.lns):
@@ -503,45 +541,11 @@ class LineList:
                     tmp.append(dh.implicitpx(x))
             val = tmp
         return val
-
-    # For debugging only: make a rectange at all of the line's words' nominal bboxes
-    def Position_Check(self):
-        if self.lns is not None and len(self.lns) > 0:
-            if self.lns[0].xsrc is not None:
-                svg = self.lns[0].xsrc.croot
-                # # Word highlight
-                # for ln in self.lns:
-                #     for w in ln.ws:
-                #         ap  = (-w.transform).apply_to_point(w.pts_t[0]);
-                #         ap2 = (-w.transform).apply_to_point(w.pts_t[2]);
-                #         r = inkex.Rectangle();
-                #         r.set('x',min(ap.x,ap2.x))
-                #         r.set('y',min(ap.y,ap2.y))
-                #         r.set('height',abs(ap.y-ap2.y))
-                #         r.set('width', abs(ap.x-ap2.x))
-                #         r.set('transform',str(w.transform))
-                #         r.set('style','fill:#007575;fill-opacity:0.4675'); # mimic selection boxes
-                #         svg.append(r)
-                # Character highlight
-                for ln in self.lns:
-                    for w in ln.ws:
-                        for c in w.cs:
-                            ap = (-w.transform).apply_to_point(c.pts_t[0])
-                            ap2 = (-w.transform).apply_to_point(c.pts_t[2])
-                            r = inkex.Rectangle()
-                            r.set("x", min(ap.x, ap2.x))
-                            r.set("y", min(ap.y, ap2.y))
-                            r.set("height", abs(ap.y - ap2.y))
-                            r.set("width", abs(ap.x - ap2.x))
-                            r.set("transform", str(w.transform))
-                            r.set("style", "fill:#007575;fill-opacity:0.4675")
-                            # mimic selection boxes
-                            svg.append(r)
-
+    
     # Traverse the element tree to find dx/dy values and apply them to the chars
     def Get_Delta(self, lns, el, xy, dxin=None, cntin=None, dxysrc=None):
         if dxin is None:
-            dxy = LineList.GetXY(el, xy)
+            dxy = ParsedText.GetXY(el, xy)
             dxysrc = el
             cnt = 0
             toplevel = True
@@ -606,7 +610,7 @@ class LineList:
                 ]
                 if len(thec) == 0:
                     dh.debug("Missing " + el.text[ii])
-                    tll = LineList(self.textel, self.ctable)
+                    tll = ParsedText(self.textel, self.ctable)
                     dh.debug(self.txt())
                     dh.debug(tll.txt())
                 thec[0].deltanum = topcnt
@@ -628,7 +632,7 @@ class LineList:
                     ]
                     if len(thec) == 0:
                         dh.idebug("\nMissing " + k.tail[ii])
-                        tll = LineList(self.textel, self.ctable)
+                        tll = ParsedText(self.textel, self.ctable)
                         dh.idebug(self.txt())
                         dh.idebug(tll.txt())
                         quit()
@@ -637,7 +641,7 @@ class LineList:
         return topcnt
 
     # After dx/dy has changed, call this to write them to the text element
-    # For simplicity, this is best done at the LineList level all at once
+    # For simplicity, this is best done at the ParsedText level all at once
     def Update_Delta(self, forceupdate=False):
         if self._dxchange or self._dychange or forceupdate:
             dxs = [c.dx for ln in self.lns for c in ln.cs]
@@ -725,8 +729,8 @@ class LineList:
                     # may have deleted spr lines
 
     def Split_Off_Words(self, ws):
-        # newtxt = dh.duplicate2(ws[0].ln.ll.textel);
-        # nll = LineList(newtxt,self.ctable);
+        # newtxt = dh.duplicate2(ws[0].ln.pt.textel);
+        # nll = ParsedText(newtxt,self.ctable);
         nll = self.duplicate()
         newtxt = nll.textel
 
@@ -769,7 +773,8 @@ class LineList:
                 cnt += 1
         nll.Update_Delta()
 
-        return newtxt, nll
+        newtxt._parsed_text = nll
+        return newtxt
 
 
     def Split_Off_Characters(self, cs):
@@ -808,7 +813,7 @@ class LineList:
                         nln.cs[jj].delc()
 
         # Deletion of text can cause the srcs to be wrong. Reparse to find where it is now
-        nln.xsrc, nln.ysrc = nll.Parse_Lines2(srcsonly=True)
+        nln.xsrc, nln.ysrc = nll.Parse_Lines(srcsonly=True)
         nln.change_pos(newx=nln.x, newy=nln.y)
         nln.disablesodipodi(force=True)
 
@@ -830,7 +835,8 @@ class LineList:
                 cnt += 1
         nll.Update_Delta()
 
-        return newtxt, nll
+        newtxt._parsed_text = nll;
+        return newtxt
     
     
     # Deletes empty elements from the doc. Generally this is done last
@@ -847,6 +853,112 @@ class LineList:
         if self._hasdx or self._hasdy:
             self.Update_Delta(forceupdate=True)
             # force an update, could have deleted sodipodi lines
+
+    # For debugging: make a rectange at all of the line's words' nominal extents
+    HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
+    def Make_Highlights(self,htype):
+        if htype=='char':
+            exts = self.get_char_extents();
+        elif htype=='charink':
+            exts = self.get_char_inkbbox();
+        elif htype=='fullink':
+            exts = [self.get_full_inkbbox()];
+        elif htype=='word':
+            exts = self.get_word_extents();
+        elif htype=='line':
+            exts = self.get_line_extents();
+        else:  # 'all'
+            exts = [self.get_full_extent()];
+        for ext in exts:
+            r = inkex.Rectangle()
+            r.set('x',ext.x1)
+            r.set('y',ext.y1)
+            r.set('height',ext.h)
+            r.set('width', ext.w)
+            r.set("transform", self.textel.ccomposed_transform)
+            r.set("style", ParsedText.HIGHLIGHT_STYLE)
+            self.textel.croot.append(r)
+    
+    # Bounding box functions
+    def get_char_inkbbox(self):
+        # Get the untranformed bounding boxes of all characters' ink
+        exts = []
+        if self.lns is not None and len(self.lns) > 0:
+            if self.lns[0].xsrc is not None:
+                for ln in self.lns:
+                    for w in ln.ws:
+                        for c in w.cs:
+                            p1 = c.pts_ut_ink[0]
+                            p2 = c.pts_ut_ink[2]
+                            exts.append(dh.bbox(((p1.x,p1.y),(p2.x,p2.y))))
+        return exts
+    
+    def get_full_inkbbox(self):
+        # Get the untranformed bounding box of the whole element
+        ext = dh.bbox(None);
+        if self.lns is not None and len(self.lns) > 0:
+            if self.lns[0].xsrc is not None:
+                for ln in self.lns:
+                    for w in ln.ws:
+                        for c in w.cs:
+                            p1 = c.pts_ut_ink[0]
+                            p2 = c.pts_ut_ink[2]
+                            ext = ext.union(dh.bbox(((p1.x,p1.y),(p2.x,p2.y))))
+        return ext
+    
+    # Extent functions
+    def get_char_extents(self):
+        # Get the untranformed extent of each character
+        exts = []
+        if self.lns is not None and len(self.lns) > 0:
+            if self.lns[0].xsrc is not None:
+                for ln in self.lns:
+                    for w in ln.ws:
+                        for c in w.cs:
+                            p1 = c.pts_ut[0]
+                            p2 = c.pts_ut[2]
+                            exts.append(dh.bbox(((p1.x,p1.y),(p2.x,p2.y))))
+        return exts
+    def get_word_extents(self):
+        # Get the untranformed extent of each word
+        exts = []
+        if self.lns is not None and len(self.lns) > 0:
+            if self.lns[0].xsrc is not None:
+                for ln in self.lns:
+                    for w in ln.ws:
+                        p1 = w.pts_ut[0]
+                        p2 = w.pts_ut[2]
+                        exts.append(dh.bbox(((p1.x,p1.y),(p2.x,p2.y))))
+        return exts
+    def get_line_extents(self):
+        # Get the untranformed extent of each line
+        exts = []
+        if self.lns is not None and len(self.lns) > 0:
+            if self.lns[0].xsrc is not None:
+                for ln in self.lns:
+                    extln = dh.bbox(None)
+                    for w in ln.ws:
+                        p1 = w.pts_ut[0]
+                        p2 = w.pts_ut[2]
+                        extln = extln.union(dh.bbox(((p1.x,p1.y),(p2.x,p2.y))))
+                    if not(extln.isnull):
+                        exts.append(extln)
+        return exts
+    def get_full_extent(self):
+        # Get the untranformed extent of the whole element
+        ext = dh.bbox(None);
+        if self.lns is not None and len(self.lns) > 0:
+            if self.lns[0].xsrc is not None:
+                for ln in self.lns:
+                    for w in ln.ws:
+                        for c in w.cs:
+                            p1 = c.pts_ut[0]
+                            p2 = c.pts_ut[2]
+                            ext = ext.union(dh.bbox(((p1.x,p1.y),(p2.x,p2.y))))
+        return ext
+                    
+
+    
 
 
 # For lines, words, and chars
@@ -904,18 +1016,18 @@ class tline:
         # when enabled, x of a line is the endpoint of the previous line
         self.continuey = continuey
         # when enabled, y of a line is the endpoint of the previous line
-        self.ll = ll
+        self.pt = ll
 
     # x property
     def get_x(self):
         if self.continuex:  # For continuing lines, need to calculate anchor position
-            if self.ll is not None:
-                ii = self.ll.lns.index(self)
-                if ii > 0 and len(self.ll.lns[ii - 1].ws) > 0:
+            if self.pt is not None:
+                ii = self.pt.lns.index(self)
+                if ii > 0 and len(self.pt.lns[ii - 1].ws) > 0:
                     xf = self.anchorfrac
-                    xanch = (1 + xf) * self.ll.lns[ii - 1].ws[-1].pts_ut[
+                    xanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[
                         3
-                    ].x - xf * self.ll.lns[ii - 1].ws[-1].pts_ut[0].x
+                    ].x - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0].x
                     return [xanch]
                 else:
                     return [0]
@@ -932,13 +1044,13 @@ class tline:
     # y property
     def get_y(self):
         if self.continuey:  # For continuing lines, need to calculate anchor position
-            if self.ll is not None:
-                ii = self.ll.lns.index(self)
-                if ii > 0 and len(self.ll.lns[ii - 1].ws) > 0:
+            if self.pt is not None:
+                ii = self.pt.lns.index(self)
+                if ii > 0 and len(self.pt.lns[ii - 1].ws) > 0:
                     xf = self.anchorfrac
-                    yanch = (1 + xf) * self.ll.lns[ii - 1].ws[-1].pts_ut[
+                    yanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[
                         3
-                    ].y - xf * self.ll.lns[ii - 1].ws[-1].pts_ut[0].y
+                    ].y - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0].y
                     return [yanch]
                 else:
                     return [0]
@@ -995,9 +1107,9 @@ class tline:
     def dell(self):  # deletes the whole line
         for c in reversed(self.cs):
             c.delc()
-        if self in self.ll.lns:
-            self.ll.lns.remove(self)
-        # self.ll = None;
+        if self in self.pt.lns:
+            self.pt.lns.remove(self)
+        # self.pt = None;
 
     def txt(self):
         return "".join([c.c for c in self.cs])
@@ -1006,7 +1118,7 @@ class tline:
     def change_alignment(self, newanch):
         if newanch != self.anchor:
             sibsrc = [
-                ln for ln in self.ll.lns if ln.xsrc == self.xsrc or ln.ysrc == self.ysrc
+                ln for ln in self.pt.lns if ln.xsrc == self.xsrc or ln.ysrc == self.ysrc
             ]
             for ln in reversed(sibsrc):
                 ln.disablesodipodi()  # Disable sprl for all lines sharing our src, including us
@@ -1062,7 +1174,7 @@ class tline:
     # Never change x/y directly, always call this function
     def change_pos(self, newx=None, newy=None, reparse=False):
         if newx is not None:
-            sibsrc = [ln for ln in self.ll.lns if ln.xsrc == self.xsrc]
+            sibsrc = [ln for ln in self.pt.lns if ln.xsrc == self.xsrc]
             if len(sibsrc) > 1:
                 for ln in reversed(sibsrc):
                     ln.disablesodipodi()  # Disable sprl when lines share an xsrc
@@ -1082,7 +1194,7 @@ class tline:
             # dh.idebug([self.txt(),self.xsrc.get_id(),self.xsrc.get('x')])
 
         if newy is not None:
-            sibsrc = [ln for ln in self.ll.lns if ln.ysrc == self.ysrc]
+            sibsrc = [ln for ln in self.pt.lns if ln.ysrc == self.ysrc]
             if len(sibsrc) > 1:
                 for ln in reversed(sibsrc):
                     ln.disablesodipodi()  # Disable sprl when lines share a ysrc
@@ -1149,10 +1261,10 @@ class tword:
         self.dxeff = None
         self.charpos = None
 
-        if self.ln.ll._hasdx:
-            self.ln.ll._dxchange = True
-        if self.ln.ll._hasdy:
-            self.ln.ll._dychange = True
+        if self.ln.pt._hasdx:
+            self.ln.pt._dxchange = True
+        if self.ln.pt._hasdy:
+            self.ln.pt._dychange = True
 
     @property
     def x(self):
@@ -1261,7 +1373,7 @@ class tword:
             newx = self.ln.x
             newx[self.ln.cs.index(self.cs[0])] -= deltax
             self.ln.change_pos(newx)
-        self.ln.ll.Update_Delta()
+        self.ln.pt.Update_Delta()
 
     # Add a new word (possibly from another line) into the current one
     # Equivalent to typing it in
@@ -1287,7 +1399,7 @@ class tword:
             for c in nw.cs:
                 mydx = (c != fc) * c.dx - prevc.lsp * (c == fc)
                 # use dx to remove lsp from the previous c
-                # dh.idebug(LineList(self.ln.ll.textel,self.ln.ll.ctable).txt())
+                # dh.idebug(ParsedText(self.ln.pt.textel,self.ln.pt.ctable).txt())
                 c.delc()
 
                 ntype = copy(type)
@@ -1300,8 +1412,8 @@ class tword:
                 if self.cs[-1].loc.pel != self.cs[0].loc.pel:
                     cel = self.cs[-1].loc.pel
                     while (
-                        cel.getparent() != self.cs[0].loc.pel
-                        and cel.getparent() != self.ln.ll.textel
+                        cel is not None and cel.getparent() != self.cs[0].loc.pel
+                        and cel.getparent() != self.ln.pt.textel
                     ):
                         cel = cel.getparent()
                     totail = cel
@@ -1406,7 +1518,7 @@ class tword:
                 newx[self.ln.cs.index(self.cs[0])] -= deltaanch
                 self.ln.change_pos(newx)
                 # self.x -= deltaanch
-            self.ln.ll.Update_Delta()
+            self.ln.pt.Update_Delta()
 
     @property
     def lsp(self):
@@ -1562,10 +1674,10 @@ class tword:
             else:
                 ymin = ymax = wy
             self._pts_ut = [
-                iv2d(wx + offx / self.sf, ymax),
-                iv2d(wx + offx / self.sf, ymin),
-                iv2d(wx + (ww + offx) / self.sf, ymin),
-                iv2d(wx + (ww + offx) / self.sf, ymax),
+                v2ds(wx + offx / self.sf, ymax),
+                v2ds(wx + offx / self.sf, ymin),
+                v2ds(wx + (ww + offx) / self.sf, ymin),
+                v2ds(wx + (ww + offx) / self.sf, ymax),
             ]
         return self._pts_ut
 
@@ -1723,7 +1835,7 @@ class tchar:
             if self.w is not None:
                 self.w.dxeff = None
                 # invalidate
-            self.ln.ll._dxchange = True
+            self.ln.pt._dxchange = True
 
     @property
     def dy(self):
@@ -1733,7 +1845,7 @@ class tchar:
     def dy(self, di):
         if self._dy != di:
             self._dy = di
-            self.ln.ll._dychange = True
+            self.ln.pt._dychange = True
 
     @property
     def sty(self):
@@ -1779,7 +1891,7 @@ class tchar:
             if "baseline-shift" in styv:
                 cel = self.loc.pel
                 bshft = 0
-                while cel != self.ln.ll.textel:  # sum all ancestor baseline-shifts
+                while cel != self.ln.pt.textel:  # sum all ancestor baseline-shifts
                     if "baseline-shift" in cel.cstyle:
                         bshft += tchar.get_baseline(cel.cstyle, cel.getparent())
                     cel = cel.getparent()
@@ -1795,18 +1907,18 @@ class tchar:
             # if self.w is not None:
             #     self.w.bshft = None
 
-    @property
-    def actual_font(self):
-        myfont = self.sty.get('font-family')
-        if myfont is not None:
-            myfont = ",".join([v.strip().strip("'") for v in myfont.split(",")])
-        if myfont is None or myfont=='' or myfont=='sans-serif':
-            ret = 'sans-serif'
-        else:
-            # dh.idebug(self.ln.ll.ctable.docfonts)
-            # dh.idebug(myfont)
-            ret = self.ln.ll.ctable.docfonts[myfont]
-        return ret
+    # @property
+    # def actual_font(self):
+    #     myfont = self.sty.get('font-family')
+    #     if myfont is not None:
+    #         myfont = ",".join([v.strip().strip("'") for v in myfont.split(",")])
+    #     if myfont is None or myfont=='' or myfont=='sans-serif':
+    #         ret = 'sans-serif'
+    #     else:
+    #         # dh.idebug(self.ln.pt.ctable.docfonts)
+    #         # dh.idebug(myfont)
+    #         ret = self.ln.pt.ctable.docfonts[myfont]
+    #     return ret
             
 
     @staticmethod
@@ -1888,8 +2000,8 @@ class tchar:
         myi = self.w.cs.index(self)
         self.w.removec(myi)
 
-        # Update the dx/dy value in the LineList
-        self.ln.ll.Update_Delta()
+        # Update the dx/dy value in the ParsedText
+        self.ln.pt.Update_Delta()
 
     def add_style(self, sty):
         # Adds a style to an existing character by wrapping it in a new Tspan
@@ -1917,9 +2029,9 @@ class tchar:
 
             t.tail = tafter
 
-        # dh.idebug([v.get_id() for v in dh.descendants2(self.ln.ll.textel)])
-        # dh.idebug([v.get_id() for v in self.ln.ll.textds])
-        textd = self.ln.ll.textds
+        # dh.idebug([v.get_id() for v in dh.descendants2(self.ln.pt.textel)])
+        # dh.idebug([v.get_id() for v in self.ln.pt.textds])
+        textd = self.ln.pt.textds
         # update the descendants list
         textd.insert(textd.index(prt) + 1, t)
 
@@ -1961,16 +2073,16 @@ class tchar:
     #     """  Interpolate the pts of a word to get a specific character's pts"""
     #     myi = self.w.cs.index(self)
     #     cput = self.w.cpts_ut;
-    #     ret_pts_ut = [iv2d(cput[0][myi][0],cput[0][myi][1]),\
-    #                   iv2d(cput[1][myi][0],cput[1][myi][1]),\
-    #                   iv2d(cput[2][myi][0],cput[2][myi][1]),\
-    #                   iv2d(cput[3][myi][0],cput[3][myi][1])]
+    #     ret_pts_ut = [v2ds(cput[0][myi][0],cput[0][myi][1]),\
+    #                   v2ds(cput[1][myi][0],cput[1][myi][1]),\
+    #                   v2ds(cput[2][myi][0],cput[2][myi][1]),\
+    #                   v2ds(cput[3][myi][0],cput[3][myi][1])]
 
     #     cpt = self.w.cpts_t;
-    #     ret_pts_t = [iv2d(cpt[0][myi][0],cpt[0][myi][1]),\
-    #                  iv2d(cpt[1][myi][0],cpt[1][myi][1]),\
-    #                  iv2d(cpt[2][myi][0],cpt[2][myi][1]),\
-    #                  iv2d(cpt[3][myi][0],cpt[3][myi][1])]
+    #     ret_pts_t = [v2ds(cpt[0][myi][0],cpt[0][myi][1]),\
+    #                  v2ds(cpt[1][myi][0],cpt[1][myi][1]),\
+    #                  v2ds(cpt[2][myi][0],cpt[2][myi][1]),\
+    #                  v2ds(cpt[3][myi][0],cpt[3][myi][1])]
 
     #     return ret_pts_ut, ret_pts_t
 
@@ -1980,10 +2092,10 @@ class tchar:
         myi = self.w.cs.index(self)
         cput = self.w.cpts_ut
         ret_pts_ut = [
-            iv2d(cput[0][myi][0], cput[0][myi][1]),
-            iv2d(cput[1][myi][0], cput[1][myi][1]),
-            iv2d(cput[2][myi][0], cput[2][myi][1]),
-            iv2d(cput[3][myi][0], cput[3][myi][1]),
+            v2ds(cput[0][myi][0], cput[0][myi][1]),
+            v2ds(cput[1][myi][0], cput[1][myi][1]),
+            v2ds(cput[2][myi][0], cput[2][myi][1]),
+            v2ds(cput[3][myi][0], cput[3][myi][1]),
         ]
         return ret_pts_ut
 
@@ -1992,12 +2104,22 @@ class tchar:
         myi = self.w.cs.index(self)
         cpt = self.w.cpts_t
         ret_pts_t = [
-            iv2d(cpt[0][myi][0], cpt[0][myi][1]),
-            iv2d(cpt[1][myi][0], cpt[1][myi][1]),
-            iv2d(cpt[2][myi][0], cpt[2][myi][1]),
-            iv2d(cpt[3][myi][0], cpt[3][myi][1]),
+            v2ds(cpt[0][myi][0], cpt[0][myi][1]),
+            v2ds(cpt[1][myi][0], cpt[1][myi][1]),
+            v2ds(cpt[2][myi][0], cpt[2][myi][1]),
+            v2ds(cpt[3][myi][0], cpt[3][myi][1]),
         ]
         return ret_pts_t
+
+
+    @property
+    def pts_ut_ink(self):
+        put = self.pts_ut;
+        nw = self.prop.inkbb[2]/self.sf;
+        nh = self.prop.inkbb[3]/self.sf;
+        nx = put[0].x+self.prop.inkbb[0]/self.sf;
+        ny = put[0].y+self.prop.inkbb[1]/self.sf+nh;
+        return [v2ds(nx,ny),v2ds(nx,ny-nh),v2ds(nx+nw,ny-nh),v2ds(nx+nw,ny)]
 
     # @property
     # def parsed_pts_ut(self):
@@ -2020,34 +2142,6 @@ class tchar:
     #     self.ln.x[self.ln.cs.index(self)] = newx
     #     if self.ln.x==[]: self.ln.xsrc.set('x',None)
     #     else:             self.ln.xsrc.set('x',' '.join([str(v) for v in self.ln.x]))
-
-
-# A modified bounding box class
-# class bbox:
-#     def __init__(self, bb):
-#         self.x1 = bb[0]
-#         self.x2 = bb[0] + bb[2]
-#         self.y1 = bb[1]
-#         self.y2 = bb[1] + bb[3]
-#         self.xc = (self.x1 + self.x2) / 2
-#         self.yc = (self.y1 + self.y2) / 2
-#         self.w = bb[2]
-#         self.h = bb[3]
-
-#     def intersect(self, bb2):
-#         return (abs(self.xc - bb2.xc) * 2 < (self.w + bb2.w)) and (
-#             abs(self.yc - bb2.yc) * 2 < (self.h + bb2.h)
-#         )
-
-#     def union(self, bb2):
-#         minx = min([self.x1, self.x2, bb2.x1, bb2.x2])
-#         maxx = max([self.x1, self.x2, bb2.x1, bb2.x2])
-#         miny = min([self.y1, self.y2, bb2.y1, bb2.y2])
-#         maxy = max([self.y1, self.y2, bb2.y1, bb2.y2])
-#         return bbox([minx, miny, maxx - minx, maxy - miny])
-
-#     def __deepcopy__(self, memo):
-#         return bbox([self.x1, self.y1, self.w, self.h])
 
 
 def del2(x, ind):  # deletes an index from a list
@@ -2080,7 +2174,7 @@ def sortnone(x):  # sorts an x with Nones (skip Nones)
 
 # A class representing the properties of a single character
 class cprop:
-    def __init__(self, char, cw, sw, ch, dr, dkerns):
+    def __init__(self, char, cw, sw, ch, dr, dkerns,inkbb):
         self.char = char
         self.charw = cw
         # character width
@@ -2093,19 +2187,21 @@ class cprop:
         self.dkerns = (
             dkerns  # table of how much extra width a preceding character adds to me
         )
+        self.inkbb = inkbb;
 
     def __mul__(self, scl):
         # dkern2 = dict();
         # for c in self.dkerns.keys():
         #     dkern2[c] = self.dkerns[c]*scl;
         dkern2 = {k: v * scl for k, v in self.dkerns.items()}
+        inkbb2 = [v*scl for v in self.inkbb]
         return cprop(
             self.char,
             self.charw * scl,
             self.spacew * scl,
             self.caph * scl,
             self.descrh * scl,
-            dkern2,
+            dkern2, inkbb2
         )
 
 
@@ -2135,10 +2231,9 @@ class cloc:
 
 # A class representing the properties of a collection of characters
 class Character_Table:
-    def __init__(self, els, caller):
-        self.caller = caller
+    def __init__(self, els):
         self.fonttestchars = 'pIaA10mMvo' # don't need that many, just to figure out which fonts we have
-        self.ctable, self.bbs, self.docfonts = self.measure_character_widths2(els)
+        self.ctable  = self.meas_char_ws(els)
 
     def get_prop(self, char, sty):
         if sty in list(self.ctable.keys()):
@@ -2149,10 +2244,12 @@ class Character_Table:
             dh.debug("Style: " + sty)
             dh.debug("Existing styles: " + str(list(self.ctable.keys())))
 
-    def generate_character_table2(self, els):
+    def generate_character_table(self, els):
         ctable = dict()
-        pctable = dict()
-        # a dictionary of preceding characters in the same style
+        pctable = dict()         # a dictionary of preceding characters in the same style
+        
+        atxt = [];
+        asty = [];
         for el in els:
             ds, pts, cd, pd = dh.descendants2(el, True)
             Nd = len(ds)
@@ -2178,14 +2275,19 @@ class Character_Table:
                             sel = pd[tel]
                             # tails get their sty from the parent of the element the tail belongs to
                         sty = sel.cspecified_style
-                        sty = Character_Table.normalize_style(sty)
-                        ctable[sty] = list(set(ctable.get(sty, []) + list(txt)))
-                        if sty not in pctable:
-                            pctable[sty] = dict()
-                        for jj in range(1, len(txt)):
-                            pctable[sty][txt[jj]] = list(
-                                set(pctable[sty].get(txt[jj], []) + [txt[jj - 1]])
-                            )
+                        
+                        asty.append(Character_Table.normalize_style(sty))
+                        atxt.append(txt)
+                        
+        for ii in range(len(atxt)):
+            sty = asty[ii]; txt = atxt[ii];
+            ctable[sty] = list(set(ctable.get(sty, []) + list(txt)))
+            if sty not in pctable:
+                pctable[sty] = dict()
+            for jj in range(1, len(txt)):
+                pctable[sty][txt[jj]] = list(
+                    set(pctable[sty].get(txt[jj], []) + [txt[jj - 1]])
+                )
         for sty in ctable:  # make sure they have spaces
             ctable[sty] = list(set(ctable[sty] + [" "]))
             # dh.idebug(' ' in ctable[sty])
@@ -2193,35 +2295,42 @@ class Character_Table:
         # Make a dictionary of all font specs in the document, along with the backup fonts in those specs
         # e.g. {'': ['sans-serif'], 'Calibri,Arial': ['Calibri', 'Arial', 'sans-serif']}
         # Add these to the table so we can check which fonts the system has
-        docfonts = dict()
-        for sty in ctable:
-            if 'font-family' in sty:
-                sspl = sty.split(';');
-                ffii = [ii for ii in range(len(sspl)) if 'font-family' in sspl[ii]][0]
-                allffs = sspl[ffii].split(':')[1]
-                ffs = [x.strip("'").strip() for x in allffs.split(",")]
-            else:
-                ffs = []
-                allffs = ''
-            if 'sans-serif' not in ffs:
-                ffs.append('sans-serif')
-            docfonts[allffs]=ffs
-        bfs = list(set([v for lst in list(docfonts.values()) for v in lst]))
-        for bf in list(set(bfs+list(docfonts.keys()))):
-            if bf!='':
-                sty = 'font-family:'+bf
-                ctable[sty] = list(set(ctable.get(sty, [' ']) + list(self.fonttestchars)))
-                if sty not in pctable:
-                    pctable[sty] = dict()
+        # docfonts = dict()
+        # for sty in ctable:
+        #     if 'font-family' in sty:
+        #         sspl = sty.split(';');
+        #         ffii = [ii for ii in range(len(sspl)) if 'font-family' in sspl[ii]][0]
+        #         allffs = sspl[ffii].split(':')[1]
+        #         ffs = [x.strip("'").strip() for x in allffs.split(",")]
+        #     else:
+        #         ffs = []
+        #         allffs = ''
+        #     if 'sans-serif' not in ffs:
+        #         ffs.append('sans-serif')
+        #     docfonts[allffs]=ffs
+        # bfs = list(set([v for lst in list(docfonts.values()) for v in lst]))
+        # for bf in list(set(bfs+list(docfonts.keys()))):
+        #     if bf!='':
+        #         sty = 'font-family:'+bf
+        #         ctable[sty] = list(set(ctable.get(sty, [' ']) + list(self.fonttestchars)))
+        #         if sty not in pctable:
+        #             pctable[sty] = dict()
             
-        return ctable, pctable, docfonts
+        
+        return ctable, pctable
+    
 
-    def measure_character_widths2(self, els):
+
+    def meas_char_ws(self, els, forcecommand = False):
         # Measure the width of all characters of a given style by generating copies with a prefix and suffix.
         # To get the character width we compare this to a blank that does not contain any character.
-        # Note that this is the "pen width," the width including intercharacter space
+        # Note that this is the logical "pen width," the width including intercharacter space
         # The width will be the width of a character whose composed font size is 1 uu.
-        ct, pct, dfs = self.generate_character_table2(els)
+        ctels = els
+        if forcecommand and len(els)>0:
+            # Examine the whole document if using command
+            ctels = [d for d in els[0].croot.cdescendants if isinstance(d,TextElement)];
+        ct, pct = self.generate_character_table(ctels)
 
         prefix = 'I '
         suffix = ' I'
@@ -2233,75 +2342,121 @@ class Character_Table:
         # We add pI as test characters because p gives the font's descender (how much the tail descends)
         # and I gives its cap height (how tall capital letters are).
 
-        # A new document is generated instead of using the existing one. We don't have to parse an entire element tree
-        pxinuu = inkex.units.convert_unit("1px", "mm")
-        # test document has uu = 1 mm (210 mm / 210)
-        svgstart = '<svg width="210mm" height="297mm" viewBox="0 0 210 297" id="svg60386" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"> <defs id="defs60383" /> <g id="layer1">'
-        svgstop = "</g> </svg>"
-        txt1 = '<text xml:space="preserve" style="'
-        txt2 = '" id="text'
-        txt3 = '">'
-        txt4 = "</text>"
-        svgtexts = ""
+        usepango = pr.haspango and not(forcecommand)
+        # usepango = False
+        # dh.idebug(usepango)
         cnt = 0
-        tmpname = self.caller.options.input_file + "_tmp"
-        f = open(tmpname, "wb")
-        f.write(svgstart.encode("utf8"))
-        from xml.sax.saxutils import escape
+        if not(usepango):
+            # A new document is generated instead of using the existing one. We don't have to parse an entire element tree
+            pxinuu = inkex.units.convert_unit("1px", "mm")
+            # test document has uu = 1 mm (210 mm / 210)
+            svgstart = '<svg width="210mm" height="297mm" viewBox="0 0 210 297" id="svg60386" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"> <defs id="defs60383" /> <g id="layer1">'
+            svgstop = "</g> </svg>"
+            txt1 = '<text xml:space="preserve" style="'
+            txt2 = '" id="text'
+            txt3 = '">'
+            txt4 = "</text>"
+            svgtexts = ""
+            import tempfile, os
+            f = tempfile.NamedTemporaryFile(mode="wb",delete=False)
+            tmpname = os.path.abspath(f.name);
+            # tmpname = self.caller.options.input_file + "_tmp"
+            # f = open(tmpname, "wb")
+            f.write(svgstart.encode("utf8"))
+            from xml.sax.saxutils import escape
+        else:
+            nbb = dict()
+            # dh.idebug(ct)
+        
 
-        def Make_Character2(c, sty):
-            nonlocal svgtexts, cnt
+        def Make_Character(c, sty):
+            nonlocal cnt
             cnt += 1
-            svgtexts += txt1 + sty + txt2 + str(cnt) + txt3 + escape(c) + txt4
-            if cnt % 1000 == 0:
-                f.write(svgtexts.encode("utf8"))
-                svgtexts = ""
+            if not(usepango):
+                nonlocal svgtexts
+                svgtexts += txt1 + sty + txt2 + str(cnt) + txt3 + escape(c) + txt4
+                if cnt % 1000 == 0:
+                    f.write(svgtexts.encode("utf8"))
+                    svgtexts = ""
+            else:
+                nbb["text" + str(cnt)] = (c,sty);
             return "text" + str(cnt)
         
         class StringInfo:
-            def __init__(self, strval,strid,dkern):
+            def __init__(self, strval,strid,dkern,bareid=None):
                 self.strval = strval
                 self.strid = strid;
                 self.dkern = dkern;
+                self.bareid = bareid;
 
-        ct2 = dict()
-        for s in list(ct.keys()):
+        ct2 = dict(); bareids = [];
+        for s in ct:
             ct2[s] = dict()
             for ii in range(len(ct[s])):
                 myc = ct[s][ii]
-                t = Make_Character2(prefix + myc + suffix, s)
+                t  = Make_Character(prefix + myc + suffix, s)
+                tb = Make_Character(         myc         , s);
+                bareids.append(tb)
                 dkern = dict()
                 if KERN_TABLE:
                     for jj in range(len(ct[s])):
                         pc = ct[s][jj]
                         if myc in pct[s] and pc in pct[s][myc]:
-                            t2 = Make_Character2(prefix + pc+myc + suffix, s)
+                            t2 = Make_Character(prefix + pc+myc + suffix, s)
                             # precede by all chars of the same style
                             dkern[pc] = t2
-                # ct2[s][myc] = [myc, 0, t, dkern]
-                ct2[s][myc] = StringInfo(myc, t, dkern)
+                ct2[s][myc] = StringInfo(myc, t, dkern,tb)
 
-            ct2[s][pI]   = StringInfo(pI,   Make_Character2(pI,   s), dict())
-            ct2[s][blnk] = StringInfo(blnk, Make_Character2(blnk, s), dict())
+            ct2[s][pI]   = StringInfo(pI,   Make_Character(pI,   s), dict())
+            ct2[s][blnk] = StringInfo(blnk, Make_Character(blnk, s), dict())
 
+        
         ct = ct2
-        f.write((svgtexts + svgstop).encode("utf8"))
-        f.close()
-
-        nbb = dh.Get_Bounding_Boxes(filename=tmpname, pxinuu=pxinuu)
-        import os
-        os.remove(tmpname)
-
-        # Figure out effective fonts by matching doc fonts to backup fonts
-        for df in dfs:
-            match = 'sans-serif'
-            if df!='':
-                bbdf  = [ nbb[ct['font-family:'+df][ii].strid] for ii in self.fonttestchars]                   # doc font bbs
-                bbbfs = [[nbb[ct['font-family:'+v ][ii].strid] for ii in self.fonttestchars] for v in dfs[df]] # backup font bbs
-                matches = [ii for ii in range(len(dfs[df])) if bbdf==bbbfs[ii]]
-                if len(matches)!=len(dfs[df]):
-                    match = dfs[df][matches[0]]
-            dfs[df] = match
+        if not(usepango):
+            f.write((svgtexts + svgstop).encode("utf8"))
+            f.close()
+            nbb = dh.Get_Bounding_Boxes(filename=tmpname, pxinuu=pxinuu)
+            import os
+            os.remove(tmpname)
+        else:
+            # dh.idebug(ct)  
+            for sty in ct:
+                joinch = ' ';
+                mystrs = [v[0] for k,v in nbb.items() if v[1]==sty]
+                myids  = [k    for k,v in nbb.items() if v[1]==sty]
+                
+                success,fm = pr.Set_Text_Style(sty)
+                if not(success):
+                    return self.meas_char_ws(els, forcecommand=True)
+                pr.Render_Text(joinch.join(mystrs))
+                exts,nu = pr.Get_Character_Extents(fm[1])
+                ws = [v[0][2] for v in exts]
+                if nu>0:
+                    return self.meas_char_ws(els, forcecommand=True)
+                
+                cnt=0; x=0;
+                for ii in range(len(mystrs)):
+                    s = slice(cnt,cnt+len(mystrs[ii]))
+                    w = sum(ws[s]);
+                        
+                    firstch = exts[s][0];
+                    (xb,yb,wb,hb) = tuple(firstch[2]);
+                    if myids[ii] not in bareids:
+                        xb = x; wb = w; # use logical width
+                    if mystrs[ii]==prefix+suffix:
+                        ycorr = hb+yb
+                        
+                    nbb[myids[ii]] = [v*TEXTSIZE for v in [xb,yb,wb,hb]]
+                    cnt += len(mystrs[ii])+len(joinch);
+                    x += w;    
+                    
+                # Certain Windows fonts do not seem to comply with the Pango spec.
+                # The ascent+descent of a font is supposed to match its logical height,
+                # but this is not always the case. Correct using the top of the 'I' character.
+                for ii in range(len(mystrs)):
+                    # if myids[ii] in bareids:
+                    nbb[myids[ii]][1] -= ycorr*TEXTSIZE
+            
 
         dkern = dict()
         for s in list(ct.keys()):
@@ -2326,11 +2481,16 @@ class Character_Table:
 
         for s in list(ct.keys()):
             blnkwd = ct[s][blnk].bb.w;
-            sw = ct[s][' '].bb.w - blnkwd  # space width
-            ch = -ct[s][pI].bb.y1          # cap height
+            sw = ct[s][' '].bb.w - blnkwd      # space width
+            ch = ct[s][blnk].bb.h          # cap height
             dr =  ct[s][pI].bb.y2          # descender
             for ii in ct[s].keys():
                 cw = ct[s][ii].bb.w - blnkwd # character width (full, including extra space on each side)
+                
+                if ct[s][ii].bareid in nbb:
+                    inkbb = nbb[ct[s][ii].bareid]
+                else:
+                    inkbb = [ct[s][ii].bb.x1,ct[s][ii].bb.y1,0,0] # whitespace: make zero-width
                 dkernscl = dict()
                 if KERN_TABLE:
                     for k in dkern[s].keys():
@@ -2341,11 +2501,11 @@ class Character_Table:
                     sw/TEXTSIZE,
                     ch/TEXTSIZE,
                     dr/TEXTSIZE,
-                    dkernscl,
+                    dkernscl, [v/TEXTSIZE for v in inkbb]
                 )
-
-            
-        return ct, nbb, dfs
+                # dh.idebug((cw/TEXTSIZE,[v/TEXTSIZE for v in inkbb]))
+        # dh.idebug(nbb)
+        return ct #, nbb
 
     # For generating test characters, we want to normalize the style so that we don't waste time
     # generating a bunch of identical characters whose font-sizes are different. A style is generated
@@ -2378,6 +2538,11 @@ class Character_Table:
                         styv = ",".join([v.strip().strip("'") for v in styv.split(",")])
                     sty2[a] = styv
         sty2["font-size"] = str(TEXTSIZE)+"px"
+        
+        # Replace nominal font with true rendered font
+        ffam = sty.get('font-family','');
+        sty2['font-family']=pr.get_true_font(ffam);
+        
         sty2 = ";".join(
             ["{0}:{1}".format(*seg) for seg in sty2.items()]
         )  # from Style to_str
