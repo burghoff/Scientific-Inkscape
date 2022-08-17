@@ -141,9 +141,26 @@ class Homogenizer(inkex.EffectExtension):
             if isinstance(el, (TextElement, Tspan, FlowRoot, FlowPara, FlowSpan))
         ]
 
-        if setfontfamily or setfontsize or fixtextdistortion:
-            bbs = dh.Get_Bounding_Boxes(self, False)
+        def BB2(els,forceupdate):
+            if all([isinstance(d, (TextElement)) for d in els]):
+                import TextParser
+                bbs = dict();
+                if forceupdate and hasattr(self.svg, '_char_table'):
+                    delattr(self.svg,'_char_table')
+                for d in els:
+                    inkbb = d.parsed_text.get_full_inkbbox();
+                    bbs[d.get_id2()] = inkbb.transform(d.ccomposed_transform).sbb
+            else:
+                bbs = dh.Get_Bounding_Boxes(self, forceupdate)
+                # dh.idebug('here')
+            return bbs
 
+        if setfontfamily or setfontsize or fixtextdistortion:
+            tels = [d for d in sel if isinstance(d, (TextElement, FlowRoot))]
+            bbs = BB2(tels,False)
+            # bbs = dh.Get_Bounding_Boxes(self)
+
+        
         if setfontsize:
             # Get all font sizes and scale factors
             szd = dict()
@@ -207,6 +224,8 @@ class Homogenizer(inkex.EffectExtension):
                 if fs is None or not ("%" in fs):  # keep sub/superscripts relative size
                     dh.Set_Style_Comp(el, "font-size", str(newsize / sf) + "px")
 
+        
+
         if fixtextdistortion:
             # make a new transform that removes bad scaling and shearing (see General_affine_transformation.nb)
             for el in sel:
@@ -232,8 +251,10 @@ class Homogenizer(inkex.EffectExtension):
                 ):
                     dh.Replace_Non_Ascii_Font(el, "Avenir Next, Arial")
 
+        
         if setfontfamily or setfontsize or fixtextdistortion:
-            bbs2 = dh.Get_Bounding_Boxes(self, True)
+            bbs2 = BB2(tels,True)
+            # bbs2 = dh.Get_Bounding_Boxes(self,True)
             for el in sel:
                 myid = el.get_id()
                 if (

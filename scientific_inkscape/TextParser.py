@@ -42,7 +42,12 @@
 # which automatically analyzes the whole document and adds it to the SVG. If you are only 
 # parsing a few text elements, this can be sped up by calling svg.make_char_table(els).
 # This can occasionally fail: when this happens, a command call is performed instead as a fallback.
-
+#
+# Known limitations:
+#   Does not support flows, only TextElements
+#   When a font has missing characters, command fallback is invoked.
+#   When Pango cannot find the appropriate font, command fallback is invoked.
+#   Ligatures' 
 
 KERN_TABLE = True # generate a fine kerning table for each font?
 TEXTSIZE = 100;   # size of rendered text
@@ -163,7 +168,7 @@ class ParsedText:
                     d2[xsi],
                     d2[ysi],
                     ln.sprl,
-                    ln.nominalspr,
+                    ln.sprlabove,
                     ln.anchor,
                     ln.transform,
                     ln.angle,
@@ -257,10 +262,14 @@ class ParsedText:
         # Figure out which effective sprls are top-level
         types = [None] * len(ds)
         for ii in range(len(ds)):
+            # dh.idebug((ds[ii].get_id2(),ds[ii].text))
             if esprl[ii]:
                 if len(ptail[ii]) > 0 and ptail[ii][-1] is not None:
                     types[ii] = "precededsprl"
-                elif ds[ii] == ks[0] and text[0] is not None:
+                elif ds[ii] == ks[0] and text[0] is not None:# and len(text[0])>0:
+                    # 2022.08.17: I am not sure if the len(text[0])==0 condition should be included
+                    # Inkscape prunes text='', so not relevant most of the time
+                    # It does seem to make a difference though
                     types[ii] = "precededsprl"
                 else:
                     types[ii] = "tlvlsprl"
@@ -345,6 +354,7 @@ class ParsedText:
                 tel = tels[ii]
                 txt = txts[ii]
 
+                # dh.idebug((ds[di].get_id2(),types[di],tt))
                 newsprl = tt == 1 and types[di] == "tlvlsprl"
                 if (txt is not None and len(txt) > 0) or newsprl:
                     sel = tel
@@ -354,7 +364,6 @@ class ParsedText:
                     sty = sel.cspecified_style
                     ct = sel.ccomposed_transform
                     fs, sf, ct, ang = dh.Get_Composed_Width(sel, "font-size", 4)
-                    # dh.debug(el.get_id()); dh.debug(el.composed_transform())
 
                     if newsprl:
                         lh = dh.Get_Composed_LineHeight(sel)
@@ -438,6 +447,14 @@ class ParsedText:
                                     anch = "end"
                                 elif anch == "end":
                                     anch = "start"
+                        
+                        sprlabove = False
+                        cel = ds[edi];
+                        while cel!=el:
+                            if cel.get('sodipodi:role')=='line':
+                                sprlabove = True;
+                            cel = pd[cel]
+                        
                         lns.append(
                             tline(
                                 self,
@@ -446,7 +463,7 @@ class ParsedText:
                                 xsrc,
                                 ysrc,
                                 issprl,
-                                nspr[edi],
+                                sprlabove,
                                 anch,
                                 ct,
                                 ang,
@@ -478,8 +495,6 @@ class ParsedText:
                             else:
                                 lns[-1].cs[-1].lsp = lsp0
                                 lns[-1].cs[-1].bshft = bshft0
-                            # dh.idebug([c,fs,sel.get_id()])
-
         return lns
 
     def Finish_Lines(self):
@@ -978,7 +993,7 @@ class tline:
         xsrc,
         ysrc,
         sprl,
-        nspr,
+        sprlabove,
         anch,
         xform,
         ang,
@@ -991,7 +1006,7 @@ class tline:
         self._y = y
         self.sprl = sprl
         # is this line truly a sodipodi:role line
-        self.nominalspr = nspr
+        self.sprlabove = sprlabove
         # nominal value of spr (sprl may actually be disabled)
         self.anchor = anch
         self.cs = []
@@ -1157,13 +1172,19 @@ class tline:
 
     # Disable sodipodi:role = line
     def disablesodipodi(self, force=False):
-        if self.nominalspr == "line" or force:
+        if self.sprlabove or force:
             if len(self.cs) > 0:
                 newsrc = self.cs[0].loc.el  # disabling snaps src to first char
                 if self.cs[0].loc.tt == "tail":
                     newsrc = self.cs[0].loc.el.getparent()
                 newsrc.set("sodipodi:role", None)
-                self.nominalspr = None
+                
+                # cel = newsrc;
+                # while cel!=self.pt.textel:
+                #     cel.set("sodipodi:role", None)
+                #     cel = cel.getparent();
+                
+                self.sprlabove = False
                 self.xsrc = newsrc
                 self.ysrc = newsrc
                 self.xsrc.set("x", tline.writev(self.x))  # fuse position to new source
@@ -1187,7 +1208,7 @@ class tline:
             # dh.idebug([self.txt(),self.xsrc.get('x')])
 
             if (
-                len(oldx) > 1 and len(self.x) == 1 and self.nominalspr == "line"
+                len(oldx) > 1 and len(self.x) == 1 and self.sprlabove
             ):  # would re-enable sprl
                 self.disablesodipodi()
 
@@ -1206,7 +1227,7 @@ class tline:
             self.ysrc.set("y", tline.writev(newy))
 
             if (
-                len(oldy) > 1 and len(self.y) == 1 and self.nominalspr == "line"
+                len(oldy) > 1 and len(self.y) == 1 and self.sprlabove
             ):  # would re-enable sprl
                 self.disablesodipodi()
         if reparse:

@@ -1381,10 +1381,11 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
         el.text = ""
         for k in el.getchildren():
             if isinstance(k, (Tspan, FlowPara, FlowSpan)):
-                alltxt.append(k)
+                dupe = k.duplicate2();
+                alltxt.append(dupe)
                 alltxt.append(k.tail)
                 k.tail = ""
-                el.remove(k)
+                k.delete2()
         lstspan = None
         for t in alltxt:
             if t is None:
@@ -1404,10 +1405,10 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
                     if any([nonletter(c) for c in w]):
                         w = w.replace(" ", "\u00A0")
                         # spaces can disappear, replace with NBSP
-                        ts = Tspan(w, style=sty + "font-family:" + newfont)
-                        # ts = new_element(Tspan,el);
-                        # ts.text = w; ts.cstyle=sty+'font-family:'+newfont
+                        ts = new_element(Tspan,el);
                         el.append(ts)
+                        ts.text = w; ts.cstyle=Style2(sty+'font-family:'+newfont)
+                        ts.cspecified_style = None; ts.ccomposed_transform = None;
                         lstspan = ts
                     else:
                         if lstspan is None:
@@ -1417,7 +1418,17 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
             elif isinstance(t, (Tspan, FlowPara, FlowSpan)):
                 Replace_Non_Ascii_Font(t, newfont, True)
                 el.append(t)
+                t.cspecified_style = None; t.ccomposed_transform = None;
                 lstspan = t
+                
+    # Inkscape automatically prunes empty text/tails
+    # Do the same so future parsing is not affected
+    if isinstance(el,inkex.TextElement):
+        for d in el.descendants2:
+            if d.text is not None and d.text=='':
+                d.text = None
+            if d.tail is not None and d.tail=='':
+                d.tail = None
 
 
 # A modified bounding box class

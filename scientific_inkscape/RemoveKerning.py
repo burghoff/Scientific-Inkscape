@@ -63,7 +63,7 @@ def remove_kerning(
         tels[0].croot.make_char_table(tels)
     if DEBUG_PARSER:
         for el in tels:
-            el.parsed_text.Make_Highlights('fullink')
+            el.parsed_text.Make_Highlights('char')
     else:
         # Do merges first (deciding based on original position)
         if removemanual:
