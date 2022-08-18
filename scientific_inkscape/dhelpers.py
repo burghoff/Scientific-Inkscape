@@ -408,7 +408,7 @@ def Get_Composed_Width(el, comp, nargout=1):
     if "%" in sc:  # relative width, get parent width
         cel = el
         while sc != cel.cstyle.get(comp):
-            cel = el.getparent()
+            cel = cel.getparent()
             # figure out ancestor where % is coming from
 
         sc = float(sc.strip("%")) / 100

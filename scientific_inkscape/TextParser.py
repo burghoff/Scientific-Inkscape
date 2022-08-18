@@ -47,7 +47,7 @@
 #   Does not support flows, only TextElements
 #   When a font has missing characters, command fallback is invoked.
 #   When Pango cannot find the appropriate font, command fallback is invoked.
-#   Ligatures' 
+#   Ligatures width not exactly correct
 
 KERN_TABLE = True # generate a fine kerning table for each font?
 TEXTSIZE = 100;   # size of rendered text
@@ -116,13 +116,16 @@ class ParsedText:
         # dh.idebug('\n')
         # for ln in self.lns:
         #     dh.idebug(ln.txt())
+        #     # for c in ln.cs:
+        #     #     dh.idebug([c.c,c.lsp])
+        #     dh.idebug(ln.continuex)
+        #     dh.idebug(ln.sprl)
+        #     dh.idebug(ln.x)
+        #     dh.idebug(ln.xsrc.get_id())
         #     for c in ln.cs:
-        #         dh.idebug([c.c,c.lsp])
-        # dh.debug(ln.el.get_id())
-        #     dh.debug(ln.xsrc.get_id())
-        #     dh.debug(ln.x)
-        #     dh.debug(ln.sprl)
-        #     dh.debug(ln.tlvlno)
+        #         dh.idebug((c.c,c.cw))
+        #     # dh.debug(ln.sprl)
+        #     # dh.debug(ln.tlvlno)
 
         tlvllns = [ln for ln in self.lns if ln.tlvlno is not None and ln.tlvlno > 0]
         # top-level lines after 1st
@@ -247,7 +250,6 @@ class ParsedText:
 
             # If I don't have text and any descendants have position, disables spr:l
             if esprl[ii] and (text[ii] == "" or text[ii] is None):
-                # dh.debug(ds[ii].get_id())
                 dstop = [jj for jj in range(len(pts)) if ds[ii] in pts[jj]][0]
                 # should exist
                 for di in range(ii + 1, dstop):
@@ -262,7 +264,6 @@ class ParsedText:
         # Figure out which effective sprls are top-level
         types = [None] * len(ds)
         for ii in range(len(ds)):
-            # dh.idebug((ds[ii].get_id2(),ds[ii].text))
             if esprl[ii]:
                 if len(ptail[ii]) > 0 and ptail[ii][-1] is not None:
                     types[ii] = "precededsprl"
@@ -448,11 +449,11 @@ class ParsedText:
                                 elif anch == "end":
                                     anch = "start"
                         
-                        sprlabove = False
+                        sprlabove = []
                         cel = ds[edi];
                         while cel!=el:
                             if cel.get('sodipodi:role')=='line':
-                                sprlabove = True;
+                                sprlabove.append(cel);
                             cel = pd[cel]
                         
                         lns.append(
@@ -1172,19 +1173,17 @@ class tline:
 
     # Disable sodipodi:role = line
     def disablesodipodi(self, force=False):
-        if self.sprlabove or force:
+        if len(self.sprlabove)>0 or force:
             if len(self.cs) > 0:
                 newsrc = self.cs[0].loc.el  # disabling snaps src to first char
                 if self.cs[0].loc.tt == "tail":
                     newsrc = self.cs[0].loc.el.getparent()
                 newsrc.set("sodipodi:role", None)
                 
-                # cel = newsrc;
-                # while cel!=self.pt.textel:
+                # for cel in self.sprlabove:
                 #     cel.set("sodipodi:role", None)
-                #     cel = cel.getparent();
                 
-                self.sprlabove = False
+                self.sprlabove = []
                 self.xsrc = newsrc
                 self.ysrc = newsrc
                 self.xsrc.set("x", tline.writev(self.x))  # fuse position to new source
@@ -1208,7 +1207,7 @@ class tline:
             # dh.idebug([self.txt(),self.xsrc.get('x')])
 
             if (
-                len(oldx) > 1 and len(self.x) == 1 and self.sprlabove
+                len(oldx) > 1 and len(self.x) == 1 and len(self.sprlabove)>0
             ):  # would re-enable sprl
                 self.disablesodipodi()
 
@@ -1227,7 +1226,7 @@ class tline:
             self.ysrc.set("y", tline.writev(newy))
 
             if (
-                len(oldy) > 1 and len(self.y) == 1 and self.sprlabove
+                len(oldy) > 1 and len(self.y) == 1 and len(self.sprlabove)>0
             ):  # would re-enable sprl
                 self.disablesodipodi()
         if reparse:

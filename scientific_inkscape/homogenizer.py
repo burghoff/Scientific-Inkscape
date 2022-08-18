@@ -148,7 +148,8 @@ class Homogenizer(inkex.EffectExtension):
                 if forceupdate and hasattr(self.svg, '_char_table'):
                     delattr(self.svg,'_char_table')
                 for d in els:
-                    inkbb = d.parsed_text.get_full_inkbbox();
+                    inkbb = d.parsed_text.get_full_extent();
+                    # inkbb = d.parsed_text.get_full_inkbbox();
                     bbs[d.get_id2()] = inkbb.transform(d.ccomposed_transform).sbb
             else:
                 bbs = dh.Get_Bounding_Boxes(self, forceupdate)
