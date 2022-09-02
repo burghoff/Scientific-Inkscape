@@ -108,7 +108,7 @@
      inkscape:document-rotation="0"
      inkscape:current-layer="layer1"
      inkscape:document-units="mm"
-     inkscape:cy="249.52883"
+     inkscape:cy="205.38614"
      inkscape:cx="368.46886"
      inkscape:zoom="1.631074"
      inkscape:pageshadow="2"
@@ -868,41 +868,41 @@
          transform="translate(13.59746,3.7093356)"><tspan
            x="0"
            y="11.480255"
-           id="tspan25706"><tspan
+           id="tspan59080"><tspan
              style="stroke-width:0.5"
-             id="tspan25704">This is an SVG2 </tspan></tspan><tspan
+             id="tspan59078">This is an SVG2 </tspan></tspan><tspan
            x="0"
            y="15.449005"
-           id="tspan25710"><tspan
+           id="tspan59084"><tspan
              style="stroke-width:0.5"
-             id="tspan25708">flowed text. </tspan></tspan><tspan
+             id="tspan59082">flowed text. </tspan></tspan><tspan
            x="0"
            y="19.417755"
-           id="tspan25718"><tspan
+           id="tspan59092"><tspan
              style="stroke-width:0.5"
-             id="tspan25712">(inlin</tspan><tspan
+             id="tspan59086">(inlin</tspan><tspan
              dx="-0.27516687"
              style="letter-spacing:0.275167px"
-             id="tspan25714">e siz</tspan><tspan
+             id="tspan59088">e siz</tspan><tspan
              dx="0.27516711"
              style="stroke-width:0.5"
-             id="tspan25716">e)
+             id="tspan59090">e)
 </tspan></tspan><tspan
            x="0"
            y="23.386505"
-           id="tspan25722"><tspan
+           id="tspan59096"><tspan
              style="stroke-width:0.5"
-             id="tspan25720">This is a line </tspan></tspan><tspan
+             id="tspan59094">This is a line </tspan></tspan><tspan
            x="0"
            y="27.355255"
-           id="tspan25726"><tspan
+           id="tspan59100"><tspan
              style="stroke-width:0.5"
-             id="tspan25724">break inside that </tspan></tspan><tspan
+             id="tspan59098">break inside that </tspan></tspan><tspan
            x="0"
            y="31.324005"
-           id="tspan25730"><tspan
+           id="tspan59104"><tspan
              style="stroke-width:0.5"
-             id="tspan25728">text.</tspan></tspan></text>
+             id="tspan59102">text.</tspan></tspan></text>
       <text
          xml:space="preserve"
          style="font-size:3.175px;line-height:125%;font-family:Arial;-inkscape-font-specification:Arial;letter-spacing:0.0343958px;fill:#000000;stroke-width:0.499999;stroke-linecap:round;stroke-linejoin:round"
@@ -992,13 +992,13 @@
          transform="matrix(0.13229167,0,0,0.13229167,-0.66073416,-0.33036706)"><tspan
            x="106.13281"
            y="317.54389"
-           id="tspan25732">This is an SVG2 </tspan><tspan
+           id="tspan59106">This is an SVG2 </tspan><tspan
            x="106.13281"
            y="347.54389"
-           id="tspan25734">flowed text (shape </tspan><tspan
+           id="tspan59108">flowed text (shape </tspan><tspan
            x="106.13281"
            y="377.54389"
-           id="tspan25736">inside)</tspan></text>
+           id="tspan59110">inside)</tspan></text>
       <text
          xml:space="preserve"
          style="font-size:5.33333px;line-height:125%;font-family:Arial;-inkscape-font-specification:Arial;writing-mode:lr-tb;direction:ltr;fill:#000000;stroke-width:1.88976;stroke-linecap:round;stroke-linejoin:round"
@@ -2910,6 +2910,35 @@
    id="tspan2428"><tspan
      id="tspan5084"
      style="font-family:'Avenir Next', Arial;baseline-shift:0%">)</tspan></tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:148.615px;line-height:1.25;font-family:Arial;-inkscape-font-specification:'Arial, Normal';letter-spacing:0px;word-spacing:0px"
+       x="464.28571"
+       y="511.42856"
+       id="text1467"
+       transform="matrix(0.01712591,0,0,0.01712591,112.31981,-4.0352093)"><tspan
+         sodipodi:role="line"
+         id="tspan1465"
+         x="464.28571"
+         y="511.42856">Arial A diff kerned by spaces</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:148.615px;line-height:1.25;font-family:Arial;-inkscape-font-specification:'Arial, Normal';letter-spacing:0px;word-spacing:0px"
+       id="text482"
+       transform="matrix(0.02286702,0,0,0.02286702,121.25558,9.2285988)"><tspan
+         sodipodi:role="line"
+         id="tspan480"
+         x="0"
+         y="0"> A</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:148.615px;line-height:1.25;font-family:Arial;-inkscape-font-specification:'Arial, Normal';letter-spacing:0px;word-spacing:0px"
+       id="text50934"
+       transform="matrix(0.02286702,0,0,0.02286702,125.93019,9.2343817)"><tspan
+         sodipodi:role="line"
+         id="tspan50932"
+         x="0"
+         y="0">A  </tspan></text>
   </g>
   <style
      type="text/css"

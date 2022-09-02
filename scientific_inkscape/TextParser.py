@@ -1958,11 +1958,24 @@ class tchar:
     def delc(self):
         # Deletes character from document (and from my word/line)
         # Deleting a character causes the word to move if it's center- or right-justified. Adjust position to fix
-        cwo = self.cw + self.dx + self.lsp * (self.w.cs[0] != self)
+        myi = self.ln.cs.index(self)  # index in line
+        
+        # Differential kerning affect on character width
+        dko1 = dko2 = dkn = 0
+        if myi<len(self.ln.cs)-1:
+            dko2 = self.dkerns.get((self.ln.cs[myi].c,self.ln.cs[myi+1].c),0.0) # old from right
+            if myi > 0:
+                dkn = self.dkerns.get((self.ln.cs[myi-1].c,self.ln.cs[myi+1].c),0.0) # new
+        if myi>0:
+            dko1 = self.dkerns.get((self.ln.cs[myi-1].c,self.ln.cs[myi].c),0.0) # old from left
+        dk = dko1+dko2-dkn
+        
+        cwo = self.cw + dk + self.dx + self.lsp * (self.w.cs[0] != self)
         if self.w.unrenderedspace and self.w.cs[-1] == self:
             if len(self.w.cs) > 1 and self.w.cs[-2].c != " ":
-                cwo = 0
+                cwo = dk
                 # deletion will not affect position
+                # weirdly dkerning from unrendered spaces still counts
 
         if self == self.w.cs[0]:  # from beginning of line
             deltax = (self.anchorfrac - 1) * cwo / self.sf
@@ -1981,7 +1994,6 @@ class tchar:
         else:
             self.loc.el.tail = del2(self.loc.el.tail, self.loc.ind)
 
-        myi = self.ln.cs.index(self)  # index in line
         if len(self.ln.x) > 1:
             if myi < len(self.ln.x):
                 if (
@@ -2309,7 +2321,9 @@ class Character_Table:
                     set(pctable[sty].get(txt[jj], []) + [txt[jj - 1]])
                 )
         for sty in ctable:  # make sure they have spaces
-            ctable[sty] = list(set(ctable[sty] + [" "]))
+            ctable[sty] = dh.unique(ctable[sty] + [" "])
+            for pc in pctable[sty]:
+                pctable[sty][pc] = dh.unique(pctable[sty][pc] + [" "])
             # dh.idebug(' ' in ctable[sty])
         
         # Make a dictionary of all font specs in the document, along with the backup fonts in those specs
@@ -2352,10 +2366,10 @@ class Character_Table:
             ctels = [d for d in els[0].croot.cdescendants if isinstance(d,TextElement)];
         ct, pct = self.generate_character_table(ctels)
 
-        prefix = 'I '
-        suffix = ' I'
-        # We use a space to get rid of differential kerning effects, then another character to make 
-        # sure the space isn't leading/trailing
+        prefix = 'I='
+        suffix = '=I'
+        # We use an equals sign to get rid of differential kerning effects
+        # (= and similar characters don't seem to ever have them), then I for capital height
         
         blnk = prefix+suffix
         pI = "pI"
@@ -2452,6 +2466,7 @@ class Character_Table:
                 exts,nu = pr.Get_Character_Extents(fm[1])
                 ws = [v[0][2] for v in exts]
                 if nu>0:
+                    # dh.idebug(nu)
                     return self.meas_char_ws(els, forcecommand=True)
                 
                 cnt=0; x=0;
@@ -2506,6 +2521,7 @@ class Character_Table:
             dr =  ct[s][pI].bb.y2          # descender
             for ii in ct[s].keys():
                 cw = ct[s][ii].bb.w - blnkwd # character width (full, including extra space on each side)
+                
                 
                 if ct[s][ii].bareid in nbb:
                     inkbb = nbb[ct[s][ii].bareid]

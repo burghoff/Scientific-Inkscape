@@ -52,18 +52,30 @@ class PangoRenderer():
                     return GLib.LogWriterOutput.HANDLED
                 GLib.log_set_writer_func(_nope, None)
                 
-                from gi.repository import Gtk    # causes warning in Linux
                 from gi.repository import Pango
-                
-                win = Gtk.Window()
-                self.ctx = win.create_pango_context()
-                self.pangolayout = Pango.Layout(self.ctx)
-                
+                from gi.repository import Gdk
                 self.haspango = True;
             except:
                 self.haspango = False;
+                
+            try:
+                # requires some typelibs we do not have
+                gi.require_version("PangoFT2", "1.0")
+                from gi.repository import PangoFT2
+                self.haspangoFT2 = True
+            except:
+                self.haspangoFT2 = False
     
         if self.haspango:
+            self.disable_lcctype();
+            if self.haspangoFT2:
+                # dh.idebug('PangoFT2')
+                self.ctx = Pango.Context.new();
+                self.ctx.set_font_map(PangoFT2.FontMap.new());
+            else:
+                self.ctx = Gdk.pango_context_get();
+            self.pangolayout = Pango.Layout(self.ctx)
+            
             self.PANGO_VARIANTS = {
                 'normal': Pango.Variant.NORMAL,
                 'small-caps': Pango.Variant.SMALL_CAPS,
@@ -188,7 +200,7 @@ class PangoRenderer():
         
         logsbefore = self.numlogs;
         fnt = self.ctx.get_font_map().load_font(self.ctx,fd)
-        success = self.numlogs==logsbefore
+        success = self.numlogs==logsbefore and fnt is not None
         
         # if not(success):
         #     # Occasionally valid fonts are not matched by Pango. When this happens,
@@ -223,8 +235,8 @@ class PangoRenderer():
         #         newstr = fd.to_string()
                 
         #         logsbefore = self.numlogs;
-        #         self.ctx.get_font_map().load_font(self.ctx,fd)
-        #         success = self.numlogs==logsbefore and newstr!=oldstr
+        #         fnt = self.ctx.get_font_map().load_font(self.ctx,fd)
+        #         success = self.numlogs==logsbefore and newstr!=oldstr and fnt is not None
         #         dh.idebug((oldstr,newstr,success))
                 
             
@@ -283,7 +295,7 @@ class PangoRenderer():
     # Should work in all post-1.0 versions
     def get_true_font(self,nominalfont):
         if nominalfont not in self.truefonts:
-            self.disable_lcctype();
+            # self.disable_lcctype();
            
             ff_strip = nominalfont.replace("'",'').replace('"','')
             pat = fc.Pattern.name_parse(re.escape(ff_strip))
@@ -292,7 +304,7 @@ class PangoRenderer():
             pat.default_substitute()
             found,status = conf.font_match(pat)
             
-            self.enable_lcctype();
+            # self.enable_lcctype();
             
             self.truefonts[nominalfont]    = found.get(fc.PROP.FAMILY,0)[0]
             self.fontcharsets[found.get(fc.PROP.FAMILY,0)[0]] = found.get(fc.PROP.CHARSET,0)[0]
@@ -308,7 +320,7 @@ class PangoRenderer():
             d = {};
         
         if len(d)<len(chars):
-            self.disable_lcctype();
+            # self.disable_lcctype();
             pat = fc.Pattern.name_parse(nominalfont)
             conf = fc.Config.get_current()
             conf.substitute(pat, FC.MatchPattern)
@@ -324,7 +336,7 @@ class PangoRenderer():
                 d.update(d2);
                 if len(d)==len(chars):
                     break;
-            self.enable_lcctype();
+            # self.enable_lcctype();
         return d
     
 # For testing purposes    
@@ -400,7 +412,7 @@ def Pango_Test():
     import cairo
     
     RADIUS = 500
-    FONT = "Bahnschrift Light Condensed, Light "+str(RADIUS/5)
+    FONT = "Bahnschrift Light Condensed, "+str(RADIUS/5)
     filename = 'Pango test.png'
 
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 2 * RADIUS, int(RADIUS/2))
@@ -413,10 +425,15 @@ def Pango_Test():
     pc_ctx = pc.create_context(cairo_ctx)
     pc_layout = pc.create_layout(cairo_ctx)
 
-    pc_layout.set_text("Test 123 ⎣")
     desc = Pango.FontDescription(FONT)
+    # desc.set_stretch(Pango.Stretch.CONDENSED)
+    # desc.set_weight(Pango.Weight.LIGHT)
+ 
     
-    # desc.set_weight(Pango.Weight.THIN)
+    markup = 'Test 123 <span font-family="Cambria Math">⎣</span>'
+    pm = Pango.parse_markup(markup, -1, '\x00')
+    pc_layout.set_attributes(pm[1])
+    pc_layout.set_text(pm[2])
     
     pc_layout.set_font_description(desc)
 
@@ -431,15 +448,15 @@ def Pango_Test():
     cairo_ctx.restore()
     success = surface.write_to_png(filename)
     
-    # pc_ctx.get_font_map().load_font(pc_ctx,desc)
+    fnt = pc_ctx.get_font_map().load_font(pc_ctx,desc)
+    fntset = pc_ctx.get_font_map().load_fontset(pc_ctx,desc,Pango.Language.get_default())
+    # dh.idebug(fntset.get_font(ord('⎣')).describe().to_string())
     
-    # families = pc_ctx.get_font_map().list_families()
-    # all_faces =  [fc.describe().to_string() for fm in families for fc in fm.list_faces()];
-    # all_faces2 = [fc    for fm in families for fc in fm.list_faces()];
-    # myi = all_faces.index('Bahnschrift Light Condensed, Light')
-    # gi = [fm for fm in families if all_faces2[myi] in fm.list_faces()]
-    # if len(gi)>0:
-    #     fm = gi[0]
-    #     dh.idebug(fm.is_monospace())
-    #     dh.idebug(fm.is_variable())
-    #     dh.idebug(all_faces2[myi].is_synthesized())
+    from gi.repository import Gdk
+    fm2 = Gdk.pango_context_get().get_font_map().list_families();
+    all_faces = [fc.describe().to_string() for fm in fm2 for fc in fm.list_faces()];
+    
+    
+    families = pc_ctx.get_font_map().list_families()
+    fmdict = {f.get_name(): [fc.get_face_name() for fc in f.list_faces()] for f in families}
+    
