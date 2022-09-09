@@ -273,10 +273,12 @@ class PangoRenderer():
         # Units: relative to font size
         loi = self.pangolayout.get_iter();
         ws=[];
-        ws.append(self.process_extents(loi.get_cluster_extents(),ascent));
+        ce = loi.get_cluster_extents();
+        ws.append(self.process_extents(ce,ascent));
         moved = loi.next_char();
         while moved:
-            ws.append(self.process_extents(loi.get_cluster_extents(),ascent));
+            ce = loi.get_cluster_extents();
+            ws.append(self.process_extents(ce,ascent));
             moved = loi.next_char();
             
         numunknown = self.pangolayout.get_unknown_glyphs_count()

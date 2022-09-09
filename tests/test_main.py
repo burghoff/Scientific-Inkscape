@@ -90,6 +90,41 @@ class CompareDx0(Compare):
         c2 = re.sub(rb'dx="0"', b"", contents)
         c3 = re.sub(rb'dy="0"', b"", c2)
         return c3
+    
+class CompareTransforms(Compare):
+    """Standardize commas in transforms"""
+    @staticmethod
+    def filter(contents):
+        mmat = [];
+        for tr in [rb'matrix',rb'scale',rb'translate']:
+            mmat += [m.span()[1] for m in re.compile(tr+rb'\(').finditer(contents)]
+        pmat = [m.span()[0] for m in re.compile(rb'\)').finditer(contents)]
+        repl = [];
+        for m in reversed(mmat):
+            myp = min([pl for pl in pmat if pl>=m])
+            newmat = re.sub(rb', ', rb" ", contents[m:myp])
+            newmat = re.sub(rb',' , rb" ", newmat)
+            repl.append((m,myp,newmat))
+            
+        def Make_Replacements(x,rs):
+            rs = sorted(rs, key=lambda r: r[0])   
+            if len(rs)>0:
+                lst = 0; pieces=[]
+                for r in rs:
+                    pieces.append(x[lst:r[0]])
+                    pieces.append(r[2])
+                    lst = r[1]
+                pieces.append(x[lst:])
+                ret = b''.join(pieces)
+            else:
+                ret = x
+            return ret
+        ret = Make_Replacements(contents,repl)
+        
+        ret = re.sub(rb"scale\(0 0\)", rb"scale(0)", ret)
+        return ret
+    
+    
 class CompareNumericFuzzy2(Compare):
     """
     Turn all numbers into shorter standard formats
@@ -116,21 +151,21 @@ class CompareNumericFuzzy2(Compare):
 if testflattentext:
     class TestFlattenerText(ComparisonMixin, TestCase):
         effect_class = FlattenPlots
-        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
         comparisons = [flattenerargs]
         compare_file = ['svg/'+flattentext]
 
 if testflattenrest:
     class TestFlattenerRest(ComparisonMixin, TestCase):
         effect_class = FlattenPlots
-        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
         comparisons = [flattenerargs]
         compare_file = ['svg/'+flattenrest]
     
 if testflattenpapers:
     class TestFlattenerPapers(ComparisonMixin, TestCase):
         effect_class = FlattenPlots
-        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
         comparisons = [flattenerargs]
         allfs = get_files(os.getcwd()+'/data/svg');
         badfs = [v for v in allfs if any([es in v for es in exclude_flatten])];
@@ -155,7 +190,7 @@ if testflattenpapers:
 if testscalecorrection:
     class TestScaleCorrection(ComparisonMixin, TestCase):  
         effect_class = ScalePlots
-        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=g5224","--tab=correction")
@@ -164,7 +199,7 @@ if testscalecorrection:
 if testscalematching:
     class TestScaleMatching(ComparisonMixin, TestCase):
         effect_class = ScalePlots
-        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=rect5248","--id=g4982","--tab=matching")
@@ -172,7 +207,7 @@ if testscalematching:
 if testscalefixed:
     class TestScaleFixed(ComparisonMixin, TestCase):
         effect_class = ScalePlots
-        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=g4982","--tab=scaling",'--hscale=120','--vscale=80')
@@ -181,7 +216,7 @@ if testscalefixed:
 if testghoster:
     class TestGhoster(ComparisonMixin, TestCase):
         effect_class = TextGhoster
-        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=text28136",)
@@ -190,7 +225,7 @@ if testghoster:
 if testcbc:
     class TestCBC(ComparisonMixin, TestCase):
         effect_class = CombineByColor
-        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=layer1",)
@@ -199,7 +234,7 @@ if testcbc:
 if testfm:
     class TestFM(ComparisonMixin, TestCase):
         effect_class = FavoriteMarkers
-        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=path6928","--id=path6952","--smarker=True","--tab=markers")
@@ -208,7 +243,7 @@ if testfm:
 if testhomogenizer:
     class TestHomogenizer(ComparisonMixin, TestCase):
         effect_class = Homogenizer
-        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=layer1","--fontsize=7","--setfontsize=True","--fixtextdistortion=True","--fontmodes=2", \
@@ -219,7 +254,7 @@ if testhomogenizer:
 if testae:
     class TestAutoExporter(ComparisonMixin, TestCase):
         effect_class = AutoExporter
-        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
         compare_file = ['svg/'+aename]
         comparisons = [
             aeargs

@@ -1076,9 +1076,8 @@ def defs2(svg):
         svg.insert(0, d)
         svg._defs2 = d
     return svg._defs2
-
-
 inkex.SvgDocumentElement.defs2 = property(defs2)
+
 
 # The built-in get_unique_id gets stuck if there are too many elements. Instead use an adaptive
 # size based on the current number of ids
@@ -1223,7 +1222,10 @@ def get_link_fcn(el,typestr,svg=None):
     if svg is None:
         svg = el.croot   # need to specify svg for Styles but not BaseElements
     if el.get(typestr) is not None:
-        urlid = el.get(typestr)[5:-1]
+        if typestr=='xlink:href':
+            urlid = el.get(typestr)[1:]
+        else:
+            urlid = el.get(typestr)[5:-1]
         urlel = getElementById2(svg, urlid)
         if urlel is not None:
             return urlel
@@ -1452,12 +1454,14 @@ class bbox:
     def transform(self, xform):
         tr1 = xform.apply_to_point([self.x1, self.y1])
         tr2 = xform.apply_to_point([self.x2, self.y2])
+        tr3 = xform.apply_to_point([self.x1, self.y2])
+        tr4 = xform.apply_to_point([self.x2, self.y1])
         return bbox(
             [
-                min(tr1[0], tr2[0]),
-                min(tr1[1], tr2[1]),
-                max(tr1[0], tr2[0]) - min(tr1[0], tr2[0]),
-                max(tr1[1], tr2[1]) - min(tr1[1], tr2[1]),
+                min(tr1[0], tr2[0], tr3[0], tr4[0]),
+                min(tr1[1], tr2[1], tr3[1], tr4[1]),
+                max(tr1[0], tr2[0], tr3[0], tr4[0]) - min(tr1[0], tr2[0], tr3[0], tr4[0]),
+                max(tr1[1], tr2[1], tr3[1], tr4[1]) - min(tr1[1], tr2[1], tr3[1], tr4[1]),
             ]
         )
     
@@ -1477,9 +1481,24 @@ class bbox:
             return bbox([minx, miny, abs(maxx - minx), abs(maxy - miny)])
         else:
             return bbox(bb2.sbb)
+        
+    def intersection(self,bb2):
+        if isinstance(bb2,list):
+            bb2 = bbox(bb2)
+        if not(self.isnull):
+            minx = max([self.x1, bb2.x1])
+            maxx = min([self.x2, bb2.x2])
+            miny = max([self.y1, bb2.y1])
+            maxy = min([self.y2, bb2.y2])
+            return bbox([minx, miny, abs(maxx - minx), abs(maxy - miny)])
+        else:
+            return bbox(bb2.sbb)
     
     def __deepcopy__(self, memo):
         return bbox([self.x1, self.y1, self.w, self.h])
+    
+    def __mul__(self, scl):
+        return bbox([self.x1*scl, self.y1*scl, self.w*scl, self.h*scl])
     
 
 
