@@ -1136,6 +1136,218 @@ def get_id2_func(el, as_url=0):
 
 BaseElement.get_id2 = get_id2_func
 
+
+
+# Modified from Inkex's get_path
+# Correctly calculates path for rectangles and ellipses
+def get_path2(el):
+    class MiniRect:  # mostly from inkex.elements._polygons
+        def __init__(self, el):
+            self.left = implicitpx(el.get("x", "0"))
+            self.top = implicitpx(el.get("y", "0"))
+            self.width = implicitpx(el.get("width", "0"))
+            self.height = implicitpx(el.get("height", "0"))
+            self.rx = implicitpx(el.get("rx", el.get("ry", "0")))
+            self.ry = implicitpx(el.get("ry", el.get("rx", "0")))
+            self.right = self.left + self.width
+            self.bottom = self.top + self.height
+
+        def get_path(self):
+            """Calculate the path as the box around the rect"""
+            if self.rx:
+                rx, ry = self.rx, self.ry  # pylint: disable=invalid-name
+                return (
+                    "M {1},{0.top}"
+                    "L {2},{0.top}    A {0.rx},{0.ry} 0 0 1 {0.right},{3}"
+                    "L {0.right},{4}  A {0.rx},{0.ry} 0 0 1 {2},{0.bottom}"
+                    "L {1},{0.bottom} A {0.rx},{0.ry} 0 0 1 {0.left},{4}"
+                    "L {0.left},{3}   A {0.rx},{0.ry} 0 0 1 {1},{0.top} z".format(
+                        self,
+                        self.left + rx,
+                        self.right - rx,
+                        self.top + ry,
+                        self.bottom - ry,
+                    )
+                )
+            return "M {0.left},{0.top} h {0.width} v {0.height} h {1} z".format(
+                self, -self.width
+            )
+
+    class MiniEllipse:  # mostly from inkex.elements._polygons
+        def __init__(self, el):
+            self.cx = implicitpx(el.get("cx", "0"))
+            self.cy = implicitpx(el.get("cy", "0"))
+            if isinstance(el, (inkex.Ellipse)):  # ellipse
+                self.rx = implicitpx(el.get("rx", "0"))
+                self.ry = implicitpx(el.get("ry", "0"))
+            else:  # circle
+                self.rx = implicitpx(el.get("r", "0"))
+                self.ry = implicitpx(el.get("r", "0"))
+
+        def get_path(self):
+            return (
+                "M {cx},{y} "
+                "a {rx},{ry} 0 1 0 {rx}, {ry} "
+                "a {rx},{ry} 0 0 0 -{rx}, -{ry} z"
+            ).format(cx=self.cx, y=self.cy - self.ry, rx=self.rx, ry=self.ry)
+
+    if isinstance(el, (inkex.Rectangle)):
+        pth = MiniRect(el).get_path()
+    elif isinstance(el, (inkex.Circle, inkex.Ellipse)):
+        pth = MiniEllipse(el).get_path()
+    else:
+        pth = el.get_path()
+    return pth
+
+
+otp_support = (
+    inkex.Rectangle,
+    inkex.Ellipse,
+    inkex.Circle,
+    inkex.Polygon,
+    inkex.Polyline,
+    inkex.Line,
+    inkex.PathElement,
+)
+flow_types = (inkex.FlowRoot,inkex.FlowPara,inkex.FlowRegion,inkex.FlowSpan,)
+
+
+def object_to_path(el):
+    if not (isinstance(el, (inkex.PathElement, inkex.TextElement))):
+        pth = get_path2(el)
+        el.tag = "{http://www.w3.org/2000/svg}path"
+        el.set("d", str(pth))
+
+# Alternate bbox function that requires no command call
+# Uses extents for text, includes stroke width for paths
+def bounding_box2(el,dotransform=True,includestroke=True):
+    if not(hasattr(el,'_cbbox')):
+        el._cbbox = dict()
+        
+    if (dotransform,includestroke) not in el._cbbox:
+        ret = None
+        if isinstance(el, (inkex.TextElement)):
+            ret = el.parsed_text.get_full_extent();
+        elif isinstance(el, otp_support):
+            pth = get_path2(el)
+            if len(pth)>0:
+                bb = Path(pth).to_absolute().bounding_box()
+                
+                sw = implicitpx(el.cspecified_style.get('stroke-width','0px'))
+                if el.cspecified_style.get('stroke') is None or not(includestroke):
+                    sw = 0;
+                ret = bbox([bb.left-sw/2, bb.top-sw/2,
+                               bb.width+sw,bb.height+sw])
+        elif isinstance(el,(SvgDocumentElement,Group,inkex.Layer,inkex.ClipPath)) or isMask(el):
+            ret = bbox(None)
+            for d in list(el):
+                dbb = bounding_box2(d,dotransform=False,includestroke=includestroke);
+                if dbb is not None:
+                    ret = ret.union(dbb.transform(d.ctransform))
+            if ret.isnull:
+                ret = None
+        elif isinstance(el,(inkex.Image)):
+            ret = bbox([implicitpx(el.get(v, "0")) for v in ['x',"y","width","height"]]);
+        elif isinstance(el,(inkex.Use,)):
+            lel = el.get_link('xlink:href');
+            
+            if lel is not None:
+                ret = bounding_box2(lel,dotransform=False)
+                ret = ret.transform(lel.ctransform) # clones have the transform of the link, but not anything above
+    
+        if ret is not None:
+            for cm in ['clip-path','mask']:
+                clip = el.get_link(cm)
+                if clip is not None:
+                   cbb = bounding_box2(clip,dotransform=False,includestroke=False)
+                   if cbb is not None:
+                       ret = ret.intersection(cbb)
+                   else:
+                       ret = None     
+                
+            if dotransform:
+                dscl = 1;
+                if el.croot is not None:
+                    dscl = el.croot.cscale
+                if ret is not None:
+                    ret = ret.transform(el.ccomposed_transform)*dscl
+        el._cbbox[(dotransform,includestroke)] = ret
+    return el._cbbox[(dotransform,includestroke)]
+bb2_support = (inkex.TextElement,inkex.Image,inkex.Use,
+               SvgDocumentElement,inkex.Group,inkex.Layer) + otp_support
+
+def set_cbbox(el,val):
+    if val is None and hasattr(el,'_cbbox'):
+        delattr(el,'_cbbox')
+inkex.BaseElement.cbbox = property(bounding_box2,set_cbbox)
+inkex.SvgDocumentElement.cbbox = property(bounding_box2,set_cbbox)
+
+def BB2(slf,els=None,forceupdate=False):
+    if els is None:
+        els = descendants2(slf.svg);
+    
+    render_dict = dict();
+    def isrendered(el):
+        if el in render_dict:
+            return render_dict[el]
+        else:
+            myp = el.getparent();
+            ret = True
+            if myp is None or isrendered(myp):
+                if el.tag in ['{http://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF',
+                                  '{http://creativecommons.org/ns#}Work',
+                                  '{http://purl.org/dc/elements/1.1/}format',
+                                  '{http://purl.org/dc/elements/1.1/}type']:
+                    ret=False
+                elif isinstance(el,(NamedView, Defs, Metadata, ForeignObject, inkex.Guide,
+                              inkex.ClipPath,inkex.StyleElement,
+                              Tspan,inkex.FlowRegion,inkex.FlowPara)) or isMask(el):
+                    ret=False
+            else:
+                ret = False
+            render_dict[el] = ret
+            return ret
+
+    # for d in els:
+    #     if not(isinstance(d, bb2_support) or not(isrendered(d))):
+    #         dh.idebug((d.typename,d.tag,d.get_id2()))
+    
+    if all([isinstance(d, bb2_support) or not(isrendered(d)) for d in els]):
+        if forceupdate:
+            if hasattr(slf.svg, '_char_table'):
+                delattr(slf.svg,'_char_table')
+            for d in els:
+                d.cbbox = None
+        if any([isinstance(d, (inkex.TextElement,)) for d in els]):
+            import TextParser
+            slf.svg.make_char_table(els=els)
+        ret = dict()
+        for d in els:
+            if isinstance(d, bb2_support) and isrendered(d):
+                mbbox = d.cbbox;
+                if mbbox is not None:
+                    ret[d.get_id2()] = mbbox.sbb
+    else:
+        ret = Get_Bounding_Boxes(slf, forceupdate)
+        # dh.idebug('fallback')
+    return ret
+
+def Check_BB2(slf):
+    bb2 = BB2(slf)
+    
+    HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
+    for el in descendants2(slf.svg):
+        if el.get_id2() in bb2:
+            bb = bbox(bb2[el.get_id2()])*(1/el.croot.cscale);
+            r = inkex.Rectangle()
+            r.set('mysource',el.get_id2())
+            r.set('x',bb.x1)
+            r.set('y',bb.y1)
+            r.set('height',bb.h)
+            r.set('width', bb.w)
+            r.set("style", HIGHLIGHT_STYLE)
+            el.croot.append(r)
+
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
 def Get_Bounding_Boxes(
     s=None, getnew=False, filename=None, pxinuu=None, inkscape_binary=None,extra_args = []
@@ -1544,85 +1756,6 @@ def global_transform(el, trnsfrm, irange=None, trange=None):
         # fix dash
 
 
-# Modified from Inkex's get_path
-# Correctly calculates path for rectangles and ellipses
-def get_path2(el):
-    class MiniRect:  # mostly from inkex.elements._polygons
-        def __init__(self, el):
-            self.left = implicitpx(el.get("x", "0"))
-            self.top = implicitpx(el.get("y", "0"))
-            self.width = implicitpx(el.get("width", "0"))
-            self.height = implicitpx(el.get("height", "0"))
-            self.rx = implicitpx(el.get("rx", el.get("ry", "0")))
-            self.ry = implicitpx(el.get("ry", el.get("rx", "0")))
-            self.right = self.left + self.width
-            self.bottom = self.top + self.height
-
-        def get_path(self):
-            """Calculate the path as the box around the rect"""
-            if self.rx:
-                rx, ry = self.rx, self.ry  # pylint: disable=invalid-name
-                return (
-                    "M {1},{0.top}"
-                    "L {2},{0.top}    A {0.rx},{0.ry} 0 0 1 {0.right},{3}"
-                    "L {0.right},{4}  A {0.rx},{0.ry} 0 0 1 {2},{0.bottom}"
-                    "L {1},{0.bottom} A {0.rx},{0.ry} 0 0 1 {0.left},{4}"
-                    "L {0.left},{3}   A {0.rx},{0.ry} 0 0 1 {1},{0.top} z".format(
-                        self,
-                        self.left + rx,
-                        self.right - rx,
-                        self.top + ry,
-                        self.bottom - ry,
-                    )
-                )
-            return "M {0.left},{0.top} h {0.width} v {0.height} h {1} z".format(
-                self, -self.width
-            )
-
-    class MiniEllipse:  # mostly from inkex.elements._polygons
-        def __init__(self, el):
-            self.cx = implicitpx(el.get("cx", "0"))
-            self.cy = implicitpx(el.get("cy", "0"))
-            if isinstance(el, (inkex.Ellipse)):  # ellipse
-                self.rx = implicitpx(el.get("rx", "0"))
-                self.ry = implicitpx(el.get("ry", "0"))
-            else:  # circle
-                self.rx = implicitpx(el.get("r", "0"))
-                self.ry = implicitpx(el.get("r", "0"))
-
-        def get_path(self):
-            return (
-                "M {cx},{y} "
-                "a {rx},{ry} 0 1 0 {rx}, {ry} "
-                "a {rx},{ry} 0 0 0 -{rx}, -{ry} z"
-            ).format(cx=self.cx, y=self.cy - self.ry, rx=self.rx, ry=self.ry)
-
-    if isinstance(el, (inkex.Rectangle)):
-        pth = MiniRect(el).get_path()
-    elif isinstance(el, (inkex.Circle, inkex.Ellipse)):
-        pth = MiniEllipse(el).get_path()
-    else:
-        pth = el.get_path()
-    return pth
-
-
-otp_support = (
-    inkex.Rectangle,
-    inkex.Ellipse,
-    inkex.Circle,
-    inkex.Polygon,
-    inkex.Polyline,
-    inkex.Line,
-    inkex.PathElement,
-)
-flow_types = (inkex.FlowRoot,inkex.FlowPara,inkex.FlowRegion,inkex.FlowSpan,)
-
-
-def object_to_path(el):
-    if not (isinstance(el, (inkex.PathElement, inkex.TextElement))):
-        pth = get_path2(el)
-        el.tag = "{http://www.w3.org/2000/svg}path"
-        el.set("d", str(pth))
 
 
 # Delete and prune empty ancestor groups

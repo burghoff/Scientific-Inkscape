@@ -147,130 +147,6 @@ def SclTransform(x,y):
     return Transform("scale(" + str(x) + ", " + str(y) + ")")
 
 
-# Alternate bbox function that requires no command call
-# Uses extents for text, includes stroke width for paths
-def bounding_box2(el,dotransform=True,includestroke=True):
-    if not(hasattr(el,'_cbbox')):
-        el._cbbox = dict()
-        
-    if (dotransform,includestroke) not in el._cbbox:
-        ret = None
-        if isinstance(el, (TextElement)):
-            ret = el.parsed_text.get_full_extent();
-        elif isinstance(el, dh.otp_support):
-            pth = dh.get_path2(el)
-            if len(pth)>0:
-                bb = Path(pth).to_absolute().bounding_box()
-                
-                sw = dh.implicitpx(el.cspecified_style.get('stroke-width','0px'))
-                if el.cspecified_style.get('stroke') is None or not(includestroke):
-                    sw = 0;
-                ret = dh.bbox([bb.left-sw/2, bb.top-sw/2,
-                               bb.width+sw,bb.height+sw])
-        elif isinstance(el,(SvgDocumentElement,Group,inkex.Layer,inkex.ClipPath)) or dh.isMask(el):
-            ret = bbox(None)
-            for d in list(el):
-                dbb = bounding_box2(d,dotransform=False,includestroke=includestroke);
-                if dbb is not None:
-                    ret = ret.union(dbb.transform(d.ctransform))
-            if ret.isnull:
-                ret = None
-        elif isinstance(el,(inkex.Image)):
-            ret = bbox([dh.implicitpx(el.get(v, "0")) for v in ['x',"y","width","height"]]);
-        elif isinstance(el,(inkex.Use,)):
-            lel = el.get_link('xlink:href');
-            
-            if lel is not None:
-                ret = bounding_box2(lel,dotransform=False)
-                ret = ret.transform(lel.ctransform) # clones have the transform of the link, but not anything above
-    
-        if ret is not None:
-            for cm in ['clip-path','mask']:
-                clip = el.get_link(cm)
-                if clip is not None:
-                   cbb = bounding_box2(clip,dotransform=False,includestroke=False)
-                   if cbb is not None:
-                       ret = ret.intersection(cbb)
-                   else:
-                       ret = None     
-                
-            if dotransform:
-                dscl = 1;
-                if el.croot is not None:
-                    dscl = el.croot.cscale
-                if ret is not None:
-                    ret = ret.transform(el.ccomposed_transform)*dscl
-        el._cbbox[(dotransform,includestroke)] = ret
-    return el._cbbox[(dotransform,includestroke)]
-bb2_support = (TextElement,Image,inkex.Use,
-               SvgDocumentElement,inkex.Group,inkex.Layer) + dh.otp_support
-
-def set_cbbox(el,val):
-    if val is None and hasattr(el,'_cbbox'):
-        delattr(el,'_cbbox')
-inkex.BaseElement.cbbox = property(bounding_box2,set_cbbox)
-inkex.SvgDocumentElement.cbbox = property(bounding_box2,set_cbbox)
-
-def BB2(slf,els=None):
-    if els is None:
-        els = dh.descendants2(slf.svg);
-    
-    render_dict = dict();
-    def isrendered(el):
-        if el in render_dict:
-            return render_dict[el]
-        else:
-            myp = el.getparent();
-            ret = True
-            if myp is None or isrendered(myp):
-                if el.tag in ['{http://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF',
-                                  '{http://creativecommons.org/ns#}Work',
-                                  '{http://purl.org/dc/elements/1.1/}format',
-                                  '{http://purl.org/dc/elements/1.1/}type']:
-                    ret=False
-                elif isinstance(el,(NamedView, Defs, Metadata, ForeignObject, inkex.Guide,
-                              inkex.ClipPath,inkex.StyleElement,
-                              Tspan,inkex.FlowRegion,inkex.FlowPara)) or dh.isMask(el):
-                    ret=False
-            else:
-                ret = False
-            render_dict[el] = ret
-            return ret
-
-    # for d in els:
-    #     if not(isinstance(d, bb2_support) or not(isrendered(d))):
-    #         dh.idebug((d.typename,d.tag,d.get_id2()))
-    
-    if all([isinstance(d, bb2_support) or not(isrendered(d)) for d in els]):
-        if any([isinstance(d, (TextElement,)) for d in els]):
-            import TextParser
-            slf.svg.make_char_table(els=els)
-        ret = dict()
-        for d in els:
-            if isinstance(d, bb2_support) and isrendered(d):
-                mbbox = d.cbbox;
-                if mbbox is not None:
-                    ret[d.get_id2()] = mbbox.sbb
-    else:
-        ret = dh.Get_Bounding_Boxes(slf, False)
-    return ret
-
-def Check_BB2(slf):
-    bb2 = BB2(slf)
-    
-    HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
-    for el in dh.descendants2(slf.svg):
-        if el.get_id2() in bb2:
-            bb = dh.bbox(bb2[el.get_id2()])*(1/el.croot.cscale);
-            r = inkex.Rectangle()
-            r.set('mysource',el.get_id2())
-            r.set('x',bb.x1)
-            r.set('y',bb.y1)
-            r.set('height',bb.h)
-            r.set('width', bb.w)
-            r.set("style", HIGHLIGHT_STYLE)
-            el.croot.append(r)
-
 class ScalePlots(inkex.EffectExtension):
     def add_arguments(self, pars):
         pars.add_argument(
@@ -404,7 +280,7 @@ class ScalePlots(inkex.EffectExtension):
 
         # dh.tic()
         # fbbs = dh.Get_Bounding_Boxes(self, False)
-        fbbs = BB2(self,dh.unique([d for el in sel for d in dh.descendants2(el)]))
+        fbbs = dh.BB2(self,dh.unique([d for el in sel for d in dh.descendants2(el)]))
         # dh.toc()
         # full visual bbs
         firstsel = sel[0]

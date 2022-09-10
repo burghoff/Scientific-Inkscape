@@ -141,24 +141,25 @@ class Homogenizer(inkex.EffectExtension):
             if isinstance(el, (TextElement, Tspan, FlowRoot, FlowPara, FlowSpan))
         ]
 
-        def BB2(els,forceupdate):
-            if all([isinstance(d, (TextElement)) for d in els]):
-                import TextParser
-                bbs = dict();
-                if forceupdate and hasattr(self.svg, '_char_table'):
-                    delattr(self.svg,'_char_table')
-                for d in els:
-                    inkbb = d.parsed_text.get_full_extent();
-                    # inkbb = d.parsed_text.get_full_inkbbox();
-                    bbs[d.get_id2()] = inkbb.transform(d.ccomposed_transform).sbb
-            else:
-                bbs = dh.Get_Bounding_Boxes(self, forceupdate)
-                # dh.idebug('here')
-            return bbs
+        # from scale_plots import BB2
+        # def BB2(els,forceupdate):
+        #     if all([isinstance(d, (TextElement)) for d in els]):
+        #         import TextParser
+        #         bbs = dict();
+        #         if forceupdate and hasattr(self.svg, '_char_table'):
+        #             delattr(self.svg,'_char_table')
+        #         for d in els:
+        #             inkbb = d.parsed_text.get_full_extent();
+        #             # inkbb = d.parsed_text.get_full_inkbbox();
+        #             bbs[d.get_id2()] = inkbb.transform(d.ccomposed_transform).sbb
+        #     else:
+        #         bbs = dh.Get_Bounding_Boxes(self, forceupdate)
+        #         # dh.idebug('here')
+        #     return bbs
 
         if setfontfamily or setfontsize or fixtextdistortion:
             tels = [d for d in sel if isinstance(d, (TextElement, FlowRoot))]
-            bbs = BB2(tels,False)
+            bbs = dh.BB2(self,tels,False)
             # bbs = dh.Get_Bounding_Boxes(self)
 
         
@@ -254,7 +255,7 @@ class Homogenizer(inkex.EffectExtension):
 
         
         if setfontfamily or setfontsize or fixtextdistortion:
-            bbs2 = BB2(tels,True)
+            bbs2 = dh.BB2(self,tels,True)
             # bbs2 = dh.Get_Bounding_Boxes(self,True)
             for el in sel:
                 myid = el.get_id()
