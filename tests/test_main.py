@@ -18,7 +18,7 @@ version = '1.2.1'
 lprofile = False
 
 testflattentext,testflattenrest,testflattenpapers,testscalecorrection,testscalecorrection2,\
-testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer, testae = (False,)*12
+testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae = (False,)*13
 
 testflattentext     = True;
 testflattenrest     = True; 
@@ -31,6 +31,7 @@ testghoster         = True;
 testcbc             = True;
 testfm              = True;
 testhomogenizer     = True;
+testhomogenizer2    = True;
 testae              = True;
 
 # import importlib.util
@@ -260,7 +261,18 @@ if testhomogenizer:
             ("--id=layer1","--fontsize=7","--setfontsize=True","--fixtextdistortion=True","--fontmodes=2", \
               "--setfontfamily=True","--fontfamily=Avenir",\
               "--setstroke=True","--setstrokew=0.75","--strokemodes=2","--fusetransforms=True")
-        ]     
+        ]
+
+if testhomogenizer2:
+    class TestHomogenizer2(ComparisonMixin, TestCase):
+        effect_class = Homogenizer
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
+        compare_file = ['svg/'+fname2]
+        comparisons = [
+            ("--id=layer1","--fontsize=7","--setfontsize=True","--fixtextdistortion=True","--fontmodes=2", \
+              "--setfontfamily=True","--fontfamily=Avenir",\
+              "--setstroke=True","--setstrokew=0.75","--strokemodes=2","--fusetransforms=True")
+        ] 
 
 if testae:
     class TestAutoExporter(ComparisonMixin, TestCase):

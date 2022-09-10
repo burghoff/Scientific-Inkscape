@@ -2002,21 +2002,21 @@ ivp = vparse(inkex_version)
 
 # Cached version-specific document scale
 def get_cscale(svg):
-    if not (hasattr(svg, "_cscale")):
-        if ivp[0] <= 1 and ivp[1] < 2:  # pre-1.2: return scale
-            svg._cscale = svg.scale
-        else:  # post-1.2: return old scale
-            vb = svg.get_viewbox2()
-            scale_x = float(
-                svg.unittouu(svg.get("width")) or vb[2]
-            ) / float(vb[2])
-            scale_y = float(
-                svg.unittouu(svg.get("height")) or vb[3]
-            ) / float(vb[3])
-            svg._cscale = max([scale_x, scale_y])
-            # idebug([scale_x, scale_y])
-            # idebug([svg.unittouu(svg.get("width")),vb[2],svg.unit])
-    return svg._cscale
+    # if not (hasattr(svg, "_cscale")):
+    #     if ivp[0] <= 1 and ivp[1] < 2:  # pre-1.2: return scale
+    #         svg._cscale = svg.scale
+    #     else:  # post-1.2: return old scale
+    #         vb = svg.get_viewbox2()
+    #         scale_x = float(
+    #             svg.unittouu(svg.get("width")) or vb[2]
+    #         ) / float(vb[2])
+    #         scale_y = float(
+    #             svg.unittouu(svg.get("height")) or vb[3]
+    #         ) / float(vb[3])
+    #         svg._cscale = max([scale_x, scale_y])
+    #         # idebug([scale_x, scale_y])
+    #         # idebug([svg.unittouu(svg.get("width")),vb[2],svg.unit])
+    return 1;#svg._cscale  # removed scale on 2022.09.10 (fully remove later)
 inkex.SvgDocumentElement.cscale = property(get_cscale)
 
 # Returns effective viewbox of all documents
@@ -2036,6 +2036,20 @@ def get_viewbox2_fcn(svg):
              vb[3]*pxperuu_y/pxperuu]
     return effvb
 inkex.SvgDocumentElement.get_viewbox2 = get_viewbox2_fcn
+
+# Conversion between pixels and user units for a document
+def cpxperuu_fcn(svg):
+    if not(hasattr(svg, "_cpxperuu")):
+        vb = svg.get_viewbox2();
+        svg._cpxperuu = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
+        # vb function ensures uniform scaling
+    return svg._cpxperuu
+inkex.SvgDocumentElement.cpxperuu = property(cpxperuu_fcn)
+
+# The original unittouu function did not properly convert to uu when a scale is applied. 
+def unittouu2(svg,x):
+    return inkex.units.convert_unit(x,'px')/svg.cpxperuu
+inkex.SvgDocumentElement.unittouu2 = unittouu2
 
 # Gets the absolute size of a uu in pixels
 # Also returns the unit the document width & height are specified in

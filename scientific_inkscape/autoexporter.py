@@ -699,9 +699,6 @@ class AutoExporter(inkex.EffectExtension):
             vds = dh.visible_descendants(svg);
             els = [el for el in vds if el.get_id2() in list(set(raster_ids+image_ids))]
             if len(els) > 0:
-                # bbs = dh.Get_Bounding_Boxes(
-                #     filename=fin, pxinuu=svg.unittouu("1px"), inkscape_binary=bfn
-                # )
                 imgtype = "png"
                 acts = []
                 acts2 = []
