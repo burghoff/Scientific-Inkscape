@@ -1386,16 +1386,20 @@ def Get_Bounding_Boxes(
     else:         svg = s.svg;
     vb = svg.get_viewbox2();
         
-    pxperuu_x = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
-    pxperuu_y = float(inkex.units.convert_unit(svg.get('height'), 'px')  or vb[3]) / float(vb[3])
-    pxperuu = min(pxperuu_x,pxperuu_y)
-    effvb = [vb[0]+vb[2]/2*(1-pxperuu_x/pxperuu),
-             vb[1]+vb[3]/2*(1-pxperuu_y/pxperuu),
-             vb[2]*pxperuu_x/pxperuu,
-             vb[3]*pxperuu_y/pxperuu] # bad scaling stretches viewbox
+    # pxperuu_x = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
+    # pxperuu_y = float(inkex.units.convert_unit(svg.get('height'), 'px')  or vb[3]) / float(vb[3])
+    # pxperuu = min(pxperuu_x,pxperuu_y)
+    # idebug((pxperuu_x,pxperuu_y))
+    # effvb = [vb[0]+vb[2]/2*(1-pxperuu_x/pxperuu),
+    #          vb[1]+vb[3]/2*(1-pxperuu_y/pxperuu),
+    #          vb[2]*pxperuu_x/pxperuu,
+    #          vb[3]*pxperuu_y/pxperuu] # bad scaling stretches viewbox
+    
+    # Viewbox function now automatically corrects non-uniform scale
+    pxperuu = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
     
     for k in bbs:
-        bbs[k] = [bbs[k][0]/pxperuu+effvb[0],bbs[k][1]/pxperuu+effvb[1],
+        bbs[k] = [bbs[k][0]/pxperuu+vb[0],bbs[k][1]/pxperuu+vb[1],
                   bbs[k][2]/pxperuu,         bbs[k][3]/pxperuu]
         
         bbs[k] = [bbs[k][0]*svg.cscale,bbs[k][1]*svg.cscale,
@@ -2010,16 +2014,27 @@ def get_cscale(svg):
                 svg.unittouu(svg.get("height")) or vb[3]
             ) / float(vb[3])
             svg._cscale = max([scale_x, scale_y])
+            # idebug([scale_x, scale_y])
             # idebug([svg.unittouu(svg.get("width")),vb[2],svg.unit])
     return svg._cscale
 inkex.SvgDocumentElement.cscale = property(get_cscale)
 
-# Returns viewboxes for old docs that don't have one
+# Returns effective viewbox of all documents
 def get_viewbox2_fcn(svg):
     vb = svg.get_viewbox()
     if vb == [0, 0, 0, 0]: 
         vb = [0, 0, implicitpx(svg.get("width")), implicitpx(svg.get("height"))]
-    return vb
+        
+    # When a document has non-uniform scaling, Inkscape automatically stretches
+    # the viewbox to make it uniform
+    pxperuu_x = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
+    pxperuu_y = float(inkex.units.convert_unit(svg.get('height'), 'px')  or vb[3]) / float(vb[3])
+    pxperuu = min(pxperuu_x,pxperuu_y)
+    effvb = [vb[0]+vb[2]/2*(1-pxperuu_x/pxperuu),
+             vb[1]+vb[3]/2*(1-pxperuu_y/pxperuu),
+             vb[2]*pxperuu_x/pxperuu,
+             vb[3]*pxperuu_y/pxperuu]
+    return effvb
 inkex.SvgDocumentElement.get_viewbox2 = get_viewbox2_fcn
 
 # Gets the absolute size of a uu in pixels

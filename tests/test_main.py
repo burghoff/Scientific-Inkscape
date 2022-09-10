@@ -17,8 +17,8 @@ aeargs = ("--testmode=True",)
 version = '1.2.1'
 lprofile = False
 
-testflattentext,testflattenrest,testflattenpapers,testscalecorrection,\
-testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer, testae = (False,)*11
+testflattentext,testflattenrest,testflattenpapers,testscalecorrection,testscalecorrection2,\
+testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer, testae = (False,)*12
 
 testflattentext     = True;
 testflattenrest     = True; 
@@ -124,6 +124,7 @@ class CompareTransforms(Compare):
         ret = Make_Replacements(contents,repl)
         
         ret = re.sub(rb"scale\(0 0\)", rb"scale(0)", ret)
+        ret = re.sub(rb'transform="translate\(0 0\)"', rb"", ret)
         return ret
     
     
