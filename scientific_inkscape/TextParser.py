@@ -2382,7 +2382,7 @@ class Character_Table:
         cnt = 0
         if not(usepango):
             # A new document is generated instead of using the existing one. We don't have to parse an entire element tree
-            pxinuu = inkex.units.convert_unit("1px", "mm")
+            # pxinuu = inkex.units.convert_unit("1px", "mm")
             # test document has uu = 1 mm (210 mm / 210)
             svgstart = '<svg width="210mm" height="297mm" viewBox="0 0 210 297" id="svg60386" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"> <defs id="defs60383" /> <g id="layer1">'
             svgstop = "</g> </svg>"
@@ -2449,7 +2449,8 @@ class Character_Table:
         if not(usepango):
             f.write((svgtexts + svgstop).encode("utf8"))
             f.close()
-            nbb = dh.Get_Bounding_Boxes(filename=tmpname, pxinuu=pxinuu)
+            nbb = dh.Get_Bounding_Boxes(filename=tmpname)
+            # nbb = dh.Get_Bounding_Boxes(filename=tmpname, pxinuu=pxinuu)
             import os
             os.remove(tmpname)
         else:

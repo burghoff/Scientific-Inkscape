@@ -1266,11 +1266,8 @@ def bounding_box2(el,dotransform=True,includestroke=True):
                        ret = None     
                 
             if dotransform:
-                dscl = 1;
-                if el.croot is not None:
-                    dscl = el.croot.cscale
                 if ret is not None:
-                    ret = ret.transform(el.ccomposed_transform)*dscl
+                    ret = ret.transform(el.ccomposed_transform)
         el._cbbox[(dotransform,includestroke)] = ret
     return el._cbbox[(dotransform,includestroke)]
 bb2_support = (inkex.TextElement,inkex.Image,inkex.Use,
@@ -1326,7 +1323,7 @@ def BB2(slf,els=None,forceupdate=False):
             if isinstance(d, bb2_support) and isrendered(d):
                 mbbox = d.cbbox;
                 if mbbox is not None:
-                    ret[d.get_id2()] = mbbox.sbb
+                    ret[d.get_id2()] = (mbbox*slf.svg.cscale).sbb
     else:
         ret = Get_Bounding_Boxes(slf, forceupdate)
         # dh.idebug('fallback')
@@ -1338,7 +1335,7 @@ def Check_BB2(slf):
     HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
     for el in descendants2(slf.svg):
         if el.get_id2() in bb2:
-            bb = bbox(bb2[el.get_id2()])*(1/el.croot.cscale);
+            bb = bbox(bb2[el.get_id2()])*(1/slf.svg.cscale);
             r = inkex.Rectangle()
             r.set('mysource',el.get_id2())
             r.set('x',bb.x1)
@@ -1350,15 +1347,15 @@ def Check_BB2(slf):
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
 def Get_Bounding_Boxes(
-    s=None, getnew=False, filename=None, pxinuu=None, inkscape_binary=None,extra_args = []
+    s=None, getnew=False, filename=None, inkscape_binary=None,extra_args = []
 ):
     # Gets all of a document's bounding boxes (by ID), in user units
     # Note that this uses a command line call, so by default it will only get the values from BEFORE the extension is called
-    # Set getnew to True to make a temporary copy of the file that is then read.
+    # Set getnew to True to make a temporary copy of the file
     if filename is None:
         filename = s.options.input_file
-    if pxinuu is None:
-        pxinuu = s.svg.unittouu("1px")
+    # if pxinuu is None:
+    # pxinuu = s.svg.unittouu("1px")
 
     # Query Inkscape
     if not (getnew):
@@ -1367,10 +1364,9 @@ def Get_Bounding_Boxes(
         tmpname = filename + "_tmp"
         command.write_svg(s.svg, tmpname)
         tFStR = commandqueryall(tmpname, inkscape_binary=inkscape_binary,extra_args=extra_args)
-        import os
-
         os.remove(tmpname)
-
+        
+    
     # Parse the output
     tBBLi = tFStR.splitlines()
     bbs = dict()
@@ -1381,17 +1377,29 @@ def Get_Bounding_Boxes(
         if str(d)[2:52] == "WARNING: Requested update while update in progress":
             continue
             # skip warnings (version 1.0 only?)
-        data = [float(x.strip("'")) * pxinuu for x in str(d).split(",")[1:]]
+        data = [float(x.strip("'")) for x in str(d).split(",")[1:]]
         bbs[key] = data
     
-    # Inkscape reports a relative bounding box.
-    # The true bounding box is independent of viewbox x and y
+    # Inkscape always reports a bounding box in pixels, relative to the viewbox
+    # Convert to user units for the output
     if s is None: svg = svg_from_file(filename);
     else:         svg = s.svg;
     vb = svg.get_viewbox2();
+        
+    pxperuu_x = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
+    pxperuu_y = float(inkex.units.convert_unit(svg.get('height'), 'px')  or vb[3]) / float(vb[3])
+    pxperuu = min(pxperuu_x,pxperuu_y)
+    effvb = [vb[0]+vb[2]/2*(1-pxperuu_x/pxperuu),
+             vb[1]+vb[3]/2*(1-pxperuu_y/pxperuu),
+             vb[2]*pxperuu_x/pxperuu,
+             vb[3]*pxperuu_y/pxperuu] # bad scaling stretches viewbox
+    
     for k in bbs:
-        bbs[k][0] += vb[0]*svg.cscale
-        bbs[k][1] += vb[1]*svg.cscale
+        bbs[k] = [bbs[k][0]/pxperuu+effvb[0],bbs[k][1]/pxperuu+effvb[1],
+                  bbs[k][2]/pxperuu,         bbs[k][3]/pxperuu]
+        
+        bbs[k] = [bbs[k][0]*svg.cscale,bbs[k][1]*svg.cscale,
+                  bbs[k][2]*svg.cscale,bbs[k][3]*svg.cscale]
         
     return bbs
 

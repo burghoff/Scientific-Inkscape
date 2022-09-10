@@ -2,6 +2,7 @@
 
 STORE_REFS = False
 fname = 'Other_tests.svg'
+fname2 = 'Other_tests_nonuniform.svg'
 aename = 'Autoexporter_tests.svg'
 
 MAXPAPERS = 0
@@ -23,6 +24,7 @@ testflattentext     = True;
 testflattenrest     = True; 
 testflattenpapers   = True; 
 testscalecorrection = True;
+testscalecorrection2= True;
 testscalematching   = True;
 testscalefixed      = True;
 testghoster         = True;
@@ -194,6 +196,14 @@ if testscalecorrection:
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=g5224","--tab=correction")
+        ]
+if testscalecorrection2:
+    class TestScaleCorrection2(ComparisonMixin, TestCase):  
+        effect_class = ScalePlots
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
+        compare_file = ['svg/'+fname2]
+        comparisons = [
+            ("--id=g109153","--id=g109019","--tab=correction")
         ]
 
 if testscalematching:
