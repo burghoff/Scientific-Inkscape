@@ -426,9 +426,12 @@ def External_Merges(els, mergenearby, mergesupersub):
             # dh.idebug([w.fs,w2.fs])
             # dh.idebug([br1.y+ytol>=bl2.y>=tr1.y-ytol,mergesupersub])
             if abs(bl2.y - br1.y) < ytol and abs(w.fs - w2.fs) < 0.001 and mergenearby:
-                if not (isnumeric(w.ln.txt())) or not (
-                    isnumeric(w2.ln.txt(), True)
-                ):  # or w.ln.pt.inittextel==w2.ln.pt.inittextel: # don't merge two numbers (may be ticks)
+                if isnumeric(w.ln.txt()) and isnumeric(w2.ln.txt(), True):
+                    numsp = (bl2.x-br1.x)/(w.sw / w.sf);
+                    if abs(numsp)<0.25:
+                        # only merge numbers if very close (could be x ticks)
+                        type='same'
+                else:
                     type = "same"
                 # dh.debug(w.txt()+' '+w2.txt())
             elif (
