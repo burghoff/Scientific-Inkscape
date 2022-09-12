@@ -315,7 +315,7 @@ class ScalePlots(inkex.EffectExtension):
                         + numgroup
                         + " selected plot (group ID "
                         + sel[i0].get_id2()
-                        + ").\n\nDraw an outlined box to define the plot area."
+                        + ").\n\nDraw a box with a stroke to define the plot area."
                         + "\nScaling will still be performed, but the results may not be ideal."
                     )
             else:

@@ -29,7 +29,8 @@
 
                  
             <label appearance="header">Stroke options</label>
-            <param name="fusetransforms"  type="bool" gui-text="Correct distorted paths (fuse transforms)?">true</param>    
+            <param name="fusetransforms"  type="bool" gui-text="Correct distorted paths?"
+             gui-description="Fuses transforms to paths, ensuring stroke width is constant">true</param>    
             <param name="setstroke"  type="bool" gui-text="Set stroke width?">true</param>        
             <param name="strokemodes" type="optiongroup" appearance="combo"
                     gui-text="Stroke width options:">

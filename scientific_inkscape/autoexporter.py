@@ -1137,10 +1137,11 @@ class AutoExporter(inkex.EffectExtension):
         g.set("mask", None)       # conversion to bitmap already includes masks
 
         # Calculate what transform is needed to preserve the image's location
-        ct = (
-            Transform("scale(" + str((svg.cscale)) + ")")
-            @ el.ccomposed_transform
-        )
+        # ct = (
+        #     Transform("scale(" + str((svg.cscale)) + ")")
+        #     @ el.ccomposed_transform
+        # )
+        ct = el.ccomposed_transform
         # bb = bbs[el.get_id()]
         pbb = [
             Vector2d(bb[0], bb[1]),

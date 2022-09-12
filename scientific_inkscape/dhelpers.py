@@ -397,8 +397,8 @@ def Get_Composed_Width(el, comp, nargout=1):
         ang = math.atan2(ct.c, ct.d) * 180 / math.pi
     svg = el.croot
     docscale = 1
-    if svg is not None:
-        docscale = svg.cscale
+    # if svg is not None:
+    #     docscale = svg.cscale
     sc = cs.get(comp)
 
     # Get default attribute if empty
@@ -479,8 +479,8 @@ def Get_Composed_List(el, comp, nargout=1):
     sc = cs.get(comp)
     svg = el.croot
     docscale = 1
-    if svg is not None:
-        docscale = svg.cscale
+    # if svg is not None:
+    #     docscale = svg.cscale
     if sc == "none":
         return "none"
     elif sc is not None:
@@ -596,8 +596,8 @@ def get_points(el, irange=None):
 
     mysvg = el.croot
     docscale = 1
-    if mysvg is not None:
-        docscale = mysvg.cscale
+    # if mysvg is not None:
+    #     docscale = mysvg.cscale
 
     xs = []
     ys = []
@@ -1323,7 +1323,8 @@ def BB2(slf,els=None,forceupdate=False):
             if isinstance(d, bb2_support) and isrendered(d):
                 mbbox = d.cbbox;
                 if mbbox is not None:
-                    ret[d.get_id2()] = (mbbox*slf.svg.cscale).sbb
+                    ret[d.get_id2()] = mbbox.sbb
+                    # ret[d.get_id2()] = (mbbox*slf.svg.cscale).sbb
     else:
         ret = Get_Bounding_Boxes(slf, forceupdate)
         # dh.idebug('fallback')
@@ -1335,7 +1336,8 @@ def Check_BB2(slf):
     HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
     for el in descendants2(slf.svg):
         if el.get_id2() in bb2:
-            bb = bbox(bb2[el.get_id2()])*(1/slf.svg.cscale);
+            bb = bbox(bb2[el.get_id2()]);
+            # bb = bbox(bb2[el.get_id2()])*(1/slf.svg.cscale);
             r = inkex.Rectangle()
             r.set('mysource',el.get_id2())
             r.set('x',bb.x1)
@@ -1402,8 +1404,8 @@ def Get_Bounding_Boxes(
         bbs[k] = [bbs[k][0]/pxperuu+vb[0],bbs[k][1]/pxperuu+vb[1],
                   bbs[k][2]/pxperuu,         bbs[k][3]/pxperuu]
         
-        bbs[k] = [bbs[k][0]*svg.cscale,bbs[k][1]*svg.cscale,
-                  bbs[k][2]*svg.cscale,bbs[k][3]*svg.cscale]
+        # bbs[k] = [bbs[k][0]*svg.cscale,bbs[k][1]*svg.cscale,
+        #           bbs[k][2]*svg.cscale,bbs[k][3]*svg.cscale]
         
     return bbs
 
@@ -1735,7 +1737,7 @@ def global_transform(el, trnsfrm, irange=None, trange=None):
         prt = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
     else:
         prt = myp.ccomposed_transform
-    prt = Transform("scale(" + str((el.croot.cscale)) + ")") @ prt
+    # prt = Transform("scale(" + str((el.croot.cscale)) + ")") @ prt
     # also include document scaling
 
     myt = el.ctransform
@@ -2001,7 +2003,7 @@ ivp = vparse(inkex_version)
 # return ret
 
 # Cached version-specific document scale
-def get_cscale(svg):
+# def get_cscale(svg):
     # if not (hasattr(svg, "_cscale")):
     #     if ivp[0] <= 1 and ivp[1] < 2:  # pre-1.2: return scale
     #         svg._cscale = svg.scale
@@ -2016,8 +2018,8 @@ def get_cscale(svg):
     #         svg._cscale = max([scale_x, scale_y])
     #         # idebug([scale_x, scale_y])
     #         # idebug([svg.unittouu(svg.get("width")),vb[2],svg.unit])
-    return 1;#svg._cscale  # removed scale on 2022.09.10 (fully remove later)
-inkex.SvgDocumentElement.cscale = property(get_cscale)
+    # return 1;#svg._cscale  # removed scale on 2022.09.10 (fully remove later)
+# inkex.SvgDocumentElement.cscale = property(get_cscale)
 
 # Returns effective viewbox of all documents
 def get_viewbox2_fcn(svg):

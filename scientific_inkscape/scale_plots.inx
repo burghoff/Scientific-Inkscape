@@ -57,7 +57,7 @@
             
             <label appearance="header">Note</label>
             <label>It is important that you scale the plot after grouping it, because the extension infers the scale from the group's properties. In addition, when scaling the default scale options should be selected, as shown below:</label>
-            <image>../examples/scale_options.png</image>
+            <image>pngs/scale_options.png</image>
             <label>Otherwise, the final stroke widths may change.</label>
             <spacer/><param name="wholeplot3" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
