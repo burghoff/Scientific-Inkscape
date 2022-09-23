@@ -496,8 +496,4 @@ class FavoriteMarkers(inkex.EffectExtension):
 
 
 if __name__ == "__main__":
-    dh.Version_Check("Favorite markers")
-    import warnings
-
-    warnings.filterwarnings("ignore")
-    FavoriteMarkers().run()
+    dh.Run_SI_Extension(FavoriteMarkers(),"Favorite markers")

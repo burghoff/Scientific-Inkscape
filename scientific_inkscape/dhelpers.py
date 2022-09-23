@@ -2124,6 +2124,37 @@ def isMask(el):
     else:
         return isinstance(el, (inkex.Mask))
 
+def Run_SI_Extension(effext,name):
+    Version_Check(name)
+    try:
+        effext.run()
+    except lxml.etree.XMLSyntaxError:
+        try:
+            s = effext;
+            s.parse_arguments(sys.argv[1:])
+            if s.options.input_file is None:
+                s.options.input_file = sys.stdin
+            elif "DOCUMENT_PATH" not in os.environ:
+                os.environ["DOCUMENT_PATH"] = s.options.input_file
+            
+            
+            def overwrite_output(filein,fileout):      
+                try:
+                    os.remove(fileout)
+                except:
+                    pass
+                arg2 = [Get_Binary_Loc(),"--export-filename",fileout,filein,]
+                subprocess_repeat(arg2)
+            tmpname=s.options.input_file.strip('.svg')+'_tmp.svg'
+            overwrite_output(s.options.input_file,tmpname);
+            os.remove(s.options.input_file)
+            os.rename(tmpname,s.options.input_file)
+            s.run()
+        except:
+            inkex.utils.errormsg(
+                "Error reading file! Extensions can only run on SVG files.\n\nIf this is a file imported from another format, try saving as an SVG and restarting Inkscape. Alternatively, try pasting the contents into a new document."
+            )
+    write_debug()
 
 def vto_xpath(sty):
     if (

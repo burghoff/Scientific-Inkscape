@@ -1270,11 +1270,7 @@ class AutoExporter(inkex.EffectExtension):
 
 
 if __name__ == "__main__":
-    dh.Version_Check("Autoexporter")
-    import warnings
-
-    warnings.filterwarnings("ignore")
-    AutoExporter().run()
+    dh.Run_SI_Extension(AutoExporter(),"Autoexporter")
 
 
 # Scour calling

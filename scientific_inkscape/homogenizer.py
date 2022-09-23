@@ -327,5 +327,4 @@ class Homogenizer(inkex.EffectExtension):
 
 
 if __name__ == "__main__":
-    dh.Version_Check("Homogenizer")
-    Homogenizer().run()
+    dh.Run_SI_Extension(Homogenizer(),"Homogenizer")

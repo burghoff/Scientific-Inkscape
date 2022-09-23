@@ -133,8 +133,4 @@ class TextGhoster(inkex.EffectExtension):
 
 
 if __name__ == "__main__":
-    dh.Version_Check("Text ghoster")
-    import warnings
-
-    warnings.filterwarnings("ignore")
-    TextGhoster().run()
+    dh.Run_SI_Extension(TextGhoster(),"Text ghoster")

@@ -434,11 +434,5 @@ class FlattenPlots(inkex.EffectExtension):
 
 
 if __name__ == "__main__":
-    dh.Version_Check("Flattener")
-    try:
-        s = FlattenPlots().run()
-        dh.write_debug()
-    except lxml.etree.XMLSyntaxError:
-        inkex.utils.errormsg(
-            "Error parsing XML! Extensions can only run on SVG files. If this is a file imported from another format, try saving as an SVG or pasting the contents into a new SVG."
-        )
+    dh.Run_SI_Extension(FlattenPlots(),"Flattener")
+

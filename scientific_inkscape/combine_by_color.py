@@ -142,5 +142,4 @@ class CombineByColor(inkex.EffectExtension):
 
 
 if __name__ == "__main__":
-    dh.Version_Check("Combine by color")
-    CombineByColor().run()
+    dh.Run_SI_Extension(CombineByColor(),"Combine by color")
