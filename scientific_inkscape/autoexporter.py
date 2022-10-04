@@ -270,9 +270,11 @@ class AutoExporter(inkex.EffectExtension):
             optcopy.formats = formats;
             optcopy.syspath = sys.path;
 
-            pickle.dump(
-                optcopy, open(os.path.join(dh.get_script_path(), "ae_settings.p"), "wb")
-            )
+            f = open(os.path.join(dh.get_script_path(), "ae_settings.p"), "wb");
+            pickle.dump(optcopy, f)
+            f.close();
+            import warnings
+            warnings.simplefilter("ignore", ResourceWarning); # prevent warning that process is open
 
             def escp(x):
                 return x.replace(" ", "\\\\ ")
