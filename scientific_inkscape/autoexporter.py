@@ -1041,7 +1041,7 @@ class AutoExporter(inkex.EffectExtension):
         # Sets all font-sizes to 100 px by moving size into transform
         # Office rounds every fonts to the nearest px and then transforms it,
         # so this makes text sizes more accurate
-        from TextParser import LineList, tline      
+        from TextParser import ParsedText, tline      
         svg = el.croot;
         szs = []
         for d in el.descendants2: # all Tspan sizes
@@ -1067,10 +1067,10 @@ class AutoExporter(inkex.EffectExtension):
         g = dh.group([el],moveTCM=True)
         
         for d in reversed(el.descendants2):
-            xv = LineList.GetXY(d,'x')
-            yv = LineList.GetXY(d,'y')
-            dxv = LineList.GetXY(d,'dx')
-            dyv = LineList.GetXY(d,'dy')
+            xv = ParsedText.GetXY(d,'x')
+            yv = ParsedText.GetXY(d,'y')
+            dxv = ParsedText.GetXY(d,'dx')
+            dyv = ParsedText.GetXY(d,'dy')
             
             if xv[0] is not None:  d.set('x',tline.writev([v*s for v in xv]))
             if yv[0] is not None:  d.set('y',tline.writev([v*s for v in yv]))
