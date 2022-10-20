@@ -1237,7 +1237,7 @@ def bounding_box2(el,dotransform=True,includestroke=True):
                 if el.cspecified_style.get('stroke') is None or not(includestroke):
                     sw = 0;
                 ret = bbox([bb.left-sw/2, bb.top-sw/2,
-                               bb.width+sw,bb.height+sw])
+                            bb.width+sw,bb.height+sw])
         elif isinstance(el,(SvgDocumentElement,Group,inkex.Layer,inkex.ClipPath)) or isMask(el):
             ret = bbox(None)
             for d in list(el):
@@ -1268,7 +1268,11 @@ def bounding_box2(el,dotransform=True,includestroke=True):
             if dotransform:
                 if ret is not None:
                     ret = ret.transform(el.ccomposed_transform)
-        el._cbbox[(dotransform,includestroke)] = ret
+                    
+        if ret is not None and ret.isnull:
+            el._cbbox[(dotransform,includestroke)] = None
+        else:
+            el._cbbox[(dotransform,includestroke)] = ret
     return el._cbbox[(dotransform,includestroke)]
 bb2_support = (inkex.TextElement,inkex.Image,inkex.Use,
                SvgDocumentElement,inkex.Group,inkex.Layer) + otp_support
@@ -1321,6 +1325,7 @@ def BB2(slf,els=None,forceupdate=False):
         ret = dict()
         for d in els:
             if isinstance(d, bb2_support) and isrendered(d):
+                # idebug(bounding_box2(d))
                 mbbox = d.cbbox;
                 if mbbox is not None:
                     ret[d.get_id2()] = mbbox.sbb
@@ -1678,18 +1683,21 @@ class bbox:
             self.sbb = [self.x1, self.y1, self.w, self.h]  # standard bbox
 
     def transform(self, xform):
-        tr1 = xform.apply_to_point([self.x1, self.y1])
-        tr2 = xform.apply_to_point([self.x2, self.y2])
-        tr3 = xform.apply_to_point([self.x1, self.y2])
-        tr4 = xform.apply_to_point([self.x2, self.y1])
-        return bbox(
-            [
-                min(tr1[0], tr2[0], tr3[0], tr4[0]),
-                min(tr1[1], tr2[1], tr3[1], tr4[1]),
-                max(tr1[0], tr2[0], tr3[0], tr4[0]) - min(tr1[0], tr2[0], tr3[0], tr4[0]),
-                max(tr1[1], tr2[1], tr3[1], tr4[1]) - min(tr1[1], tr2[1], tr3[1], tr4[1]),
-            ]
-        )
+        if not(self.isnull):
+            tr1 = xform.apply_to_point([self.x1, self.y1])
+            tr2 = xform.apply_to_point([self.x2, self.y2])
+            tr3 = xform.apply_to_point([self.x1, self.y2])
+            tr4 = xform.apply_to_point([self.x2, self.y1])
+            return bbox(
+                [
+                    min(tr1[0], tr2[0], tr3[0], tr4[0]),
+                    min(tr1[1], tr2[1], tr3[1], tr4[1]),
+                    max(tr1[0], tr2[0], tr3[0], tr4[0]) - min(tr1[0], tr2[0], tr3[0], tr4[0]),
+                    max(tr1[1], tr2[1], tr3[1], tr4[1]) - min(tr1[1], tr2[1], tr3[1], tr4[1]),
+                ]
+            )
+        else:
+            return bbox(None)
     
     def intersect(self, bb2):
         return (abs(self.xc - bb2.xc) * 2 < (self.w + bb2.w)) and (
