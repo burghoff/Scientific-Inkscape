@@ -1218,14 +1218,15 @@ def object_to_path(el):
         el.tag = "{http://www.w3.org/2000/svg}path"
         el.set("d", str(pth))
 
-# Alternate bbox function that requires no command call
-# Uses extents for text, includes stroke width for paths
+# Alternate bbox function that requires no command call (uses extents for text)
+# dotransform: whether or not we want the element's bbox or its true transformed bbox
+# includestroke: whether or not to add the stroke to the calculation
 def bounding_box2(el,dotransform=True,includestroke=True):
     if not(hasattr(el,'_cbbox')):
         el._cbbox = dict()
         
     if (dotransform,includestroke) not in el._cbbox:
-        ret = None
+        ret = bbox(None)
         if isinstance(el, (inkex.TextElement)):
             ret = el.parsed_text.get_full_extent();
         elif isinstance(el, otp_support):
@@ -1239,13 +1240,10 @@ def bounding_box2(el,dotransform=True,includestroke=True):
                 ret = bbox([bb.left-sw/2, bb.top-sw/2,
                             bb.width+sw,bb.height+sw])
         elif isinstance(el,(SvgDocumentElement,Group,inkex.Layer,inkex.ClipPath)) or isMask(el):
-            ret = bbox(None)
             for d in list(el):
                 dbb = bounding_box2(d,dotransform=False,includestroke=includestroke);
-                if dbb is not None:
+                if not(dbb.isnull):
                     ret = ret.union(dbb.transform(d.ctransform))
-            if ret.isnull:
-                ret = None
         elif isinstance(el,(inkex.Image)):
             ret = bbox([implicitpx(el.get(v, "0")) for v in ['x',"y","width","height"]]);
         elif isinstance(el,(inkex.Use,)):
@@ -1255,25 +1253,23 @@ def bounding_box2(el,dotransform=True,includestroke=True):
                 ret = bounding_box2(lel,dotransform=False)
                 ret = ret.transform(lel.ctransform) # clones have the transform of the link, but not anything above
     
-        if ret is not None:
+        if not(ret.isnull):
             for cm in ['clip-path','mask']:
                 clip = el.get_link(cm)
                 if clip is not None:
                    cbb = bounding_box2(clip,dotransform=False,includestroke=False)
-                   if cbb is not None:
+                   if not(cbb.isnull):
                        ret = ret.intersection(cbb)
                    else:
-                       ret = None     
+                       ret = bbox(None)
                 
             if dotransform:
-                if ret is not None:
+                if not(ret.isnull):
                     ret = ret.transform(el.ccomposed_transform)
                     
-        if ret is not None and ret.isnull:
-            el._cbbox[(dotransform,includestroke)] = None
-        else:
-            el._cbbox[(dotransform,includestroke)] = ret
+        el._cbbox[(dotransform,includestroke)] = ret
     return el._cbbox[(dotransform,includestroke)]
+
 bb2_support = (inkex.TextElement,inkex.Image,inkex.Use,
                SvgDocumentElement,inkex.Group,inkex.Layer) + otp_support
 
@@ -1327,7 +1323,7 @@ def BB2(slf,els=None,forceupdate=False):
             if isinstance(d, bb2_support) and isrendered(d):
                 # idebug(bounding_box2(d))
                 mbbox = d.cbbox;
-                if mbbox is not None:
+                if not(mbbox.isnull):
                     ret[d.get_id2()] = mbbox.sbb
                     # ret[d.get_id2()] = (mbbox*slf.svg.cscale).sbb
     else:
