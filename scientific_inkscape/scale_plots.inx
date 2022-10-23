@@ -84,9 +84,17 @@
             <label>If tick correction is enabled, any horizontal or vertical lines smaller than the threshold will be corrected for size and position.</label>
             <param name="tickcorrect" type="bool" gui-text="Auto tick correct?">true</param>
             <param name="tickthreshold" type="float" precision="0" min="0" max="100" gui-text="Tick threshold (% plot area)">10</param>
-            <label appearance="header">Scale-free elements</label>
-            <label>A comma-separated list of groups whose elements should not be scaled, identified by layer names or IDs. This is primarily for plots with markers. (IDs can be found using Object Properties.)</label>
-            <param name="layerfix" type="string" gui-text="Scale-free layer">None</param>
+            
+            <label appearance="header">Exclusions</label>            
+            <label>By default, text and groups are excluded from scaling. To mark other objects to be excluded (such as plot markers), select them and run the extension with this tab selected.</label>
+            <param name="marksf" type="optiongroup" appearance="combo"
+                    gui-text="Selected objects should be" 
+                    gui-description="Unscaled: Will not be scaled at all &#13;Scaled with locked aspect ratio: Will be scaled without affecting aspect ratio &#13;Scaled: Will be scaled, even if a text or group &#13;Remove markings: Restore default settings">
+                       <option value="1">Unscaled</option>
+                       <option value="2">Scaled with locked aspect ratio</option>
+                       <option value="3">Scaled</option>
+                       <option value="4">Remove markings</option>
+                    </param>
         </page>
     </param>
     <effect needs-live-preview="false">

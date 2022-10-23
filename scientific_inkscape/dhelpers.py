@@ -396,7 +396,7 @@ def Get_Composed_Width(el, comp, nargout=1):
     if nargout == 4:
         ang = math.atan2(ct.c, ct.d) * 180 / math.pi
     svg = el.croot
-    docscale = 1
+    # docscale = 1
     # if svg is not None:
     #     docscale = svg.cscale
     sc = cs.get(comp)
@@ -423,7 +423,8 @@ def Get_Composed_Width(el, comp, nargout=1):
             sc = {"small": "10px", "medium": "12px", "large": "14px"}.get(sc, sc)
 
         sw = implicitpx(sc)
-        sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c)) * docscale  # scale factor
+        sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))  # scale factor
+        # sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c)) * docscale  # scale factor
         if nargout == 4:
             return sw * sf, sf, ct, ang
         else:
@@ -1024,6 +1025,7 @@ def getElementById2(svg, elid):
         return svg.iddict.get(elid)
     else:
         return None
+inkex.SvgDocumentElement.getElementById2 = getElementById2;
 
 
 def add_to_iddict(el, todel=None):
@@ -1793,11 +1795,11 @@ def combine_paths(els, mergeii=0):
     # start indices
     for el in els:
         pth = Path(el.get_path()).to_absolute().transform(el.ccomposed_transform)
-        if el.get("inkscape-academic-combined-by-color") is None:
+        if el.get("inkscape-scientific-combined-by-color") is None:
             si.append(len(pnew))
         else:
             cbc = el.get(
-                "inkscape-academic-combined-by-color"
+                "inkscape-scientific-combined-by-color"
             )  # take existing ones and weld them
             cbc = [int(v) for v in cbc.split()]
             si += [v + len(pnew) for v in cbc[0:-1]]
@@ -1819,7 +1821,7 @@ def combine_paths(els, mergeii=0):
     fix_css_clipmask(mel, mask=False)  # fix CSS bug
     fix_css_clipmask(mel, mask=True)
 
-    mel.set("inkscape-academic-combined-by-color", " ".join([str(v) for v in si]))
+    mel.set("inkscape-scientific-combined-by-color", " ".join([str(v) for v in si]))
     for s in range(len(els)):
         if s != mergeii:
             deleteup(els[s])

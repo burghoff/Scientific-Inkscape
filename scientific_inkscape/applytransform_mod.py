@@ -40,10 +40,9 @@ class ApplyTransform(inkex.EffectExtension):
         if node.tag == inkex.addNS("path", "svg") or node.tag == "path":
             for attName in node.attrib.keys():
                 if (
-                    ("sodipodi" in attName)
-                    or ("inkscape" in attName)
-                    and attName != "inkscape-academic-combined-by-color"
-                ):
+                    (("sodipodi" in attName)
+                    or ("inkscape" in attName))
+                    and 'inkscape-academic' not in attName and 'inkscape-scientific' not in attName):
                     del node.attrib[attName]
             return node
         return node

@@ -177,6 +177,10 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument(
             "--matchto", type=int, default=1, help="Match to?"
         )
+        
+        pars.add_argument(
+            "--marksf", type=int, default=1, help="Mark objects as"
+        )
 
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
         pars.add_argument(
@@ -185,12 +189,12 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument(
             "--tickthreshold", type=int, default=10, help="Tick threshold"
         )
-        pars.add_argument(
-            "--layerfix",
-            type=str,
-            default="None",
-            help="Layer whose elements should not be scaled",
-        )
+        # pars.add_argument(
+        #     "--layerfix",
+        #     type=str,
+        #     default="None",
+        #     help="Layer whose elements should not be scaled",
+        # )
 
         pars.add_argument(
             "--wholeplot1",
@@ -231,7 +235,7 @@ class ScalePlots(inkex.EffectExtension):
 
         tickcorrect = self.options.tickcorrect
         tickthr = self.options.tickthreshold / 100
-        layerfix = self.options.layerfix
+        # layerfix = self.options.layerfix
         if self.options.tab == "scaling":
             hscale = self.options.hscale
             vscale = self.options.vscale
@@ -250,9 +254,13 @@ class ScalePlots(inkex.EffectExtension):
                 inkex.utils.errormsg(
                     "Correction mode requires that every selected object be a group that has already been scaled."
                 )
+                
                 return
         else:
-            inkex.utils.errormsg("Select Scaling, Matching, or Correction mode")
+            # inkex.utils.errormsg("Select Scaling, Matching, or Correction mode")
+            self.options.marksf = {1:'scale_free',2:'aspect_locked',3:'normal',4:None}[self.options.marksf]
+            for el in sel:
+                el.set('inkscape-scientific-scaletype',self.options.marksf)
             return
         self.options.matchwhat = {1:'bbox',2:'plotarea'}[self.options.matchwhat]
         self.options.matchto   = {1:'firstbbox',2:'firstplotarea',3:'meanbbox',4:'meanplotarea'}[self.options.matchto]
@@ -261,21 +269,20 @@ class ScalePlots(inkex.EffectExtension):
         if wholesel:
             tickcorrect = False
 
-        sfgs = []
-        sfels = []
-        # all scale-free objects, whether or not they're selected
-        if not (layerfix == "None"):  # find scale-free objects
-            ls = [t.strip() for t in layerfix.split(",")]
-            for el in ls:
-                lyr = self.svg.getElementByName(el)
-                if lyr is None:  # name didn't work, try ID
-                    lyr = self.svg.getElementById(el)
-                if lyr is not None:
-                    if isinstance(lyr, Group):
-                        sfgs.append(lyr)
-                        sfels = sfels + lyr.getchildren()
-                    elif isinstance(lyr, PathElement):
-                        sfels.append(lyr)
+        dsfchildren = [] # objects whose children are designated scale-free
+        dsfels = []      # designated scale-free els, whether or not they're selected
+        # if not (layerfix == "None"):  # find scale-free objects
+        #     ditems = [t.strip() for t in layerfix.split(",")]
+        #     for ditem in ditems:
+        #         el = self.svg.getElementById2(ditem)
+        #         if el is None:  # ID didn't work, try name
+        #             el = self.svg.getElementByName(ditem)
+        #         if el is not None:
+        #             if isinstance(el, Group):
+        #                 dsfchildren.append(el)
+        #                 dsfels = dsfels + list(el)
+        #             elif isinstance(el, PathElement):
+        #                 dsfels.append(el)
 
 
         # dh.tic()
@@ -298,7 +305,7 @@ class ScalePlots(inkex.EffectExtension):
             
             # Calculate geometric (tight) bounding boxes of plot elements
             gbbs = dict()
-            for el in [firstsel] + pels + sfels + list(firstsel):
+            for el in [firstsel] + pels + dsfels + list(firstsel):
                 if el.get_id2() in fbbs:
                     gbbs[el.get_id2()] = geometric_bbox(el, fbbs[el.get_id2()]).sbb
 
@@ -471,7 +478,8 @@ class ScalePlots(inkex.EffectExtension):
 
             gtr = trl @ scl @ (-trl)
             # global transformation
-            iscl = SclTransform(1 / scalex, 1 / scaley)
+            iscl = SclTransform(1 / scalex, 1 / scaley)  # inverse scale
+            liscl = SclTransform(math.sqrt(scalex*scaley), math.sqrt(scalex*scaley)) @ iscl # aspect-scaled and inverse scaled
             trul = gtr.apply_to_point([bbp.g.x1, bbp.g.y1])  # transformed upper-left
             trbr = gtr.apply_to_point([bbp.g.x2, bbp.g.y2])  # transformed bottom-right
 
@@ -493,9 +501,9 @@ class ScalePlots(inkex.EffectExtension):
             sclels = []
             for el in pels:
                 if (
-                    el in sfgs
+                    el in dsfchildren
                 ):  # Is a scale-free group, apply transform to children instead
-                    for k in el.getchildren():
+                    for k in list(el):
                         if k not in sclels:
                             sclels.append(k)
                 else:
@@ -509,19 +517,29 @@ class ScalePlots(inkex.EffectExtension):
                 # apply the transform
 
                 elid = el.get_id2()
-
                 gbb = gbbs[elid]
                 fbb = fbbs[elid]
-                isalwayscorr = isinstance(el, (TextElement, Group, FlowRoot))
+                
+                if isinstance(el, (TextElement, Group, FlowRoot)) or el in dsfels:
+                    stype = 'scale_free'
+                else:
+                    stype = 'normal'
+                
+                mtype = el.get('inkscape-scientific-scaletype');
+                if mtype is not None:
+                    stype = mtype
+                    
+                    
+                # isalwayscorr = isinstance(el, (TextElement, Group, FlowRoot)) and stype!='normal'
                 # els always corrected
-                isoutsideplot = (
-                    fbb[0] > bbp.f.x2
-                    or fbb[0] + fbb[2] < bbp.f.x1
-                    or fbb[1] > bbp.f.y2
-                    or fbb[1] + fbb[3] < bbp.f.y1
-                )
+                # isoutsideplot = (
+                #     fbb[0] > bbp.f.x2
+                #     or fbb[0] + fbb[2] < bbp.f.x1
+                #     or fbb[1] > bbp.f.y2
+                #     or fbb[1] + fbb[3] < bbp.f.y1
+                # )
                 # els outside plot
-                issf = el in sfels
+                # issf = el in dsfels or stype in ['scale_free','aspect_locked']
                 # is scale-free
 
                 vtickt = vtickb = htickl = htickr = False
@@ -572,16 +590,19 @@ class ScalePlots(inkex.EffectExtension):
                     tr1 = trl @ iscl @ (-trl)
                     dh.global_transform(el, tr1)
                 # elif isalwayscorr or isoutsideplot or issf:
-                elif isalwayscorr or issf:
+                elif stype in ['scale_free','aspect_locked']:
                     # dh.idebug(el.get_id2())
                     # Invert the transformation for text/groups, anything outside the plot, scale-free
-                    cbc = el.get("inkscape-academic-combined-by-color")
+                    cbc = el.get("inkscape-scientific-combined-by-color")
                     if cbc is None:
                         gbb_tr = bbox(gbb).transform(gtr)
                         cx = gbb_tr.xc
                         cy = gbb_tr.yc
                         trl = TrTransform(cx,cy)
-                        tr1 = trl @ iscl @ (-trl)
+                        if stype=='scale_free':
+                            tr1 = trl @ iscl @ (-trl)
+                        else:
+                            tr1 = trl @ liscl @ (-trl)
 
                         # For elements outside the plot area, adjust position to maintain
                         # the distance to the plot area
@@ -615,7 +636,11 @@ class ScalePlots(inkex.EffectExtension):
                             cx = gbb_tr.xc
                             cy = gbb_tr.yc
                             trl = TrTransform(cx,cy)
-                            tr1 = trl @ iscl @ (-trl)
+                            # tr1 = trl @ iscl @ (-trl)
+                            if stype=='scale_free':
+                                tr1 = trl @ iscl @ (-trl)
+                            else:
+                                tr1 = trl @ liscl @ (-trl)
                             dx = 0
                             dy = 0
                             if cx < trul[0]:
@@ -634,6 +659,7 @@ class ScalePlots(inkex.EffectExtension):
                             irng.append([cbc[ii], cbc[ii + 1]])
                             trng.append((tr2 @ tr1))
                         dh.global_transform(el, It, irange=irng, trange=trng)
+                    
 
             # restore bbs
             if self.options.tab == "correction":
