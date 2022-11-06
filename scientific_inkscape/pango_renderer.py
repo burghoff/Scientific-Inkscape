@@ -65,6 +65,7 @@ class PangoRenderer():
                 self.haspangoFT2 = True
             except:
                 self.haspangoFT2 = False
+                
     
         if self.haspango:
             self.disable_lcctype();
@@ -86,58 +87,117 @@ class PangoRenderer():
                 'oblique': Pango.Style.OBLIQUE,
             }
             self.PANGO_WEIGHTS = {'thin':Pango.Weight.THIN,'ultralight':Pango.Weight.ULTRALIGHT,
-                             'light':Pango.Weight.LIGHT,'semilight':Pango.Weight.SEMILIGHT,
-                             'book':Pango.Weight.BOOK,'normal':Pango.Weight.NORMAL,
-                             'medium':Pango.Weight.MEDIUM,'semibold':Pango.Weight.SEMIBOLD,
-                             'bold':Pango.Weight.BOLD,'ultrabold':Pango.Weight.ULTRABOLD,
-                             'heavy':Pango.Weight.HEAVY,'ultraheavy':Pango.Weight.ULTRAHEAVY,
-                             '100':Pango.Weight.THIN,'200':Pango.Weight.ULTRALIGHT,
-                             '300':Pango.Weight.LIGHT,'350':Pango.Weight.SEMILIGHT,
-                             '380':Pango.Weight.BOOK,'400':Pango.Weight.NORMAL,
-                             '500':Pango.Weight.MEDIUM,'600':Pango.Weight.SEMIBOLD,
-                             '700':Pango.Weight.BOLD,'800':Pango.Weight.ULTRABOLD,
-                             '900':Pango.Weight.HEAVY,'1000':Pango.Weight.ULTRAHEAVY}
+                                  'light':Pango.Weight.LIGHT,'semilight':Pango.Weight.SEMILIGHT,
+                                  'book':Pango.Weight.BOOK,'normal':Pango.Weight.NORMAL,
+                                  'medium':Pango.Weight.MEDIUM,'semibold':Pango.Weight.SEMIBOLD,
+                                  'bold':Pango.Weight.BOLD,'ultrabold':Pango.Weight.ULTRABOLD,
+                                  'heavy':Pango.Weight.HEAVY,'ultraheavy':Pango.Weight.ULTRAHEAVY,
+                                  '100':Pango.Weight.THIN,'200':Pango.Weight.ULTRALIGHT,
+                                  '300':Pango.Weight.LIGHT,'350':Pango.Weight.SEMILIGHT,
+                                  '380':Pango.Weight.BOOK,'400':Pango.Weight.NORMAL,
+                                  '500':Pango.Weight.MEDIUM,'600':Pango.Weight.SEMIBOLD,
+                                  '700':Pango.Weight.BOLD,'800':Pango.Weight.ULTRABOLD,
+                                  '900':Pango.Weight.HEAVY,'1000':Pango.Weight.ULTRAHEAVY}
             self.PANGO_STRETCHES = {'ultra-condensed':Pango.Stretch.ULTRA_CONDENSED,
-                               'extra-condensed':Pango.Stretch.EXTRA_CONDENSED,
-                               'condensed':Pango.Stretch.CONDENSED,
-                               'semi-condensed':Pango.Stretch.SEMI_CONDENSED,
-                               'normal':Pango.Stretch.NORMAL,
-                               'semi-expanded':Pango.Stretch.SEMI_EXPANDED,
-                               'expanded':Pango.Stretch.EXPANDED,
-                               'extra-expanded':Pango.Stretch.EXTRA_EXPANDED,
-                               'ultra-expanded':Pango.Stretch.ULTRA_EXPANDED}
+                                    'extra-condensed':Pango.Stretch.EXTRA_CONDENSED,
+                                    'condensed':Pango.Stretch.CONDENSED,
+                                    'semi-condensed':Pango.Stretch.SEMI_CONDENSED,
+                                    'normal':Pango.Stretch.NORMAL,
+                                    'semi-expanded':Pango.Stretch.SEMI_EXPANDED,
+                                    'expanded':Pango.Stretch.EXPANDED,
+                                    'extra-expanded':Pango.Stretch.EXTRA_EXPANDED,
+                                    'ultra-expanded':Pango.Stretch.ULTRA_EXPANDED}
             
             # Conversions from Pango to fontconfig
-            self.PW_to_FCW = {Pango.Weight.THIN:FC.WEIGHT_THIN,Pango.Weight.ULTRALIGHT:FC.WEIGHT_ULTRALIGHT,Pango.Weight.ULTRALIGHT:FC.WEIGHT_EXTRALIGHT,
-             Pango.Weight.LIGHT:FC.WEIGHT_LIGHT,Pango.Weight.SEMILIGHT:FC.WEIGHT_DEMILIGHT,Pango.Weight.SEMILIGHT:FC.WEIGHT_SEMILIGHT,
-             Pango.Weight.BOOK:FC.WEIGHT_BOOK,Pango.Weight.NORMAL:FC.WEIGHT_REGULAR,Pango.Weight.NORMAL:FC.WEIGHT_NORMAL,
-             Pango.Weight.MEDIUM:FC.WEIGHT_MEDIUM,Pango.Weight.SEMIBOLD:FC.WEIGHT_DEMIBOLD,Pango.Weight.SEMIBOLD:FC.WEIGHT_SEMIBOLD,
-             Pango.Weight.BOLD:FC.WEIGHT_BOLD,Pango.Weight.ULTRABOLD:FC.WEIGHT_EXTRABOLD,Pango.Weight.ULTRABOLD:FC.WEIGHT_ULTRABOLD,
-             Pango.Weight.HEAVY:FC.WEIGHT_BLACK,Pango.Weight.HEAVY:FC.WEIGHT_HEAVY,
-             Pango.Weight.ULTRAHEAVY:FC.WEIGHT_EXTRABLACK,Pango.Weight.ULTRAHEAVY:FC.WEIGHT_ULTRABLACK}
+            self.PWGT_to_FCWGT = {Pango.Weight.THIN:FC.WEIGHT_THIN,
+                              Pango.Weight.ULTRALIGHT:FC.WEIGHT_ULTRALIGHT,
+                              Pango.Weight.ULTRALIGHT:FC.WEIGHT_EXTRALIGHT,
+                              Pango.Weight.LIGHT:FC.WEIGHT_LIGHT,
+                              Pango.Weight.SEMILIGHT:FC.WEIGHT_DEMILIGHT,
+                              Pango.Weight.SEMILIGHT:FC.WEIGHT_SEMILIGHT,
+                              Pango.Weight.BOOK:FC.WEIGHT_BOOK,
+                              Pango.Weight.NORMAL:FC.WEIGHT_REGULAR,
+                              Pango.Weight.NORMAL:FC.WEIGHT_NORMAL,
+                              Pango.Weight.MEDIUM:FC.WEIGHT_MEDIUM,
+                              Pango.Weight.SEMIBOLD:FC.WEIGHT_DEMIBOLD,
+                              Pango.Weight.SEMIBOLD:FC.WEIGHT_SEMIBOLD,
+                              Pango.Weight.BOLD:FC.WEIGHT_BOLD,
+                              Pango.Weight.ULTRABOLD:FC.WEIGHT_EXTRABOLD,
+                              Pango.Weight.ULTRABOLD:FC.WEIGHT_ULTRABOLD,
+                              Pango.Weight.HEAVY:FC.WEIGHT_BLACK,
+                              Pango.Weight.HEAVY:FC.WEIGHT_HEAVY,
+                              Pango.Weight.ULTRAHEAVY:FC.WEIGHT_EXTRABLACK,
+                              Pango.Weight.ULTRAHEAVY:FC.WEIGHT_ULTRABLACK}
             
-            self.PS_to_FCS = {Pango.Style.NORMAL:FC.SLANT_ROMAN,Pango.Style.ITALIC:FC.SLANT_ITALIC,Pango.Style.OBLIQUE:FC.SLANT_OBLIQUE}
+            self.PSTY_to_FCSLN = {Pango.Style.NORMAL:FC.SLANT_ROMAN,
+                              Pango.Style.ITALIC:FC.SLANT_ITALIC,
+                              Pango.Style.OBLIQUE:FC.SLANT_OBLIQUE}
 
-            self.PS_to_FCW = {Pango.Stretch.ULTRA_CONDENSED:FC.WIDTH_ULTRACONDENSED,Pango.Stretch.EXTRA_CONDENSED:FC.WIDTH_EXTRACONDENSED,
-             Pango.Stretch.CONDENSED:FC.WIDTH_CONDENSED,Pango.Stretch.SEMI_CONDENSED:FC.WIDTH_SEMICONDENSED,
-             Pango.Stretch.NORMAL:FC.WIDTH_NORMAL,Pango.Stretch.SEMI_EXPANDED:FC.WIDTH_SEMIEXPANDED,
-             Pango.Stretch.EXPANDED:FC.WIDTH_EXPANDED,Pango.Stretch.EXTRA_EXPANDED:FC.WIDTH_EXTRAEXPANDED,
-             Pango.Stretch.ULTRA_EXPANDED:FC.WIDTH_ULTRAEXPANDED}
+            self.PSTR_to_FCWDT = {Pango.Stretch.ULTRA_CONDENSED:FC.WIDTH_ULTRACONDENSED,
+                              Pango.Stretch.EXTRA_CONDENSED:FC.WIDTH_EXTRACONDENSED,
+                              Pango.Stretch.CONDENSED:FC.WIDTH_CONDENSED,
+                              Pango.Stretch.SEMI_CONDENSED:FC.WIDTH_SEMICONDENSED,
+                              Pango.Stretch.NORMAL:FC.WIDTH_NORMAL,
+                              Pango.Stretch.SEMI_EXPANDED:FC.WIDTH_SEMIEXPANDED,
+                              Pango.Stretch.EXPANDED:FC.WIDTH_EXPANDED,
+                              Pango.Stretch.EXTRA_EXPANDED:FC.WIDTH_EXTRAEXPANDED,
+                              Pango.Stretch.ULTRA_EXPANDED:FC.WIDTH_ULTRAEXPANDED}
             
             self.PANGOSIZE = 1000;  # size of text to render. 1000 is good
             self.pufd = Pango.units_from_double;
             self.putd = Pango.units_to_double;
         
             self.families = self.ctx.get_font_map().list_families()
+            self.families.sort(key=lambda x: x.get_name())  # alphabetical
             self.fmdict = {f.get_name(): [fc.get_face_name() for fc in f.list_faces()] for f in self.families}
             # self.fmdict2 = {f.get_name(): [(fc.describe().to_string(),fc.is_synthesized()) for fc in f.list_faces()] for f in self.families}
             # dh.idebug([f.get_name() for f in self.families])
             
             self.all_faces = [fc.describe().to_string() for fm in self.families for fc in fm.list_faces()];
+            self.all_fms   = [fm.get_name()             for fm in self.families for fc in fm.list_faces()];
             self.all_desc  = [fc.describe()             for fm in self.families for fc in fm.list_faces()];
             # dh.idebug(self.all_faces)
 
-            
+        
+        # CSS to fontconfig lookup
+        self.CWGT_to_FCWGT = {'thin': FC.WEIGHT_THIN,
+                              'ultralight': FC.WEIGHT_EXTRALIGHT, 
+                              'light': FC.WEIGHT_LIGHT, 
+                              'semilight': FC.WEIGHT_SEMILIGHT, 
+                              'book': FC.WEIGHT_BOOK, 
+                              'normal': FC.WEIGHT_NORMAL, 
+                              'medium': FC.WEIGHT_MEDIUM, 
+                              'semibold': FC.WEIGHT_SEMIBOLD, 
+                              'bold': FC.WEIGHT_BOLD, 
+                              'ultrabold': FC.WEIGHT_ULTRABOLD, 
+                              'heavy': FC.WEIGHT_HEAVY, 
+                              'ultraheavy': FC.WEIGHT_ULTRABLACK, 
+                              '100': FC.WEIGHT_THIN, 
+                              '200': FC.WEIGHT_EXTRALIGHT, 
+                              '300': FC.WEIGHT_LIGHT, 
+                              '350': FC.WEIGHT_SEMILIGHT, 
+                              '380': FC.WEIGHT_BOOK, 
+                              '400': FC.WEIGHT_NORMAL, 
+                              '500': FC.WEIGHT_MEDIUM, 
+                              '600': FC.WEIGHT_SEMIBOLD, 
+                              '700': FC.WEIGHT_BOLD, 
+                              '800': FC.WEIGHT_ULTRABOLD, 
+                              '900': FC.WEIGHT_HEAVY, 
+                              '1000': FC.WEIGHT_ULTRABLACK}
+        self.CSTY_to_FCSLN = {'normal': FC.SLANT_ROMAN, 
+                              'italic': FC.SLANT_ITALIC, 
+                              'oblique': FC.SLANT_OBLIQUE}
+        self.CSTR_to_FCWDT = {'ultra-condensed': FC.WIDTH_ULTRACONDENSED, 
+                              'extra-condensed': FC.WIDTH_EXTRACONDENSED, 
+                              'condensed': FC.WIDTH_CONDENSED, 
+                              'semi-condensed': FC.WIDTH_SEMICONDENSED, 
+                              'normal': FC.WIDTH_NORMAL, 
+                              'semi-expanded': FC.WIDTH_SEMIEXPANDED, 
+                              'expanded': FC.WIDTH_EXPANDED, 
+                              'extra-expanded': FC.WIDTH_EXTRAEXPANDED, 
+                              'ultra-expanded': FC.WIDTH_ULTRAEXPANDED}
+        
+        
     
     # Search the /etc/fonts/conf.d folder for the default sans-serif font
     def Find_Default_Sanserifs(self):
@@ -178,6 +238,35 @@ class PangoRenderer():
                 break
         return ssbackups
             
+    # Look up a font by its Pango properties
+    def fc_match_pango(self,family,pwidth,pweight,pstyle):
+        pat = fc.Pattern.name_parse(re.escape(family.replace("'",'').replace('"','')));
+        pat.add(fc.PROP.WIDTH,  self.PSTR_to_FCWDT[pwidth]);
+        pat.add(fc.PROP.WEIGHT, self.PWGT_to_FCWGT[pweight]);
+        pat.add(fc.PROP.SLANT,  self.PSTY_to_FCSLN[pstyle]);
+        
+        conf = fc.Config.get_current()
+        conf.substitute(pat, FC.MatchPattern)
+        pat.default_substitute()
+        found,status = conf.font_match(pat)
+        # fcname = found.get(fc.PROP.FULLNAME,0)[0];
+        # fcfm   = found.get(fc.PROP.FAMILY,0)[0];
+        return found
+    
+    # Look up a font by its CSS properties
+    def fc_match_css(self,family,cstr,cwgt,csty):
+        pat = fc.Pattern.name_parse(re.escape(family.replace("'",'').replace('"','')));
+        pat.add(fc.PROP.WIDTH,  self.CSTR_to_FCWDT[cstr]);
+        pat.add(fc.PROP.WEIGHT, self.CWGT_to_FCWGT[cwgt]);
+        pat.add(fc.PROP.SLANT,  self.CSTY_to_FCSLN[csty]);
+
+        conf = fc.Config.get_current()
+        conf.substitute(pat, FC.MatchPattern)
+        pat.default_substitute()
+        found,status = conf.font_match(pat)
+        # fcname = found.get(fc.PROP.FULLNAME,0)[0];
+        # fcfm   = found.get(fc.PROP.FAMILY,0)[0];
+        return found
     
     def Set_Text_Style(self,stystr):
         sty2 = stystr.split(';');
@@ -187,11 +276,13 @@ class PangoRenderer():
         for m in msty:
             if m not in sty2:
                 sty2[m]=dh.default_style_atts[m]
-        # myfont = sty2['font-family'].replace('sans-serif',self.defaultfont)
         
         from gi.repository import Pango
-        
-        fd = Pango.FontDescription(sty2['font-family']);
+            
+        fd = Pango.FontDescription(sty2['font-family']+',');
+        # The comma above is very important for font-families like Rockwell Condensed.
+        # Without it, Pango will interpret it as the Condensed font-stretch of the Rockwell font-family,
+        # rather than the Rockwell Condensed font-family.
         fd.set_weight( self.PANGO_WEIGHTS[  sty2['font-weight']])
         fd.set_variant(self.PANGO_VARIANTS[ sty2['font-variant']])
         fd.set_style(  self.PANGO_STYLES[   sty2['font-style']])
@@ -200,48 +291,157 @@ class PangoRenderer():
         
         logsbefore = self.numlogs;
         fnt = self.ctx.get_font_map().load_font(self.ctx,fd)
-        success = self.numlogs==logsbefore and fnt is not None
+        
+        if not(self.haspangoFT2):
+            success = self.numlogs==logsbefore and fnt is not None
+        else:
+            success = fnt is not None
+            # PangoFT2 sometimes gives mysterious errors that are actually fine
         
         # if not(success):
-        #     # Occasionally valid fonts are not matched by Pango. When this happens,
-        #     # find the face full name using fontconfig and try to match it to
-        #     # the faces found by Pango
-        #     # This should work, but is sometimes not great due to Pango limitations. 
-        #     pat = fc.Pattern.create(vals = (
-        #             (fc.PROP.FAMILY, sty2['font-family']),
-        #             (fc.PROP.WIDTH,  self.PS_to_FCW[self.PANGO_STRETCHES[sty2['font-stretch']]]),
-        #             (fc.PROP.WEIGHT, self.PW_to_FCW[self.PANGO_WEIGHTS[  sty2['font-weight']]]),
-        #             (fc.PROP.SLANT,  self.PS_to_FCS[self.PANGO_STYLES[   sty2['font-style']]])   ))
-        #     conf = fc.Config.get_current()
-        #     conf.substitute(pat, FC.MatchPattern)
-        #     pat.default_substitute()
-        #     found,status = conf.font_match(pat)
-        #     fullname = found.get(fc.PROP.FULLNAME,0)[0];
+        #     dh.idebug(fd.to_string())
+        
+        # dh.idebug(self.fc_match(sty2['font-family'],self.PANGO_STRETCHES[sty2['font-stretch']],
+        #                     self.PANGO_WEIGHTS[  sty2['font-weight']],
+        #                     self.PANGO_STYLES[   sty2['font-style']]))
             
-        #     # Find Pango faces that have all of the same words as the fc name
-        #     def wlist(x):
-        #         return x.replace(',','').split(' ')
-        #     matches = [ff for ff in self.all_faces if all([w in \
-        #                 wlist(ff) for w in wlist(fullname)])];
-        #     if len(matches)>0:
-        #         ls = [len(ff) for ff in matches];
-        #         mini = ls.index(min(ls)) # pick the shortest match
-        #         fd = self.all_desc[self.all_faces.index(matches[mini])]
+        # dh.idebug(sty2['font-family'])
+        # dh.idebug(fdstr)
+        # dh.idebug(fnt.describe().to_string())
+        
+        # # dh.tic()
+        # dh.idebug(sty2['font-family'])
+        # def fword(x):   
+        #     return x.lower().replace(',',' ').replace('-',' ').split(' ')[0];
+        # mfaces = [ii for ii in range(len(self.all_fms)) if self.all_fms[ii]==sty2['font-family']]
+        # for ii in mfaces:
+        #     dh.idebug('    '+self.all_faces[ii])
+        #     fdm = self.all_desc[ii];
+        #     pmatch = [fdm.get_stretch()==self.PANGO_STRETCHES[sty2['font-stretch']],
+        #               fdm.get_weight() ==self.PANGO_WEIGHTS[  sty2['font-weight']],
+        #               fdm.get_style()  ==self.PANGO_STYLES[   sty2['font-style']]]
+        #     dh.idebug('    '+str(pmatch))
             
-        #         oldstr = fd.to_string();
-        #         # fd = Pango.FontDescription(matches[mini]);
-        #         fd = self.all_desc[self.all_faces.index(matches[mini])]
+        #     if all(pmatch):
+        #         fd = Pango.FontDescription(fdm.to_string());
+        #         dh.idebug('      '+fdstr)
+        #         dh.idebug('      '+fdm.to_string())
         #         fd.set_absolute_size(self.pufd(self.PANGOSIZE))
-        #         newstr = fd.to_string()
-                
         #         logsbefore = self.numlogs;
         #         fnt = self.ctx.get_font_map().load_font(self.ctx,fd)
-        #         success = self.numlogs==logsbefore and newstr!=oldstr and fnt is not None
-        #         dh.idebug((oldstr,newstr,success))
-                
+        #         success = self.numlogs==logsbefore and fnt is not None
+        #     # dh.idebug('    '+self.all_faces[self.all_fms.index(m)])
+        #     # fdm = self.all_desc[self.all_faces.index(m)]
+        #     # dh.idebug('    '+self.fc_match(fdm.get_family(),fdm.get_stretch(),fdm.get_weight(),fdm.get_style()))
+        # # dh.toc()
+        
+        
+        # dh.idebug(fd.to_string())
+        # dh.idebug(fd.get_stretch())
+        # if not(success):
+        #     dh.idebug(fd.to_string())
+        
+        # else:
+        #     # When we have PangoFT2, use fontconfig to find a font and match it to
+        #     # the faces found by PangoFT2. fontconfig always finds the right font,
+        #     # but without PangoFT2 it won't be rendered.
+        # pat = fc.Pattern.create(vals = (
+        #         (fc.PROP.FAMILY, sty2['font-family']),
+        #         (fc.PROP.WIDTH,  self.PSTR_to_FCWDT[self.PANGO_STRETCHES[sty2['font-stretch']]]),
+        #         (fc.PROP.WEIGHT, self.PWGT_to_FCWGT[self.PANGO_WEIGHTS[  sty2['font-weight']]]),
+        #         (fc.PROP.SLANT,  self.PSTY_to_FCSLN[self.PANGO_STYLES[   sty2['font-style']]])   ))
+        # conf = fc.Config.get_current()
+        # conf.substitute(pat, FC.MatchPattern)
+        # pat.default_substitute()
+        # found,status = conf.font_match(pat)
+        # fcname = found.get(fc.PROP.FULLNAME,0)[0];
+        
+        # ffmly = found.get(fc.PROP.FAMILY,0)[0]
+        # fwdth = [k for k,v in self.PSTR_to_FCWDT.items() if abs(v-found.get(fc.PROP.WIDTH,0)[0])<1]
+        # fwght = [k for k,v in self.PWGT_to_FCWGT.items() if abs(v-found.get(fc.PROP.WEIGHT,0)[0])<1]
+        # fslnt = [k for k,v in self.PSTY_to_FCSLN.items() if abs(v-found.get(fc.PROP.SLANT,0)[0])<1]
             
-        self.pangolayout.set_font_description(fd);
+        # # dh.idebug(found.get(fc.PROP.WIDTH,0)[0])
+        
+        # fd2 = Pango.FontDescription(ffmly);
+        # fd2.set_weight( fwght[0])
+        # fd2.set_style(  fslnt[0])
+        # fd2.set_stretch(fwdth[0])
+        # fd2.set_absolute_size(self.pufd(self.PANGOSIZE))
+        # logsbefore = self.numlogs;
+        # fnt2 = self.ctx.get_font_map().load_font(self.ctx,fd2)
+        # success = fnt2 is not None
+        # fd = fd2
+        # fnt = fnt2;
+            
+        # dh.idebug(fd2.to_string())
+            
+            # # Find Pango faces whose words are a subset of the full fc name
+            # def wlist(x): # normalized word list
+            #     words = set(x.lower().replace(',','').replace('-','').split(' '));
+
+                
+            #     if 'normal' in words:
+            #         words.remove('normal')
+                                
+            #     def replacev(toreplace,replacewith):
+            #         if toreplace in words:
+            #             words.remove(toreplace)
+            #             words.add(replacewith)
+            #     # replacev('narrow','condensed')
+            #     # replacev('black','heavy')
+            #     # replacev('semicondensed','semi-condensed')
+            #     # replacev('semibold','semi-bold')
+            #     return words
+                
+            # matches = [ff for ff in self.all_faces if all([w in \
+            #             wlist(ff) for w in wlist(fcname)])];
+            # if len(matches)>0:
+            #     if len(matches)>1:
+            #         m2 = [m for m in matches if all([w in wlist(fcname) for w in wlist(m)])];
+            #         if len(m2)>0:
+            #             besti = matches.index(m2[0]); # exact match found
+            #         else:
+            #             ls = [len(wlist(ff)) for ff in matches];
+            #             besti = ls.index(min(ls)) # no match, pick the shortest
+            #     else:
+            #         besti = 0;
+                        
+            #     fd = self.all_desc[self.all_faces.index(matches[besti])]
+            #     oldstr = fd.to_string();
+            #     fd = self.all_desc[self.all_faces.index(matches[besti])]
+            #     fd.set_absolute_size(self.pufd(self.PANGOSIZE))
+            #     newstr = fd.to_string()
+                
+            #     logsbefore = self.numlogs;
+            #     fnt = self.ctx.get_font_map().load_font(self.ctx,fd)
+            #     # success = self.numlogs==logsbefore and newstr!=oldstr and fnt is not None
+            #     # success = self.numlogs==logsbefore and fnt is not None
+            #     success = fnt is not None
+            #     if not(success):
+            #         # dh.idebug(fcname)
+            #         dh.idebug(fd.to_string())
+            #         dh.idebug((self.numlogs==logsbefore, newstr, oldstr, fnt is not None))
+            # else:
+            #     success = False
+            #     # dh.idebug(fcname)
+            #     # for m in self.all_faces:
+            #     #     dh.idebug('    '+m)
+                
+            # dh.idebug((fcname,success,len(matches)))
+            # if not(success):
+            #     dh.idebug(fcname)
+            #     dh.idebug((ffmly,fwdth,fwght,fslnt));
+            #     dh.idebug(fnt2.describe().to_string())
+            #     for m in self.all_faces:
+            #         dh.idebug('    '+m)
+                
+        # dh.idebug(success)
+        # dh.idebug(self.PWGT_to_FCWGT[self.PANGO_WEIGHTS[  sty2['font-weight']]])
+        # dh.idebug(FC.WEIGHT_EXTRABOLD)
+        # dh.idebug((fcname,fd.to_string()))
         if success:
+            self.pangolayout.set_font_description(fd);
             fm = fnt.get_metrics();
             fm = [self.putd(v)/self.PANGOSIZE for v in [fm.get_height(),fm.get_ascent(),fm.get_descent()]]
             return success, fm
@@ -296,15 +496,25 @@ class PangoRenderer():
     # Use fontconfig to get the true font that most text will be rendered as
     # Should work in all post-1.0 versions
     def get_true_font(self,nominalfont):
+        
         if nominalfont not in self.truefonts:
-            # self.disable_lcctype();
-           
-            ff_strip = nominalfont.replace("'",'').replace('"','')
-            pat = fc.Pattern.name_parse(re.escape(ff_strip))
-            conf = fc.Config.get_current()
-            conf.substitute(pat, FC.MatchPattern)
-            pat.default_substitute()
-            found,status = conf.font_match(pat)
+            (ffam,fstr,fwgt,fsty) = nominalfont
+            # pwgt = self.PANGO_WEIGHTS[  fwgt]
+            # psty = self.PANGO_STYLES[   fsty]
+            # pstr = self.PANGO_STRETCHES[fstr]
+            
+            # dh.idebug(nominalfont)
+            found = self.fc_match_css(ffam,fstr,fwgt,fsty)
+            # dh.idebug(found)
+            
+            # self.disable_lcctype();           
+            # ff_strip = ffam.replace("'",'').replace('"','')
+            # pat = fc.Pattern.name_parse(re.escape(ff_strip))
+            # conf = fc.Config.get_current()
+            # conf.substitute(pat, FC.MatchPattern)
+            # pat.default_substitute()
+            # found,status = conf.font_match(pat)
+            # dh.idebug(found)
             
             # self.enable_lcctype();
             
@@ -340,6 +550,80 @@ class PangoRenderer():
                     break;
             # self.enable_lcctype();
         return d
+    
+    # For testing purposes    
+    def Font_Test_Doc(self):
+        selected_families = ['Arial','Rockwell','Rockwell Condensed','Rockwell Extra-Bold',
+                             'Bahnschrift','Avenir','Avenir Next','Tahoma',
+                             'Cambria Math','Whitney','Helvetica','Whitney Book']
+        selected_families = None
+        def isnumeric(s):
+            try:
+                float(s)
+                isnum = True
+            except:
+                isnum = False
+            return isnum
+        ffcs = [];
+        ffcs = [('font-family: InvalidFont','InvalidFont')]
+        for fd in self.all_desc:
+            fm   = fd.get_family();
+            if selected_families is None or fm in selected_families:
+                fs   = fd.get_stretch();
+                fw   = fd.get_weight();
+                fsty = fd.get_style();
+                
+                cs  = [k for k,v in self.PANGO_STRETCHES.items() if v==fs]
+                cw  = [k for k,v in self.PANGO_WEIGHTS.items()   if v==fw and isnumeric(k)]
+                csty= [k for k,v in self.PANGO_STYLES.items()    if v==fsty]
+                
+                mysty = "font-family:'"+fm+"'; "
+                if len(cs)>0:
+                    mysty += 'font-stretch: '+cs[0]+'; '
+                if len(cw)>0:
+                    mysty += 'font-weight: ' +cw[0]+'; '
+                if len(csty)>0:
+                    mysty += 'font-style: '+csty[0]+'; '
+                ffcs.append((mysty,fd.to_string()))
+        
+        rng = range(0,len(ffcs))
+        HGT = 45;
+        WDH =(max(rng)-(max(rng)%HGT))/HGT+1
+        SIZE = 1;
+        LINEW = 25;
+        doch = (HGT+1)*SIZE
+        docw = WDH*SIZE*LINEW
+        
+        svgstart = '<svg width="'+str(docw)+'mm" height="'+str(doch)+'mm" viewBox="0 0 '+str(docw)+' '+str(doch)+'" id="svg60386" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"> <defs id="defs60383" />'
+        svgstop = "</svg>"
+        txt1 = '<text xml:space="preserve" style="'
+        txt2 = '" id="text'
+        txt3 = '" y="'
+        txt4 = '" x="'
+        txt5 = '">'
+        txt6 = "</text>"
+        svgtexts = ""
+        import tempfile, os
+        f = tempfile.NamedTemporaryFile(mode="wb",delete=False,suffix='.svg')
+        tmpname = os.path.abspath(f.name);
+        f.write(svgstart.encode("utf8"))
+        from xml.sax.saxutils import escape
+
+        cnt = 0;
+        for ii in range(len(ffcs)):
+            cnt+=1;
+            c=ffcs[ii][1]
+            sty = 'font-size:'+str(SIZE)+"px; "+ffcs[ii][0]
+            x = str(LINEW*(ii-(ii%HGT))/HGT*SIZE)+'px'
+            y = str((ii%HGT+1)*SIZE)+'px'
+            svgtexts += txt1 + sty + txt2 + str(cnt) + txt3 + y + txt4 + x + txt5 + escape(c) + txt6
+            if cnt % 1000 == 0:
+                f.write(svgtexts.encode("utf8"))
+                svgtexts = ""
+
+        f.write((svgtexts + svgstop).encode("utf8"))
+        f.close()
+        dh.idebug(tmpname)
     
 # For testing purposes    
 def Unicode_Test_Doc():
@@ -403,7 +687,9 @@ def Unicode_Test_Doc():
     overwrite_output(tmpname,tmp2);
     overwrite_output(tmp2,tmp3);
     svg2 = inkex.load_svg(tmp3).getroot();
-    
+
+
+
 def Pango_Test():
     # For testing Gtk-based Pango rendering, modified from
     # https://web.archive.org/web/20180615145907/http://jcoppens.com/soft/howto/pygtk/pangocairo.en.php

@@ -2578,7 +2578,11 @@ class Character_Table:
         
         # Replace nominal font with true rendered font
         ffam = sty.get('font-family','');
-        sty2['font-family']=pr.get_true_font(ffam);
+        fsty = sty.get('font-style',dh.default_style_atts['font-style']);
+        fstr = sty.get('font-stretch',dh.default_style_atts['font-stretch']);
+        fwgt = sty.get('font-weight',dh.default_style_atts['font-weight']);
+        
+        sty2['font-family']=pr.get_true_font((ffam,fstr,fwgt,fsty));
         
         sty2 = ";".join(
             ["{0}:{1}".format(*seg) for seg in sty2.items()]
