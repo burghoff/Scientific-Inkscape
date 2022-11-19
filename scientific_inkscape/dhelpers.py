@@ -49,7 +49,7 @@ from inkex import (
 )
 from applytransform_mod import ApplyTransform
 import lxml, math, re, sys, os
-from Style2 import Style2
+from Style0 import Style0
 
 
 def descendants2(el, return_tails=False):
@@ -130,55 +130,17 @@ def descendants2(el, return_tails=False):
         precedingtails.append(pendingtails)
         # will be one longer than descendants because of the last one
         return descendants, precedingtails, children_dict, parent_dict
-
-
 BaseElement.descendants2 = property(descendants2)
 
 # Sets a style property
-def Set_Style_Comp(el_or_sty, comp, val):
-    # isel = isinstance(el_or_sty, (BaseElement))  # is element
-    # if isel:
-    sty = el_or_sty.cstyle
-    # else:
-    #     isstr = isinstance(el_or_sty, (str))
-    #     sty = el_or_sty
-    #     if isstr:
-    #         sty = Style2(sty)
-
-    # if sty is not None:
-    #     sty = sty.split(";")
-    #     compfound = False
-    #     for ii in range(len(sty)):
-    #         if comp in sty[ii]:
-    #             if val is not None:
-    #                 sty[ii] = comp + ":" + val
-    #             else:
-    #                 sty[ii] = ""
-    #             compfound = True
-    #     if not (compfound):
-    #         if val is not None:
-    #             sty.append(comp + ":" + val)
-    #         else:
-    #             pass
-    #     sty = [v.strip(";") for v in sty if v != ""]
-    #     sty = ";".join(sty)
-    # else:
-    #     if val is not None:
-    #         sty = comp + ":" + val
-
+def Set_Style_Comp(el, comp, val):
+    sty = el.cstyle
     if val is None:
         if sty.get(comp) is not None:
             del sty[comp]
     else:
         sty[comp] = val
-
-    # if isel:
-    el_or_sty.cstyle = sty  # set element style
-    # else:
-    #     if isstr:
-    #         return str(sty)  # return style string
-    #     else:
-    #         return sty  # convert back to Style
+    el.cstyle = sty  # set element style
 
 
 def dupe_cssdict_entry(oldid, newid, svg):
@@ -189,9 +151,7 @@ def dupe_cssdict_entry(oldid, newid, svg):
             svg.cssdict[newid] = csssty
 
 
-estyle = Style2()
-
-
+estyle = Style0()
 def get_cssdict(svg):
     if not (hasattr(svg, "_cssdict")):
         # For certain xpaths such as classes, we can avoid xpath calls
@@ -274,8 +234,6 @@ def get_cssdict(svg):
                     pass
         svg._cssdict = cssdict
     return svg._cssdict
-
-
 inkex.SvgDocumentElement.cssdict = property(get_cssdict)
 
 
@@ -304,7 +262,7 @@ BaseElement.cspecified_style = property(
 # A cached cascaded style property
 svgpres = ['alignment-baseline', 'baseline-shift', 'clip', 'clip-path', 'clip-rule', 'color', 'color-interpolation', 'color-interpolation-filters', 'color-profile', 'color-rendering', 'cursor', 'direction', 'display', 'dominant-baseline', 'enable-background', 'fill', 'fill-opacity', 'fill-rule', 'filter', 'flood-color', 'flood-opacity', 'font-family', 'font-size', 'font-size-adjust', 'font-stretch', 'font-style', 'font-variant', 'font-weight', 'glyph-orientation-horizontal', 'glyph-orientation-vertical', 'image-rendering', 'kerning', 'letter-spacing', 'lighting-color', 'marker-end', 'marker-mid', 'marker-start', 'mask', 'opacity', 'overflow', 'pointer-events', 'shape-rendering', 'stop-color', 'stop-opacity', 'stroke', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-opacity', 'stroke-width', 'text-anchor', 'text-decoration', 'text-rendering', 'transform', 'transform-origin', 'unicode-bidi', 'vector-effect', 'visibility', 'word-spacing', 'writing-mode']
 excludes = ["clip", "clip-path", "mask", "transform", "transform-origin"]
-bstyle = Style2("");
+bstyle = Style0("");
 def get_cascaded_style(el):
     # Object's style including any CSS
     # Modified from Inkex's cascaded_style
@@ -346,12 +304,12 @@ BaseElement.ccascaded_style = property(get_cascaded_style, set_ccascaded_style)
 # style whenever the style is changed. Always use this when setting styles.
 def get_cstyle(el):
     if not (hasattr(el, "_cstyle")):
-        el._cstyle = Style2(el.get("style"))  # el.get() is very efficient
+        el._cstyle = Style0(el.get("style"))  # el.get() is very efficient
     return el._cstyle
 def set_cstyle(el, nsty):
     el.style = nsty
-    if not(isinstance(nsty,Style2)):
-        nsty = Style2(nsty);
+    if not(isinstance(nsty,Style0)):
+        nsty = Style0(nsty);
     el._cstyle = nsty
     el.ccascaded_style = None
     el.cspecified_style = None
@@ -374,7 +332,8 @@ def set_ccomposed_transform(el,si):
             k.ccomposed_transform = None     # invalidate descendants
 BaseElement.ccomposed_transform = property(get_ccomposed_transform,set_ccomposed_transform)
 
-# Cached transform
+# Cached transform property
+# Note: Can be None
 def get_ctransform(el):
     if not (hasattr(el, "_ctransform")):
         el._ctransform = el.transform
@@ -382,7 +341,6 @@ def get_ctransform(el):
 def set_ctransform(el, newt):
     el.transform = newt
     el._ctransform = newt
-    
     el.ccomposed_transform = None
 BaseElement.ctransform = property(get_ctransform, set_ctransform)
 # fmt: on
@@ -395,10 +353,6 @@ def Get_Composed_Width(el, comp, nargout=1):
     ct = el.ccomposed_transform
     if nargout == 4:
         ang = math.atan2(ct.c, ct.d) * 180 / math.pi
-    svg = el.croot
-    # docscale = 1
-    # if svg is not None:
-    #     docscale = svg.cscale
     sc = cs.get(comp)
 
     # Get default attribute if empty
@@ -414,7 +368,6 @@ def Get_Composed_Width(el, comp, nargout=1):
         sc = float(sc.strip("%")) / 100
         fs, sf, ct, tmp = Get_Composed_Width(cel.getparent(), comp, 4)
         if nargout == 4:
-            # ang = math.atan2(ct.c, ct.d) * 180 / math.pi
             return fs * sc, sf, ct, ang
         else:
             return fs * sc
@@ -424,34 +377,15 @@ def Get_Composed_Width(el, comp, nargout=1):
 
         sw = implicitpx(sc)
         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))  # scale factor
-        # sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c)) * docscale  # scale factor
         if nargout == 4:
             return sw * sf, sf, ct, ang
         else:
             return sw * sf
 
-    # if sc is not None:
-    # else:
-    #     if comp == "font-size":
-    #         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c)) * docscale  # scale factor
-    #         returnval = 12 * sf
-    #         # default font is 12 uu
-    #     else:
-    #         returnval = None
-    #         sf = None
-
-    #     if nargout == 4:
-    #         return returnval, sf, ct, ang
-    #     else:
-    #         return returnval
-
 
 # Get line-height in user units
-def Get_Composed_LineHeight(el):  # cs = el.composed_style();
-    # if styin is None:
+def Get_Composed_LineHeight(el):
     cs = el.cspecified_style
-    # else:
-    #     cs = styin
     sc = cs.get("line-height")
     if sc is not None:
         if "%" in sc:  # relative width, get parent width
@@ -470,24 +404,14 @@ def Get_Composed_LineHeight(el):  # cs = el.composed_style();
 # For style components that are a list (stroke-dasharray), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms
 def Get_Composed_List(el, comp, nargout=1):
-    # cs = el.composed_style();
-    # if styin is None:
     cs = el.cspecified_style
-    # else:
-    #     cs = styin
-    # ct = el.composed_transform();
     ct = el.ccomposed_transform
     sc = cs.get(comp)
-    svg = el.croot
-    docscale = 1
-    # if svg is not None:
-    #     docscale = svg.cscale
     if sc == "none":
         return "none"
     elif sc is not None:
         sw = sc.split(",")
-        # sw = sc.strip().replace("px", "").split(',')
-        sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c)) * docscale
+        sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))
         sw = [implicitpx(x) * sf for x in sw]
         if nargout == 1:
             return sw
@@ -541,7 +465,7 @@ old_atp = inkex.Transform.apply_to_point
 inkex.Transform.apply_to_point = apply_to_point_mod
 
  # A faster bool (built-in bool is slow because it initializes multiple Transforms)
-from math import fabs
+# from math import fabs
 def Tbool(obj):
     # return any([fabs(v1-v2)>obj.absolute_tolerance for v1,v2 in zip(obj.matrix[0]+obj.matrix[1],Itmat[0]+Itmat[1])])
     # return any([fabs(obj.matrix[0][0]-1)>obj.absolute_tolerance,fabs(obj.matrix[0][1])>obj.absolute_tolerance,fabs(obj.matrix[0][2])>obj.absolute_tolerance,fabs(obj.matrix[1][0])>obj.absolute_tolerance,fabs(obj.matrix[1][1]-1)>obj.absolute_tolerance,fabs(obj.matrix[1][2])>obj.absolute_tolerance])
@@ -595,17 +519,12 @@ def get_points(el, irange=None):
 
     ct = el.ccomposed_transform
 
-    mysvg = el.croot
-    docscale = 1
-    # if mysvg is not None:
-    #     docscale = mysvg.cscale
-
     xs = []
     ys = []
     for p in pts:
         p = ct.apply_to_point(p)
-        xs.append(p.x * docscale)
-        ys.append(p.y * docscale)
+        xs.append(p.x)
+        ys.append(p.y)
     return xs, ys
 
 
@@ -735,10 +654,10 @@ def compose_all(el, clipurl, maskurl, transform, style):
 
     if transform is not None:
         if transform.matrix != Itmat:
-            if el.ctransform.matrix != Itmat:
-                el.ctransform = transform @ el.ctransform
-            else:
+            if el.ctransform is None or el.ctransform.matrix == Itmat:
                 el.ctransform = transform
+            else:
+                el.ctransform = transform @ el.ctransform
 
     if clipurl is None:
         return False
@@ -1142,6 +1061,7 @@ BaseElement.get_id2 = get_id2_func
 
 # Modified from Inkex's get_path
 # Correctly calculates path for rectangles and ellipses
+# Gets Path object
 def get_path2(el):
     class MiniRect:  # mostly from inkex.elements._polygons
         def __init__(self, el):
@@ -1194,9 +1114,9 @@ def get_path2(el):
             ).format(cx=self.cx, y=self.cy - self.ry, rx=self.rx, ry=self.ry)
 
     if isinstance(el, (inkex.Rectangle)):
-        pth = MiniRect(el).get_path()
+        pth = Path(MiniRect(el).get_path())
     elif isinstance(el, (inkex.Circle, inkex.Ellipse)):
-        pth = MiniEllipse(el).get_path()
+        pth = Path(MiniEllipse(el).get_path())
     else:
         pth = el.get_path()
     return pth
@@ -1306,10 +1226,6 @@ def BB2(slf,els=None,forceupdate=False):
                 ret = False
             render_dict[el] = ret
             return ret
-
-    # for d in els:
-    #     if not(isinstance(d, bb2_support) or not(isrendered(d))):
-    #         dh.idebug((d.typename,d.tag,d.get_id2()))
     
     if all([isinstance(d, bb2_support) or not(isrendered(d)) for d in els]):
         if forceupdate:
@@ -1460,7 +1376,7 @@ def get_link_fcn(el,typestr,svg=None):
             return urlel
     return None
 BaseElement.get_link = get_link_fcn
-Style2.get_link      = get_link_fcn
+Style0.get_link      = get_link_fcn
 
 # In the event of a timeout, repeat subprocess call several times
 def subprocess_repeat(argin):
@@ -1638,7 +1554,7 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
                         # spaces can disappear, replace with NBSP
                         ts = new_element(Tspan,el);
                         el.append(ts)
-                        ts.text = w; ts.cstyle=Style2(sty+'font-family:'+newfont)
+                        ts.text = w; ts.cstyle=Style0(sty+'font-family:'+newfont)
                         ts.cspecified_style = None; ts.ccomposed_transform = None;
                         lstspan = ts
                     else:
@@ -1734,10 +1650,12 @@ class bbox:
     
 
 
-def global_transform(el, trnsfrm, irange=None, trange=None):
-    # Transforms an object and fuses it to any paths, preserving stroke
+def global_transform(el, trnsfrm, irange=None, trange=None,preserveStroke=True):
+    # Transforms an object and fuses it to any paths
+    # If preserveStroke is set the stroke width will be unchanged, otherwise
+    # will also be scaled
+    
     # If parent layer is transformed, need to rotate out of its coordinate system
-
     myp = el.getparent()
     if myp is None:
         prt = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
@@ -1764,16 +1682,17 @@ def global_transform(el, trnsfrm, irange=None, trange=None):
     el.ctransform = newtr  # Add the new transform
     ApplyTransform().recursiveFuseTransform(el, irange=irange, trange=trange)
 
-    if sw is not None:
-        neww, sf, ct, ang = Get_Composed_Width(el, "stroke-width", nargout=4)
-        Set_Style_Comp(el, "stroke-width", str(sw / sf))
-        # fix width
-    if not (sd in [None, "none"]):
-        nd, sf = Get_Composed_List(el, "stroke-dasharray", nargout=2)
-        Set_Style_Comp(
-            el, "stroke-dasharray", str([sdv / sf for sdv in sd]).strip("[").strip("]")
-        )
-        # fix dash
+    if preserveStroke:
+        if sw is not None:
+            neww, sf, ct, ang = Get_Composed_Width(el, "stroke-width", nargout=4)
+            Set_Style_Comp(el, "stroke-width", str(sw / sf))
+            # fix width
+        if not (sd in [None, "none"]):
+            nd, sf = Get_Composed_List(el, "stroke-dasharray", nargout=2)
+            Set_Style_Comp(
+                el, "stroke-dasharray", str([sdv / sf for sdv in sd]).strip("[").strip("]")
+            )
+            # fix dash
 
 
 

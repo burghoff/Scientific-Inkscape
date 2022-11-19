@@ -9,7 +9,7 @@ import inkex
 import math
 from inkex.paths import CubicSuperPath, Path
 from inkex.transforms import Transform
-from Style2 import Style2
+from Style0 import Style0
 from inkex import Line, Rectangle, Polygon, Polyline, Ellipse, Circle
 
 import os, sys
@@ -51,7 +51,7 @@ class ApplyTransform(inkex.EffectExtension):
     def applyToStrokes(self, node, transf):
         if "style" in node.attrib:
             # style = node.attrib.get('style')
-            # style = dict(Style2.parse_str(style))
+            # style = dict(Style0.parse_str(style))
             style = node.cstyle
             update = False
             if "stroke-width" in style:
@@ -84,7 +84,7 @@ class ApplyTransform(inkex.EffectExtension):
                 except AttributeError:
                     pass
             if update:
-                # node.attrib['style'] = Style2(style).to_str()
+                # node.attrib['style'] = Style0(style).to_str()
                 node.cstyle = style
 
     def transform_clipmask(self, el, mask=False):
@@ -147,7 +147,10 @@ class ApplyTransform(inkex.EffectExtension):
                 # Don't do anything if there is effectively no transform applied
                 if "d" in node.attrib:
                     d = node.get("d")
-                    p = CubicSuperPath(d)
+                    try:
+                        p = CubicSuperPath(d)
+                    except ZeroDivisionError:
+                        p = Path(d)
                     if irange is None:
                         p = Path(p).to_absolute().transform(transf, True)
                     if irange is not None:
@@ -161,7 +164,12 @@ class ApplyTransform(inkex.EffectExtension):
                                 xf, True
                             )
                         p = pnew
-                    node.set("d", str(Path(CubicSuperPath(p).to_path())))
+                    
+                    try:
+                        p2 = str(Path(CubicSuperPath(p).to_path()))
+                    except ZeroDivisionError:
+                        p2 = str(Path(p))
+                    node.set("d",p2)
                 elif isinstance(
                     node, (Polygon, Polyline)
                 ):  # node.tag in [inkex.addNS('polygon', 'svg'), inkex.addNS('polyline', 'svg')]:

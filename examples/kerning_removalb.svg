@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   inkscape:version="1.1.2 (b8e25be833, 2022-02-05)"
+   inkscape:version="1.2.1 (9c6d41e410, 2022-07-14)"
    id="svg26"
    version="1.1"
-   viewBox="0 0 123.92627 10.886736"
-   height="0.42861167in"
-   width="4.8789868in"
-   sodipodi:docname="kerning_removal.svg"
+   viewBox="0 0 124.04527 11.034999"
+   height="0.43444878in"
+   width="4.8836718in"
+   sodipodi:docname="kerning_removalb.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -40,8 +40,8 @@
      inkscape:document-rotation="0"
      inkscape:current-layer="svg26"
      inkscape:document-units="mm"
-     inkscape:cy="-17.67767"
-     inkscape:cx="195.71706"
+     inkscape:cy="52.022856"
+     inkscape:cx="285.62063"
      inkscape:zoom="1.979899"
      inkscape:pageshadow="2"
      inkscape:pageopacity="0.0"
@@ -52,9 +52,11 @@
      inkscape:pagecheckerboard="0"
      inkscape:window-width="1920"
      inkscape:window-height="1017"
-     inkscape:window-x="1912"
+     inkscape:window-x="-8"
      inkscape:window-y="-8"
-     inkscape:window-maximized="1" />
+     inkscape:window-maximized="1"
+     inkscape:showpageshadow="2"
+     inkscape:deskcolor="#d1d1d1" />
   <metadata
      id="metadata23">
     <rdf:RDF>
@@ -70,10 +72,18 @@
      id="layer1"
      inkscape:groupmode="layer"
      inkscape:label="Layer 1"
-     transform="translate(-40.532881,-93.066667)" />
+     transform="translate(-40.515511,-93.050397)" />
+  <rect
+     style="fill:#ffffff;stroke-width:2.13543;stroke-linecap:square;stroke-linejoin:bevel;stroke-miterlimit:5;stop-color:#000000"
+     id="rect2820"
+     width="468.83249"
+     height="41.707085"
+     x="-0.065650024"
+     y="-0.061491616"
+     transform="matrix(0.26458333,0,0,0.26458333,0.0173699,0.01626966)" />
   <g
      id="g1110"
-     transform="matrix(1.5,0,0,1.5,0,2.5513408)">
+     transform="matrix(1.5,0,0,1.5,0.0173699,2.5676105)">
     <g
        id="g1042"
        transform="translate(-61.187259,-97.007241)">
@@ -513,5 +523,5 @@
      height="5.7142859"
      x="4.2857141"
      y="-9.6428576"
-     transform="matrix(0.26458333,0,0,0.26458333,0,2.5513394)" />
+     transform="matrix(0.26458333,0,0,0.26458333,0.0173699,2.5676091)" />
 </svg>

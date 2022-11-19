@@ -49,7 +49,6 @@ import dhelpers as dh
 
 from applytransform_mod import ApplyTransform
 import math
-from Style2 import Style2
 
 badels = (
     inkex.NamedView,

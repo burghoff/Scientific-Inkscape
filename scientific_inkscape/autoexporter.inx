@@ -53,7 +53,10 @@
         <param name="texttopath" type="bool" gui-text="Convert text to paths"
         gui-description="Conversion of text to paths can help guarantee that it looks identical on all platforms. Recommended for EMFs.">false</param> 
         <param name="thinline" type="bool" gui-text="Prevent thin line enhancement (recommended)"
-        gui-description="Some PDF renderers thicken lines at certain zooms; this option makes your lines impervious to this feature.">true</param>  
+        gui-description="Some PDF readers thicken lines at certain zooms; this option makes your lines impervious to this feature.">true</param>  
+        
+        <param name="stroketopath" type="bool" gui-text="Convert all strokes to paths"
+        gui-description="Most PDF readers draw stroked lines differently than equivalent filled paths. By converting strokes to paths, this can be prevented. (This uses Inkscape's Stroke to Path, which has some unresolved bugs. Double-check the final output.)">false</param>  
 
 
         <param name="margin" type="float" precision="1" min="-9999" max="9999" gui-text="Extra margin (mm)"

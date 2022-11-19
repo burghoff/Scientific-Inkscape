@@ -18,7 +18,6 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
-
 import inkex
 from inkex import (
     TextElement,
@@ -47,7 +46,7 @@ sys.path.append(
 import dhelpers as dh
 
 import lxml, os
-import RemoveKerning, Style2
+import RemoveKerning, Style0
 
 
 class FlattenPlots(inkex.EffectExtension):
@@ -380,7 +379,7 @@ class FlattenPlots(inkex.EffectExtension):
                 from inspect import getmembers, isfunction, isclass, getmodule
 
                 fns = []
-                for m in [dh, TextParser, RemoveKerning, Style2, inkex.transforms]:
+                for m in [dh, TextParser, RemoveKerning, Style0, inkex.transforms]:
                     fns += [v[1] for v in getmembers(m, isfunction)]
                     for c in getmembers(m, isclass):
                         if getmodule(c[1]) is m:

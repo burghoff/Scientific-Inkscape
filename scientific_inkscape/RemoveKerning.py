@@ -422,7 +422,6 @@ def External_Merges(els, mergenearby, mergesupersub):
         neitherempty = len(wstrip(w.txt())) > 0 and len(wstrip(w2.txt())) > 0
         if xpenmatch and neitherempty and not (twospaces(w, w2)):
             type = None
-            # samecolor = Style2(w2.cs[0].nstyc).get('fill')==Style2(w.cs[-1].nstyc).get('fill')
             # dh.idebug([w.fs,w2.fs])
             # dh.idebug([br1.y+ytol>=bl2.y>=tr1.y-ytol,mergesupersub])
             if abs(bl2.y - br1.y) < ytol and abs(w.fs - w2.fs) < 0.001 and mergenearby:

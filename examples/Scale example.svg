@@ -2,11 +2,11 @@
 <!-- Created with Inkscape (http://www.inkscape.org/) -->
 
 <svg
-   inkscape:version="1.2 (dc2aedaf03, 2022-05-15)"
+   inkscape:version="1.2.1 (9c6d41e410, 2022-07-14)"
    sodipodi:docname="Scale example.svg"
-   viewBox="0 0 637.62181 302.18008"
-   height="302.18008"
-   width="637.62183"
+   viewBox="0 0 638.24858 302.57855"
+   height="302.57855"
+   width="638.2486"
    id="svg2"
    version="1.1"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
@@ -75,9 +75,9 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      showgrid="false"
-     inkscape:zoom="1.2225113"
-     inkscape:cx="372.59369"
-     inkscape:cy="152.96382"
+     inkscape:zoom="0.61125565"
+     inkscape:cx="499.79088"
+     inkscape:cy="386.0905"
      inkscape:window-width="1920"
      inkscape:window-height="1017"
      inkscape:window-x="-8"
@@ -89,15 +89,15 @@
        x="0"
        y="0"
        id="page8"
-       width="637.62183"
-       height="302.18008" />
+       width="638.2486"
+       height="302.57855" />
     <sodipodi:guide
-       position="407.16867,172.38458"
+       position="407.45699,172.46478"
        orientation="0,-1"
        id="guide29892"
        inkscape:locked="false" />
     <sodipodi:guide
-       position="401.29433,146.84757"
+       position="401.58265,146.92777"
        orientation="0,-1"
        id="guide7826"
        inkscape:locked="false" />
@@ -106,7 +106,15 @@
      id="g10"
      inkscape:groupmode="layer"
      inkscape:label="Page 1"
-     transform="matrix(1.33333,0,0,1.33333,-24.771904,-105.23472)">
+     transform="matrix(1.33333,0,0,1.33333,-24.483583,-104.91645)">
+    <rect
+       style="fill:#ffffff;stroke:none;stroke-width:2.13543;stroke-linecap:square;stroke-linejoin:bevel;stroke-miterlimit:5;stop-color:#000000"
+       id="rect1214"
+       width="642.60809"
+       height="309.44675"
+       x="-2.8920255"
+       y="-2.8920255"
+       transform="matrix(0.74491384,0,0,0.73335553,20.517043,80.808418)" />
     <g
        id="g7115"
        style="stroke-width:0.447434"

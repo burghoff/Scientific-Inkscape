@@ -128,6 +128,33 @@ class CompareTransforms(Compare):
         ret = re.sub(rb'transform="translate\(0 0\)"', rb"", ret)
         return ret
     
+
+# Go through the document and replace all ids contained in urls, in the
+# order they appear in the document
+class CompareURLs(Compare):
+    @staticmethod
+    def filter(contents):
+        # print(contents)
+        myid = b'SItestURL'
+        def findurl(x):
+            # Gets the first url#( ... ) content
+            m = re.findall(rb"url\(\#(.*?)\)",x)
+            g = [mv for mv in m if myid not in mv]  # exclude already substituted
+            if len(g)==0:
+                return None
+            else:
+                return g[0]
+        
+        f = findurl(contents)
+        n = 0;
+        while f is not None:
+            newid = myid+(b"%.0f" % n);
+            # print((f,newid))
+            contents = re.sub(rb'"'      +f+rb'"',  rb'"'     +newid+rb'"',contents)
+            contents = re.sub(rb'url\(\#'+f+rb'\)',rb'url\(\#'+newid+rb'\)',contents)
+            n += 1
+            f = findurl(contents)
+        return contents
     
 class CompareNumericFuzzy2(Compare):
     """
@@ -277,7 +304,7 @@ if testhomogenizer2:
 if testae:
     class TestAutoExporter(ComparisonMixin, TestCase):
         effect_class = AutoExporter
-        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareNeg0(),CompareDx0(),CompareTransforms(),CompareWithoutIds(),CompareURLs()]
         compare_file = ['svg/'+aename]
         comparisons = [
             aeargs

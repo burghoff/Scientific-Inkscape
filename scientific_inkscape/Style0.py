@@ -20,7 +20,7 @@
 import inkex
 
 
-class Style2(inkex.OrderedDict):
+class Style0(inkex.OrderedDict):
     """A list of style directives"""
 
     color_props = ("stroke", "fill", "stop-color", "flood-color", "lighting-color")
@@ -65,8 +65,8 @@ class Style2(inkex.OrderedDict):
     def __add__(self, other):
         """Add two styles together to get a third, composing them"""
         ret = self.copy()
-        if not (isinstance(other, Style2)):
-            other = Style2(other)
+        if not (isinstance(other, Style0)):
+            other = Style0(other)
         ret.update(other)
         return ret
 
@@ -89,8 +89,8 @@ class Style2(inkex.OrderedDict):
 
     def __eq__(self, other):
         """Not equals, prefer to overload 'in' but that doesn't seem possible"""
-        if not isinstance(other, Style2):
-            other = Style2(other)
+        if not isinstance(other, Style0):
+            other = Style0(other)
         for arg in set(self) | set(other):
             if self.get(arg, None) != other.get(arg, None):
                 return False
@@ -100,8 +100,8 @@ class Style2(inkex.OrderedDict):
 
     def update(self, other):
         """Make sure callback is called when updating"""
-        if not (isinstance(other, Style2)):
-            other = Style2(other)
+        if not (isinstance(other, Style0)):
+            other = Style0(other)
         super().update(other)
         if self.callback is not None:
             self.callback(self)
@@ -160,15 +160,15 @@ class Style2(inkex.OrderedDict):
 
     def interpolate(self, other, fraction):
         """Interpolate all properties."""
-        style = Style2()
+        style = Style0()
         for prop, value in self.items():
             style[prop] = self.interpolate_prop(other, fraction, prop)
         return style
 
 
-# Replace Style wrapped attr with Style2
+# Replace Style wrapped attr with Style0
 inkex.BaseElement.WRAPPED_ATTRS = (
     ("transform", inkex.Transform),
-    ("style", Style2),
+    ("style", Style0),
     ("classes", "class", inkex.styles.Classes),
 )

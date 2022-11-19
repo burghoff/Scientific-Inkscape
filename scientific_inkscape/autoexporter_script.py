@@ -3,15 +3,43 @@
 # automatically to another folder in multiple formats.
 
 DEBUG = False
+WHILESLEEP = 0.25;
 
 import sys, platform, subprocess, os, threading, datetime, time, copy, pickle
 import numpy as np
 
-mypath = os.path.dirname(os.path.realpath(sys.argv[0]))
-f = open(os.path.join(mypath, "ae_settings.p"), "rb")
+import tempfile
+systmpdir = os.path.abspath(tempfile.gettempdir());
+aes = os.path.join(systmpdir, "si_ae_settings.p")
+f = open(aes, "rb")
 input_options = pickle.load(f)
 f.close()
-os.remove(os.path.join(mypath, "ae_settings.p"))
+os.remove(aes)
+
+# mypath = os.path.dirname(os.path.realpath(sys.argv[0]))
+# f = open(os.path.join(mypath, "ae_settings.p"), "rb")
+# input_options = pickle.load(f)
+# f.close()
+# os.remove(os.path.join(mypath, "ae_settings.p"))
+
+# Clear out leftover temp files from the last time we ran
+# mypath = os.path.dirname(os.path.realpath(sys.argv[0]))
+lftover_tmp = os.path.join(systmpdir, "si_ae_leftovertemp.p")
+leftover_temps = [];
+if os.path.exists(lftover_tmp):
+    f = open(lftover_tmp, "rb")
+    leftover_temps = pickle.load(f)
+    f.close()
+    os.remove(lftover_tmp)
+    for tf in leftover_temps:
+        if os.path.exists(tf):
+            try:
+                os.rmdir(tf)
+                leftover_temps.remove(tf)
+            except PermissionError:
+                pass
+        else:
+            leftover_temps.remove(tf)
 
 watchdir  = input_options.watchdir
 writedir  = input_options.writedir
@@ -21,6 +49,10 @@ sys.path += input_options.syspath
 import inkex
 from inkex import Vector2d, Transform
 import dhelpers as dh
+
+
+import autoexporter
+from autoexporter import AutoExporter
 
 try:
     import tkinter
@@ -144,27 +176,28 @@ def get_modtimes(dirin):
         return None
 
 # Threading class
+leftover_temps = [];
 class myThread(threading.Thread):
     def __init__(self, threadID):
         threading.Thread.__init__(self)
         self.threadID = threadID
         self.stopped = False
         self.ui = None  # user input
-        self.nf = True
-        # new folder
-        self.ea = False
-        # export all
-        self.es = False
-        # export selected
-        self.dm = False
-        # debug mode
+        self.nf = True  # new folder
+        self.ea = False # export all
+        self.es = False # export selected
+        self.dm = False # debug mode
+        self.thread_queue = [];
+        self.running_threads = [];
+        self.promptpending = True;
 
     def run(self):
-        if self.threadID == 1:
+        if self.threadID == 'filechecker':
             # Main thread
             ltm = time.time()
-            genfiles = []
+            # genfiles = []
             while not (self.stopped):
+                self.checkongoing = True
                 if self.nf:
                     print("Export formats: " + ", ".join([v.upper() for v in input_options.formats]))
                     print("Rasterization DPI: " + str(input_options.dpi))
@@ -172,7 +205,7 @@ class myThread(threading.Thread):
                     print("Write directory: " + self.writedir)
                     lastmod = get_modtimes(self.watchdir)
                     self.nf = False
-                if time.time() > ltm + 0.25:
+                if time.time() > ltm + WHILESLEEP:
                     ltm = time.time()
                     
                     updatefiles = []
@@ -193,45 +226,58 @@ class myThread(threading.Thread):
                         self.es = False
                         updatefiles = [self.selectedfile]
 
-                    # Exclude any files I made
-                    for fn in genfiles:
-                        if fn in updatefiles:
-                            updatefiles.remove(fn)
-
                     loopme = True
                     while loopme:
                         for f in sorted(updatefiles):
-                            # while not(self.stopped):
-                            print("\nExporting " + f + "")
-
-                            import autoexporter
-                            from autoexporter import AutoExporter
-
-                            input_options.debug = DEBUG
-                            input_options.prints = True
-
-                            outtemplate = autoexporter.joinmod(
-                                self.writedir, os.path.split(f)[1]
-                            )
-                            nfs = AutoExporter().export_all(
-                                self.bfn, f, outtemplate, input_options.formats, input_options
-                            )
-                            genfiles += nfs
-
+                            for x in self.thread_queue+self.running_threads:
+                                # Stop exports already in progress
+                                if x.file == f:
+                                    x.stopped = True;
+                            fthr = myThread('autoexporter')
+                            fthr.file = f;
+                            fthr.outtemplate = autoexporter.joinmod(self.writedir, os.path.split(f)[1])
+                            self.thread_queue.append(fthr)
+                            
                         loopme = len(updatefiles) > 0 and self.dm
-                    if len(updatefiles) > 0:
+                        
+                    MAXTHREADS = 10;
+                    while len(self.thread_queue)>0 and len(self.running_threads)<=MAXTHREADS:
+                        self.thread_queue[0].start();
+                        self.running_threads.append(self.thread_queue[0])
+                        self.thread_queue.remove(self.thread_queue[0])
+                        time.sleep(WHILESLEEP);
+                    for thr in reversed(self.running_threads):
+                        if not(thr.is_alive()):
+                            self.running_threads.remove(thr)
+                            self.promptpending = True
+                                
+                    if self.promptpending and len(self.running_threads)+len(self.thread_queue)==0:
                         print(promptstring)
-
-        if self.threadID == 2:
-            self.ui = input(promptstring)
-
-    def stop(self):
-        self.stopped = True
+                        self.promptpending = False
+                            
+                time.sleep(WHILESLEEP)
+                
+        if self.threadID == 'prompt':
+            self.ui = input('')
+            
+        if self.threadID == 'autoexporter':
+            fname = os.path.split(self.file)[1];
+            offset = round(os.get_terminal_size().columns/2);
+            fname = fname + ' '*max(0,offset-len(fname))
+            print(fname+": Beginning export")
+            opts = copy.copy(input_options)
+            opts.debug = DEBUG
+            opts.prints = True
+            opts.mythread = self;
+            ftd = AutoExporter().export_all(
+                bfn, self.file, self.outtemplate, opts.formats, opts
+            )
+            if ftd is not None:
+                leftover_temps.append(ftd)
 
 
 # Main loop
-t1 = myThread(1)
-t1.bfn = bfn
+t1 = myThread('filechecker')
 t1.watchdir = watchdir
 t1.writedir = writedir
 if t1.watchdir is None or t1.writedir is None:
@@ -241,13 +287,13 @@ if t1.watchdir is None or t1.writedir is None:
 t1.start()
 while t1.nf:  # wait until it's done initializing
     pass
-t2 = myThread(2)
+t2 = myThread('prompt');
 t2.start()
 keeprunning = True
 while keeprunning:
     if not (t2.is_alive()):
         if t2.ui in ["Q", "q"]:
-            t1.stop()
+            t1.stopped = True
             keeprunning = False
         elif t2.ui in ["D", "d"]:
             if hastkinter:
@@ -256,16 +302,10 @@ while keeprunning:
                     t1.nf = True
                 except:
                     pass
-            t2 = myThread(2)
-            t2.start()
         elif t2.ui in ["R", "r"]:
             input_options.dpi = int(input("Enter new rasterization DPI: "))
-            t2 = myThread(2)
-            t2.start()
         elif t2.ui in ["A", "a"]:
             t1.ea = True
-            t2 = myThread(2)
-            t2.start()
         elif t2.ui in ["F", "f"]:
             if hastkinter:
                 try:
@@ -273,18 +313,17 @@ while keeprunning:
                     t1.es = True
                 except:
                     pass
-            t2 = myThread(2)
-            t2.start()
         elif t2.ui in ["#"]:
             t1.dm = True
             # entering # starts an infinite export loop in the current dir
             t1.ea = True
-            t2 = myThread(2)
-            t2.start()
         else:
             print("Invalid input!")
-            t2 = myThread(2)
+        if keeprunning:
+            t2 = myThread('prompt')
             t2.start()
+            t1.promptpending = True
+    time.sleep(WHILESLEEP)
 
 # On macOS close the terminal we opened
 # https://superuser.com/questions/158375/how-do-i-close-the-terminal-in-osx-from-the-command-line
@@ -292,3 +331,8 @@ if platform.system().lower() == "darwin":
     os.system(
         "osascript -e 'tell application \"Terminal\" to close first window' & exit"
     )
+    
+if len(leftover_temps)>0:
+    f = open(lftover_tmp, "wb")
+    pickle.dump(leftover_temps, f)
+    f.close()

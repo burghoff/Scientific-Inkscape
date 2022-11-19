@@ -89,7 +89,6 @@ sys.path.append(
 import dhelpers as dh
 import image_helpers as ih
 
-
 # Convenience functions
 def joinmod(dirc, f):
     return os.path.join(os.path.abspath(dirc), f)
@@ -102,6 +101,12 @@ def overwrite_svg(svg, fn):
         pass
     inkex.command.write_svg(svg, fn)
 
+def subprocess_check(inputargs,input_opts):
+    if hasattr(input_opts,'mythread') and input_opts.mythread.stopped == True:
+        sys.exit()
+    dh.subprocess_repeat(inputargs)
+    if hasattr(input_opts,'mythread') and input_opts.mythread.stopped == True:
+        sys.exit()
 
 from inkex import load_svg
 
@@ -112,29 +117,8 @@ def get_svg(fin):
     # dh.iddict = None # only valid one svg at a time
     return svg
 
-PTH_COMMANDS = [
-            "M",
-            "m",
-            "L",
-            "l",
-            "H",
-            "h",
-            "V",
-            "v",
-            "C",
-            "c",
-            "S",
-            "s",
-            "Q",
-            "q",
-            "T",
-            "t",
-            "A",
-            "a",
-            "Z",
-            "z",
-        ]
-    
+PTH_COMMANDS = list('MLHVCSQTAZmlhvcsqtaz')
+
 class AutoExporter(inkex.EffectExtension):
     def add_arguments(self, pars):
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
@@ -171,6 +155,9 @@ class AutoExporter(inkex.EffectExtension):
         )
         pars.add_argument(
             "--texttopath", type=inkex.Boolean, default=False, help="Text to paths?"
+        )
+        pars.add_argument(
+            "--stroketopath", type=inkex.Boolean, default=False, help="Stroke to paths?"
         )
         # pars.add_argument(
         #     "--svgoptpdf",
@@ -270,7 +257,11 @@ class AutoExporter(inkex.EffectExtension):
             optcopy.formats = formats;
             optcopy.syspath = sys.path;
 
-            f = open(os.path.join(dh.get_script_path(), "ae_settings.p"), "wb");
+            import tempfile
+            aes = os.path.join(os.path.abspath(tempfile.gettempdir()), "si_ae_settings.p")
+            f = open(aes, "wb");
+
+            # f = open(os.path.join(dh.get_script_path(), "ae_settings.p"), "wb");
             pickle.dump(optcopy, f)
             f.close();
             import warnings
@@ -337,7 +328,7 @@ class AutoExporter(inkex.EffectExtension):
             else:
                 pth = self.options.input_file
             optcopy.debug = DEBUGGING
-            optcopy.prints = DEBUGGING
+            optcopy.prints = False; DEBUGGING
             optcopy.linked_locations = ih.get_linked_locations(self); # needed to find linked images in relative directories
 
             AutoExporter().export_all(
@@ -365,14 +356,6 @@ class AutoExporter(inkex.EffectExtension):
                 shutil.copyfile(nf, self.options.output)
             else:
                 # Write to the output stream
-
-                # nf2 = nf.strip('.svg')+'_copy.svg';
-                # arg2 = [bfn, "--export-filename",nf2,nf]
-                # dh.idebug(arg2)
-                # dh.subprocess_repeat(arg2)
-
-                # dh.idebug(os.path.exists(nf2))
-
                 svg2 = get_svg(nf)
 
                 import lxml
@@ -386,30 +369,17 @@ class AutoExporter(inkex.EffectExtension):
                 self.options.output = None
 
             os.remove(nf)
-            # if os.path.exists(nf2): os.remove(nf2)
-            # dh.idebug((self.options.output))
-            # raise TypeError
-            # self.options.output = None;
-            # for k in list(self.svg):
-            #     k.delete();
-            # for k in list(svg2):
-            #     self.svg.append(k);
-            # for a in self.svg.attrib.keys():
-            #     del self.svg[a]
-            # for a in svg2.attrib.keys():
-            #     self.svg[a] = svg2[a]
-            # overwrite_svg(svg2, self.options.input_file)
-            # self.options.output = 'testoutput'
 
     def export_all(self, bfn, fin, outtemplate, exp_fmts, input_options):
         # Make a temp directory
         import tempfile
         tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
+        # print(tempdir)
         if input_options.debug:
             if input_options.prints:
                 dh.idebug("\n    " + joinmod(tempdir, ""))
         tempbase = joinmod(tempdir, 't')
-        
+        input_options.input_file = fin;
 
         # Add a document margin
         if input_options.margin!=0:
@@ -448,14 +418,20 @@ class AutoExporter(inkex.EffectExtension):
             # tempoutputs += tf
             
         # Remove temporary outputs and directory
+        failed_to_delete = None
         if not (input_options.debug):
             # for t in list(set(tempoutputs)):
             #     os.remove(t)
             for t in list(set(os.listdir(tempdir))):
                 os.remove(joinmod(tempdir,t)) 
             if tempdir is not None:
-                os.rmdir(tempdir)
-        return newfiles
+                try:
+                    os.rmdir(tempdir)
+                except PermissionError:
+                    failed_to_delete = tempdir
+        else:
+            dh.idebug(tempdir)
+        return failed_to_delete
 
     # Use the Inkscape binary to export the file
     def export_file(self, bfn, fin, fout, fformat, ppoutput, input_options,tempbase):
@@ -463,7 +439,10 @@ class AutoExporter(inkex.EffectExtension):
 
         myoutput = fout[0:-4] + "." + fformat
         if input_options.prints:
-            print("    To " + fformat + "...", end=" ", flush=True)
+            fname = os.path.split(input_options.input_file)[1];
+            offset = round(os.get_terminal_size().columns/2);
+            fname = fname + ' '*max(0,offset-len(fname))
+            print(fname+": Converting to " + fformat, flush=True)
         timestart = time.time()
 
         if ppoutput is not None:
@@ -473,16 +452,8 @@ class AutoExporter(inkex.EffectExtension):
             # tempdir = None
 
         # try:
-        smallsvg = (fformat == "psvg")
+        ispsvg = (fformat == "psvg")
         notpng = not (fformat == "png")
-        # if (input_options.thinline or smallsvg) and notpng:
-        #     if tempdir is None:
-        #         import tempfile
-        #         tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"))
-        #         if input_options.debug:
-        #             if input_options.prints:
-        #                 dh.idebug("\n    " + joinmod(tempdir, ""))
-        #     basetemp = joinmod(tempdir, "tmp.svg")
 
         if input_options.thinline and notpng:
             svg = get_svg(fin)
@@ -498,12 +469,6 @@ class AutoExporter(inkex.EffectExtension):
         if fformat == "psvg":
             myoutput = myoutput.replace(".psvg", "_portable.svg")
             
-  
-
-        # try:
-        #     os.remove(myoutput)
-        # except:
-        #     pass
         
         def overwrite_output(filein,fileout):      
             try:
@@ -522,7 +487,7 @@ class AutoExporter(inkex.EffectExtension):
                 fileout,
                 filein,
             ]
-            dh.subprocess_repeat(arg2)
+            subprocess_check(arg2,input_options)
         
         
         def make_output(filein,fileout):
@@ -554,7 +519,7 @@ class AutoExporter(inkex.EffectExtension):
             return [fileout]
                                 
 
-        if not (smallsvg):
+        if not (ispsvg):
             make_output(fin,myoutput)
         else:
             # Make PDF if necessary
@@ -567,7 +532,9 @@ class AutoExporter(inkex.EffectExtension):
                 myname = os.path.split(myoutput.replace("_portable.svg",""))[1]
                 pdfs = []
                 for f in os.scandir(mydir):
-                    if f.name[0:len(myname)]==myname and f.name[-4:]=='.pdf':
+                    # if f.name[0:len(myname)]==myname and f.name[-4:]=='.pdf':
+                    if f.name == myname+'.pdf' or \
+                       f.name[0:len(myname+'_page_')]==myname+'_page_' and f.name[-4:]=='.pdf':
                         pdfs.append(os.path.join(os.path.abspath(mydir), f.name))
                 
             for pdf in pdfs:
@@ -596,16 +563,19 @@ class AutoExporter(inkex.EffectExtension):
                     for d in vds:
                         self.Bezier_to_Split(d)   
                         
+                # print(pdf)
+                # print(pdfs)
                 if len(pdfs)==1:
                     finalname = myoutput
                 else:
                     pnum = pdf.split('_page_')[-1].strip('.pdf');
                     finalname = myoutput.replace('_portable.svg','_page_'+pnum+'_portable.svg')
+                # print(finalname)
                 overwrite_svg(svg, finalname)
 
         if input_options.prints:
             toc = time.time() - timestart;
-            print("done! (" + str(round(1000 * toc) / 1000) + " s)")
+            print(fname+": Conversion to "+fformat+" done (" + str(round(1000 * toc) / 1000) + " s)")
         return True, myoutput
 
     def preprocessing(self, bfn, fin, fout, input_options,tempbase):
@@ -613,18 +583,12 @@ class AutoExporter(inkex.EffectExtension):
         import image_helpers as ih
 
         if input_options.prints:
-            print("    Preprocessing vector output...", end=" ", flush=True)
+            fname = os.path.split(input_options.input_file)[1];
+            offset = round(os.get_terminal_size().columns/2);
+            fname = fname + ' '*max(0,offset-len(fname))
+            print(fname+": Preprocessing vector output", flush=True)
             timestart = time.time()
-        # try:
-        # tmpoutputs = []
-        
-        # import tempfile
-        # tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
-        # if input_options.debug:
-        #     if input_options.prints:
-        #         dh.idebug("\n    " + joinmod(tempdir, ""))
-        # temphead = "tmp.svg"
-        # basetemp = joinmod(tempdir, temphead)
+
         tempdir  = os.path.split(tempbase)[0]
         temphead = os.path.split(tempbase)[1]
         
@@ -684,10 +648,6 @@ class AutoExporter(inkex.EffectExtension):
             input_options.dpi_im = input_options.dpi
                 
         
-        # dh.idebug(image_ids)
-        # dh.idebug(raster_ids)
-        # dh.idebug(fin)
-        
         dh.flush_stylesheet_entries(svg) # since we ungrouped
         tmp = tempbase+"_mod.svg"
         overwrite_svg(svg, tmp)
@@ -721,24 +681,33 @@ class AutoExporter(inkex.EffectExtension):
                     else:
                         mydpi = input_options.dpi_im
                     
-                    acts.append(
-                        "export-id:"
-                        + el.get_id()
-                        + "; export-id-only; export-dpi:"
-                        + str(mydpi)
-                        + "; export-filename:"
-                        + tmpimg
-                        + "; export-background-opacity:0.0; export-do; "
-                    )  # export item only
-                    acts2.append(
-                        "export-id:"
-                        + el.get_id()
-                        + "; export-dpi:"
-                        + str(mydpi)
-                        + "; export-filename:"
-                        + tmpimg2
-                        + "; export-background-opacity:1.0; export-do; "
-                    )  # export all w/background
+                    # export item only
+                    fmt1 = "export-id:{0}; export-id-only; export-dpi:{1}; "\
+                           "export-filename:{2}; export-background-opacity:0.0; export-do; "
+                    acts.append( fmt1.format(el.get_id2(),int(mydpi),tmpimg))
+                    # export all w/background
+                    fmt2 = "export-id:{0}; export-dpi:{1}; "\
+                           "export-filename:{2}; export-background-opacity:1.0; export-do; "
+                    acts2.append(fmt2.format(el.get_id2(),int(mydpi),tmpimg2))
+                    
+                    # acts.append(
+                    #     "export-id:"
+                    #     + el.get_id()
+                    #     + "; export-id-only; export-dpi:"
+                    #     + str(mydpi)
+                    #     + "; export-filename:"
+                    #     + tmpimg
+                    #     + "; export-background-opacity:0.0; export-do; "
+                    # )  # export item only
+                    # acts2.append(
+                    #     "export-id:"
+                    #     + el.get_id()
+                    #     + "; export-dpi:"
+                    #     + str(mydpi)
+                    #     + "; export-filename:"
+                    #     + tmpimg2
+                    #     + "; export-background-opacity:1.0; export-do; "
+                    # )  # export all w/background
                 if ih.hasPIL:
                     acts = acts2+acts  # export-id-onlys need to go last
                     # args = ["--actions", acts2+acts];  # export-id-onlys need to go last
@@ -763,21 +732,14 @@ class AutoExporter(inkex.EffectExtension):
                     return bbs;
                             
                 
-                oldwd = os.getcwd();
+                # oldwd = os.getcwd();
                 os.chdir(tempdir); # use relative paths to reduce arg length
                 bbs = Split_Acts(
                     filename=fin, inkscape_binary=bfn, acts=acts
                 )
-                os.chdir(oldwd);
+                # os.chdir(oldwd); # don't think this is necessary
                 tis = [os.path.join(tempdir,t)  for t in tis]
                 ti2s = [os.path.join(tempdir,t) for t in ti2s]
-                    
-                # Add any generated images to the temp output list
-                # for ii in range(len(els)):
-                #     if os.path.exists(tis[ii]):
-                #         tmpoutputs.append(tis[ii])
-                #     if os.path.exists(ti2s[ii]):
-                #         tmpoutputs.append(ti2s[ii])
                   
 
                 for ii in range(len(els)):
@@ -805,9 +767,6 @@ class AutoExporter(inkex.EffectExtension):
                         hasmaskclip = el.get_link('mask') is not None or el.get_link('clip-path') is not None  # clipping and masking
                         embedimg = (nsz < osz) or (anyalpha0 or hasmaskclip)
 
-                        
-                        # dh.idebug([nsz,osz]) 
-
                         if embedimg:                 
                             self.Replace_with_Raster(el,tmpimg,bbs[el.get_id2()],bbox)
 
@@ -818,30 +777,37 @@ class AutoExporter(inkex.EffectExtension):
                 fin = copy.copy(tmp)
                 # tmpoutputs.append(tmp)
 
-        # if text_to_paths or thinline_dehancement:
-        if input_options.texttopath:
+        if input_options.texttopath or input_options.stroketopath:
             svg = get_svg(fin)
             vd = dh.visible_descendants(svg)
+            
+            tels = []
+            if input_options.texttopath:
+                tels = [
+                    el.get_id() for el in vd if isinstance(el, (inkex.TextElement))
+                ]  # text-like          
+ 
+            pels = [];
+            if input_options.stroketopath:
+                # Stroke to Path has a number of bugs, try to fix them
+                pels = self.Stroke_to_Path_Fixes(vd)                
+                overwrite_svg(svg, fin)
 
-            tels = [
-                el.get_id() for el in vd if isinstance(el, (inkex.TextElement))
-            ]  # text-like
-
-            convert_els = tels
-
-            celsj = ",".join(convert_els)
+            celsj = ",".join(tels+pels)
             tmp = tempbase+"_stp.svg"
+            
+            if input_options.stroketopath and dh.ivp[0] >= 1 and dh.ivp[1] > 0:
+                act = 'object-stroke-to-path'
+            else:
+                act = 'object-to-path'
+            
             arg2 = [
                 bfn,
                 "--actions",
-                "select:"
-                + celsj
-                + "; object-to-path; export-filename:"
-                + tmp
-                + "; export-do",
+                "select:{0}; {1}; export-filename:{2}; export-do".format(celsj,act,tmp),
                 fin,
             ]
-            dh.subprocess_repeat(arg2)
+            subprocess_check(arg2,input_options)
 
             # Text converted to paths are a group of characters. Combine them all
             svg = get_svg(tmp)
@@ -849,20 +815,27 @@ class AutoExporter(inkex.EffectExtension):
                 el = dh.getElementById2(svg, elid)
                 if el is not None and len(list(el)) > 0:
                     dh.combine_paths(list(el))
-                    
+                   
+            # Remove temporary groups
+            if input_options.stroketopath:
+                for elid in pels:
+                    el = svg.getElementById2(elid);
+                    if el is not None:
+                        dh.ungroup(el.getparent())
+            
+            dh.flush_stylesheet_entries(svg) # since we ungrouped            
             overwrite_svg(svg, tmp)
             fin = copy.copy(tmp)
-            # tmpoutputs.append(tmp)
 
         if input_options.prints:
             print(
-                "done! (" + str(round(1000 * (time.time() - timestart)) / 1000) + " s)"
+                fname + ": Preprocessing done (" + str(round(1000 * (time.time() - timestart)) / 1000) + " s)"
             )
         return fin
 
 
     def Thinline_Dehancement(self, svg, mode='split'):
-        # Prevents thin-line enhancement in certain bad PDF renderers (*cough* Adobe Acrobat *cough*)
+        # Prevents thin-line enhancement in certain bad PDF renderers (like Adobe Acrobat)
         # 'bezier' mode converts h,v,l path commands to trivial Beziers
         # 'split' mode splits h,v,l path commands into two path commands
         # The Office PDF renderer removes trivial Beziers, as does conversion to EMF
@@ -1058,12 +1031,6 @@ class AutoExporter(inkex.EffectExtension):
         s=1/minsz*100
         
         # Make a dummy group so we can properly compose the transform
-        # g = dh.new_element(inkex.Group, el)
-        # el.getparent().insert(list(el.getparent()).index(el) + 1, g)
-        # g.append(el)
-        # g.ctransform = el.ctransform; el.ctransform = None;
-        # g.set("clip-path", el.get("clip-path"));   el.set("clip-path", None)
-        # g.set("mask", el.get("mask"))          ;   el.set("mask", None)
         g = dh.group([el],moveTCM=True)
         
         for d in reversed(el.descendants2):
@@ -1127,8 +1094,6 @@ class AutoExporter(inkex.EffectExtension):
         svg = el.croot;
         if svg is None: # in case we were already rasterized within ancestor
             return
-        # dh.idebug(el.get_id())
-        # dh.idebug(svg)
         ih.embed_external_image(el, imgloc)
 
         
@@ -1139,10 +1104,6 @@ class AutoExporter(inkex.EffectExtension):
         g.set("mask", None)       # conversion to bitmap already includes masks
 
         # Calculate what transform is needed to preserve the image's location
-        # ct = (
-        #     Transform("scale(" + str((svg.cscale)) + ")")
-        #     @ el.ccomposed_transform
-        # )
         ct = el.ccomposed_transform
         # bb = bbs[el.get_id()]
         pbb = [
@@ -1155,18 +1116,6 @@ class AutoExporter(inkex.EffectExtension):
         put = [
             (-ct).apply_to_point(p) for p in pbb
         ]  # untransformed bbox (where the image needs to go)
-
-        # if el not in raster_objects: # already an Image
-        #     myx = dh.implicitpx(el.get("x"))
-        #     myy = dh.implicitpx(el.get("y"))
-        #     if myx is None:
-        #         myx = 0
-        #     if myy is None:
-        #         myy = 0
-        #     myw = dh.implicitpx(el.get("width"))
-        #     myh = dh.implicitpx(el.get("height"))
-        #     sty = el.get('image-rendering')
-        # else: # replace object with Image
         
         newel = dh.new_element(inkex.Image, el);
         dh.replace_element(el, newel)
@@ -1269,6 +1218,106 @@ class AutoExporter(inkex.EffectExtension):
         svg.set_viewbox(newvb)
         
         
+    def Stroke_to_Path_Fixes(self,els):
+    # Stroke to Path has a number of bugs
+    # 1. Stroke to Path does not properly handle clips, so move clips and
+    #    masks to a temp parent group.
+    # 2. Densely-spaced nodes can be converted incorrectly, so scale paths up
+    #    by a large amount to account for this.
+    # 3. Starting markers can be flipped.
+        grouped = [];
+        if len(els)>0:
+            svg = els[0].croot
+        for el in els:
+            if isinstance(el,dh.otp_support):
+                sty = el.cspecified_style
+                if 'stroke' in sty and sty['stroke']!='none':
+                    sw = sty.get('stroke-width')
+                    if dh.implicitpx(sw)==0:
+                        # Fix bug on zero-stroke paths
+                        sty['stroke'] = 'none'
+                        el.cstyle = sty;
+                    else:
+                        # Clip and mask issues solved by moving to a dummy group
+                        grouped.append(el.get_id2())
+                        dh.group([el],moveTCM=True)
+                        
+                        # Scale up certain paths
+                        SCALEBY = 1000;
+                        if not('stroke-dasharray' in sty and sty['stroke-dasharray']!='none') \
+                            and '{http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd}type' not in el.attrib:
+                            # STP cannot handle dashes correctly when upscaled
+                            # See https://gitlab.com/inkscape/inbox/-/issues/7844
+                            # Object to path doesn't currently support Inkscape-specific objects
+                            dh.object_to_path(el);
+                            p = el.get('d')
+                            
+                            # pts = list(Path(p).end_points)
+                            # xs = [p.x for p in pts]
+                            # if len(xs)>0:
+                            #     w = max(xs)-min(xs);
+                            # else:
+                            #     w = 0;
+                            # ys = [p.y for p in pts]
+                            # if len(ys)>0:
+                            #     h = max(ys)-min(ys);
+                            # else:
+                            #     h = 0;
+                            # dh.idebug((el.get_id2(),w,h))
+                            # if w==0 and h!=0:
+                            #     SCALEBY = 1000/h;
+                            # elif w!=0 and h==0:
+                            #     SCALEBY = 1000/w;
+                            # elif w!=0 and h!=0:
+                            #     SCALEBY = min(1000/h,1000/w)
+                            # else:
+                            #     SCALEBY = 1;
+                            
+                            number_template = "{:.6g}"
+                            import re
+                            from inkex.utils import strargs
+                            LEX_REX = re.compile(r"([MLHVCSQTAZmlhvcsqtaz])([^MLHVCSQTAZmlhvcsqtaz]*)");
+                            p2 = ''
+                            for cmd, numbers in LEX_REX.findall(p):
+                                args = list(strargs(numbers))
+                                if cmd in ['A','a']:
+                                    args = [args[ii]*(SCALEBY*(ii%7 not in [2,3,4])+1*(ii%7 in [2,3,4])) for ii in range(len(args))]
+                                else:
+                                    args = [v*SCALEBY for v in args]
+                                p2 += f"{cmd} {' '.join([number_template] * len(args)).format(*args)}".strip() + ' ';
+                            el.set('d',p2)
+                            
+                            myt = el.ctransform
+                            t2 = Transform("scale({0})".format(1.0/SCALEBY));
+                            if myt is not None:
+                                el.ctransform = myt @ t2
+                            else:
+                                el.ctransform = t2
+                            
+                            csty = el.cspecified_style
+                            if 'stroke-width' in csty:
+                                sw = dh.implicitpx(csty['stroke-width'])
+                                dh.Set_Style_Comp(el, 'stroke-width',str(sw*SCALEBY))
+                            if 'stroke-dasharray' in csty:
+                                sd = csty["stroke-dasharray"].split(",")
+                                dh.Set_Style_Comp(
+                                    el, "stroke-dasharray",
+                                    str([dh.implicitpx(sdv)*SCALEBY for sdv in sd]).strip("[").strip("]"))
+                        
+                        
+                        # Fix bug on start markers where auto-start-reverse oriented markers
+                        # are inverted by STP
+                        sty = el.cspecified_style
+                        mstrt = sty.get_link('marker-start',svg);
+                        if mstrt is not None:
+                            if mstrt.get('orient')=='auto-start-reverse':
+                                d = mstrt.duplicate2();
+                                d.set('orient','auto')
+                                for dk in list(d):
+                                    dk.ctransform = Transform('scale(-1)') @ dk.ctransform;
+                                sty['marker-start']=d.get_id2(as_url=2)
+                                el.cstyle = sty;
+        return grouped
 
 
 if __name__ == "__main__":
