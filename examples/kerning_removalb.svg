@@ -40,9 +40,9 @@
      inkscape:document-rotation="0"
      inkscape:current-layer="svg26"
      inkscape:document-units="mm"
-     inkscape:cy="52.022856"
-     inkscape:cx="285.62063"
-     inkscape:zoom="1.979899"
+     inkscape:cy="25.253813"
+     inkscape:cx="295.46962"
+     inkscape:zoom="0.9899495"
      inkscape:pageshadow="2"
      inkscape:pageopacity="0.0"
      borderopacity="1.0"
@@ -80,10 +80,10 @@
      height="41.707085"
      x="-0.065650024"
      y="-0.061491616"
-     transform="matrix(0.26458333,0,0,0.26458333,0.0173699,0.01626966)" />
+     transform="matrix(0.26559109,0,0,0.22114993,-0.19517554,1.9513029)" />
   <g
      id="g1110"
-     transform="matrix(1.5,0,0,1.5,0.0173699,2.5676105)">
+     transform="matrix(1.5,0,0,1.5,0.0173699,2.4339757)">
     <g
        id="g1042"
        transform="translate(-61.187259,-97.007241)">
@@ -523,5 +523,5 @@
      height="5.7142859"
      x="4.2857141"
      y="-9.6428576"
-     transform="matrix(0.26458333,0,0,0.26458333,0.0173699,2.5676091)" />
+     transform="matrix(0.26458333,0,0,0.26458333,0.0173699,2.4339743)" />
 </svg>
