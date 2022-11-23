@@ -77,16 +77,17 @@ class PangoRenderer():
                 self.ctx = Gdk.pango_context_get();
             self.pangolayout = Pango.Layout(self.ctx)
             
-            self.PANGO_VARIANTS = {
+            # Conversions from CSS to Pango
+            CSSVAR_to_PVAR = {
                 'normal': Pango.Variant.NORMAL,
                 'small-caps': Pango.Variant.SMALL_CAPS,
             }
-            self.PANGO_STYLES = {
+            CSSSTY_to_PSTY = {
                 'normal': Pango.Style.NORMAL,
                 'italic': Pango.Style.ITALIC,
                 'oblique': Pango.Style.OBLIQUE,
             }
-            self.PANGO_WEIGHTS = {'thin':Pango.Weight.THIN,'ultralight':Pango.Weight.ULTRALIGHT,
+            CSSWGT_to_PWGT = {'thin':Pango.Weight.THIN,'ultralight':Pango.Weight.ULTRALIGHT,
                                   'light':Pango.Weight.LIGHT,'semilight':Pango.Weight.SEMILIGHT,
                                   'book':Pango.Weight.BOOK,'normal':Pango.Weight.NORMAL,
                                   'medium':Pango.Weight.MEDIUM,'semibold':Pango.Weight.SEMIBOLD,
@@ -98,7 +99,7 @@ class PangoRenderer():
                                   '500':Pango.Weight.MEDIUM,'600':Pango.Weight.SEMIBOLD,
                                   '700':Pango.Weight.BOLD,'800':Pango.Weight.ULTRABOLD,
                                   '900':Pango.Weight.HEAVY,'1000':Pango.Weight.ULTRAHEAVY}
-            self.PANGO_STRETCHES = {'ultra-condensed':Pango.Stretch.ULTRA_CONDENSED,
+            CSSSTR_to_PSTR = {'ultra-condensed':Pango.Stretch.ULTRA_CONDENSED,
                                     'extra-condensed':Pango.Stretch.EXTRA_CONDENSED,
                                     'condensed':Pango.Stretch.CONDENSED,
                                     'semi-condensed':Pango.Stretch.SEMI_CONDENSED,
@@ -107,6 +108,18 @@ class PangoRenderer():
                                     'expanded':Pango.Stretch.EXPANDED,
                                     'extra-expanded':Pango.Stretch.EXTRA_EXPANDED,
                                     'ultra-expanded':Pango.Stretch.ULTRA_EXPANDED}
+            def css_to_pango_func(sty,key):
+                val = sty.get(key).lower();
+                if key=='font-weight':
+                    return CSSWGT_to_PWGT.get(val,Pango.Weight.NORMAL)
+                elif key=='font-style':
+                    return CSSSTY_to_PSTY.get(val,Pango.Style.NORMAL)
+                elif key=='font-stretch':
+                    return CSSSTR_to_PSTR.get(val,Pango.Stretch.NORMAL)
+                elif key=='font-variant':
+                    return CSSVAR_to_PVAR.get(val,Pango.Variant.NORMAL)
+                return None
+            self.css_to_pango = css_to_pango_func;
             
             # Conversions from Pango to fontconfig
             self.PWGT_to_FCWGT = {Pango.Weight.THIN:FC.WEIGHT_THIN,
@@ -142,6 +155,7 @@ class PangoRenderer():
                               Pango.Stretch.EXPANDED:FC.WIDTH_EXPANDED,
                               Pango.Stretch.EXTRA_EXPANDED:FC.WIDTH_EXTRAEXPANDED,
                               Pango.Stretch.ULTRA_EXPANDED:FC.WIDTH_ULTRAEXPANDED}
+
             
             self.PANGOSIZE = 1000;  # size of text to render. 1000 is good
             self.pufd = Pango.units_from_double;
@@ -160,7 +174,7 @@ class PangoRenderer():
 
         
         # CSS to fontconfig lookup
-        self.CWGT_to_FCWGT = {'thin': FC.WEIGHT_THIN,
+        CSSWGT_to_FCWGT = {'thin': FC.WEIGHT_THIN,
                               'ultralight': FC.WEIGHT_EXTRALIGHT, 
                               'light': FC.WEIGHT_LIGHT, 
                               'semilight': FC.WEIGHT_SEMILIGHT, 
@@ -184,10 +198,10 @@ class PangoRenderer():
                               '800': FC.WEIGHT_ULTRABOLD, 
                               '900': FC.WEIGHT_HEAVY, 
                               '1000': FC.WEIGHT_ULTRABLACK}
-        self.CSTY_to_FCSLN = {'normal': FC.SLANT_ROMAN, 
+        CSSSTY_to_FCSLN = {'normal': FC.SLANT_ROMAN, 
                               'italic': FC.SLANT_ITALIC, 
                               'oblique': FC.SLANT_OBLIQUE}
-        self.CSTR_to_FCWDT = {'ultra-condensed': FC.WIDTH_ULTRACONDENSED, 
+        CSSSTR_to_FCWDT = {'ultra-condensed': FC.WIDTH_ULTRACONDENSED, 
                               'extra-condensed': FC.WIDTH_EXTRACONDENSED, 
                               'condensed': FC.WIDTH_CONDENSED, 
                               'semi-condensed': FC.WIDTH_SEMICONDENSED, 
@@ -196,6 +210,17 @@ class PangoRenderer():
                               'expanded': FC.WIDTH_EXPANDED, 
                               'extra-expanded': FC.WIDTH_EXTRAEXPANDED, 
                               'ultra-expanded': FC.WIDTH_ULTRAEXPANDED}
+        
+        def css_to_fc_func(sty,key):
+            val = sty.get(key).lower();
+            if key=='font-weight':
+                return CSSWGT_to_FCWGT.get(val,FC.WEIGHT_NORMAL)
+            elif key=='font-style':
+                return CSSSTY_to_FCSLN.get(val,FC.SLANT_ROMAN)
+            elif key=='font-stretch':
+                return CSSSTR_to_FCWDT.get(val,FC.WIDTH_NORMAL)
+            return None
+        self.css_to_fc = css_to_fc_func;
         
         
     
@@ -253,18 +278,19 @@ class PangoRenderer():
         # fcfm   = found.get(fc.PROP.FAMILY,0)[0];
         return found
     
-    # Look up a font by its CSS properties
-    def fc_match_css(self,family,cstr,cwgt,csty):
-        pat = fc.Pattern.name_parse(re.escape(family.replace("'",'').replace('"','')));
-        pat.add(fc.PROP.WIDTH,  self.CSTR_to_FCWDT[cstr]);
-        pat.add(fc.PROP.WEIGHT, self.CWGT_to_FCWGT[cwgt]);
-        pat.add(fc.PROP.SLANT,  self.CSTY_to_FCSLN[csty]);
+    # Look up a fontconfig font by its CSS properties
+    def fc_match_css(self,sty):
+        pat = fc.Pattern.name_parse(re.escape(sty['font-family'].replace("'",'').replace('"','')));
+        pat.add(fc.PROP.WIDTH,  self.css_to_fc(sty,'font-stretch'));
+        pat.add(fc.PROP.WEIGHT, self.css_to_fc(sty,'font-weight'));
+        pat.add(fc.PROP.SLANT,  self.css_to_fc(sty,'font-style'));
 
         conf = fc.Config.get_current()
         conf.substitute(pat, FC.MatchPattern)
         pat.default_substitute()
         found,status = conf.font_match(pat)
-        # fcname = found.get(fc.PROP.FULLNAME,0)[0];
+        # how to use found:
+        # fcname = found.get(fc.PROP.FULLNAME,0)[0]; 
         # fcfm   = found.get(fc.PROP.FAMILY,0)[0];
         return found
     
@@ -283,10 +309,10 @@ class PangoRenderer():
         # The comma above is very important for font-families like Rockwell Condensed.
         # Without it, Pango will interpret it as the Condensed font-stretch of the Rockwell font-family,
         # rather than the Rockwell Condensed font-family.
-        fd.set_weight( self.PANGO_WEIGHTS[  sty2['font-weight']])
-        fd.set_variant(self.PANGO_VARIANTS[ sty2['font-variant']])
-        fd.set_style(  self.PANGO_STYLES[   sty2['font-style']])
-        fd.set_stretch(self.PANGO_STRETCHES[sty2['font-stretch']])
+        fd.set_weight( self.css_to_pango(sty2,'font-weight'))
+        fd.set_variant(self.css_to_pango(sty2,'font-variant'))
+        fd.set_style(  self.css_to_pango(sty2,'font-style'))
+        fd.set_stretch(self.css_to_pango(sty2,'font-stretch'))
         fd.set_absolute_size(self.pufd(self.PANGOSIZE))
         
         logsbefore = self.numlogs;
@@ -301,9 +327,9 @@ class PangoRenderer():
         # if not(success):
         #     dh.idebug(fd.to_string())
         
-        # dh.idebug(self.fc_match(sty2['font-family'],self.PANGO_STRETCHES[sty2['font-stretch']],
-        #                     self.PANGO_WEIGHTS[  sty2['font-weight']],
-        #                     self.PANGO_STYLES[   sty2['font-style']]))
+        # dh.idebug(self.fc_match(sty2['font-family'],self.CSSSTR_to_PSTR[sty2['font-stretch']],
+        #                     self.CSSWGT_to_PWGT[  sty2['font-weight']],
+        #                     self.CSSSTY_to_PSTY[   sty2['font-style']]))
             
         # dh.idebug(sty2['font-family'])
         # dh.idebug(fdstr)
@@ -317,9 +343,9 @@ class PangoRenderer():
         # for ii in mfaces:
         #     dh.idebug('    '+self.all_faces[ii])
         #     fdm = self.all_desc[ii];
-        #     pmatch = [fdm.get_stretch()==self.PANGO_STRETCHES[sty2['font-stretch']],
-        #               fdm.get_weight() ==self.PANGO_WEIGHTS[  sty2['font-weight']],
-        #               fdm.get_style()  ==self.PANGO_STYLES[   sty2['font-style']]]
+        #     pmatch = [fdm.get_stretch()==self.CSSSTR_to_PSTR[sty2['font-stretch']],
+        #               fdm.get_weight() ==self.CSSWGT_to_PWGT[  sty2['font-weight']],
+        #               fdm.get_style()  ==self.CSSSTY_to_PSTY[   sty2['font-style']]]
         #     dh.idebug('    '+str(pmatch))
             
         #     if all(pmatch):
@@ -347,9 +373,9 @@ class PangoRenderer():
         #     # but without PangoFT2 it won't be rendered.
         # pat = fc.Pattern.create(vals = (
         #         (fc.PROP.FAMILY, sty2['font-family']),
-        #         (fc.PROP.WIDTH,  self.PSTR_to_FCWDT[self.PANGO_STRETCHES[sty2['font-stretch']]]),
-        #         (fc.PROP.WEIGHT, self.PWGT_to_FCWGT[self.PANGO_WEIGHTS[  sty2['font-weight']]]),
-        #         (fc.PROP.SLANT,  self.PSTY_to_FCSLN[self.PANGO_STYLES[   sty2['font-style']]])   ))
+        #         (fc.PROP.WIDTH,  self.PSTR_to_FCWDT[self.CSSSTR_to_PSTR[sty2['font-stretch']]]),
+        #         (fc.PROP.WEIGHT, self.PWGT_to_FCWGT[self.CSSWGT_to_PWGT[  sty2['font-weight']]]),
+        #         (fc.PROP.SLANT,  self.PSTY_to_FCSLN[self.CSSSTY_to_PSTY[   sty2['font-style']]])   ))
         # conf = fc.Config.get_current()
         # conf.substitute(pat, FC.MatchPattern)
         # pat.default_substitute()
@@ -437,7 +463,7 @@ class PangoRenderer():
             #         dh.idebug('    '+m)
                 
         # dh.idebug(success)
-        # dh.idebug(self.PWGT_to_FCWGT[self.PANGO_WEIGHTS[  sty2['font-weight']]])
+        # dh.idebug(self.PWGT_to_FCWGT[self.CSSWGT_to_PWGT[  sty2['font-weight']]])
         # dh.idebug(FC.WEIGHT_EXTRABOLD)
         # dh.idebug((fcname,fd.to_string()))
         if success:
@@ -499,15 +525,10 @@ class PangoRenderer():
         
         if nominalfont not in self.truefonts:
             (ffam,fstr,fwgt,fsty) = nominalfont
-            # pwgt = self.PANGO_WEIGHTS[  fwgt]
-            # psty = self.PANGO_STYLES[   fsty]
-            # pstr = self.PANGO_STRETCHES[fstr]
-            
-            # dh.idebug(nominalfont)
-            found = self.fc_match_css(ffam,fstr,fwgt,fsty)
+            styd = {'font-family':ffam,'font-style':fsty,'font-stretch':fstr,'font-weight':fwgt};
+            found = self.fc_match_css(styd)
             # dh.idebug(found)
-            
-            # self.disable_lcctype();           
+                    
             # ff_strip = ffam.replace("'",'').replace('"','')
             # pat = fc.Pattern.name_parse(re.escape(ff_strip))
             # conf = fc.Config.get_current()
@@ -515,8 +536,6 @@ class PangoRenderer():
             # pat.default_substitute()
             # found,status = conf.font_match(pat)
             # dh.idebug(found)
-            
-            # self.enable_lcctype();
             
             self.truefonts[nominalfont]    = found.get(fc.PROP.FAMILY,0)[0]
             self.fontcharsets[found.get(fc.PROP.FAMILY,0)[0]] = found.get(fc.PROP.CHARSET,0)[0]
@@ -532,7 +551,6 @@ class PangoRenderer():
             d = {};
         
         if len(d)<len(chars):
-            # self.disable_lcctype();
             pat = fc.Pattern.name_parse(nominalfont)
             conf = fc.Config.get_current()
             conf.substitute(pat, FC.MatchPattern)
@@ -573,9 +591,9 @@ class PangoRenderer():
                 fw   = fd.get_weight();
                 fsty = fd.get_style();
                 
-                cs  = [k for k,v in self.PANGO_STRETCHES.items() if v==fs]
-                cw  = [k for k,v in self.PANGO_WEIGHTS.items()   if v==fw and isnumeric(k)]
-                csty= [k for k,v in self.PANGO_STYLES.items()    if v==fsty]
+                cs  = [k for k,v in self.CSSSTR_to_PSTR.items() if v==fs]
+                cw  = [k for k,v in self.CSSWGT_to_PWGT.items()   if v==fw and isnumeric(k)]
+                csty= [k for k,v in self.CSSSTY_to_PSTY.items()    if v==fsty]
                 
                 mysty = "font-family:'"+fm+"'; "
                 if len(cs)>0:
