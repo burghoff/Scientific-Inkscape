@@ -122,7 +122,7 @@ class PangoRenderer():
             self.css_to_pango = css_to_pango_func;
             
             # Conversions from Pango to fontconfig
-            self.PWGT_to_FCWGT = {Pango.Weight.THIN:FC.WEIGHT_THIN,
+            PWGT_to_FCWGT = {Pango.Weight.THIN:FC.WEIGHT_THIN,
                               Pango.Weight.ULTRALIGHT:FC.WEIGHT_ULTRALIGHT,
                               Pango.Weight.ULTRALIGHT:FC.WEIGHT_EXTRALIGHT,
                               Pango.Weight.LIGHT:FC.WEIGHT_LIGHT,
@@ -142,11 +142,11 @@ class PangoRenderer():
                               Pango.Weight.ULTRAHEAVY:FC.WEIGHT_EXTRABLACK,
                               Pango.Weight.ULTRAHEAVY:FC.WEIGHT_ULTRABLACK}
             
-            self.PSTY_to_FCSLN = {Pango.Style.NORMAL:FC.SLANT_ROMAN,
+            PSTY_to_FCSLN = {Pango.Style.NORMAL:FC.SLANT_ROMAN,
                               Pango.Style.ITALIC:FC.SLANT_ITALIC,
                               Pango.Style.OBLIQUE:FC.SLANT_OBLIQUE}
 
-            self.PSTR_to_FCWDT = {Pango.Stretch.ULTRA_CONDENSED:FC.WIDTH_ULTRACONDENSED,
+            PSTR_to_FCWDT = {Pango.Stretch.ULTRA_CONDENSED:FC.WIDTH_ULTRACONDENSED,
                               Pango.Stretch.EXTRA_CONDENSED:FC.WIDTH_EXTRACONDENSED,
                               Pango.Stretch.CONDENSED:FC.WIDTH_CONDENSED,
                               Pango.Stretch.SEMI_CONDENSED:FC.WIDTH_SEMICONDENSED,
@@ -155,6 +155,13 @@ class PangoRenderer():
                               Pango.Stretch.EXPANDED:FC.WIDTH_EXPANDED,
                               Pango.Stretch.EXTRA_EXPANDED:FC.WIDTH_EXTRAEXPANDED,
                               Pango.Stretch.ULTRA_EXPANDED:FC.WIDTH_ULTRAEXPANDED}
+            
+            def pango_to_fc_func(pstretch,pweight,pstyle):
+                fcwidth = PSTR_to_FCWDT[pstretch];
+                fcweight = PWGT_to_FCWGT[pweight];
+                fcslant = PSTY_to_FCSLN[pstyle];
+                return fcwidth,fcweight,fcslant
+            self.pango_to_fc = pango_to_fc_func;
 
             
             self.PANGOSIZE = 1000;  # size of text to render. 1000 is good
@@ -264,11 +271,12 @@ class PangoRenderer():
         return ssbackups
             
     # Look up a font by its Pango properties
-    def fc_match_pango(self,family,pwidth,pweight,pstyle):
+    def fc_match_pango(self,family,pstretch,pweight,pstyle):
         pat = fc.Pattern.name_parse(re.escape(family.replace("'",'').replace('"','')));
-        pat.add(fc.PROP.WIDTH,  self.PSTR_to_FCWDT[pwidth]);
-        pat.add(fc.PROP.WEIGHT, self.PWGT_to_FCWGT[pweight]);
-        pat.add(fc.PROP.SLANT,  self.PSTY_to_FCSLN[pstyle]);
+        fcwidth,fcweight,fcslant = self.pango_to_fc(pstretch,pweight,pstyle)
+        pat.add(fc.PROP.WIDTH,  fcwidth);
+        pat.add(fc.PROP.WEIGHT, fcweight);
+        pat.add(fc.PROP.SLANT,  fcslant);
         
         conf = fc.Config.get_current()
         conf.substitute(pat, FC.MatchPattern)
