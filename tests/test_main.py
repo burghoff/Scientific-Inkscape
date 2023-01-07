@@ -158,14 +158,17 @@ def matrix_multiply(a, b):
                 result[i][j] += a[i][k] * b[k][j]
     
     return result
+
 # Converts a transform string into a standard matrix
 def transform_to_matrix(transform):
     # Regular expression pattern to match transform functions
     pattern = rb'\b(scale|translate|rotate|skewX|skewY|matrix)\(([^\)]*)\)'
     # Initialize result matrix
+    
+    null   = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
     matrix = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-    if b'none' in transform:
-        return matrix
+    if b'none' in transform or not re.search(pattern, transform):
+        return null
     # Find all transform functions
     for match in re.finditer(pattern, transform):
         transform_type = match.group(1)
@@ -178,16 +181,16 @@ def transform_to_matrix(transform):
             elif len(transform_args) == 2:
                 sx, sy = transform_args
             else:
-                sx = sy = 1
+                return null
             matrix = matrix_multiply(matrix, [[sx, 0, 0], [0, sy, 0], [0, 0, 1]])
         elif transform_type == b'translate':
             # Translation transform
             if len(transform_args) == 1:
-                tx = ty = transform_args[0]
+                tx = transform_args[0]; ty = 0;
             elif len(transform_args) == 2:
                 tx, ty = transform_args
             else:
-                tx = ty = 0
+                return null
             matrix = matrix_multiply(matrix, [[1, 0, tx], [0, 1, ty], [0, 0, 1]])
         elif transform_type == b'rotate':
             # Rotation transform
@@ -197,8 +200,7 @@ def transform_to_matrix(transform):
             elif len(transform_args) == 3:
                 angle, cx, cy = transform_args
             else:
-                angle = 0
-                cx = cy = 0
+                return null
             angle = angle * math.pi / 180  # Convert angle to radians
             matrix = matrix_multiply(matrix, [[1, 0, cx], [0, 1, cy], [0, 0, 1]])
             matrix = matrix_multiply(matrix, [[math.cos(angle), -math.sin(angle), 0], [math.sin(angle), math.cos(angle), 0], [0, 0, 1]])
@@ -208,7 +210,7 @@ def transform_to_matrix(transform):
             if len(transform_args) == 1:
                 angle = transform_args[0]
             else:
-                angle = 0
+                return null
             angle = angle * math.pi / 180  # Convert angle to radians
             matrix = matrix_multiply(matrix, [[1, math.tan(angle), 0], [0, 1, 0], [0, 0, 1]])
         elif transform_type == b'skewY':
@@ -216,7 +218,7 @@ def transform_to_matrix(transform):
             if len(transform_args) == 1:
                 angle = transform_args[0]
             else:
-                angle = 0
+                return null
             angle = angle * math.pi / 180  # Convert angle to radians
             matrix = matrix_multiply(matrix, [[1, 0, 0], [math.tan(angle), 1, 0], [0, 0, 1]])
         elif transform_type == b'matrix':
@@ -224,8 +226,7 @@ def transform_to_matrix(transform):
             if len(transform_args) == 6:
                 a, b, c, d, e, f = transform_args
             else:
-                a = d = 1
-                b = c = e = f = 0
+                return null
             matrix = matrix_multiply(matrix, [[a, c, e], [b, d, f], [0, 0, 1]])
     # Return the final matrix
     return matrix
@@ -274,7 +275,6 @@ class CompareNumericFuzzy2(Compare):
         prec_trfm = 3;
         
         # Standardize transforms to matrix()
-        # Use 3 digits for a,b,c,d and 0 digits for e,f
         spans = []; repls = []
         tfms = list(re.finditer(rb'\btransform\s*=\s*"(.+?)"',contents))
         for m in tfms:
@@ -298,7 +298,8 @@ class CompareNumericFuzzy2(Compare):
             intfm = ti<len(tfms) and s>tfms[ti][0] and e<tfms[ti][1]  # in next tfm
             # print((m.group(0),intfm))
             if not(intfm):
-                repl = b"%.0f" % (float(m.group(0))+0) # Adding 0 changes -0 to 0
+                fmt = b"%." + f"{prec_xy}".encode('utf-8') + b"f";
+                repl = fmt % (float(m.group(0))+0) # Adding 0 changes -0 to 0
                 spans.append((s,e))
                 repls.append(repl)
         contents3 = Replace_Spans(contents2,spans,repls)
