@@ -1063,60 +1063,114 @@ BaseElement.get_id2 = get_id2_func
 # Correctly calculates path for rectangles and ellipses
 # Gets Path object
 def get_path2(el):
-    class MiniRect:  # mostly from inkex.elements._polygons
-        def __init__(self, el):
-            self.left = implicitpx(el.get("x", "0"))
-            self.top = implicitpx(el.get("y", "0"))
-            self.width = implicitpx(el.get("width", "0"))
-            self.height = implicitpx(el.get("height", "0"))
-            self.rx = implicitpx(el.get("rx", el.get("ry", "0")))
-            self.ry = implicitpx(el.get("ry", el.get("rx", "0")))
-            self.right = self.left + self.width
-            self.bottom = self.top + self.height
+    # class MiniRect:  # mostly from inkex.elements._polygons
+    #     def __init__(self, el):
+    #         self.left = implicitpx(el.get("x", "0"))
+    #         self.top = implicitpx(el.get("y", "0"))
+    #         self.width = implicitpx(el.get("width", "0"))
+    #         self.height = implicitpx(el.get("height", "0"))
+    #         self.rx = implicitpx(el.get("rx", el.get("ry", "0")))
+    #         self.ry = implicitpx(el.get("ry", el.get("rx", "0")))
+    #         self.right = self.left + self.width
+    #         self.bottom = self.top + self.height
 
-        def get_path(self):
-            """Calculate the path as the box around the rect"""
-            if self.rx:
-                rx, ry = self.rx, self.ry  # pylint: disable=invalid-name
-                return (
-                    "M {1},{0.top}"
-                    "L {2},{0.top}    A {0.rx},{0.ry} 0 0 1 {0.right},{3}"
-                    "L {0.right},{4}  A {0.rx},{0.ry} 0 0 1 {2},{0.bottom}"
-                    "L {1},{0.bottom} A {0.rx},{0.ry} 0 0 1 {0.left},{4}"
-                    "L {0.left},{3}   A {0.rx},{0.ry} 0 0 1 {1},{0.top} z".format(
-                        self,
-                        self.left + rx,
-                        self.right - rx,
-                        self.top + ry,
-                        self.bottom - ry,
-                    )
-                )
-            return "M {0.left},{0.top} h {0.width} v {0.height} h {1} z".format(
-                self, -self.width
-            )
+    #     def get_path(self):
+    #         """Calculate the path as the box around the rect"""
+    #         if self.rx:
+    #             rx, ry = self.rx, self.ry  # pylint: disable=invalid-name
+    #             return (
+    #                 "M {1},{0.top}"
+    #                 "L {2},{0.top}    A {0.rx},{0.ry} 0 0 1 {0.right},{3}"
+    #                 "L {0.right},{4}  A {0.rx},{0.ry} 0 0 1 {2},{0.bottom}"
+    #                 "L {1},{0.bottom} A {0.rx},{0.ry} 0 0 1 {0.left},{4}"
+    #                 "L {0.left},{3}   A {0.rx},{0.ry} 0 0 1 {1},{0.top} z".format(
+    #                     self,
+    #                     self.left + rx,
+    #                     self.right - rx,
+    #                     self.top + ry,
+    #                     self.bottom - ry,
+    #                 )
+    #             )
+    #         return "M {0.left},{0.top} h {0.width} v {0.height} h {1} z".format(
+    #             self, -self.width
+    #         )
 
-    class MiniEllipse:  # mostly from inkex.elements._polygons
-        def __init__(self, el):
-            self.cx = implicitpx(el.get("cx", "0"))
-            self.cy = implicitpx(el.get("cy", "0"))
-            if isinstance(el, (inkex.Ellipse)):  # ellipse
-                self.rx = implicitpx(el.get("rx", "0"))
-                self.ry = implicitpx(el.get("ry", "0"))
-            else:  # circle
-                self.rx = implicitpx(el.get("r", "0"))
-                self.ry = implicitpx(el.get("r", "0"))
+    # class MiniEllipse:  # mostly from inkex.elements._polygons
+    #     def __init__(self, el):
+    #         self.cx = implicitpx(el.get("cx", "0"))
+    #         self.cy = implicitpx(el.get("cy", "0"))
+    #         if isinstance(el, (inkex.Ellipse)):  # ellipse
+    #             self.rx = implicitpx(el.get("rx", "0"))
+    #             self.ry = implicitpx(el.get("ry", "0"))
+    #         else:  # circle
+    #             self.rx = implicitpx(el.get("r", "0"))
+    #             self.ry = implicitpx(el.get("r", "0"))
 
-        def get_path(self):
-            return (
-                "M {cx},{y} "
-                "a {rx},{ry} 0 1 0 {rx}, {ry} "
-                "a {rx},{ry} 0 0 0 -{rx}, -{ry} z"
-            ).format(cx=self.cx, y=self.cy - self.ry, rx=self.rx, ry=self.ry)
+    #     def get_path(self):
+    #         return (
+    #             "M {cx},{y} "
+    #             "a {rx},{ry} 0 1 0 {rx}, {ry} "
+    #             "a {rx},{ry} 0 0 0 -{rx}, -{ry} z"
+    #         ).format(cx=self.cx, y=self.cy - self.ry, rx=self.rx, ry=self.ry)
 
+    # class MiniLine:
+    #     def __init__(self,el):
+    #         self.x1 = implicitpx(el.get("x1", "0"))
+    #         self.y1 = implicitpx(el.get("y1", "0"))
+    #         self.x2 = implicitpx(el.get("x2", "0"))
+    #         self.y2 = implicitpx(el.get("y2", "0"))
+    #     def get_path(self):
+    #         return Path(f"M{self.x1},{self.y1} L{self.x2},{self.y2}")
+
+    # mostly from inkex.elements._polygons
     if isinstance(el, (inkex.Rectangle)):
-        pth = Path(MiniRect(el).get_path())
+        # pth = Path(MiniRect(el).get_path())
+        left   = implicitpx(el.get("x", "0"))
+        top    = implicitpx(el.get("y", "0"))
+        width  = implicitpx(el.get("width", "0"))
+        height = implicitpx(el.get("height", "0"))
+        rx = implicitpx(el.get("rx", el.get("ry", "0")))
+        ry = implicitpx(el.get("ry", el.get("rx", "0")))
+        right = left + width
+        bottom = top + height
+        if rx:
+            return Path((
+                "M {lft2},{topv}"
+                "L {rgt2},{topv}  A {rxv},{ryv} 0 0 1 {rgtv},{top2}"
+                "L {rgtv},{btm2}  A {rxv},{ryv} 0 0 1 {rgt2},{btmv}"
+                "L {lft2},{btmv}  A {rxv},{ryv} 0 0 1 {lftv},{btm2}"
+                "L {lftv},{top2}  A {rxv},{ryv} 0 0 1 {lft2},{topv} z".format(
+                    topv=top, btmv=bottom, lftv=left,rgtv=right, rxv=rx, ryv=ry,
+                    lft2=left+rx, rgt2=right-rx, top2=top+ry, btm2=bottom-ry
+                ))
+            )
+        return Path("M {lftv},{topv} h {wdtv} v {hgtv} h {wdt2} z".format(
+            topv=top, lftv=left, wdtv=width, hgtv=height,
+            wdt2=-width)
+        )
+    
     elif isinstance(el, (inkex.Circle, inkex.Ellipse)):
-        pth = Path(MiniEllipse(el).get_path())
+        # pth = Path(MiniEllipse(el).get_path())
+        cx = implicitpx(el.get("cx", "0"))
+        cy = implicitpx(el.get("cy", "0"))
+        if isinstance(el, (inkex.Ellipse)):  # ellipse
+            rx = implicitpx(el.get("rx", "0"))
+            ry = implicitpx(el.get("ry", "0"))
+        else:  # circle
+            rx = implicitpx(el.get("r", "0"))
+            ry = implicitpx(el.get("r", "0"))
+        return Path((
+            "M {cx},{y} "
+            "a {rx},{ry} 0 1 0 {rx}, {ry} "
+            "a {rx},{ry} 0 0 0 -{rx}, -{ry} z"
+        ).format(cx=cx, y=cy-ry, rx=rx, ry=ry))
+        
+    elif isinstance(el, Line): # updated in v1.2
+        x1 = implicitpx(el.get("x1", "0"))
+        y1 = implicitpx(el.get("y1", "0"))
+        x2 = implicitpx(el.get("x2", "0"))
+        y2 = implicitpx(el.get("y2", "0"))
+        pth = Path(f"M{x1},{y1} L{x2},{y2}")
     else:
         pth = el.get_path()
     return pth

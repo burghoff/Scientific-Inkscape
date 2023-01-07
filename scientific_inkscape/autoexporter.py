@@ -523,7 +523,9 @@ class AutoExporter(inkex.EffectExtension):
             make_output(fin,myoutput)
         else:
             # Make PDF if necessary
-            if not(input_options.usepdf):
+            if input_options.testmode:
+                pdfs = [copy.copy(fin)]; # skip pdf conversion for testing
+            elif not(input_options.usepdf):
                 tmp = tempbase+"_tmp_small.pdf"
                 pdfs = make_output(fin,tmp)
             else:
