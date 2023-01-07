@@ -46,12 +46,15 @@ vpaths = {'1.0' :  ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\p
           '1.2.2': ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\lib\\python310.zip', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\lib\\python3.10', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\lib\\python3.10\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\lib\\python3.10\\site-packages', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\bin'],
           '1.3': ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.3-dev_2022-07-25_5e015900-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.3-dev_2022-07-25_5e015900-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.3-dev_2022-07-25_5e015900-x64\\lib\\python310.zip', 'D:\\Inkscapes\\inkscape-1.3-dev_2022-07-25_5e015900-x64\\lib\\python3.10', 'D:\\Inkscapes\\inkscape-1.3-dev_2022-07-25_5e015900-x64\\lib\\python3.10\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.3-dev_2022-07-25_5e015900-x64\\lib\\python3.10\\site-packages', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'D:\\Inkscapes\\inkscape-1.3-dev_2022-07-25_5e015900-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.3-dev_2022-07-25_5e015900-x64\\bin']}
 
+    
+import os
+if 'TESTMAINVERSION' in os.environ:
+    version = os.environ['TESTMAINVERSION']
 if version=='1.0':
     flattenerargs += ("--v=1.0",)
-    aeargs += ("--v=1.0",)
 
 import sys; sys.path += vpaths[version]
-import os; os.environ['LINEPROFILE'] = str(lprofile)
+os.environ['LINEPROFILE'] = str(lprofile)
 
 from flatten_plots import FlattenPlots
 from scale_plots import ScalePlots
@@ -71,27 +74,27 @@ def get_files(dirin):
         if f.name[-4:]=='.svg':
             fs.append(os.path.join(os.path.abspath(dirin),f.name))
     return fs
-class CompareNeg0(Compare):
-    """Convert negative 0s into regular 0s"""
-    @staticmethod
-    def filter(contents):
+# class CompareNeg0(Compare):
+#     """Convert negative 0s into regular 0s"""
+#     @staticmethod
+#     def filter(contents):
         # c2 = re.sub(rb'-0 ', b"0 ", contents)
         # c3 = c2.replace(b'-0)',b'0)')
         # c4 = re.sub(rb'-0,', b"0,", c3)
         # return c4
-        return contents
-class CompareDx0(Compare):
-    """Remove empty dx/dy values"""
-    @staticmethod
-    def filter(contents):
-        c2 = re.sub(rb'dx="0"', b"", contents)
-        c3 = re.sub(rb'dy="0"', b"", c2)
-        return c3
+        # return contents
+# class CompareDx0(Compare):
+#     """Remove empty dx/dy values"""
+#     @staticmethod
+#     def filter(contents):
+#         c2 = re.sub(rb'dx="0"', b"", contents)
+#         c3 = re.sub(rb'dy="0"', b"", c2)
+#         return c3
     
-class CompareTransforms(Compare):
-    """Standardize commas in transforms"""
-    @staticmethod
-    def filter(contents):
+# class CompareTransforms(Compare):
+#     """Standardize commas in transforms"""
+#     @staticmethod
+#     def filter(contents):
         # mmat = [];
         # for tr in [rb'matrix',rb'scale',rb'translate']:
         #     mmat += [m.span()[1] for m in re.compile(tr+rb'\(').finditer(contents)]
@@ -120,7 +123,7 @@ class CompareTransforms(Compare):
         # ret = re.sub(rb"scale\(0 0\)", rb"scale(0)", ret)
         # ret = re.sub(rb'transform="translate\(0 0\)"', rb"", ret)
         # return ret
-        return contents
+        # return contents
     
 
 # Replace all ids contained in urls in the order they appear in the document
@@ -156,7 +159,6 @@ def matrix_multiply(a, b):
         for j in range(3):
             for k in range(3):
                 result[i][j] += a[i][k] * b[k][j]
-    
     return result
 
 # Converts a transform string into a standard matrix
@@ -231,24 +233,24 @@ def transform_to_matrix(transform):
     # Return the final matrix
     return matrix
 def matrix_to_transform(matrix, precision_abcd=3, precision_ef=0):
-    # Round a, b, c, d elements to specified precision
-    # Adding 0 changes -0 to 0
-    matrix[0][0] = round(matrix[0][0], precision_abcd)+0
-    matrix[0][1] = round(matrix[0][1], precision_abcd)+0
-    matrix[1][0] = round(matrix[1][0], precision_abcd)+0
-    matrix[1][1] = round(matrix[1][1], precision_abcd)+0
-    
-    # Round e, f elements to specified precision
-    matrix[0][2] = round(matrix[0][2], precision_ef)+0
-    matrix[1][2] = round(matrix[1][2], precision_ef)+0
-    
     # Extract matrix elements
     a, c, e = matrix[0]
     b, d, f = matrix[1]
     
+    # Round a, b, c, d elements to specified precision
+    # Adding 0 changes -0 to 0
+    a = round(a, precision_abcd) + 0
+    b = round(b, precision_abcd) + 0
+    c = round(c, precision_abcd) + 0
+    d = round(d, precision_abcd) + 0
+    
+    # Round e, f elements to specified precision
+    e = round(e, precision_ef) + 0
+    f = round(f, precision_ef) + 0
+    
     # Construct transform string
     transform = f"matrix({a} {b} {c} {d} {e} {f})"
-    return transform.encode('utf-8') 
+    return transform.encode('utf-8')
 
 # Replace a list of spans with a list of replacement strings
 def Replace_Spans(string,spans,repls):
@@ -276,7 +278,8 @@ class CompareNumericFuzzy2(Compare):
         
         # Standardize transforms to matrix()
         spans = []; repls = []
-        tfms = list(re.finditer(rb'\btransform\s*=\s*"(.+?)"',contents))
+        tfm_pattern = rb'\btransform\s*=\s*(["\'])(.+?)\1';
+        tfms = list(re.finditer(tfm_pattern,contents))
         for m in tfms:
             spans.append(m.span())
             tcnts = m.group(1) # contents of transform tag
@@ -287,7 +290,7 @@ class CompareNumericFuzzy2(Compare):
         
         # Round other numbers to 0 digits, ignoring numbers in transforms
         nums = list(re.finditer(rb"-?\d+\.\d+(e[+-]\d+)?", contents2));
-        tfms = list(re.finditer(rb'\btransform\s*=\s*"(.+?)"',contents2))
+        tfms = list(re.finditer(tfm_pattern,               contents2))
         tfms = [mt.span() for mt in tfms]
         spans = []; repls = []
         ti=0;  # current transform we are looking at
@@ -309,34 +312,41 @@ class CompareNumericFuzzy2(Compare):
         # contents = re.sub(rb"\d+\.\d+(e[+-]\d+)?", func, contents)
         contents = re.sub(rb"(\d\.\d+?)0+\b", rb"\1", contents)
         contents = re.sub(rb"(\d)\.0+(?=\D|\b)", rb"\1", contents)
+        
+        # Remove empty dx="0" or dy="0" values and similar
+        contents = re.sub(rb'\b(dx|dy)\s*=\s*(["\'])(-?0(\.0)?)\2',rb'',contents)
+        
         return contents
     
 # Remove the content of images for the Autoexporter
 class CompareImages(Compare):
     @staticmethod
     def filter(contents):
-        return re.sub(rb'data:image\/png;base64,(.*?)"',
-                      rb'data:image/png;base64,"',contents)
+        contents = re.sub(rb'data:image\/png;base64,(.*?)"',
+                          rb'data:image/png;base64,"',contents)
+        contents = re.sub(rb'image\/svg\+xml',rb'',contents) # header for different versions
+        return contents
+        
 
 
 if testflattentext:
     class TestFlattenerText(ComparisonMixin, TestCase):
         effect_class = FlattenPlots
-        compare_filters = [CompareNumericFuzzy2(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         comparisons = [flattenerargs]
         compare_file = ['svg/'+flattentext]
 
 if testflattenrest:
     class TestFlattenerRest(ComparisonMixin, TestCase):
         effect_class = FlattenPlots
-        compare_filters = [CompareNumericFuzzy2(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         comparisons = [flattenerargs]
         compare_file = ['svg/'+flattenrest]
     
 if testflattenpapers:
     class TestFlattenerPapers(ComparisonMixin, TestCase):
         effect_class = FlattenPlots
-        compare_filters = [CompareNumericFuzzy2(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         comparisons = [flattenerargs]
         allfs = get_files(os.getcwd()+'/data/svg');
         badfs = [v for v in allfs if any([es in v for es in exclude_flatten])];
@@ -361,7 +371,7 @@ if testflattenpapers:
 if testscalecorrection:
     class TestScaleCorrection(ComparisonMixin, TestCase):  
         effect_class = ScalePlots
-        compare_filters = [CompareNumericFuzzy2(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=g5224","--tab=correction")
@@ -369,7 +379,7 @@ if testscalecorrection:
 if testscalecorrection2:
     class TestScaleCorrection2(ComparisonMixin, TestCase):  
         effect_class = ScalePlots
-        compare_filters = [CompareNumericFuzzy2(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         compare_file = ['svg/'+fname2]
         comparisons = [
             ("--id=g109153","--id=g109019","--tab=correction")
@@ -378,7 +388,7 @@ if testscalecorrection2:
 if testscalematching:
     class TestScaleMatching(ComparisonMixin, TestCase):
         effect_class = ScalePlots
-        compare_filters = [CompareNumericFuzzy2(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=rect5248","--id=g4982","--tab=matching")
@@ -386,7 +396,7 @@ if testscalematching:
 if testscalefixed:
     class TestScaleFixed(ComparisonMixin, TestCase):
         effect_class = ScalePlots
-        compare_filters = [CompareNumericFuzzy2(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=g4982","--tab=scaling",'--hscale=120','--vscale=80')
@@ -395,7 +405,7 @@ if testscalefixed:
 if testghoster:
     class TestGhoster(ComparisonMixin, TestCase):
         effect_class = TextGhoster
-        compare_filters = [CompareNumericFuzzy2(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=text28136",)
@@ -404,7 +414,7 @@ if testghoster:
 if testcbc:
     class TestCBC(ComparisonMixin, TestCase):
         effect_class = CombineByColor
-        compare_filters = [CompareNumericFuzzy2(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=layer1",)
@@ -413,7 +423,7 @@ if testcbc:
 if testfm:
     class TestFM(ComparisonMixin, TestCase):
         effect_class = FavoriteMarkers
-        compare_filters = [CompareNumericFuzzy2(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=path6928","--id=path6952","--smarker=True","--tab=markers")
@@ -422,7 +432,7 @@ if testfm:
 if testhomogenizer:
     class TestHomogenizer(ComparisonMixin, TestCase):
         effect_class = Homogenizer
-        compare_filters = [CompareNumericFuzzy2(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=layer1","--fontsize=7","--setfontsize=True","--fixtextdistortion=True","--fontmodes=2", \
@@ -433,7 +443,7 @@ if testhomogenizer:
 if testhomogenizer2:
     class TestHomogenizer2(ComparisonMixin, TestCase):
         effect_class = Homogenizer
-        compare_filters = [CompareNumericFuzzy2(),CompareDx0(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         compare_file = ['svg/'+fname2]
         comparisons = [
             ("--id=layer1","--fontsize=7","--setfontsize=True","--fixtextdistortion=True","--fontmodes=2", \
@@ -444,7 +454,7 @@ if testhomogenizer2:
 if testae:
     class TestAutoExporter(ComparisonMixin, TestCase):
         effect_class = AutoExporter
-        compare_filters = [CompareNumericFuzzy2(),CompareDx0(),
+        compare_filters = [CompareNumericFuzzy2(),
                            CompareWithoutIds(),CompareURLs(),
                            CompareImages()]
         compare_file = ['svg/'+aename]

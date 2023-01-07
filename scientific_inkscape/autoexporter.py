@@ -136,9 +136,6 @@ class AutoExporter(inkex.EffectExtension):
         pars.add_argument(
             "--useeps", type=inkex.Boolean, default=False, help="Export EPS?"
         )
-        # pars.add_argument(
-        #     "--usesvg", type=inkex.Boolean, default=False, help="Export Optimized SVG?"
-        # )
         pars.add_argument(
             "--usepsvg", type=inkex.Boolean, default=False, help="Export Portable SVG?"
         )
@@ -159,12 +156,6 @@ class AutoExporter(inkex.EffectExtension):
         pars.add_argument(
             "--stroketopath", type=inkex.Boolean, default=False, help="Stroke to paths?"
         )
-        # pars.add_argument(
-        #     "--svgoptpdf",
-        #     type=inkex.Boolean,
-        #     default=False,
-        #     help="Alternate Optimized SVG?",
-        # )
         pars.add_argument(
             "--watchhere", type=inkex.Boolean, default=False, help="Watch here"
         )
@@ -198,6 +189,7 @@ class AutoExporter(inkex.EffectExtension):
             self.options.thinline = True
             self.options.imagemode = 1
             self.options.texttopath = True
+            self.options.stroketopath = True;
             self.options.exportnow = True
             self.options.margin = 0.5
             
@@ -809,14 +801,21 @@ class AutoExporter(inkex.EffectExtension):
                 "select:{0}; {1}; export-filename:{2}; export-do".format(celsj,act,tmp),
                 fin,
             ]
-            subprocess_check(arg2,input_options)
+            if not(input_options.testmode):
+                subprocess_check(arg2,input_options)
+                
+                # Text converted to paths are a group of characters. Combine them all
+                svg = get_svg(tmp)
+                for elid in tels:
+                    el = dh.getElementById2(svg, elid)
+                    if el is not None and len(list(el)) > 0:
+                        dh.combine_paths(list(el))
+                    if el is not None:
+                        dh.ungroup(el)
+            else:
+                # Skip conversion in test mode
+                svg = get_svg(fin)
 
-            # Text converted to paths are a group of characters. Combine them all
-            svg = get_svg(tmp)
-            for elid in tels:
-                el = dh.getElementById2(svg, elid)
-                if el is not None and len(list(el)) > 0:
-                    dh.combine_paths(list(el))
                    
             # Remove temporary groups
             if input_options.stroketopath:
