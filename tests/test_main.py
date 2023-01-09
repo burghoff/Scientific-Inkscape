@@ -405,7 +405,7 @@ if testscalefixed:
 if testghoster:
     class TestGhoster(ComparisonMixin, TestCase):
         effect_class = TextGhoster
-        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds(),CompareURLs()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=text28136",)

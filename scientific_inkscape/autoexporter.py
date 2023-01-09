@@ -94,13 +94,6 @@ def joinmod(dirc, f):
     return os.path.join(os.path.abspath(dirc), f)
 
 
-def overwrite_svg(svg, fn):
-    try:
-        os.remove(fn)
-    except:
-        pass
-    inkex.command.write_svg(svg, fn)
-
 def subprocess_check(inputargs,input_opts):
     if hasattr(input_opts,'mythread') and input_opts.mythread.stopped == True:
         sys.exit()
@@ -326,7 +319,7 @@ class AutoExporter(inkex.EffectExtension):
             AutoExporter().export_all(
                 bfn, self.options.input_file, pth, formats, optcopy
             )
-            # overwrite_svg(self.svg,pth)
+            # dh.overwrite_svg(self.svg,pth)
 
         if dispprofile:
             pr.disable()
@@ -378,7 +371,7 @@ class AutoExporter(inkex.EffectExtension):
             svg = get_svg(fin)
             tmp = tempbase+ "_marg.svg"
             self.Add_Margin(svg,input_options.margin)
-            overwrite_svg(svg, tmp)
+            dh.overwrite_svg(svg, tmp)
             import copy
             fin = copy.copy(tmp)
 
@@ -454,7 +447,7 @@ class AutoExporter(inkex.EffectExtension):
             else:
                 self.Thinline_Dehancement(svg, 'split')
             tmp = tempbase+ "_tld" + fformat[0] + ".svg"
-            overwrite_svg(svg, tmp)
+            dh.overwrite_svg(svg, tmp)
             fin = copy.copy(tmp)
             # tmpoutputs.append(tmp)
 
@@ -500,7 +493,7 @@ class AutoExporter(inkex.EffectExtension):
                           
                         pnum = str(ii+1);   
                         svgpgfn = tempbase+'_page_'+pnum+'.svg';
-                        overwrite_svg(svgpg,svgpgfn)
+                        dh.overwrite_svg(svgpg,svgpgfn)
                         
                         outparts = fileout.split('.')
                         pgout = '.'.join(outparts[:-1])+'_page_'+pnum+'.'+outparts[-1]
@@ -565,7 +558,7 @@ class AutoExporter(inkex.EffectExtension):
                     pnum = pdf.split('_page_')[-1].strip('.pdf');
                     finalname = myoutput.replace('_portable.svg','_page_'+pnum+'_portable.svg')
                 # print(finalname)
-                overwrite_svg(svg, finalname)
+                dh.overwrite_svg(svg, finalname)
 
         if input_options.prints:
             toc = time.time() - timestart;
@@ -644,7 +637,7 @@ class AutoExporter(inkex.EffectExtension):
         
         dh.flush_stylesheet_entries(svg) # since we ungrouped
         tmp = tempbase+"_mod.svg"
-        overwrite_svg(svg, tmp)
+        dh.overwrite_svg(svg, tmp)
         fin = copy.copy(tmp)
         # tmpoutputs.append(tmp)
 
@@ -656,19 +649,14 @@ class AutoExporter(inkex.EffectExtension):
             els = [el for el in vds if el.get_id2() in list(set(raster_ids+image_ids))]
             if len(els) > 0:
                 imgtype = "png"
-                acts = []
-                acts2 = []
-                tis = []
-                ti2s = []
+                acts, acts2, imgs_trnp, imgs_opqe = [], [], [], []
                 for el in els:
                     elid = el.get_id2();
                     # dh.idebug([elid,el.croot])
                     tmpimg = temphead+"_im_" + elid + "." + imgtype
-                    tis.append(tmpimg)
+                    imgs_trnp.append(tmpimg)
                     tmpimg2 = temphead+"_imbg_" + elid + "." + imgtype
-                    ti2s.append(tmpimg2)
-                    
-                    # dh.idebug(tmpimg)
+                    imgs_opqe.append(tmpimg2)
                     
                     if elid in raster_ids:
                         mydpi = input_options.dpi
@@ -684,31 +672,8 @@ class AutoExporter(inkex.EffectExtension):
                            "export-filename:{2}; export-background-opacity:1.0; export-do; "
                     acts2.append(fmt2.format(el.get_id2(),int(mydpi),tmpimg2))
                     
-                    # acts.append(
-                    #     "export-id:"
-                    #     + el.get_id()
-                    #     + "; export-id-only; export-dpi:"
-                    #     + str(mydpi)
-                    #     + "; export-filename:"
-                    #     + tmpimg
-                    #     + "; export-background-opacity:0.0; export-do; "
-                    # )  # export item only
-                    # acts2.append(
-                    #     "export-id:"
-                    #     + el.get_id()
-                    #     + "; export-dpi:"
-                    #     + str(mydpi)
-                    #     + "; export-filename:"
-                    #     + tmpimg2
-                    #     + "; export-background-opacity:1.0; export-do; "
-                    # )  # export all w/background
                 if ih.hasPIL:
                     acts = acts2+acts  # export-id-onlys need to go last
-                    # args = ["--actions", acts2+acts];  # export-id-onlys need to go last
-                    # args = [bfn, "--actions", acts2+acts, fin];  
-                # else:
-                #     args = ["--actions", acts]
-                    # args = [bfn, "--actions", acts, fin];  
                 
                 # Windows cannot handle arguments that are too long. If this happens,
                 # split the export actions in half and run on each
@@ -726,20 +691,18 @@ class AutoExporter(inkex.EffectExtension):
                     return bbs;
                             
                 
-                # oldwd = os.getcwd();
+                oldwd = os.getcwd();
                 os.chdir(tempdir); # use relative paths to reduce arg length
-                bbs = Split_Acts(
-                    filename=fin, inkscape_binary=bfn, acts=acts
-                )
-                # os.chdir(oldwd); # don't think this is necessary
-                tis = [os.path.join(tempdir,t)  for t in tis]
-                ti2s = [os.path.join(tempdir,t) for t in ti2s]
+                bbs = Split_Acts(filename=fin, inkscape_binary=bfn, acts=acts)
+                os.chdir(oldwd);   # return to original dir so no problems in calling function
+                imgs_trnp = [os.path.join(tempdir,t) for t in imgs_trnp]
+                imgs_opqe = [os.path.join(tempdir,t) for t in imgs_opqe]
                   
 
                 for ii in range(len(els)):
                     el = els[ii]
-                    tmpimg = tis[ii]
-                    tmpimg2 = ti2s[ii]
+                    tmpimg = imgs_trnp[ii]
+                    tmpimg2 = imgs_opqe[ii]
                     
                     if os.path.exists(tmpimg):
                         anyalpha0 = False
@@ -749,7 +712,6 @@ class AutoExporter(inkex.EffectExtension):
                             if input_options.tojpg:
                                 tmpjpg = tmpimg.replace(".png", ".jpg")
                                 ih.to_jpeg(tmpimg2,tmpjpg)
-                                # tmpoutputs.append(tmpjpg)
                                 tmpimg = copy.copy(tmpjpg)
                         else:
                             bbox = None;
@@ -767,7 +729,7 @@ class AutoExporter(inkex.EffectExtension):
                 
                 dh.flush_stylesheet_entries(svg) # since we ungrouped
                 tmp = tempbase+"_eimg.svg"
-                overwrite_svg(svg, tmp)
+                dh.overwrite_svg(svg, tmp)
                 fin = copy.copy(tmp)
                 # tmpoutputs.append(tmp)
 
@@ -785,7 +747,7 @@ class AutoExporter(inkex.EffectExtension):
             if input_options.stroketopath:
                 # Stroke to Path has a number of bugs, try to fix them
                 pels = self.Stroke_to_Path_Fixes(vd)                
-                overwrite_svg(svg, fin)
+                dh.overwrite_svg(svg, fin)
 
             celsj = ",".join(tels+pels)
             tmp = tempbase+"_stp.svg"
@@ -825,7 +787,7 @@ class AutoExporter(inkex.EffectExtension):
                         dh.ungroup(el.getparent())
             
             dh.flush_stylesheet_entries(svg) # since we ungrouped            
-            overwrite_svg(svg, tmp)
+            dh.overwrite_svg(svg, tmp)
             fin = copy.copy(tmp)
 
         if input_options.prints:

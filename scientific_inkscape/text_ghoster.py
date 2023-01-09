@@ -68,7 +68,8 @@ class TextGhoster(inkex.EffectExtension):
             oldts[g.get_id()] = g.composed_transform()
             dh.global_transform(g, -oldts[g.get_id()])
 
-        bbs = dh.Get_Bounding_Boxes(self, True)
+        bbs = dh.BB2(self,sel,forceupdate=True)
+        
 
         # dh.debug(dh.getElementById2(self.svg,'feGaussianBlur3441').typename)
         for g in gs:

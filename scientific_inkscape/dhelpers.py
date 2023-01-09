@@ -1255,6 +1255,7 @@ def set_cbbox(el,val):
 inkex.BaseElement.cbbox = property(bounding_box2,set_cbbox)
 inkex.SvgDocumentElement.cbbox = property(bounding_box2,set_cbbox)
 
+# A wrapper that replaces Get_Bounding_Boxes with Pythonic calls only if possible
 def BB2(slf,els=None,forceupdate=False):
     if els is None:
         els = descendants2(slf.svg);
@@ -1289,17 +1290,23 @@ def BB2(slf,els=None,forceupdate=False):
                 d.cbbox = None
         if any([isinstance(d, (inkex.TextElement,)) for d in els]):
             import TextParser
+            assert TextParser # optional, disables pyflakes warning
             slf.svg.make_char_table(els=els)
         ret = dict()
         for d in els:
             if isinstance(d, bb2_support) and isrendered(d):
                 # idebug(bounding_box2(d))
-                mbbox = d.cbbox;
+                mbbox = d.cbbox; # Errors here are not actually here usually
                 if not(mbbox.isnull):
                     ret[d.get_id2()] = mbbox.sbb
-                    # ret[d.get_id2()] = (mbbox*slf.svg.cscale).sbb
     else:
-        ret = Get_Bounding_Boxes(slf, forceupdate)
+        import tempfile
+        with tempfile.TemporaryFile() as temp:
+            tname = os.path.abspath(temp.name);
+            overwrite_svg(slf.svg, tname)
+            ret = Get_Bounding_Boxes(filename=tname, svg=slf.svg)
+                
+        # ret = Get_Bounding_Boxes(slf, forceupdate)
         # dh.idebug('fallback')
     return ret
 
@@ -1321,27 +1328,9 @@ def Check_BB2(slf):
             el.croot.append(r)
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
-def Get_Bounding_Boxes(
-    s=None, getnew=False, filename=None, inkscape_binary=None,extra_args = []
-):
-    # Gets all of a document's bounding boxes (by ID), in user units
-    # Note that this uses a command line call, so by default it will only get the values from BEFORE the extension is called
-    # Set getnew to True to make a temporary copy of the file
-    if filename is None:
-        filename = s.options.input_file
-    # if pxinuu is None:
-    # pxinuu = s.svg.unittouu("1px")
-
-    # Query Inkscape
-    if not (getnew):
-        tFStR = commandqueryall(filename, inkscape_binary=inkscape_binary,extra_args=extra_args)
-    else:
-        tmpname = filename + "_tmp"
-        command.write_svg(s.svg, tmpname)
-        tFStR = commandqueryall(tmpname, inkscape_binary=inkscape_binary,extra_args=extra_args)
-        os.remove(tmpname)
-        
-    
+# Gets all of a document's bounding boxes (by ID) using a binary call
+def Get_Bounding_Boxes(filename, inkscape_binary=None,extra_args=[], svg=None):
+    tFStR = commandqueryall(filename, inkscape_binary=inkscape_binary,extra_args=extra_args)        
     # Parse the output
     tBBLi = tFStR.splitlines()
     bbs = dict()
@@ -1357,29 +1346,16 @@ def Get_Bounding_Boxes(
     
     # Inkscape always reports a bounding box in pixels, relative to the viewbox
     # Convert to user units for the output
-    if s is None: svg = svg_from_file(filename);
-    else:         svg = s.svg;
+    if svg is None:
+        # If SVG not supplied, load from file
+        svg = svg_from_file(filename);
     vb = svg.get_viewbox2();
-        
-    # pxperuu_x = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
-    # pxperuu_y = float(inkex.units.convert_unit(svg.get('height'), 'px')  or vb[3]) / float(vb[3])
-    # pxperuu = min(pxperuu_x,pxperuu_y)
-    # idebug((pxperuu_x,pxperuu_y))
-    # effvb = [vb[0]+vb[2]/2*(1-pxperuu_x/pxperuu),
-    #          vb[1]+vb[3]/2*(1-pxperuu_y/pxperuu),
-    #          vb[2]*pxperuu_x/pxperuu,
-    #          vb[3]*pxperuu_y/pxperuu] # bad scaling stretches viewbox
     
     # Viewbox function now automatically corrects non-uniform scale
     pxperuu = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
-    
     for k in bbs:
         bbs[k] = [bbs[k][0]/pxperuu+vb[0],bbs[k][1]/pxperuu+vb[1],
-                  bbs[k][2]/pxperuu,         bbs[k][3]/pxperuu]
-        
-        # bbs[k] = [bbs[k][0]*svg.cscale,bbs[k][1]*svg.cscale,
-        #           bbs[k][2]*svg.cscale,bbs[k][3]*svg.cscale]
-        
+                  bbs[k][2]/pxperuu,      bbs[k][3]/pxperuu]  
     return bbs
 
 
@@ -1392,8 +1368,6 @@ def commandqueryall(fn, inkscape_binary=None,extra_args = []):
         bfn = inkscape_binary
     arg2 = [bfn, "--query-all"]+extra_args+[fn]
 
-    # idebug(arg2)
-
     p = subprocess_repeat(arg2)
     tFStR = p.stdout
     return tFStR
@@ -1403,6 +1377,14 @@ from inkex import load_svg
 def svg_from_file(fin):
     svg = load_svg(fin).getroot()
     return svg
+
+# Write to disk, removing any existing file
+def overwrite_svg(svg, fileout):
+    try:
+        os.remove(fileout)
+    except:
+        pass
+    inkex.command.write_svg(svg, fileout)
 
 # Version of ancestors that works in v1.0
 def get_ancestors(el,includeme=False):

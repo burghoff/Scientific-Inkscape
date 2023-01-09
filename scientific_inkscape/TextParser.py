@@ -2450,7 +2450,6 @@ class Character_Table:
             f.write((svgtexts + svgstop).encode("utf8"))
             f.close()
             nbb = dh.Get_Bounding_Boxes(filename=tmpname)
-            # nbb = dh.Get_Bounding_Boxes(filename=tmpname, pxinuu=pxinuu)
             import os
             os.remove(tmpname)
         else:

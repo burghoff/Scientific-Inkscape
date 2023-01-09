@@ -286,7 +286,6 @@ class ScalePlots(inkex.EffectExtension):
 
 
         # dh.tic()
-        # fbbs = dh.Get_Bounding_Boxes(self, False)
         fbbs = dh.BB2(self,dh.unique([d for el in sel for d in dh.descendants2(el)]))
         # dh.toc()
         # full visual bbs
