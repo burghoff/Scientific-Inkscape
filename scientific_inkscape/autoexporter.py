@@ -694,7 +694,10 @@ class AutoExporter(inkex.EffectExtension):
                 oldwd = os.getcwd();
                 os.chdir(tempdir); # use relative paths to reduce arg length
                 bbs = Split_Acts(filename=fin, inkscape_binary=bfn, acts=acts)
-                os.chdir(oldwd);   # return to original dir so no problems in calling function
+                try:
+                    os.chdir(oldwd);   # return to original dir so no problems in calling function
+                except FileNotFoundError:
+                    pass               # occasionally directory no longer exists (deleted by tempfile?)
                 imgs_trnp = [os.path.join(tempdir,t) for t in imgs_trnp]
                 imgs_opqe = [os.path.join(tempdir,t) for t in imgs_opqe]
                   
