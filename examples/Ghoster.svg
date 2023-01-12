@@ -2,12 +2,12 @@
 <!-- Created with Inkscape (http://www.inkscape.org/) -->
 
 <svg
-   inkscape:version="1.1.1 (3bf5ae0d25, 2021-09-20)"
+   inkscape:version="1.2.1 (9c6d41e410, 2022-07-14)"
    id="svg2376"
    version="1.1"
-   viewBox="0 0 209.86464 41.549736"
-   height="41.549736mm"
-   width="209.86464mm"
+   viewBox="0 0 210.27771 51.67004"
+   height="51.67004mm"
+   width="210.27771mm"
    sodipodi:docname="Ghoster.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
@@ -24,9 +24,9 @@
      inkscape:pagecheckerboard="0"
      inkscape:document-units="mm"
      showgrid="false"
-     inkscape:zoom="0.90583674"
-     inkscape:cx="382.51926"
-     inkscape:cy="163.93683"
+     inkscape:zoom="1.2810466"
+     inkscape:cx="363.37476"
+     inkscape:cy="104.60197"
      inkscape:window-width="1920"
      inkscape:window-height="1017"
      inkscape:window-x="-8"
@@ -34,7 +34,9 @@
      inkscape:window-maximized="1"
      inkscape:current-layer="layer1"
      showguides="true"
-     inkscape:guide-bbox="true" />
+     inkscape:guide-bbox="true"
+     inkscape:showpageshadow="2"
+     inkscape:deskcolor="#d1d1d1" />
   <defs
      id="defs2373">
     <filter
@@ -105,7 +107,7 @@
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
      id="layer1"
-     transform="translate(-43.416454,-70.740967)">
+     transform="translate(-43.00338,-70.740967)">
     <rect
        style="fill:#ffffff;stroke-width:0.663683;stroke-dasharray:0.663683, 0.663683;-inkscape-stroke:none;stop-color:#000000"
        id="rect8280"
@@ -560,5 +562,22 @@
            style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:2.39889px;line-height:normal;font-family:Whitney;font-variant-ligatures:normal;font-variant-position:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-alternates:normal;font-variant-east-asian:normal;font-feature-settings:normal;font-variation-settings:normal;text-indent:0;text-align:start;text-decoration-line:none;text-decoration-style:solid;text-decoration-color:#000000;letter-spacing:normal;word-spacing:normal;text-transform:none;writing-mode:lr-tb;direction:ltr;text-orientation:mixed;dominant-baseline:auto;baseline-shift:baseline;text-anchor:start;white-space:normal;shape-padding:0;shape-margin:0;inline-size:0;vector-effect:none;fill:#262626;fill-opacity:1;stroke:none;stroke-width:0.352778;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;-inkscape-stroke:none;stop-color:#000000;stop-opacity:1"
            id="tspan3643">FWHM</tspan></text>
     </g>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.977194px;line-height:1.25;font-family:Avenir;-inkscape-font-specification:Avenir;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;stroke-width:0.0997273"
+       x="190.62791"
+       y="201.63559"
+       id="text95854-5"
+       transform="matrix(3.3770089,0,0,3.3770205,-495.84455,-565.1928)"><tspan
+         sodipodi:role="line"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.977194px;font-family:Avenir;-inkscape-font-specification:Avenir;text-align:center;text-anchor:middle;stroke-width:0.0997273"
+         x="190.62791"
+         y="201.63559"
+         id="tspan6505">D. Ren, C. Dong, S. J. Addamane, and D. Burghoff, “High-quality microresonators in the longwave</tspan><tspan
+         sodipodi:role="line"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:0.977194px;font-family:Avenir;-inkscape-font-specification:Avenir;text-align:center;text-anchor:middle;stroke-width:0.0997273"
+         x="190.62791"
+         y="202.85709"
+         id="tspan6509">infrared based on native germanium,” Nature Communications, vol. 13, no. 1, Art. no. 1, Oct. 2022</tspan></text>
   </g>
 </svg>
