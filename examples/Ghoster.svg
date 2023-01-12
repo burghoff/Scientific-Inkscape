@@ -5,9 +5,9 @@
    inkscape:version="1.2.1 (9c6d41e410, 2022-07-14)"
    id="svg2376"
    version="1.1"
-   viewBox="0 0 210.27771 51.67004"
-   height="51.67004mm"
-   width="210.27771mm"
+   viewBox="0 0 209.86464 51.463505"
+   height="51.463505mm"
+   width="209.86464mm"
    sodipodi:docname="Ghoster.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
@@ -25,7 +25,7 @@
      inkscape:document-units="mm"
      showgrid="false"
      inkscape:zoom="1.2810466"
-     inkscape:cx="363.37476"
+     inkscape:cx="313.41561"
      inkscape:cy="104.60197"
      inkscape:window-width="1920"
      inkscape:window-height="1017"
@@ -107,12 +107,12 @@
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
      id="layer1"
-     transform="translate(-43.00338,-70.740967)">
+     transform="translate(-43.416454,-70.740967)">
     <rect
        style="fill:#ffffff;stroke-width:0.663683;stroke-dasharray:0.663683, 0.663683;-inkscape-stroke:none;stop-color:#000000"
        id="rect8280"
        width="209.86464"
-       height="41.549736"
+       height="51.463505"
        x="43.416454"
        y="70.740967" />
     <path
