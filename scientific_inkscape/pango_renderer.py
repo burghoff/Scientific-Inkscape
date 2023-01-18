@@ -41,10 +41,28 @@ class PangoRenderer():
             # Ignore ImportWarning for Gtk/Pango
             warnings.simplefilter('ignore') 
             try:
+                import platform
+                if platform.system().lower() == "windows":
+                    # Windows does not have all of the typelibs needed for PangoFT2
+                    # Manually add the missing ones
+                    girep = os.path.join(os.path.dirname(os.path.dirname(dh.Get_Binary_Loc())),
+                                         'lib','girepository-1.0');
+                    if os.path.isdir(girep):
+                        tlibs = ['fontconfig-2.0.typelib','PangoFc-1.0.typelib','PangoFT2-1.0.typelib','freetype2-2.0.typelib']
+                        if any([not(os.path.exists(t)) for t in tlibs]):
+                            # gi looks in the order specified in GI_TYPELIB_PATH
+                            for newpath in [girep,os.path.join(dh.si_dir,'typelibs')]:
+                                cval = os.environ.get('GI_TYPELIB_PATH', '');
+                                if cval=='':
+                                    os.environ['GI_TYPELIB_PATH'] = newpath
+                                elif newpath not in cval:
+                                    os.environ['GI_TYPELIB_PATH'] = cval + os.pathsep + newpath
+                
                 import gi
                 gi.require_version("Gtk", "3.0")
                 
                 # GTk warning suppression from Martin Owens
+                # Can sometimes suppress debug output also?
                 from gi.repository import GLib
                 self.numlogs = 0;
                 def _nope(*args, **kwargs): #

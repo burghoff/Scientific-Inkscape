@@ -17,34 +17,10 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+PDFLATEX = True
+
 DEBUGGING = False
 dispprofile = False
-
-SCOUR_OPTIONS = (
-    "--tab=Options",
-    "--set-precision=5",
-    "--simplify-colors=true",
-    "--style-to-xml=true",
-    "--group-collapsing=true",
-    "--create-groups=true",
-    "--keep-editor-data=false",
-    "--keep-unreferenced-defs=false",
-    "--renderer-workaround=true",
-    "--strip-xml-prolog=false",
-    "--remove-metadata=false",
-    "--enable-comment-stripping=false",
-    "--embed-rasters=true",
-    "--enable-viewboxing=false",
-    "--line-breaks=true",
-    "--indent=space",
-    "--nindent=1",
-    "--strip-xml-space=false",
-    "--enable-id-stripping=true",
-    "--shorten-ids=true",
-    "--protect-ids-noninkscape=true",
-    "--scour-version=0.31",
-    "--scour-version-warn-old=false",
-)
 
 import subprocess
 import inkex
@@ -472,6 +448,10 @@ class AutoExporter(inkex.EffectExtension):
                 fileout,
                 filein,
             ]
+            if fileout.endswith('.pdf') and PDFLATEX:
+                if os.path.exists(fileout+'_tex'):
+                    os.remove(fileout+'_tex')
+                arg2 = arg2[0:5]+["--export-latex"]+arg2[5:]
             subprocess_check(arg2,input_options)
         
         
@@ -1292,6 +1272,34 @@ if __name__ == "__main__":
 
 # Scour calling
 # from output_scour import ScourInkscape
+
+
+
+# SCOUR_OPTIONS = (
+#     "--tab=Options",
+#     "--set-precision=5",
+#     "--simplify-colors=true",
+#     "--style-to-xml=true",
+#     "--group-collapsing=true",
+#     "--create-groups=true",
+#     "--keep-editor-data=false",
+#     "--keep-unreferenced-defs=false",
+#     "--renderer-workaround=true",
+#     "--strip-xml-prolog=false",
+#     "--remove-metadata=false",
+#     "--enable-comment-stripping=false",
+#     "--embed-rasters=true",
+#     "--enable-viewboxing=false",
+#     "--line-breaks=true",
+#     "--indent=space",
+#     "--nindent=1",
+#     "--strip-xml-space=false",
+#     "--enable-id-stripping=true",
+#     "--shorten-ids=true",
+#     "--protect-ids-noninkscape=true",
+#     "--scour-version=0.31",
+#     "--scour-version-warn-old=false",
+# )
 
 # sargs = SCOUR_OPTIONS + (fin,)
 

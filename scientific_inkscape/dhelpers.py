@@ -1951,6 +1951,30 @@ def vparse(vstr):
 
 ivp = vparse(inkex_version)
 
+si_dir = os.path.dirname(os.path.realpath(__file__))
+# Generate a temporary file or folder in SI's location / tmp
+# tempfile does not always work with Linux Snap distributions
+def si_tmp(dirbase='',filename=None):
+    if sys.executable[0:4] == "/tmp" or sys.executable[0:5] == "/snap":
+        si_dir = os.path.dirname(os.path.realpath(__file__)) # in case si_dir is not loaded
+        tmp_dir = os.path.join(si_dir,'tmp')
+    else:
+        import tempfile
+        tmp_dir = tempfile.gettempdir()
+    if not os.path.exists(tmp_dir):
+        os.mkdir(tmp_dir)
+    if filename is not None:                 # filename input
+        return os.path.join(tmp_dir,filename)
+    else:                                    # directory
+        subdir_name = dirbase+str(random.randint(1, 100000))
+        subdir_path = os.path.join(tmp_dir, subdir_name)
+        while os.path.exists(subdir_path):
+            subdir_name = dirbase+str(random.randint(1, 100000))
+            subdir_path = os.path.join(tmp_dir, subdir_name)
+        os.mkdir(subdir_path)
+        return subdir_path
+
+
 # def get_viewbox2(self):
 # """Parse and return the document's viewBox attribute"""
 # try:

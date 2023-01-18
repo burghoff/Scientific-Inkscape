@@ -221,7 +221,10 @@ class myThread(threading.Thread):
 
                     if self.ea:  # export all
                         self.ea = False
-                        updatefiles = list(lastmod.keys())
+                        if lastmod is not None:
+                            updatefiles = list(lastmod.keys())
+                        else:
+                            print('Directory appears to be invalid.')
                     elif self.es:
                         self.es = False
                         updatefiles = [self.selectedfile]
