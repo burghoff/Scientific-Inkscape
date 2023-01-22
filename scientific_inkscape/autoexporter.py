@@ -24,70 +24,29 @@ dispprofile = False
 
 import subprocess
 import inkex
-from inkex import (
-    TextElement,
-    FlowRoot,
-    FlowPara,
-    Tspan,
-    TextPath,
-    Rectangle,
-    addNS,
-    Transform,
-    Style,
-    PathElement,
-    Line,
-    Rectangle,
-    Path,
-    Vector2d,
-    Use,
-    NamedView,
-    Defs,
-    Metadata,
-    ForeignObject,
-    Group,
-    FontFace,
-    StyleElement,
-    StyleSheets,
-    SvgDocumentElement,
-    ShapeElement,
-    BaseElement,
-    FlowSpan,
-    Ellipse,
-    Circle,
-)
+from inkex import TextElement, Transform, PathElement, Vector2d
 
 import os, sys
 import numpy as np
 
-sys.path.append(
-    os.path.dirname(os.path.realpath(sys.argv[0]))
-)  # make sure my directory is on the path
+sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0])))  # make sure my directory is on the path
 import dhelpers as dh
 import image_helpers as ih
 
 # Convenience functions
 def joinmod(dirc, f):
     return os.path.join(os.path.abspath(dirc), f)
-
-
 def subprocess_check(inputargs,input_opts):
     if hasattr(input_opts,'mythread') and input_opts.mythread.stopped == True:
         sys.exit()
     dh.subprocess_repeat(inputargs)
     if hasattr(input_opts,'mythread') and input_opts.mythread.stopped == True:
         sys.exit()
-
-from inkex import load_svg
-
-
 def get_svg(fin):
-    svg = load_svg(fin).getroot()
-    # print(svg.iddict)
-    # dh.iddict = None # only valid one svg at a time
+    svg = inkex.load_svg(fin).getroot()
     return svg
 
 PTH_COMMANDS = list('MLHVCSQTAZmlhvcsqtaz')
-
 class AutoExporter(inkex.EffectExtension):
     def add_arguments(self, pars):
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
@@ -161,7 +120,6 @@ class AutoExporter(inkex.EffectExtension):
             self.options.stroketopath = True;
             self.options.exportnow = True
             self.options.margin = 0.5
-            
             import random
             random.seed(1)
             # self.options.svgoptpdf = True
@@ -198,7 +156,6 @@ class AutoExporter(inkex.EffectExtension):
         optcopy.tojpg = self.options.imagemode == 2
 
         bfn = dh.Get_Binary_Loc()
-        bloc, bnm = os.path.split(bfn)
         pyloc, pybin = os.path.split(sys.executable)
 
         if not (self.options.exportnow):
@@ -431,12 +388,10 @@ class AutoExporter(inkex.EffectExtension):
             myoutput = myoutput.replace(".psvg", "_portable.svg")
             
         
-        def overwrite_output(filein,fileout):      
-            try:
+        def overwrite_output(filein,fileout):  
+            if os.path.exists(fileout):
                 os.remove(fileout)
-            except:
-                pass
-            arg2 = [
+            args = [
                 bfn,
                 "--export-background",
                 "#ffffff",
@@ -451,8 +406,8 @@ class AutoExporter(inkex.EffectExtension):
             if fileout.endswith('.pdf') and PDFLATEX:
                 if os.path.exists(fileout+'_tex'):
                     os.remove(fileout+'_tex')
-                arg2 = arg2[0:5]+["--export-latex"]+arg2[5:]
-            subprocess_check(arg2,input_options)
+                args = args[0:5]+["--export-latex"]+args[5:]
+            subprocess_check(args,input_options)
         
         
         def make_output(filein,fileout):
@@ -530,8 +485,6 @@ class AutoExporter(inkex.EffectExtension):
                     for d in vds:
                         self.Bezier_to_Split(d)   
                         
-                # print(pdf)
-                # print(pdfs)
                 if len(pdfs)==1:
                     finalname = myoutput
                 else:
@@ -619,7 +572,6 @@ class AutoExporter(inkex.EffectExtension):
         tmp = tempbase+"_mod.svg"
         dh.overwrite_svg(svg, tmp)
         fin = copy.copy(tmp)
-        # tmpoutputs.append(tmp)
 
         # Rasterizations
         if len(raster_ids+image_ids)>0:
@@ -632,7 +584,6 @@ class AutoExporter(inkex.EffectExtension):
                 acts, acts2, imgs_trnp, imgs_opqe = [], [], [], []
                 for el in els:
                     elid = el.get_id2();
-                    # dh.idebug([elid,el.croot])
                     tmpimg = temphead+"_im_" + elid + "." + imgtype
                     imgs_trnp.append(tmpimg)
                     tmpimg2 = temphead+"_imbg_" + elid + "." + imgtype
@@ -740,12 +691,8 @@ class AutoExporter(inkex.EffectExtension):
             else:
                 act = 'object-to-path'
             
-            arg2 = [
-                bfn,
-                "--actions",
-                "select:{0}; {1}; export-filename:{2}; export-do".format(celsj,act,tmp),
-                fin,
-            ]
+            acts = "select:{0}; {1}; export-filename:{2}; export-do".format(celsj,act,tmp);
+            arg2 = [bfn,"--actions",acts,fin]
             if not(input_options.testmode):
                 subprocess_check(arg2,input_options)
                 
@@ -781,7 +728,7 @@ class AutoExporter(inkex.EffectExtension):
 
 
     def Thinline_Dehancement(self, svg, mode='split'):
-        # Prevents thin-line enhancement in certain bad PDF renderers (like Adobe Acrobat)
+        # Prevents thin-line enhancement in certain bad PDF renderers
         # 'bezier' mode converts h,v,l path commands to trivial Beziers
         # 'split' mode splits h,v,l path commands into two path commands
         # The Office PDF renderer removes trivial Beziers, as does conversion to EMF
@@ -1153,7 +1100,7 @@ class AutoExporter(inkex.EffectExtension):
             # If an old version of Inkscape or has no Pages, defined by viewbox
             vb = svg.get_viewbox2()
             nvb = [vb[0]-m/uuw,vb[1]-m/uuh,vb[2]+2*m/uuw,vb[3]+2*m/uuh]
-            svg.set_viewbox(nvb)
+            svg.set_viewbox2(nvb)
             
         
     def Change_Viewbox_To_Page(self,svg,pg):
@@ -1161,7 +1108,7 @@ class AutoExporter(inkex.EffectExtension):
                  dh.implicitpx(pg.get('y')),\
                  dh.implicitpx(pg.get('width')),\
                  dh.implicitpx(pg.get('height'))]
-        svg.set_viewbox(newvb)
+        svg.set_viewbox2(newvb)
         
         
     def Stroke_to_Path_Fixes(self,els):

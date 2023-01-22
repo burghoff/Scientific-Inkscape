@@ -2006,31 +2006,147 @@ def si_tmp(dirbase='',filename=None):
     # return 1;#svg._cscale  # removed scale on 2022.09.10 (fully remove later)
 # inkex.SvgDocumentElement.cscale = property(get_cscale)
 
+# Calculate all of the size properties of SVGs
+# Goal is to deprecate all of the other size functions
+def document_size(svg):
+    if not(hasattr(svg, "_cdocsize")):
+        rvb = svg.get_viewbox()
+        wstr = svg.get("width" )
+        hstr = svg.get("height")
+        
+        if rvb == [0, 0, 0, 0]: 
+            vb = [0, 0, implicitpx(wstr), implicitpx(hstr)]
+        else:
+            vb = [float(v) for v in rvb]  # just in case
+            
+    
+        # Get document width and height in pixels
+        wn, wu = inkex.units.parse_unit(wstr) if wstr is not None else (vb[2],'px')
+        hn, hu = inkex.units.parse_unit(hstr) if hstr is not None else (vb[3],'px')
+        
+        if wu=='%':
+            wn, wu, vb[2] = vb[2], 'px', vb[2]/(wn/100)
+        if hu=='%':
+            hn, hu, vb[3] = vb[3], 'px', vb[3]/(hn/100)
+        wpx = inkex.units.convert_unit(str(wn)+' '+wu, 'px')
+        hpx = inkex.units.convert_unit(str(hn)+' '+hu, 'px')
+             
+        # idebug(vb)
+        # idebug((wn,wu,hn,hu))
+        
+        def parse_preserve_aspect_ratio(pAR):
+            align = "xMidYMid"
+            meetOrSlice = "meet"
+            if pAR:
+                values = pAR.split(" ")
+                if len(values) == 1:
+                    if values[0] in ["xMinYMin", "xMidYMin", "xMaxYMin", "xMinYMid", "xMidYMid", "xMaxYMid", "xMinYMax", "xMidYMax", "xMaxYMax", "none"]:
+                        align = values[0]
+                    elif values[0] in ["meet", "slice"]:
+                        meetOrSlice = values[0]
+                elif len(values) == 2:
+                    align = values[0] if values[0] in ["xMinYMin", "xMidYMin", "xMaxYMin", "xMinYMid", "xMidYMid", "xMaxYMid", "xMinYMax", "xMidYMax", "xMaxYMax", "none"] else align
+                    meetOrSlice = values[1] if values[1] in ["meet", "slice"] else meetOrSlice
+            return align, meetOrSlice
+        align, meetOrSlice =  parse_preserve_aspect_ratio(svg.get('preserveAspectRatio'))
+            
+        def stretch_viewbox(width, height, align, meetOrSlice, viewbox):
+            x, y, w, h = viewbox
+            aspect_ratio = w/h
+            new_aspect_ratio = width/height
+            if align == "none":
+                return x, y, w, h
+            else:
+                if (new_aspect_ratio > aspect_ratio and meetOrSlice=='meet') or \
+                   (new_aspect_ratio < aspect_ratio and meetOrSlice!='meet'):
+                    new_width = h * new_aspect_ratio
+                    if align in ["xMinYMin", "xMinYMid", "xMinYMax"]:
+                        x = x
+                    elif align in ["xMidYMin", "xMidYMid", "xMidYMax"]:
+                        x = x + (w - new_width)/2
+                    elif align in ["xMaxYMin", "xMaxYMid", "xMaxYMax"]:
+                        x = x + (w - new_width)
+                    return x, y, new_width, h
+                else:
+                    new_height = w / new_aspect_ratio
+                    if align in ["xMinYMin", "xMidYMin", "xMaxYMin"]:
+                        y = y
+                    elif align in ["xMinYMid", "xMidYMid", "xMaxYMid"]:
+                        y = y + (h - new_height)/2
+                    elif align in ["xMinYMax", "xMidYMax", "xMaxYMax"]:
+                        y = y + (h - new_height)
+                    return x, y, w, new_height
+        effvb = list(stretch_viewbox(wpx, hpx, align, meetOrSlice, vb))
+        # For some reason there is some problem with added margins in the case of 'slice'
+        # Need to investigate later
+        
+        # # When a document has non-uniform scaling, the viewbox is typically stretched to make it uniform
+        # if align!='none':
+        #     pxperuu_x = wpx / vb[2]
+        #     pxperuu_y = hpx / vb[3]
+        #     pxperuu = min(pxperuu_x,pxperuu_y) if meetOrSlice=='meet' else max(pxperuu_x,pxperuu_y)
+        #     effvb = [vb[0]+vb[2]/2*(1-pxperuu_x/pxperuu),
+        #               vb[1]+vb[3]/2*(1-pxperuu_y/pxperuu),
+        #               vb[2]*pxperuu_x/pxperuu,
+        #               vb[3]*pxperuu_y/pxperuu]
+        # else:
+        #     # atypical case of no stretching
+        #     effvb = [vb[0],vb[1],vb[2],vb[3]]
+        
+        uuw  = wpx / effvb[2] # uu width in px
+        uuh  = hpx / effvb[3] # uu height in px
+        uupx = uuw if align!='none' else None  # common pxperuu only makes sense if viewbox has been stretched
+        
+        wunit = wu if wu!='%' else 'px'    # width unit
+        hunit = hu if hu!='%' else 'px'    # height unit
+        class DocSize:
+            def __init__(self,rawvb,effvb,uuw,uuh,uupx,wunit,hunit):
+                self.rawvb = rvb;
+                self.effvb = effvb;
+                self.uuw   = uuw
+                self.uuh   = uuh
+                self.uupx  = uupx
+                self.wunit = wunit
+                self.hunit = hunit
+        svg._cdocsize = DocSize(vb,effvb,uuw,uuh,uupx,wunit,hunit)
+    return svg._cdocsize
+def set_cdocsize(svg, si):
+    if si is None and hasattr(svg, "_cdocsize"):  # invalidate
+        delattr(svg, "_cdocsize")
+inkex.SvgDocumentElement.cdocsize = property(document_size,set_cdocsize)
+
+def set_viewbox2_fcn(svg,vb):
+    svg.set_viewbox(vb)
+    svg.cdocsize = None
+inkex.SvgDocumentElement.set_viewbox2 = set_viewbox2_fcn
+
 # Returns effective viewbox of all documents
 def get_viewbox2_fcn(svg):
-    vb = svg.get_viewbox()
-    if vb == [0, 0, 0, 0]: 
-        vb = [0, 0, implicitpx(svg.get("width")), implicitpx(svg.get("height"))]
+    # vb = svg.get_viewbox()
+    # if vb == [0, 0, 0, 0]: 
+    #     vb = [0, 0, implicitpx(svg.get("width")), implicitpx(svg.get("height"))]
         
-    # When a document has non-uniform scaling, Inkscape automatically stretches
-    # the viewbox to make it uniform
-    pxperuu_x = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
-    pxperuu_y = float(inkex.units.convert_unit(svg.get('height'), 'px')  or vb[3]) / float(vb[3])
-    pxperuu = min(pxperuu_x,pxperuu_y)
-    effvb = [vb[0]+vb[2]/2*(1-pxperuu_x/pxperuu),
-             vb[1]+vb[3]/2*(1-pxperuu_y/pxperuu),
-             vb[2]*pxperuu_x/pxperuu,
-             vb[3]*pxperuu_y/pxperuu]
-    return effvb
+    # # When a document has non-uniform scaling, Inkscape automatically stretches
+    # # the viewbox to make it uniform
+    # pxperuu_x = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
+    # pxperuu_y = float(inkex.units.convert_unit(svg.get('height'), 'px')  or vb[3]) / float(vb[3])
+    # pxperuu = min(pxperuu_x,pxperuu_y)
+    # effvb = [vb[0]+vb[2]/2*(1-pxperuu_x/pxperuu),
+    #          vb[1]+vb[3]/2*(1-pxperuu_y/pxperuu),
+    #          vb[2]*pxperuu_x/pxperuu,
+    #          vb[3]*pxperuu_y/pxperuu]
+    # return effvb
+    return svg.cdocsize.effvb
 inkex.SvgDocumentElement.get_viewbox2 = get_viewbox2_fcn
 
 # Conversion between pixels and user units for a document
 def cpxperuu_fcn(svg):
-    if not(hasattr(svg, "_cpxperuu")):
-        vb = svg.get_viewbox2();
-        svg._cpxperuu = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
-        # vb function ensures uniform scaling
-    return svg._cpxperuu
+    # if not(hasattr(svg, "_cpxperuu")):
+    #     vb = svg.get_viewbox2();
+    #     svg._cpxperuu = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
+    #     # vb function ensures uniform scaling
+    # return svg._cpxperuu
+    return svg.cdocsize.uupx
 inkex.SvgDocumentElement.cpxperuu = property(cpxperuu_fcn)
 
 # The original unittouu function did not properly convert to uu when a scale is applied. 
@@ -2041,22 +2157,23 @@ inkex.SvgDocumentElement.unittouu2 = unittouu2
 # Gets the absolute size of a uu in pixels
 # Also returns the unit the document width & height are specified in
 def get_uusz(svg):
-    if not (hasattr(svg, "_ccuuszpx")):
-        vb = svg.get_viewbox2()
-        wunit = inkex.units.parse_unit(svg.get('width'))
-        if wunit is not None:
-            wunit = wunit[1]                  # document width unit
-        else:
-            wunit = 'px'
-        hunit = inkex.units.parse_unit(svg.get('height'))
-        if hunit is not None:
-            hunit = hunit[1]                  # document height unit
-        else:
-            hunit = 'px'
-        uuw = inkex.units.convert_unit(svg.get('width'),'px')/vb[2]    # uu width in px
-        uuh = inkex.units.convert_unit(svg.get('height'),'px')/vb[3]   # uu height in px
-        svg._ccuuszpx = (uuw,uuh,wunit,hunit)
-    return svg._ccuuszpx
+    # if not (hasattr(svg, "_ccuuszpx")):
+    #     vb = svg.get_viewbox2()
+    #     wunit = inkex.units.parse_unit(svg.get('width'))
+    #     if wunit is not None:
+    #         wunit = wunit[1]                  # document width unit
+    #     else:
+    #         wunit = 'px'
+    #     hunit = inkex.units.parse_unit(svg.get('height'))
+    #     if hunit is not None:
+    #         hunit = hunit[1]                  # document height unit
+    #     else:
+    #         hunit = 'px'
+    #     uuw = inkex.units.convert_unit(svg.get('width'),'px')/vb[2]    # uu width in px
+    #     uuh = inkex.units.convert_unit(svg.get('height'),'px')/vb[3]   # uu height in px
+    #     svg._ccuuszpx = (uuw,uuh,wunit,hunit)
+    # return svg._ccuuszpx
+    return (svg.cdocsize.uuw,svg.cdocsize.uuh,svg.cdocsize.wunit,svg.cdocsize.hunit)
 inkex.SvgDocumentElement.uusz = property(get_uusz)
 
 # Sets the viewbox of a document, updating its width and height correspondingly
