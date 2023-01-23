@@ -298,6 +298,11 @@ class AutoExporter(inkex.EffectExtension):
                 dh.idebug("\n    " + joinmod(tempdir, ""))
         tempbase = joinmod(tempdir, 't')
         input_options.input_file = fin;
+        
+        # Make sure output directory exists
+        outdir = os.path.dirname(outtemplate)
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
 
         # Add a document margin
         if input_options.margin!=0:
@@ -354,7 +359,7 @@ class AutoExporter(inkex.EffectExtension):
     # Use the Inkscape binary to export the file
     def export_file(self, bfn, fin, fout, fformat, ppoutput, input_options,tempbase):
         import os, time, copy
-
+    
         myoutput = fout[0:-4] + "." + fformat
         if input_options.prints:
             fname = os.path.split(input_options.input_file)[1];
