@@ -1191,7 +1191,7 @@ flow_types = (inkex.FlowRoot,inkex.FlowPara,inkex.FlowRegion,inkex.FlowSpan,)
 def object_to_path(el):
     if not (isinstance(el, (inkex.PathElement, inkex.TextElement))):
         pth = get_path2(el)
-        el.tag = "{http://www.w3.org/2000/svg}path"
+        el.tag = inkex.addNS('path','svg'); #"{http://www.w3.org/2000/svg}path"
         el.set("d", str(pth))
 
 # Alternate bbox function that requires no command call (uses extents for text)
@@ -1268,10 +1268,14 @@ def BB2(slf,els=None,forceupdate=False):
             myp = el.getparent();
             ret = True
             if myp is None or isrendered(myp):
-                if el.tag in ['{http://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF',
-                                  '{http://creativecommons.org/ns#}Work',
-                                  '{http://purl.org/dc/elements/1.1/}format',
-                                  '{http://purl.org/dc/elements/1.1/}type']:
+                # if el.tag in ['{http://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF',
+                #                   '{http://creativecommons.org/ns#}Work',
+                #                   '{http://purl.org/dc/elements/1.1/}format',
+                #                   '{http://purl.org/dc/elements/1.1/}type']:
+                if el.tag in [inkex.addNS('RDF','rdf'),
+                              inkex.addNS('Work','cc'),
+                              inkex.addNS('format','dc'),
+                              inkex.addNS('type','dc')]:
                     ret=False
                 elif isinstance(el,(NamedView, Defs, Metadata, ForeignObject, inkex.Guide,
                               inkex.ClipPath,inkex.StyleElement,

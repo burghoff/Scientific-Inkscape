@@ -192,7 +192,7 @@ class ApplyTransform(inkex.EffectExtension):
                     def isequal(a, b):
                         return abs(a - b) <= transf.absolute_tolerance
 
-                    if node.TAG == "ellipse":
+                    if node.tag == inkex.addNS('ellipse','svg'): #"{http://www.w3.org/2000/svg}ellipse":
                         rx = dh.implicitpx(node.get("rx"))
                         ry = dh.implicitpx(node.get("ry"))
                     else:
@@ -218,12 +218,12 @@ class ApplyTransform(inkex.EffectExtension):
                     )
 
                     if isequal(edgex, edgey):
-                        node.tag = "{http://www.w3.org/2000/svg}circle"
+                        node.tag = inkex.addNS('circle','svg') #"{http://www.w3.org/2000/svg}circle"
                         node.set("rx", None)
                         node.set("ry", None)
                         node.set("r", edgex / 2)
                     else:
-                        node.tag = "{http://www.w3.org/2000/svg}ellipse"
+                        node.tag = inkex.addNS('ellipse','svg') #"{http://www.w3.org/2000/svg}ellipse"
                         node.set("rx", edgex / 2)
                         node.set("ry", edgey / 2)
                         node.set("r", None)
