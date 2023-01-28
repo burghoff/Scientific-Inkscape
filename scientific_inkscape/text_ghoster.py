@@ -70,8 +70,9 @@ class TextGhoster(inkex.EffectExtension):
 
         # dh.idebug(sel)
         
-        seld = dh.unique([dv for s in sel for dv in dh.descendants2(s)])
-        bbs = dh.BB2(self,seld,forceupdate=True) # need to investigate why sel didn't work
+        # seld = dh.unique([dv for s in sel for dv in dh.descendants2(s)])
+        # dh.idebug(dir(sel[0]))
+        bbs = dh.BB2(self,sel,forceupdate=True) # need to investigate why sel didn't work
         
 
         # dh.debug(dh.getElementById2(self.svg,'feGaussianBlur3441').typename)
@@ -122,7 +123,7 @@ class TextGhoster(inkex.EffectExtension):
             r.set("height", str(max(ys) - min(ys)))
             r.set("rx", str(border))
             # r.set('style','fill:#ffffff;filter:url(#'+fid+')')
-            r.cstyle = "fill:#ffffff;filter:url(#" + fid + ")"
+            r.cstyle = "fill:#ffffff;stroke:none;filter:url(#{0})".format(fid)
             dh.Set_Style_Comp(r, "opacity", str(OPACITY))
 
             dh.global_transform(g, oldts[g.get_id()])

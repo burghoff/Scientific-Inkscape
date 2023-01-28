@@ -1292,10 +1292,16 @@ def BB2(slf,els=None,forceupdate=False):
                 delattr(slf.svg,'_char_table')
             for d in els:
                 d.cbbox = None
-        if any([isinstance(d, (inkex.TextElement,)) for d in els]):
+                
+        allds = []
+        for el in els:
+            if el not in allds: # so we're not re-descendants2ing
+                allds += descendants2(el)        
+        dtels = [d for d in unique(allds) if isinstance(d,inkex.TextElement)]
+        if len(dtels)>0:
             import TextParser
             assert TextParser # optional, disables pyflakes warning
-            slf.svg.make_char_table(els=els)
+            slf.svg.make_char_table(els=dtels)
         ret = dict()
         for d in els:
             if isinstance(d, bb2_support) and isrendered(d):
