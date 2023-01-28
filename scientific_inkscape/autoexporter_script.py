@@ -158,7 +158,7 @@ def get_files(dirin):
             if f.name[-4:] == ".svg" and f.name[-len(exclude):] != exclude:
                 fs.append(os.path.join(os.path.abspath(dirin), f.name))
         return fs
-    except FileNotFoundError:
+    except:# (FileNotFoundError, OSError):
         return None  # directory missing (cloud drive error?)
 
 # Get a dict of the files and their modified times

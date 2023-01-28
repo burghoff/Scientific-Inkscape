@@ -360,6 +360,7 @@ class AutoExporter(inkex.EffectExtension):
     def export_file(self, bfn, fin, fout, fformat, ppoutput, input_options,tempbase):
         import os, time, copy
     
+        original_file = fin;
         myoutput = fout[0:-4] + "." + fformat
         if input_options.prints:
             fname = os.path.split(input_options.input_file)[1];
@@ -496,6 +497,32 @@ class AutoExporter(inkex.EffectExtension):
                     pnum = pdf.split('_page_')[-1].strip('.pdf');
                     finalname = myoutput.replace('_portable.svg','_page_'+pnum+'_portable.svg')
                 # print(finalname)
+                
+                # embed_original = True
+                # if embed_original:
+                #     def main_contents(svg):
+                #         ret = list(svg)
+                #         for k in reversed(ret):
+                #             if k.tag in [inkex.addNS('metadata','svg'),
+                #                          inkex.addNS('namedview','sodipodi')]:
+                #                 ret.remove(k);
+                #         return ret
+                    
+                    
+                #     dh.group(main_contents(svg))
+                #     svg.standardize_viewbox();
+                #     svgo = get_svg(original_file)
+                #     svgo.standardize_viewbox();
+                    
+                    
+                #     go = dh.group(main_contents(svgo))
+                #     svg.append(go)
+                #     go.set('style','display:none');
+                #     go.set('inkscape:label','SI original');
+                #     go.set('inkscape:groupmode','layer');
+                #     go.set('transform','scale({0},{1})'.format(svgo.cdocsize.uuw,svgo.cdocsize.uuh))
+                    
+                
                 dh.overwrite_svg(svg, finalname)
 
         if input_options.prints:

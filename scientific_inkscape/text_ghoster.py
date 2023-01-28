@@ -68,7 +68,10 @@ class TextGhoster(inkex.EffectExtension):
             oldts[g.get_id()] = g.composed_transform()
             dh.global_transform(g, -oldts[g.get_id()])
 
-        bbs = dh.BB2(self,sel,forceupdate=True)
+        # dh.idebug(sel)
+        
+        seld = dh.unique([dv for s in sel for dv in dh.descendants2(s)])
+        bbs = dh.BB2(self,seld,forceupdate=True) # need to investigate why sel didn't work
         
 
         # dh.debug(dh.getElementById2(self.svg,'feGaussianBlur3441').typename)

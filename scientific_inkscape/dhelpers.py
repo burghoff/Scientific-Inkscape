@@ -2067,8 +2067,8 @@ def document_size(svg):
                 
         wpx = inkex.units.convert_unit(str(wn)+' '+wu, 'px')     # true width  in px
         hpx = inkex.units.convert_unit(str(hn)+' '+hu, 'px')     # true height in px
-        uuw  = wpx / vb[2]                                       # uu width  in px
-        uuh  = hpx / vb[3]                                       # uu height in px
+        uuw  = wpx / vb[2]                                       # uu width    in px
+        uuh  = hpx / vb[3]                                       # uu height   in px
         uupx = uuw if abs(uuw-uuh)<0.001 else None  # only assign common pxperuu when it makes sense 
         class DocSize:
             def __init__(self,rawvb,effvb,uuw,uuh,uupx,wunit,hunit,wpx,hpx):
@@ -2092,6 +2092,13 @@ def set_viewbox2_fcn(svg,vb):
     svg.set_viewbox(vb)
     svg.cdocsize = None
 inkex.SvgDocumentElement.set_viewbox2 = set_viewbox2_fcn
+
+def standardize_viewbox(svg):
+    # Converts viewbox to pixels, removing any non-uniform scaling appropriately
+    svg.set('viewBox',' '.join([str(v) for v in svg.cdocsize.effvb]))
+    svg.set('width', str(svg.cdocsize.wpx))
+    svg.set('height',str(svg.cdocsize.hpx))
+inkex.SvgDocumentElement.standardize_viewbox = standardize_viewbox
 
 # Returns effective viewbox of all documents
 def get_viewbox2_fcn(svg):
