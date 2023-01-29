@@ -174,34 +174,38 @@ class Homogenizer(inkex.EffectExtension):
                                 psz = szd[d.getparent().get_id()]
                                 pct = mysz / psz * 100
                                 dh.Set_Style_Comp(d, "font-size", str(pct) + "%")
-                    maxsz = maxsz / self.svg.unittouu2("1pt")
+                    maxsz = maxsz / self.svg.cdocsize.unittouu("1pt")
                     szs.append(maxsz)
             # Determine scale and/or size
             fixedscale = False
-            if self.options.fontmodes == 3:
-                fixedscale = True
-            elif self.options.fontmodes == 4:
-                fixedscale = True
-                fontsize = fontsize / max(szs) * 100
-            elif self.options.fontmodes == 5:
-                from statistics import mean
-
-                fontsize = mean(szs)
-            elif self.options.fontmodes == 6:
-                from statistics import median
-
-                fontsize = median(szs)
-            elif self.options.fontmodes == 7:
-                fontsize = min(szs)
-            elif self.options.fontmodes == 8:
-                fontsize = max(szs)
+            try:
+                if self.options.fontmodes == 3:
+                    fixedscale = True
+                elif self.options.fontmodes == 4:
+                    fixedscale = True
+                    fontsize = fontsize / max(szs) * 100
+                elif self.options.fontmodes == 5:
+                    from statistics import mean
+    
+                    fontsize = mean(szs)
+                elif self.options.fontmodes == 6:
+                    from statistics import median
+    
+                    fontsize = median(szs)
+                elif self.options.fontmodes == 7:
+                    fontsize = min(szs)
+                elif self.options.fontmodes == 8:
+                    fontsize = max(szs)
+            except ValueError:
+                fontsize = 12;
+                
             # Set the font sizes
             for el in sel:
                 elid = el.get_id()
                 actualsize = szd[elid]
                 sf = sfd[elid]
                 if not (fixedscale):
-                    newsize = self.svg.unittouu2("1pt") * fontsize
+                    newsize = self.svg.cdocsize.unittouu("1pt") * fontsize
                 else:
                     newsize = actualsize * (fontsize / 100)
                 fs = el.cstyle.get("font-size")
@@ -267,7 +271,7 @@ class Homogenizer(inkex.EffectExtension):
 
             fixedscale = False
             if self.options.strokemodes == 2:
-                setstrokew = self.svg.unittouu2(str(setstrokew) + "px")
+                setstrokew = self.svg.cdocsize.unittouu(str(setstrokew) + "px")
             elif self.options.strokemodes == 3:
                 fixedscale = True
             elif self.options.strokemodes == 5:

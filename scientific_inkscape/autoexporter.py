@@ -417,12 +417,13 @@ class AutoExporter(inkex.EffectExtension):
         
         
         def make_output(filein,fileout):
-            if filein[-3:]=='svg':
+            if filein.endswith('.svg'):
                 svg = get_svg(filein);
                 pgs = self.Get_Pages(svg)
                 
+                svgtopdf = fileout.endswith('.pdf')
                 if len(pgs)>1:
-                    outputs = [];
+                    outputs,dss = [],[];
                     for ii in range(len(pgs)):
                         # match the viewbox to each page and delete them
                         svgpg = get_svg(filein);
@@ -435,14 +436,20 @@ class AutoExporter(inkex.EffectExtension):
                         pnum = str(ii+1);   
                         svgpgfn = tempbase+'_page_'+pnum+'.svg';
                         dh.overwrite_svg(svgpg,svgpgfn)
+                        dss.append(svgpg.cdocsize)
                         
                         outparts = fileout.split('.')
                         pgout = '.'.join(outparts[:-1])+'_page_'+pnum+'.'+outparts[-1]
                         overwrite_output(svgpgfn,pgout);
                         outputs.append(pgout)
-                    return outputs
+                    if svgtopdf:
+                        input_options.svgtopdf_dss     = dss;
+                        input_options.svgtopdf_outputs = outputs;
+                    return
+                elif svgtopdf:
+                    input_options.svgtopdf_dss = [svg.cdocsize];
+                    input_options.svgtopdf_outputs = [fileout];
             overwrite_output(filein,fileout)
-            return [fileout]
                                 
 
         if not (ispsvg):
@@ -450,27 +457,17 @@ class AutoExporter(inkex.EffectExtension):
         else:
             # Make PDF if necessary
             if input_options.testmode:
-                pdfs = [copy.copy(fin)]; # skip pdf conversion for testing
+                # pdfs = [copy.copy(fin)]; # skip pdf conversion for testing
+                input_options.svgtopdf_dss = [get_svg(fin).cdocsize];
+                input_options.svgtopdf_outputs = [copy.copy(fin)];
             elif not(input_options.usepdf):
                 tmp = tempbase+"_tmp_small.pdf"
-                pdfs = make_output(fin,tmp)
-            else:
-                # Already made PDFs, just get them
-                mydir  = os.path.split(myoutput.replace("_portable.svg",""))[0]
-                myname = os.path.split(myoutput.replace("_portable.svg",""))[1]
-                pdfs = []
-                for f in os.scandir(mydir):
-                    # if f.name[0:len(myname)]==myname and f.name[-4:]=='.pdf':
-                    if f.name == myname+'.pdf' or \
-                       f.name[0:len(myname+'_page_')]==myname+'_page_' and f.name[-4:]=='.pdf':
-                        pdfs.append(os.path.join(os.path.abspath(mydir), f.name))
-                
-            for pdf in pdfs:
+                make_output(fin,tmp)
+            pdfs = input_options.svgtopdf_outputs;
+            for ii, pdf in enumerate(pdfs):
                 # Convert back to SVG
                 tmp = tempbase+"_fin" + ".svg"
                 make_output(pdf,tmp)
-                # fin = copy.copy(tmp)
-                # tmpoutputs.append(tmp)
                 
                 # Post PDFication cleanup for Office products
                 svg = get_svg(tmp)
@@ -498,30 +495,35 @@ class AutoExporter(inkex.EffectExtension):
                     finalname = myoutput.replace('_portable.svg','_page_'+pnum+'_portable.svg')
                 # print(finalname)
                 
-                # embed_original = True
+                # dh.idebug(input_options.svgtopdf_vbs)
+                # embed_original = False
                 # if embed_original:
                 #     def main_contents(svg):
                 #         ret = list(svg)
                 #         for k in reversed(ret):
                 #             if k.tag in [inkex.addNS('metadata','svg'),
-                #                          inkex.addNS('namedview','sodipodi')]:
+                #                           inkex.addNS('namedview','sodipodi')]:
                 #                 ret.remove(k);
                 #         return ret
                     
                     
-                #     dh.group(main_contents(svg))
-                #     svg.standardize_viewbox();
+                #     g  = dh.group(main_contents(svg))
                 #     svgo = get_svg(original_file)
-                #     svgo.standardize_viewbox();
-                    
-                    
                 #     go = dh.group(main_contents(svgo))
                 #     svg.append(go)
                 #     go.set('style','display:none');
                 #     go.set('inkscape:label','SI original');
                 #     go.set('inkscape:groupmode','layer');
-                #     go.set('transform','scale({0},{1})'.format(svgo.cdocsize.uuw,svgo.cdocsize.uuh))
                     
+                #     # Conversion to PDF changes the viewbox to pixels. Convert back to the
+                #     # original viewbox by applying a transform
+                #     ds = input_options.svgtopdf_dss[ii]
+                #     tfmt = 'matrix({0},{1},{2},{3},{4},{5})';
+                #     T =inkex.Transform(tfmt.format(ds.uuw,0,0,ds.uuh,
+                #                                       -ds.effvb[0]*ds.uuw,
+                #                                       -ds.effvb[1]*ds.uuh))
+                #     g.set('transform',str(-T))
+                #     svg.set_viewbox(ds.effvb)
                 
                 dh.overwrite_svg(svg, finalname)
 
@@ -1112,35 +1114,48 @@ class AutoExporter(inkex.EffectExtension):
         
     def Add_Margin(self,svg,amt_mm):
         m = inkex.units.convert_unit(str(amt_mm)+'mm','px');
-        uuw, uuh, wu, hu = svg.uusz        
+        uuw, uuh = svg.cdocsize.uuw,svg.cdocsize.uuh
         pgs = self.Get_Pages(svg)
         
         if len(pgs)>0:
             # Has Pages
+            # pgvbs = []
             for pg in pgs:
-                x = dh.implicitpx(pg.get('x'))*uuw
-                y = dh.implicitpx(pg.get('y'))*uuh
-                w = dh.implicitpx(pg.get('width'))*uuw
-                h = dh.implicitpx(pg.get('height'))*uuh
+                pgbb = [dh.implicitpx(pg.get('x')),    dh.implicitpx(pg.get('y')),
+                        dh.implicitpx(pg.get('width')),dh.implicitpx(pg.get('height'))]
+                pgbbpx = svg.cdocsize.uutopx(pgbb);
+                newbb  = svg.cdocsize.pxtouu([pgbbpx[0]-m,pgbbpx[1]-m,pgbbpx[2]+2*m,pgbbpx[3]+2*m])
+                pg.set('x',     str(newbb[0]))
+                pg.set('y',     str(newbb[1]))
+                pg.set('width', str(newbb[2]))
+                pg.set('height',str(newbb[3]))
                 
-                pg.set('x',str((x-m)/uuw))
-                pg.set('y',str((y-m)/uuh))
-                pg.set('width', str((w+2*m)/uuw))
-                pg.set('height',str((h+2*m)/uuh))
-        
+                # x = dh.implicitpx(pg.get('x'))*uuw
+                # y = dh.implicitpx(pg.get('y'))*uuh
+                # w = dh.implicitpx(pg.get('width'))*uuw
+                # h = dh.implicitpx(pg.get('height'))*uuh
+                
+                # pg.set('x',str((x-m)/uuw))
+                # pg.set('y',str((y-m)/uuh))
+                # pg.set('width', str((w+2*m)/uuw))
+                # pg.set('height',str((h+2*m)/uuh))
+                
+                # pgvbs.append([])
+            
         else:
             # If an old version of Inkscape or has no Pages, defined by viewbox
-            vb = svg.get_viewbox2()
+            vb = svg.cdocsize.effvb
             nvb = [vb[0]-m/uuw,vb[1]-m/uuh,vb[2]+2*m/uuw,vb[3]+2*m/uuh]
-            svg.set_viewbox2(nvb)
-            
+            svg.set_viewbox(nvb)
+
         
     def Change_Viewbox_To_Page(self,svg,pg):
-        newvb = [dh.implicitpx(pg.get('x')),\
-                 dh.implicitpx(pg.get('y')),\
+        oldvb = svg.cdocsize.effvb;
+        newvb = [dh.implicitpx(pg.get('x'))+oldvb[0],\
+                 dh.implicitpx(pg.get('y'))+oldvb[1],\
                  dh.implicitpx(pg.get('width')),\
                  dh.implicitpx(pg.get('height'))]
-        svg.set_viewbox2(newvb)
+        svg.set_viewbox(newvb)
         
         
     def Stroke_to_Path_Fixes(self,els):
