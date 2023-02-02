@@ -272,6 +272,7 @@ class myThread(threading.Thread):
             opts.debug = DEBUG
             opts.prints = True
             opts.mythread = self;
+            opts.original_file = self.file;
             ftd = AutoExporter().export_all(
                 bfn, self.file, self.outtemplate, opts.formats, opts
             )

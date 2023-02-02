@@ -39,29 +39,26 @@
         <page name="advanced" gui-text="Advanced">
 
         <label appearance="header">Embedded image handling</label> 
-        <label>Embedded images can be resampled and cropped to reduce output file sizes.</label>           
-        <param name="imagemode" type="optiongroup" appearance="combo"
-                gui-text="Store images as">
-                   <option value="1">Cropped and resampled PNG</option>
-                   <option value="2">Cropped and resampled JPG</option>
-                   <option value="3">Do not change</option>
-                </param>
+        <label>Embedded images can be resampled and cropped to reduce output file sizes.</label>     
+        <param name="imagemode2" type="bool" gui-text="Crop and resample images?"
+        gui-description="When exporting SVGs with images, they can be resampled to avoid unnecessarily large file sizes. For example, a large image that has been shrunk to a small size will have an enormous effective DPI—this can be reduced.">true</param> 
         <param name="dpi_im" type="float" precision="0" min="1" max="9999" gui-text="Resampling DPI"
         gui-description="When exporting SVGs with images, they can be resampled to avoid unnecessarily large file sizes. For example, a large image that has been shrunk to a small size will have an enormous effective DPI—this can be reduced.">300</param>
         
         <label appearance="header">Other options</label>
         <param name="texttopath" type="bool" gui-text="Convert text to paths"
-        gui-description="Conversion of text to paths can help guarantee that it looks identical on all platforms. Recommended for EMFs.">false</param> 
-        <param name="thinline" type="bool" gui-text="Prevent thin line enhancement (recommended)"
+        gui-description="Conversion of text to paths can help guarantee that it looks identical on all platforms.">false</param> 
+        <param name="thinline" type="bool" gui-text="Prevent thin line enhancement"
         gui-description="Some PDF readers thicken lines at certain zooms; this option makes your lines impervious to this feature.">true</param>  
-        
         <param name="stroketopath" type="bool" gui-text="Convert all strokes to paths"
         gui-description="Most PDF readers draw stroked lines differently than equivalent filled paths. By converting strokes to paths, this can be prevented. (This uses Inkscape's Stroke to Path, which has some unresolved bugs. Double-check the final output.)">false</param>  
-
-
         <param name="margin" type="float" precision="1" min="-9999" max="9999" gui-text="Extra margin (mm)"
         gui-description="Adds a margin to the export. A small margin can ensure that edges are not clipped off.">0.3</param>
         
+         <label appearance="header">PDF options</label>
+         <param name="latexpdf" type="bool" gui-text="Omit text in PDF and create LaTeX file"
+         gui-description="Equivalent to same option when saving as PDF">false</param> 
+         
 
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>By David Burghoff, University of Notre Dame</label>
@@ -74,9 +71,10 @@
         <label>This can be useful for certain objects that make the export large and sluggish, such as paths that contain tens of thousands of nodes.</label>           
         <label> </label>
         <param name="rasterizermode" type="optiongroup" appearance="combo"
-                gui-text="Mark selected objects as">
-                   <option value="1">Raster objects</option>
-                   <option value="2">Normal objects</option>
+                gui-text="Mark selected objects to be">
+                   <option value="1">Rasterized as PNG</option>
+                   <option value="2">Rasterized as JPG</option>
+                   <option value="3">Left unchanged</option>
                 </param>
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>By David Burghoff, University of Notre Dame</label>

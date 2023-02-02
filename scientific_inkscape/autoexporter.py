@@ -17,7 +17,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-PDFLATEX = False
+# PDFLATEX = False
 
 DEBUGGING = False
 dispprofile = False
@@ -70,7 +70,7 @@ class AutoExporter(inkex.EffectExtension):
         pars.add_argument("--dpi", default=600, help="Rasterization DPI")
         pars.add_argument("--dpi_im", default=300, help="Resampling DPI")
         pars.add_argument(
-            "--imagemode", type=int, default=1, help="Embedded image handling"
+            "--imagemode2", type=inkex.Boolean, default=True, help="Embedded image handling"
         )
         pars.add_argument(
             "--thinline",
@@ -83,6 +83,9 @@ class AutoExporter(inkex.EffectExtension):
         )
         pars.add_argument(
             "--stroketopath", type=inkex.Boolean, default=False, help="Stroke to paths?"
+        )
+        pars.add_argument(
+            "--latexpdf", type=inkex.Boolean, default=False, help="Make LaTeX PDF?"
         )
         pars.add_argument(
             "--watchhere", type=inkex.Boolean, default=False, help="Watch here"
@@ -106,7 +109,9 @@ class AutoExporter(inkex.EffectExtension):
             sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
             for el in sel:
                 if self.options.rasterizermode==1:
-                    el.set('autoexporter_rasterize','True')
+                    el.set('autoexporter_rasterize','png')
+                elif self.options.rasterizermode==2:
+                    el.set('autoexporter_rasterize','jpg')
                 else:
                     el.set('autoexporter_rasterize',None)
             return
@@ -115,11 +120,12 @@ class AutoExporter(inkex.EffectExtension):
         if self.options.testmode:
             self.options.usepsvg = True
             self.options.thinline = True
-            self.options.imagemode = 1
+            self.options.imagemode2 = True
             self.options.texttopath = True
             self.options.stroketopath = True;
             self.options.exportnow = True
             self.options.margin = 0.5
+            self.options.latexpdf = False
             import random
             random.seed(1)
             # self.options.svgoptpdf = True
@@ -150,10 +156,11 @@ class AutoExporter(inkex.EffectExtension):
         optcopy = copy.copy(self.options)
         delattr(optcopy, "output")
         delattr(optcopy, "input_file")
-        optcopy.reduce_images = (
-            self.options.imagemode == 1 or self.options.imagemode == 2
-        )
-        optcopy.tojpg = self.options.imagemode == 2
+        # optcopy.reduce_images = (
+        #     self.options.imagemode == 1 or self.options.imagemode == 2
+        # )
+        optcopy.reduce_images = self.options.imagemode2
+        # optcopy.tojpg = self.options.imagemode == 2
 
         bfn = dh.Get_Binary_Loc()
         pyloc, pybin = os.path.split(sys.executable)
@@ -245,6 +252,7 @@ class AutoExporter(inkex.EffectExtension):
                 pth = dh.Get_Current_File(self,"To do a direct export, ")
             else:
                 pth = self.options.input_file
+            optcopy.original_file = pth;
             optcopy.debug = DEBUGGING
             optcopy.prints = False; DEBUGGING
             optcopy.linked_locations = ih.get_linked_locations(self); # needed to find linked images in relative directories
@@ -322,12 +330,8 @@ class AutoExporter(inkex.EffectExtension):
         # Do preprocessing
         if any([fmt in exp_fmts for fmt in ["pdf", "emf", "eps",'psvg']]):
             ppoutput = self.preprocessing(bfn, fin, outtemplate, input_options,tempbase)
-            # tempoutputs = ppoutput[1]
-            # tempdir = ppoutput[2]
         else:
             ppoutput = None
-            # tempoutputs = []
-            # tempdir = None
 
         # Do vector outputs
         newfiles = []
@@ -409,7 +413,7 @@ class AutoExporter(inkex.EffectExtension):
                 fileout,
                 filein,
             ]
-            if fileout.endswith('.pdf') and PDFLATEX:
+            if fileout.endswith('.pdf') and input_options.latexpdf:
                 if os.path.exists(fileout+'_tex'):
                     os.remove(fileout+'_tex')
                 args = args[0:5]+["--export-latex"]+args[5:]
@@ -525,6 +529,9 @@ class AutoExporter(inkex.EffectExtension):
                 #     g.set('transform',str(-T))
                 #     svg.set_viewbox(ds.effvb)
                 
+                # te = dh.new_element(inkex.TextElement, svg)
+                # te.text = 'si_ae_original_filename: {0}'.format(input_options.original_file)
+                # te.set('style','display:none')
                 dh.overwrite_svg(svg, finalname)
 
         if input_options.prints:
@@ -547,20 +554,21 @@ class AutoExporter(inkex.EffectExtension):
         temphead = os.path.split(tempbase)[1]
         
         # SVG modifications that should be done prior to any binary calls
-        svg = get_svg(fin)
+        cfile = fin
+        svg = get_svg(cfile)
         
         # Embed linked images into the SVG. This should be done prior to clone unlinking
         # since some images may be cloned
         if input_options.exportnow:
             lls = input_options.linked_locations
         else:
-            lls = ih.get_linked_locations_file(fin,svg)
+            lls = ih.get_linked_locations_file(cfile,svg)
         for k in lls:
             el = dh.getElementById2(svg,k)
             ih.embed_external_image(el, lls[k])
         
         vds = dh.visible_descendants(svg);
-        raster_ids = []; image_ids = [];
+        raster_ids, image_ids, jpgs = [],[],[];
         for el in vds:
             # Unlink any clones for the PDF image and marker fixes 
             if isinstance(el,(inkex.Use)) and not(isinstance(el, (inkex.Symbol))):
@@ -593,11 +601,12 @@ class AutoExporter(inkex.EffectExtension):
                 raster_ids.append(elid)               # gradient objects  
             if el.get_link('mask') is not None:
                 raster_ids.append(elid)               # masked objects (always rasterized at PDF)
-            if el.get('autoexporter_rasterize')=='True':
+            if el.get('autoexporter_rasterize') in ['png','jpg','True']:
                 raster_ids.append(elid);              # rasterizer-marked
+                if el.get('autoexporter_rasterize')=='jpg':
+                    jpgs.append(elid)
             if isinstance(el, (inkex.Image)):
                 image_ids.append(elid);
-                # dh.idebug(elid)
         if not(input_options.reduce_images):
             input_options.dpi_im = input_options.dpi
                 
@@ -605,11 +614,11 @@ class AutoExporter(inkex.EffectExtension):
         dh.flush_stylesheet_entries(svg) # since we ungrouped
         tmp = tempbase+"_mod.svg"
         dh.overwrite_svg(svg, tmp)
-        fin = copy.copy(tmp)
+        cfile = tmp
 
         # Rasterizations
         if len(raster_ids+image_ids)>0:
-            svg = get_svg(fin)
+            svg = get_svg(cfile)
 
             vds = dh.visible_descendants(svg);
             els = [el for el in vds if el.get_id2() in list(set(raster_ids+image_ids))]
@@ -658,7 +667,7 @@ class AutoExporter(inkex.EffectExtension):
                 
                 oldwd = os.getcwd();
                 os.chdir(tempdir); # use relative paths to reduce arg length
-                bbs = Split_Acts(filename=fin, inkscape_binary=bfn, acts=acts)
+                bbs = Split_Acts(filename=cfile, inkscape_binary=bfn, acts=acts)
                 try:
                     os.chdir(oldwd);   # return to original dir so no problems in calling function
                 except FileNotFoundError:
@@ -667,8 +676,7 @@ class AutoExporter(inkex.EffectExtension):
                 imgs_opqe = [os.path.join(tempdir,t) for t in imgs_opqe]
                   
 
-                for ii in range(len(els)):
-                    el = els[ii]
+                for ii, el in enumerate(els):
                     tmpimg = imgs_trnp[ii]
                     tmpimg2 = imgs_opqe[ii]
                     
@@ -677,7 +685,7 @@ class AutoExporter(inkex.EffectExtension):
                         if ih.hasPIL:
                             bbox = ih.crop_images([tmpimg,tmpimg2])
                             anyalpha0 = ih.Set_Alpha0_RGB(tmpimg,tmpimg2)
-                            if input_options.tojpg:
+                            if el.get_id2() in jpgs:
                                 tmpjpg = tmpimg.replace(".png", ".jpg")
                                 ih.to_jpeg(tmpimg2,tmpjpg)
                                 tmpimg = copy.copy(tmpjpg)
@@ -690,7 +698,6 @@ class AutoExporter(inkex.EffectExtension):
                         nsz = os.path.getsize(tmpimg)
                         hasmaskclip = el.get_link('mask') is not None or el.get_link('clip-path') is not None  # clipping and masking
                         embedimg = (nsz < osz) or (anyalpha0 or hasmaskclip)
-
                         if embedimg:                 
                             self.Replace_with_Raster(el,tmpimg,bbs[el.get_id2()],bbox)
 
@@ -698,11 +705,10 @@ class AutoExporter(inkex.EffectExtension):
                 dh.flush_stylesheet_entries(svg) # since we ungrouped
                 tmp = tempbase+"_eimg.svg"
                 dh.overwrite_svg(svg, tmp)
-                fin = copy.copy(tmp)
-                # tmpoutputs.append(tmp)
+                cfile = tmp
 
         if input_options.texttopath or input_options.stroketopath:
-            svg = get_svg(fin)
+            svg = get_svg(cfile)
             vd = dh.visible_descendants(svg)
             
             tels = []
@@ -715,7 +721,7 @@ class AutoExporter(inkex.EffectExtension):
             if input_options.stroketopath:
                 # Stroke to Path has a number of bugs, try to fix them
                 pels = self.Stroke_to_Path_Fixes(vd)                
-                dh.overwrite_svg(svg, fin)
+                dh.overwrite_svg(svg, cfile)
 
             celsj = ",".join(tels+pels)
             tmp = tempbase+"_stp.svg"
@@ -726,7 +732,7 @@ class AutoExporter(inkex.EffectExtension):
                 act = 'object-to-path'
             
             acts = "select:{0}; {1}; export-filename:{2}; export-do".format(celsj,act,tmp);
-            arg2 = [bfn,"--actions",acts,fin]
+            arg2 = [bfn,"--actions",acts,cfile]
             if not(input_options.testmode):
                 subprocess_check(arg2,input_options)
                 
@@ -740,7 +746,7 @@ class AutoExporter(inkex.EffectExtension):
                         dh.ungroup(el)
             else:
                 # Skip conversion in test mode
-                svg = get_svg(fin)
+                svg = get_svg(cfile)
 
                    
             # Remove temporary groups
@@ -752,13 +758,13 @@ class AutoExporter(inkex.EffectExtension):
             
             dh.flush_stylesheet_entries(svg) # since we ungrouped            
             dh.overwrite_svg(svg, tmp)
-            fin = copy.copy(tmp)
+            cfile = tmp
 
         if input_options.prints:
             print(
                 fname + ": Preprocessing done (" + str(round(1000 * (time.time() - timestart)) / 1000) + " s)"
             )
-        return fin
+        return cfile
 
 
     def Thinline_Dehancement(self, svg, mode='split'):

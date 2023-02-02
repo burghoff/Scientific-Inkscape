@@ -2302,7 +2302,7 @@ def vto_xpath(sty):
 
 
 def Version_Check(caller):
-    siv = "v1.2.27"  # Scientific Inkscape version
+    siv = "v1.2.29"  # Scientific Inkscape version
     maxsupport = "1.2.0"
     minsupport = "1.1.0"
 
