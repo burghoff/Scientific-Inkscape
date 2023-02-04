@@ -4,6 +4,7 @@ STORE_REFS = False
 fname = 'Other_tests.svg'
 fname2 = 'Other_tests_nonuniform.svg'
 aename = 'Autoexporter_tests.svg'
+aepages = 'Multipage_nonuniform.svg'
 
 MAXPAPERS = 0
 flattentext = 'Text_tests.svg'
@@ -33,6 +34,8 @@ testfm              = True;
 testhomogenizer     = True;
 testhomogenizer2    = True;
 testae              = True;
+testaemp            = True;
+
 
 
 vpaths = {'1.0' :  ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python38.zip', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\lib-dynload', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\site-packages', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']+\
@@ -318,15 +321,17 @@ class CompareNumericFuzzy2(Compare):
         
         return contents
     
-# Remove the content of images for the Autoexporter
+# Remove the content of images for the Autoexporter, along with some header info
 class CompareImages(Compare):
     @staticmethod
     def filter(contents):
         contents = re.sub(rb'data:image\/png;base64,(.*?)"',
                           rb'data:image/png;base64,"',contents)
         contents = re.sub(rb'image\/svg\+xml',rb'',contents) # header for different versions
+        contents = re.sub(b'sodipodi:docname="[^"]*"', b'sodipodi:docname=""', contents)
         return contents
         
+    
 
 
 if testflattentext:
@@ -458,7 +463,24 @@ if testae:
                            CompareWithoutIds(),CompareURLs(),
                            CompareImages()]
         compare_file = ['svg/'+aename]
-        comparisons = [aeargs]    
+        comparisons = [aeargs]  
+        
+        
+if testaemp:
+    class TestAutoExporterMP1(ComparisonMixin, TestCase):
+        effect_class = AutoExporter
+        compare_filters = [CompareNumericFuzzy2(),
+                           CompareWithoutIds(),CompareURLs(),
+                           CompareImages()]
+        compare_file = ['svg/'+aepages]
+        comparisons = [aeargs+("--testpage=1",)]
+    class TestAutoExporterMP2(ComparisonMixin, TestCase):
+        effect_class = AutoExporter
+        compare_filters = [CompareNumericFuzzy2(),
+                           CompareWithoutIds(),CompareURLs(),
+                           CompareImages()]
+        compare_file = ['svg/'+aepages]
+        comparisons = [aeargs+("--testpage=2",)]  
 
 
 

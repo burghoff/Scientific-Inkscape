@@ -2076,8 +2076,17 @@ def document_size(svg):
         uuh  = hpx / vb[3]                                       # uu height in px (px/uu)
         uupx = uuw if abs(uuw-uuh)<0.001 else None               # uu size  in px  (px/uu)
                                                                  # should match Scale in Document Properties
+                      
+        # Get Pages  
+        nvs = [el for el in list(svg) if isinstance(el,inkex.NamedView)]
+        pgs = [el for nv in nvs for el in list(nv) if el.tag==inkex.addNS('page','inkscape')]
+        for pg in pgs:
+            pg.bbuu = [implicitpx(pg.get('x')),    implicitpx(pg.get('y')),
+                       implicitpx(pg.get('width')),implicitpx(pg.get('height'))]     
+            pg.bbpx = [pg.bbuu[0]*xf,pg.bbuu[1]*yf,pg.bbuu[2]*xf,pg.bbuu[3]*yf]                      
+                      
         class DocSize:
-            def __init__(self,rawvb,effvb,uuw,uuh,uupx,wunit,hunit,wpx,hpx):
+            def __init__(self,rawvb,effvb,uuw,uuh,uupx,wunit,hunit,wpx,hpx,xf,yf,pgs):
                 self.rawvb = rvb;
                 self.effvb = effvb;
                 self.uuw   = uuw
@@ -2087,6 +2096,14 @@ def document_size(svg):
                 self.hunit = hunit
                 self.wpx   = wpx;
                 self.hpx   = hpx;
+                self.rawxf = xf; 
+                self.rawyf = yf;
+                self.pgs   = pgs;
+                try:
+                    inkex.Page;
+                    self.inkscapehaspgs = True;
+                except:
+                    self.inkscapehaspgs = False;
             def uutopx(self,v):  # Converts a bounding box specified in uu to pixels
                 # xpx = (xuu-vb[0])*uuw
                 # ypx = (yuu-vb[1])*uuh
@@ -2100,7 +2117,11 @@ def document_size(svg):
             def unittouu(self,x):
                 # Converts any unit into uu
                 return inkex.units.convert_unit(x,'px')/self.uupx if self.uupx is not None else None
-        svg._cdocsize = DocSize(rvb,vb,uuw,uuh,uupx,wu,hu,wpx,hpx)
+            def uutopxpgs(self,v): # Version that applies to Pages
+                return [v[0]*self.rawxf,v[1]*self.rawyf,v[2]*self.rawxf,v[3]*self.rawyf]
+            def pxtouupgs(self,v): # Version that applies to Pages
+                return [v[0]/self.rawxf,v[1]/self.rawyf,v[2]/self.rawxf,v[3]/self.rawyf]
+        svg._cdocsize = DocSize(rvb,vb,uuw,uuh,uupx,wu,hu,wpx,hpx,xf,yf,pgs)
     return svg._cdocsize
 def set_cdocsize(svg, si):
     if si is None and hasattr(svg, "_cdocsize"):  # invalidate
@@ -2118,9 +2139,19 @@ inkex.SvgDocumentElement.set_viewbox = set_viewbox_fcn
 
 def standardize_viewbox(svg):
     # Converts viewbox to pixels, removing any non-uniform scaling appropriately
+    pgbbs = [pg.bbpx for pg in svg.cdocsize.pgs]
     svg.set('viewBox',' '.join([str(v) for v in svg.cdocsize.effvb]))
     svg.set('width', str(svg.cdocsize.wpx))
     svg.set('height',str(svg.cdocsize.hpx))
+    
+    # Update Pages appropriately
+    svg.cdocsize = None
+    for ii,pg in enumerate(svg.cdocsize.pgs):
+        newbbuu = svg.cdocsize.pxtouupgs(pgbbs[ii])
+        pg.set('x',     str(newbbuu[0]))
+        pg.set('y',     str(newbbuu[1]))
+        pg.set('width', str(newbbuu[2]))
+        pg.set('height',str(newbbuu[3]))
 inkex.SvgDocumentElement.standardize_viewbox = standardize_viewbox
 
 # Returns effective viewbox of all documents
