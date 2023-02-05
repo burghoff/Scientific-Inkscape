@@ -1347,7 +1347,8 @@ def Get_Bounding_Boxes(filename, inkscape_binary=None,extra_args=[], svg=None):
             continue
             # skip warnings (version 1.0 only?)
         data = [float(x.strip("'")) for x in str(d).split(",")[1:]]
-        bbs[key] = data
+        if key!="'":  # sometimes happens in v1.3
+            bbs[key] = data
     
     # Inkscape always reports a bounding box in pixels, relative to the viewbox
     # Convert to user units for the output
