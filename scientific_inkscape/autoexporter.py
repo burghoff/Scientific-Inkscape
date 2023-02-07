@@ -210,9 +210,14 @@ class AutoExporter(inkex.EffectExtension):
                     + "\"' >/dev/null"
                 )
             elif platform.system().lower() == "windows":
-                if pybin == "pythonw.exe":
-                    pybin = "python.exe"
+                if 'pythonw.exe' in pybin:
+                    pybin = pybin.replace('pythonw.exe', 'python.exe')
                 subprocess.Popen([pybin, aepy], shell=False, cwd=pyloc)
+                
+                # if 'pythonw.exe' in pybin:
+                #     pybin = pybin.replace('pythonw.exe', 'python.exe')
+                # DETACHED_PROCESS = 0x08000000
+                # subprocess.Popen([pybin, aepy, 'standalone'], creationflags=DETACHED_PROCESS)
             else:
                 if sys.executable[0:4] == "/tmp":
                     inkex.utils.errormsg(
@@ -225,15 +230,22 @@ class AutoExporter(inkex.EffectExtension):
                     )
                     return
                 else:
-                    shpath = os.path.abspath(
-                        os.path.join(dh.get_script_path(), "FindTerminal.sh")
-                    )
-                    os.system("sh " + escp(shpath))
-                    f = open("tmp", "rb")
-                    terms = f.read()
-                    f.close()
-                    os.remove("tmp")
-                    terms = terms.split()
+                    # shpath = os.path.abspath(
+                    #     os.path.join(dh.get_script_path(), "FindTerminal.sh")
+                    # )
+                    # os.system("sh " + escp(shpath))
+                    # f = open("tmp", "rb")
+                    # terms = f.read()
+                    # f.close()
+                    # os.remove("tmp")
+                    # terms = terms.split()
+                    terminals = ["x-terminal-emulator", "mate-terminal", "gnome-terminal", "terminator", "xfce4-terminal", "urxvt", "rxvt", "termit", "Eterm", "aterm", "uxterm", "xterm", "roxterm", "termite", "lxterminal", "terminology", "st", "qterminal", "lilyterm", "tilix", "terminix", "konsole", "kitty", "guake", "tilda", "alacritty", "hyper", "terminal", "iTerm", "mintty", "xiterm", "terminal.app", "Terminal.app", "terminal-w", "terminal.js", "Terminal.js", "conemu", "cmder", "powercmd", "terminus", "termina", "terminal-plus", "iterm2", "terminus-terminal", "terminal-tabs"]
+                    terms = []
+                    for terminal in terminals:
+                        result = subprocess.run(['which', terminal], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        if result.returncode == 0:
+                            terms.append(terminal)
+                    
                     for t in reversed(terms):
                         if t == b"x-terminal-emulator":
                             LINUX_TERMINAL_CALL = (
@@ -912,30 +924,35 @@ class AutoExporter(inkex.EffectExtension):
             url = sty[m][5:-1]
             mkrel = dh.getElementById2(svg, url)
             if mkrel is not None:
-                mkrds = dh.descendants2(mkrel)
-                anycontext = any(
-                    [
-                        (a == "stroke" or a == "fill") and "context" in v
-                        for d in mkrds
-                        for a, v in d.cspecified_style.items()
-                    ]
-                )
-                if anycontext:
-                    handled = True
-                    dup = dh.get_duplicate2(mkrel)
-                    dupds = dh.descendants2(dup)
-                    for d in dupds:
-                        dsty = d.cspecified_style
-                        for a, v in dsty.items():
-                            if (a == "stroke" or a == "fill") and "context" in v:
-                                if v == "context-stroke":
-                                    dh.Set_Style_Comp(d, a, sty.get("stroke"))
-                                elif v == "context-fill":
-                                    dh.Set_Style_Comp(d, a, sty.get("fill"))
-                                else:  # I don't know what this is
-                                    handled = False
-                    if handled:
-                        dh.Set_Style_Comp(el, m, dup.get_id2(as_url=2))
+                sf = dh.get_strokefill(el)
+                if sf.stroke is None:
+                    # Clear marker on blank stroke
+                    dh.Set_Style_Comp(el, m, None)
+                else:
+                    mkrds = dh.descendants2(mkrel)
+                    anycontext = any(
+                        [
+                            (a == "stroke" or a == "fill") and "context" in v
+                            for d in mkrds
+                            for a, v in d.cspecified_style.items()
+                        ]
+                    )
+                    if anycontext:
+                        handled = True
+                        dup = dh.get_duplicate2(mkrel)
+                        dupds = dh.descendants2(dup)
+                        for d in dupds:
+                            dsty = d.cspecified_style
+                            for a, v in dsty.items():
+                                if (a == "stroke" or a == "fill") and "context" in v:
+                                    if v == "context-stroke":
+                                        dh.Set_Style_Comp(d, a, sty.get("stroke"))
+                                    elif v == "context-fill":
+                                        dh.Set_Style_Comp(d, a, sty.get("fill"))
+                                    else:  # I don't know what this is
+                                        handled = False
+                        if handled:
+                            dh.Set_Style_Comp(el, m, dup.get_id2(as_url=2))
                             
     def Opacity_Fix(self, el):
         # Fuse opacity onto fill and stroke for path-like elements
