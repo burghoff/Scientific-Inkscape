@@ -925,34 +925,34 @@ class AutoExporter(inkex.EffectExtension):
             mkrel = dh.getElementById2(svg, url)
             if mkrel is not None:
                 sf = dh.get_strokefill(el)
-                if sf.stroke is None:
-                    # Clear marker on blank stroke
-                    dh.Set_Style_Comp(el, m, None)
-                else:
-                    mkrds = dh.descendants2(mkrel)
-                    anycontext = any(
-                        [
-                            (a == "stroke" or a == "fill") and "context" in v
-                            for d in mkrds
-                            for a, v in d.cspecified_style.items()
-                        ]
-                    )
-                    if anycontext:
-                        handled = True
-                        dup = dh.get_duplicate2(mkrel)
-                        dupds = dh.descendants2(dup)
-                        for d in dupds:
-                            dsty = d.cspecified_style
-                            for a, v in dsty.items():
-                                if (a == "stroke" or a == "fill") and "context" in v:
-                                    if v == "context-stroke":
-                                        dh.Set_Style_Comp(d, a, sty.get("stroke"))
-                                    elif v == "context-fill":
-                                        dh.Set_Style_Comp(d, a, sty.get("fill"))
-                                    else:  # I don't know what this is
-                                        handled = False
-                        if handled:
-                            dh.Set_Style_Comp(el, m, dup.get_id2(as_url=2))
+                # if sf.stroke is None:
+                #     # Clear marker on blank stroke
+                #     dh.Set_Style_Comp(el, m, None)
+                # else:
+                mkrds = dh.descendants2(mkrel)
+                anycontext = any(
+                    [
+                        (a == "stroke" or a == "fill") and "context" in v
+                        for d in mkrds
+                        for a, v in d.cspecified_style.items()
+                    ]
+                )
+                if anycontext:
+                    handled = True
+                    dup = dh.get_duplicate2(mkrel)
+                    dupds = dh.descendants2(dup)
+                    for d in dupds:
+                        dsty = d.cspecified_style
+                        for a, v in dsty.items():
+                            if (a == "stroke" or a == "fill") and "context" in v:
+                                if v == "context-stroke":
+                                    dh.Set_Style_Comp(d, a, sty.get("stroke",'none'))
+                                elif v == "context-fill":
+                                    dh.Set_Style_Comp(d, a, sty.get("fill",'none'))
+                                else:  # I don't know what this is
+                                    handled = False
+                    if handled:
+                        dh.Set_Style_Comp(el, m, dup.get_id2(as_url=2))
                             
     def Opacity_Fix(self, el):
         # Fuse opacity onto fill and stroke for path-like elements
