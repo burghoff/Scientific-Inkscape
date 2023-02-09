@@ -1449,33 +1449,26 @@ class tword:
 
                 # Update the style
                 newsty = None
-                if c.sty != newc.sty:
+                if c.sty != newc.sty or ntype in ["super", "sub"] or c.sf != newc.sf:
                     newsty = c.sty
-
-                if ntype in ["super", "sub"]:
-                    newsty = c.sty
-
-                    # Nativize super/subscripts
-                    if ntype == "super":
-                        newsty["baseline-shift"] = "super"
-                    else:
-                        newsty["baseline-shift"] = "sub"
-
-                    newsty["font-size"] = "65%"
-                    # Leave size unchanged
-                    # sz = round(c.sw/newc.sw*100)
-                    # newsty['font-size'] = str(sz)+'%';
-
-                    # Leave baseline unchanged (works, but do I want it?)
-                    # shft = round(-(bl2.y-br1.y)/self.fs*100*self.sf);
-                    # newsty['baseline-shift']= str(shft)+'%';
-                elif c.sf != newc.sf:
-                    # Prevent accidental font size changes when differently transformed
-                    sz = round(c.sw/newc.sw*100)
-                    newsty['font-size'] = str(sz)+'%';
+                    if ntype in ["super", "sub"]:
+                        # newsty = c.sty
+                        # Nativize super/subscripts
+                        newsty["baseline-shift"] = "super" if ntype == "super" else "sub"
+                        newsty["font-size"] = "65%"
+                        # Leave size unchanged
+                        # sz = round(c.sw/newc.sw*100)
+                        # newsty['font-size'] = str(sz)+'%';
+    
+                        # Leave baseline unchanged (works, but do I want it?)
+                        # shft = round(-(bl2.y-br1.y)/self.fs*100*self.sf);
+                        # newsty['baseline-shift']= str(shft)+'%';
+                    elif c.sf != newc.sf:
+                        # Prevent accidental font size changes when differently transformed
+                        sz = round(c.sw/newc.sw*100)
+                        newsty['font-size'] = str(sz)+'%';
 
                 if newsty is not None:
-                    # dh.idebug(newsty)
                     newc.add_style(newsty)
                 prevc = newc
 
