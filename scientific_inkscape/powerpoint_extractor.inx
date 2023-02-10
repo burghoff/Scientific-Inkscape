@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+    <name>Powerpoint extractor</name>
+    <id>burghoff.powerpoint_extractor</id>
+    <param name="tab" type="notebook">        
+        <page name="scaling" gui-text="Options">
+        </page>
+    </param>
+    <effect needs-live-preview="false">
+        <object-type>text</object-type>
+        <effects-menu>
+            <submenu name="Scientific"/>
+        </effects-menu>
+    </effect>
+    <script>
+        <command location="inx" interpreter="python">powerpoint_extractor.py</command>
+    </script>
+</inkscape-extension>
