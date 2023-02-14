@@ -239,7 +239,16 @@ class AutoExporter(inkex.EffectExtension):
                     # f.close()
                     # os.remove("tmp")
                     # terms = terms.split()
-                    terminals = ["x-terminal-emulator", "mate-terminal", "gnome-terminal", "terminator", "xfce4-terminal", "urxvt", "rxvt", "termit", "Eterm", "aterm", "uxterm", "xterm", "roxterm", "termite", "lxterminal", "terminology", "st", "qterminal", "lilyterm", "tilix", "terminix", "konsole", "kitty", "guake", "tilda", "alacritty", "hyper", "terminal", "iTerm", "mintty", "xiterm", "terminal.app", "Terminal.app", "terminal-w", "terminal.js", "Terminal.js", "conemu", "cmder", "powercmd", "terminus", "termina", "terminal-plus", "iterm2", "terminus-terminal", "terminal-tabs"]
+
+                    terminals = [
+                        "x-terminal-emulator", "mate-terminal", "gnome-terminal", "terminator", "xfce4-terminal",
+                        "urxvt", "rxvt", "termit", "Eterm", "aterm", "uxterm", "xterm", "roxterm", "termite",
+                        "lxterminal", "terminology", "st", "qterminal", "lilyterm", "tilix", "terminix",
+                        "konsole", "kitty", "guake", "tilda", "alacritty", "hyper", "terminal", "iTerm", "mintty",
+                        "xiterm", "terminal.app", "Terminal.app", "terminal-w", "terminal.js", "Terminal.js",
+                        "conemu", "cmder", "powercmd", "terminus", "termina", "terminal-plus", "iterm2",
+                        "terminus-terminal", "terminal-tabs"
+                    ]
                     terms = []
                     for terminal in terminals:
                         result = subprocess.run(['which', terminal], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -247,11 +256,11 @@ class AutoExporter(inkex.EffectExtension):
                             terms.append(terminal)
                     
                     for t in reversed(terms):
-                        if t == b"x-terminal-emulator":
+                        if t == "x-terminal-emulator":
                             LINUX_TERMINAL_CALL = (
                                 "x-terminal-emulator -e bash -c '%CMD'"
                             )
-                        elif t == b"gnome-terminal":
+                        elif t == "gnome-terminal":
                             LINUX_TERMINAL_CALL = (
                                 'gnome-terminal -- bash -c "%CMD; exec bash"'
                             )
