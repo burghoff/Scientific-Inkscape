@@ -115,8 +115,6 @@ def terminal_call(python_bin,python_script,python_wd):
                     )
                 elif t == "konsole":
                     LINUX_TERMINAL_CALL = "konsole -e bash -c '%CMD'"
-                else:
-                    LINUX_TERMINAL_CALL = "konsole -e bash -c '%CMD'"
             os.system(
                 LINUX_TERMINAL_CALL.replace(
                     "%CMD",
