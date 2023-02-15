@@ -35,15 +35,11 @@ def joinmod(dirc, f):
 # Runs a Python script using a Python binary in a working directory
 # It detaches from Inkscape, allowing it to continue running after the extension has finished
 def run_python(python_bin,python_script,python_wd,interminal=False):
-
-        
-
     import platform
     if platform.system() == 'Windows':
         DEVNULL = 'nul'
     else:
         DEVNULL = '/dev/null'
-    
     DEVNULL = dh.si_tmp(filename='si_ppe_output.txt')
     # dh.idebug(DEVNULL)
     with open(DEVNULL, 'w') as devnull:

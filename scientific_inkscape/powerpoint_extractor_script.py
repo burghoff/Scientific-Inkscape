@@ -194,7 +194,7 @@ try:
     import subprocess
     import tempfile
     
-    def make_svg_display(svg_filenames,thumbnails,header,slidenums,islinked):
+    def make_svg_display():
         import os
         IMAGE_WIDTH = 200;
         IMAGE_HEIGHT = IMAGE_WIDTH*0.7;
@@ -241,32 +241,38 @@ try:
             string = "<head>{0}{1}{2}</head>".format(css_styles,meta,title)
             file.write(string)
             file.write("<body>\n")
+        
             
+                    
             global fileuris
-            fileuris = []; ii=0;
-            file.write('<h1>'+header+'</h1>\n<div class="serverdown" style="color: #e41a1cff;"></div>')
-            # Loop through the SVG filenames and write an img tag for each one
-            for ii, svg in enumerate(svg_filenames):
-                gallery = """
-                <div class="gallery">
-                  <a target="_blank" href="#">
-                    <img src="#" alt="" id='img{2}'>
-                  </a>
-                  <div class="desc">{4}<a href="http://localhost:{3}/process?param={0}" class="open">Open in Inkscape</a></div>
-                </div>
-                """
-                myloc = "file://" + svg;
+            fileuris = [];# tii=0;
+            global watcher_threads
+            for wt in watcher_threads:
+                svg_filenames,thumbnails,header,slidenums,islinked = wt.files,wt.thumbnails,wt.header,wt.slidenums,wt.islinked
                 
-                import pathlib
-                myloc = pathlib.Path(svg).as_uri()
-                tnloc = pathlib.Path(thumbnails[ii]).as_uri()
-                if slidenums is not None:
-                    label = 'Slide {0}'.format(slidenums[ii])+(' (linked)' if islinked[ii] else '')+'<br>'
-                else:
-                    label = os.path.split(svg)[-1]+'<br>';
-                file.write(gallery.format(myloc,os.path.split(svg)[-1],ii,str(PORTNUMBER),label))
-                fileuris.append(tnloc);
-            
+                file.write('<h1>'+header+'</h1>\n<div class="serverdown" style="color: #e41a1cff;"></div>')
+                # Loop through the SVG filenames and write an img tag for each one
+                for ii, svg in enumerate(svg_filenames):
+                    gallery = """
+                    <div class="gallery">
+                      <a target="_blank" href="#">
+                        <img src="#" alt="" id='img{2}'>
+                      </a>
+                      <div class="desc">{4}<a href="http://localhost:{3}/process?param={0}" class="open">Open in Inkscape</a></div>
+                    </div>
+                    """
+                    myloc = "file://" + svg;
+                    
+                    import pathlib
+                    myloc = pathlib.Path(svg).as_uri()
+                    tnloc = pathlib.Path(thumbnails[ii]).as_uri()
+                    if slidenums is not None:
+                        label = 'Slide {0}'.format(slidenums[ii])+(' (linked)' if islinked[ii] else '')+'<br>'
+                    else:
+                        label = os.path.split(svg)[-1]+'<br>';
+                    file.write(gallery.format(myloc,os.path.split(svg)[-1],len(fileuris),str(PORTNUMBER),label))
+                    fileuris.append(tnloc);
+                
             #<br><a href="http://localhost:5000/stop" id="stop_link">Stop Server</a>
             file.write("""
                <script>
@@ -467,7 +473,7 @@ try:
             self.thumbnails = tns
 
                 
-            make_svg_display(self.files,self.thumbnails,self.header,self.slidenums,self.islinked)
+            make_svg_display()
             
             global myapp, refreshapp
             if myapp is None:
@@ -543,15 +549,16 @@ try:
                 lmts = mts
             
 
-    global myapp, refreshapp, converted_files
+    global myapp, refreshapp, converted_files, watcher_threads
     myapp = None
     refreshapp = False
     converted_files = dict()
     lastupdate = time.time();
     watcher_threads = [];
     def process_selection(file):
-        for wt in watcher_threads:
-            wt.stopped = True
+        global watcher_threads
+        # for wt in watcher_threads:
+        #     wt.stopped = True
         wt = WatcherThread(file)
         wt.start()
         watcher_threads.append(wt)

@@ -46,6 +46,85 @@ def get_svg(fin):
     svg = inkex.load_svg(fin).getroot()
     return svg
 
+
+# Runs a Python script using a Python binary in a working directory
+# It detaches from Inkscape, allowing it to continue running after the extension has finished
+def gtk_call(python_bin,python_script,python_wd):
+    DEVNULL = dh.si_tmp(filename='ae_ppe_output.txt')
+    # dh.idebug(DEVNULL)
+    with open(DEVNULL, 'w') as devnull:
+        subprocess.Popen([python_bin, python_script], stdout=devnull, stderr=devnull)
+
+def terminal_call(python_bin,python_script,python_wd):
+    def escp(x):
+        return x.replace(" ", "\\\\ ")
+    import platform
+    if platform.system().lower() == "darwin":
+        # https://stackoverflow.com/questions/39840632/launch-python-script-in-new-terminal
+        os.system(
+            'osascript -e \'tell application "Terminal" to do script "'
+            + escp(sys.executable)
+            + " "
+            + escp(python_script)
+            + "\"' >/dev/null"
+        )
+    elif platform.system().lower() == "windows":
+        if 'pythonw.exe' in python_bin:
+            python_bin = python_bin.replace('pythonw.exe', 'python.exe')
+        subprocess.Popen([python_bin, python_script], shell=False, cwd=python_wd)
+        
+        # if 'pythonw.exe' in python_bin:
+        #     python_bin = python_bin.replace('pythonw.exe', 'python.exe')
+        # DETACHED_PROCESS = 0x08000000
+        # subprocess.Popen([python_bin, python_script, 'standalone'], creationflags=DETACHED_PROCESS)
+    else:
+        if sys.executable[0:4] == "/tmp":
+            inkex.utils.errormsg(
+                "This appears to be an AppImage of Inkscape, which the Autoexporter cannot support since AppImages are sandboxed."
+            )
+            return
+        elif sys.executable[0:5] == "/snap":
+            inkex.utils.errormsg(
+                "This appears to be an Snap installation of Inkscape, which the Autoexporter cannot support since Snap installations are sandboxed."
+            )
+            return
+        else:
+            terminals = [
+                "x-terminal-emulator", "mate-terminal", "gnome-terminal", "terminator", "xfce4-terminal",
+                "urxvt", "rxvt", "termit", "Eterm", "aterm", "uxterm", "xterm", "roxterm", "termite",
+                "lxterminal", "terminology", "st", "qterminal", "lilyterm", "tilix", "terminix",
+                "konsole", "kitty", "guake", "tilda", "alacritty", "hyper", "terminal", "iTerm", "mintty",
+                "xiterm", "terminal.app", "Terminal.app", "terminal-w", "terminal.js", "Terminal.js",
+                "conemu", "cmder", "powercmd", "terminus", "termina", "terminal-plus", "iterm2",
+                "terminus-terminal", "terminal-tabs"
+            ]
+            terms = []
+            for terminal in terminals:
+                result = subprocess.run(['which', terminal], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if result.returncode == 0:
+                    terms.append(terminal)
+            
+            for t in reversed(terms):
+                if t == "x-terminal-emulator":
+                    LINUX_TERMINAL_CALL = (
+                        "x-terminal-emulator -e bash -c '%CMD'"
+                    )
+                elif t == "gnome-terminal":
+                    LINUX_TERMINAL_CALL = (
+                        'gnome-terminal -- bash -c "%CMD; exec bash"'
+                    )
+                elif t == "konsole":
+                    LINUX_TERMINAL_CALL = "konsole -e bash -c '%CMD'"
+                else:
+                    LINUX_TERMINAL_CALL = "konsole -e bash -c '%CMD'"
+            os.system(
+                LINUX_TERMINAL_CALL.replace(
+                    "%CMD",
+                    escp(sys.executable) + " " + escp(python_script) + " >/dev/null",
+                )
+            )
+    
+
 PTH_COMMANDS = list('MLHVCSQTAZmlhvcsqtaz')
 class AutoExporter(inkex.EffectExtension):
     def add_arguments(self, pars):
@@ -184,6 +263,26 @@ class AutoExporter(inkex.EffectExtension):
             optcopy.inkscape_bfn = bfn;
             optcopy.formats = formats;
             optcopy.syspath = sys.path;
+            
+            try:
+                import warnings
+                with warnings.catch_warnings():
+                    # Ignore ImportWarning for Gtk/Pango
+                    warnings.simplefilter('ignore') 
+                    import gi
+                    gi.require_version('Gtk', '3.0')
+                    
+                    # GTk warning suppression from Martin Owens
+                    # Can sometimes suppress Inkex debug output also
+                    from gi.repository import GLib
+                    def _nope(*args, **kwargs): #
+                        return GLib.LogWriterOutput.HANDLED
+                    GLib.log_set_writer_func(_nope, None)
+                    from gi.repository import Gtk
+                guitype = 'gtk'
+            except:
+                guitype = 'terminal'
+            optcopy.guitype = guitype
 
             import tempfile
             aes = os.path.join(os.path.abspath(tempfile.gettempdir()), "si_ae_settings.p")
@@ -195,81 +294,12 @@ class AutoExporter(inkex.EffectExtension):
             import warnings
             warnings.simplefilter("ignore", ResourceWarning); # prevent warning that process is open
 
-            def escp(x):
-                return x.replace(" ", "\\\\ ")
-
-            import platform
-
-            if platform.system().lower() == "darwin":
-                # https://stackoverflow.com/questions/39840632/launch-python-script-in-new-terminal
-                os.system(
-                    'osascript -e \'tell application "Terminal" to do script "'
-                    + escp(sys.executable)
-                    + " "
-                    + escp(aepy)
-                    + "\"' >/dev/null"
-                )
-            elif platform.system().lower() == "windows":
-                if 'pythonw.exe' in pybin:
-                    pybin = pybin.replace('pythonw.exe', 'python.exe')
-                subprocess.Popen([pybin, aepy], shell=False, cwd=pyloc)
-                
-                # if 'pythonw.exe' in pybin:
-                #     pybin = pybin.replace('pythonw.exe', 'python.exe')
-                # DETACHED_PROCESS = 0x08000000
-                # subprocess.Popen([pybin, aepy, 'standalone'], creationflags=DETACHED_PROCESS)
-            else:
-                if sys.executable[0:4] == "/tmp":
-                    inkex.utils.errormsg(
-                        "This appears to be an AppImage of Inkscape, which the Autoexporter cannot support since AppImages are sandboxed."
-                    )
-                    return
-                elif sys.executable[0:5] == "/snap":
-                    inkex.utils.errormsg(
-                        "This appears to be an Snap installation of Inkscape, which the Autoexporter cannot support since Snap installations are sandboxed."
-                    )
-                    return
-                else:
-                    # shpath = os.path.abspath(
-                    #     os.path.join(dh.get_script_path(), "FindTerminal.sh")
-                    # )
-                    # os.system("sh " + escp(shpath))
-                    # f = open("tmp", "rb")
-                    # terms = f.read()
-                    # f.close()
-                    # os.remove("tmp")
-                    # terms = terms.split()
-
-                    terminals = [
-                        "x-terminal-emulator", "mate-terminal", "gnome-terminal", "terminator", "xfce4-terminal",
-                        "urxvt", "rxvt", "termit", "Eterm", "aterm", "uxterm", "xterm", "roxterm", "termite",
-                        "lxterminal", "terminology", "st", "qterminal", "lilyterm", "tilix", "terminix",
-                        "konsole", "kitty", "guake", "tilda", "alacritty", "hyper", "terminal", "iTerm", "mintty",
-                        "xiterm", "terminal.app", "Terminal.app", "terminal-w", "terminal.js", "Terminal.js",
-                        "conemu", "cmder", "powercmd", "terminus", "termina", "terminal-plus", "iterm2",
-                        "terminus-terminal", "terminal-tabs"
-                    ]
-                    terms = []
-                    for terminal in terminals:
-                        result = subprocess.run(['which', terminal], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        if result.returncode == 0:
-                            terms.append(terminal)
-                    
-                    for t in reversed(terms):
-                        if t == "x-terminal-emulator":
-                            LINUX_TERMINAL_CALL = (
-                                "x-terminal-emulator -e bash -c '%CMD'"
-                            )
-                        elif t == "gnome-terminal":
-                            LINUX_TERMINAL_CALL = (
-                                'gnome-terminal -- bash -c "%CMD; exec bash"'
-                            )
-                    os.system(
-                        LINUX_TERMINAL_CALL.replace(
-                            "%CMD",
-                            escp(sys.executable) + " " + escp(aepy) + " >/dev/null",
-                        )
-                    )
+            if guitype=='gtk':
+                # dh.idebug([f.name for f in os.scandir(optcopy.watchdir)])
+                gtk_call(pybin,aepy,pyloc)
+            else:    
+                terminal_call(pybin,aepy,pyloc)
+            
 
         else:
             if not (self.options.testmode):
@@ -281,10 +311,7 @@ class AutoExporter(inkex.EffectExtension):
             optcopy.prints = False; DEBUGGING
             optcopy.linked_locations = ih.get_linked_locations(self); # needed to find linked images in relative directories
 
-            AutoExporter().export_all(
-                bfn, self.options.input_file, pth, formats, optcopy
-            )
-            # dh.overwrite_svg(self.svg,pth)
+            AutoExporter().export_all(bfn, self.options.input_file, pth, formats, optcopy)
 
         if dispprofile:
             pr.disable()
@@ -323,7 +350,7 @@ class AutoExporter(inkex.EffectExtension):
         # print(tempdir)
         if input_options.debug:
             if input_options.prints:
-                dh.idebug("\n    " + joinmod(tempdir, ""))
+                input_options.prints("\n    " + joinmod(tempdir, ""))
         tempbase = joinmod(tempdir, 't')
         input_options.input_file = fin;
         
@@ -388,9 +415,12 @@ class AutoExporter(inkex.EffectExtension):
         myoutput = fout[0:-4] + "." + fformat
         if input_options.prints:
             fname = os.path.split(input_options.input_file)[1];
-            offset = round(os.get_terminal_size().columns/2);
+            try:
+                offset = round(os.get_terminal_size().columns/2);
+            except:
+                offset = 40;  
             fname = fname + ' '*max(0,offset-len(fname))
-            print(fname+": Converting to " + fformat, flush=True)
+            input_options.prints(fname+": Converting to " + fformat, flush=True)
         timestart = time.time()
 
         if ppoutput is not None:
@@ -563,7 +593,7 @@ class AutoExporter(inkex.EffectExtension):
 
         if input_options.prints:
             toc = time.time() - timestart;
-            print(fname+": Conversion to "+fformat+" done (" + str(round(1000 * toc) / 1000) + " s)")
+            input_options.prints(fname+": Conversion to "+fformat+" done (" + str(round(1000 * toc) / 1000) + " s)")
         return True, myoutput
 
     def preprocessing(self, bfn, fin, fout, input_options,tempbase):
@@ -572,9 +602,12 @@ class AutoExporter(inkex.EffectExtension):
 
         if input_options.prints:
             fname = os.path.split(input_options.input_file)[1];
-            offset = round(os.get_terminal_size().columns/2);
+            try:
+                offset = round(os.get_terminal_size().columns/2);
+            except:
+                offset = 40;    
             fname = fname + ' '*max(0,offset-len(fname))
-            print(fname+": Preprocessing vector output", flush=True)
+            input_options.prints(fname+": Preprocessing vector output", flush=True)
             timestart = time.time()
 
         tempdir  = os.path.split(tempbase)[0]
@@ -788,7 +821,7 @@ class AutoExporter(inkex.EffectExtension):
             cfile = tmp
 
         if input_options.prints:
-            print(
+            input_options.prints(
                 fname + ": Preprocessing done (" + str(round(1000 * (time.time() - timestart)) / 1000) + " s)"
             )
         return cfile
