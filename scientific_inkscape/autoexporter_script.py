@@ -267,7 +267,6 @@ if guitype=='gtk':
             buffer.insert(buffer.get_end_iter(), text+'\n')
             # bei = buffer.get_end_iter();
             # self.selected_file_label.scroll_to_iter(bei, 0.0, True, 0.0, 1.0)
-            # self.selected_file_label.scroll_to_mark(buffer.get_insert(), 0.0, True, 0.0, 1.0)
             
             # bi = buffer.get_insert();
             
@@ -303,6 +302,7 @@ if guitype=='gtk':
         
         def export_all_clicked(self, widget):
             self.ct.ea = True;
+            # self.ct.dm = True
             
         def export_file_clicked(self, widget):
             native = Gtk.FileChooserNative.new("Please choose a file", self, Gtk.FileChooserAction.OPEN, None, None)
@@ -332,9 +332,11 @@ if guitype=='gtk':
         def run(self):
             while not(self.stopped):
                 if len(self.buffer)>0:
+                    time.sleep(0.25);
                     self.win.print_text('\n'.join(self.buffer));
                     self.buffer = [];
-                time.sleep(0.5)
+                    # time.sleep(0.25);
+                    # win.selected_file_label.scroll_to_mark(win.selected_file_label.get_buffer().get_insert(), 0.0, True, 0.0, 1.0);
     global pt
     pt = printThread(win);
     pt.start();

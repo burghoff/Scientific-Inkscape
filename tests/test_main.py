@@ -19,7 +19,7 @@ version = '1.2.2'
 lprofile = False
 
 testflattentext,testflattenrest,testflattenpapers,testscalecorrection,testscalecorrection2,\
-testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae = (False,)*13
+testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp = (False,)*14
 
 testflattentext     = True;
 testflattenrest     = True; 

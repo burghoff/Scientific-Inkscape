@@ -832,6 +832,10 @@ class ParsedText:
         nln.xsrc, nln.ysrc = nll.Parse_Lines(srcsonly=True)
         nln.change_pos(newx=nln.x, newy=nln.y)
         nln.disablesodipodi(force=True)
+        if len(self.lns)>0:
+            self.lns[0].xsrc, self.lns[0].ysrc = self.Parse_Lines(srcsonly=True)
+            self.lns[0].change_pos(newx=self.lns[0].x, newy=self.lns[0].y)
+            # self.lns[0].disablesodipodi(force=True)
 
         # dh.idebug([''.join([c.c for c in cs]),dyl,fusey])
         if fusex:

@@ -101,85 +101,6 @@ try:
                 file_uri, result))
         return result
     
-    def Make_Flask_App(static_folder):
-        from flask import Flask, request, url_for, jsonify, send_from_directory
-        app = Flask(__name__)
-        
-        global folder_dict
-        folder_dict = dict();
-        
-        @app.route('/images/<folder>/<path:path>')
-        def send_image(folder,path):
-            global folder_dict
-            return send_from_directory(os.path.abspath(folder_dict[folder]), path)
-            # response = send_from_directory(os.path.abspath(folder_dict[folder]), path)
-            # response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            # response.headers["Pragma"] = "no-cache"
-            # response.headers["Expires"] = "0"
-            # return response
-
-        @app.route("/")
-        def index():
-            global temp_dir
-            gloc = os.path.join(temp_dir,"Gallery.html");
-            with open(gloc, "rb") as f:
-                gallery = f.read();
-                
-                global fileuris
-                nnames = [];
-                for v in fileuris:
-                    svg_file = file_uri_to_path(v)
-                    folder, file = os.path.split(svg_file)
-                    
-                    global folder_dict
-                    if folder not in folder_dict.values():
-                        k = os.path.split(temp_dir)[-1]+'-dir'+str(len(folder_dict));
-                        folder_dict[k] = folder
-                    else:
-                        k = next(key for key, value in folder_dict.items() if value == folder)
-                    nnames.append(url_for('send_image', path=file, folder=k))
-                new_string = gallery.replace(b'var imgAddresses = '+bytes(str(fileuris),'utf-8'),
-                                             b'var imgAddresses = '+bytes(str(nnames),'utf-8'))
-                # print(gallery)
-                # print(bytes('hello\n'*1000,'utf-8'))
-                # print(gallery)
-                return new_string
-                # return '<img src="{}">'.format(url_for('send_image', path='image2.svg'))
-        @app.route("/stop")
-        def stop():
-            func = request.environ.get('werkzeug.server.shutdown')
-            if func is None:
-                raise RuntimeError('Not running with the Werkzeug Server')
-            func()
-            return "Server shutting down..."
-        
-        @app.route("/process", methods=["GET"])
-        def process():
-            param = request.args.get("param")
-            # svg_file = os.path.normpath(param).strip('file:\\');
-            # svg_file = re.sub("^file:\\\\", "", os.path.normpath(param))
-            svg_file = file_uri_to_path(param)
-            if svg_file is not None:
-                print('Opening'+str(svg_file))
-                subprocess.run([bfn, svg_file]);
-            return f"The parameter received is: {param}"
-        
-        @app.route('/check_for_refresh')
-        def check_for_refresh():
-            global refreshapp, lastupdate
-            if refreshapp:
-                refreshapp = False
-                lastupdate = time.time();
-            return jsonify(lastupdate=lastupdate)
-            
-        def run_flask():
-            # app.static_folder = static_folder
-            app.run(port = PORTNUMBER)
-        from threading import Thread
-        thread = Thread(target=run_flask)
-        thread.start()
-        return app
-    
     
     global temp_dir
     temp_dir = si_tmp(dirbase='ppe');
@@ -194,179 +115,104 @@ try:
     import subprocess
     import tempfile
     
-    def make_svg_display():
+    class RenderThread(threading.Thread):
+        # Renders the pixbuf
+        def __init__(self, f, w, h):
+            threading.Thread.__init__(self)
+            # self.threadID = threadID
+            self.file = f;
+            self.width = w;
+            self.height = h;
+            self.pixbuf = None;
+            self.rendering = False;
+            self.rendered  = False;
+            self.displayed = False; 
+        def run(self):
+            self.rendering = True;
+            try:
+                self.pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(self.file,self.width,self.height)
+            except:
+                global temp_dir
+                tndir = os.path.join(temp_dir,'thumbnails')
+                if not os.path.exists(tndir):
+                    os.makedirs(tndir)
+                numtns = len(os.listdir(tndir))
+                tnpng = os.path.join(tndir,str(numtns)+'.png')
+                
+                if os.path.exists(tnpng):
+                    os.remove(tnpng)
+                args = [bfn,"--export-area-drawing","--export-background","#ffffff","--export-background-opacity",
+                    "1.0","--export-dpi",str(300),"--export-filename",tnpng,self.file]
+                dh.subprocess_repeat(args)
+                try:
+                    self.pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(tnpng,self.width,self.height)
+                except:
+                    pass
+            self.rendering = False;
+            self.rendered = True;
+        def display(self,ls,iv):
+            iter = ls.get_iter_first()
+            jj=0;
+            while jj < iv:
+                iter = ls.iter_next(iter)
+                jj+=1
+            ls.set_value(iter,1,self.pixbuf)
+            self.displayed = True;
+            
+    
+    def make_svg_display(win):
         import os
-        IMAGE_WIDTH = 200;
-        IMAGE_HEIGHT = IMAGE_WIDTH*0.7;
-    
-        # Create the HTML file
-        global temp_dir
-        gloc = os.path.join(temp_dir,"Gallery.html");
-        with open(gloc, "w") as file:
-        # Write the HTML header
-            file.write('<html translate="no">\n')
-            
-            # Define the CSS styles
-            css_styles = """
-            <style>
-            div.gallery {
-              margin: 5px;
-              border: 1px solid #ccc;
-              float: none;
-              width: IMAGE_WIDTHpx;
-              display: inline-block;
-            }
-            
-            div.gallery:hover {
-              border: 1px solid #777;
-            }
-            
-            div.gallery img {
-              object-fit: contain;
-              width: IMAGE_WIDTHpx;
-              height: IMAGE_HEIGHTpx;
-            }
-            
-            div.desc {
-              padding: 15px;
-              text-align: center;
-            }
-            </style>
-            """
-            css_styles = css_styles.replace('IMAGE_WIDTH', str(IMAGE_WIDTH))
-            css_styles = css_styles.replace('IMAGE_HEIGHT',str(IMAGE_HEIGHT))
-            # Create the string with the <head>, <style>, and </style> tags
-            meta = "<meta name='google' content='notranslate'>\n";
-            title = "<title>SVG Gallery</title>\n"
-            string = "<head>{0}{1}{2}</head>".format(css_styles,meta,title)
-            file.write(string)
-            file.write("<body>\n")
         
-            
-                    
-            global fileuris
-            fileuris = [];# tii=0;
-            global watcher_threads
-            for wt in watcher_threads:
-                svg_filenames,thumbnails,header,slidenums,islinked = wt.files,wt.thumbnails,wt.header,wt.slidenums,wt.islinked
-                
-                file.write('<h1>'+header+'</h1>\n<div class="serverdown" style="color: #e41a1cff;"></div>')
-                # Loop through the SVG filenames and write an img tag for each one
-                for ii, svg in enumerate(svg_filenames):
-                    gallery = """
-                    <div class="gallery">
-                      <a target="_blank" href="#">
-                        <img src="#" alt="" id='img{2}'>
-                      </a>
-                      <div class="desc">{4}<a href="http://localhost:{3}/process?param={0}" class="open">Open in Inkscape</a></div>
-                    </div>
-                    """
-                    myloc = "file://" + svg;
-                    
-                    import pathlib
-                    myloc = pathlib.Path(svg).as_uri()
-                    tnloc = pathlib.Path(thumbnails[ii]).as_uri()
-                    if slidenums is not None:
-                        label = 'Slide {0}'.format(slidenums[ii])+(' (linked)' if islinked[ii] else '')+'<br>'
-                    else:
-                        label = os.path.split(svg)[-1]+'<br>';
-                    file.write(gallery.format(myloc,os.path.split(svg)[-1],len(fileuris),str(PORTNUMBER),label))
-                    fileuris.append(tnloc);
-                
-            #<br><a href="http://localhost:5000/stop" id="stop_link">Stop Server</a>
-            file.write("""
-               <script>
-                document.querySelectorAll("a.open").forEach(function(link) {
-                    link.addEventListener("click", function(event){
-                        event.preventDefault();
-                        var xhr = new XMLHttpRequest();
-                        xhr.open("GET", this.href, true);
-                        xhr.send();
-                    });
-                });
-                </script>
-                """)
-            
-            script = """
-            <script>
-            var imgAddresses = replacemenow;
-            var imgloaded = imgAddresses.map(() => false);
-    
-            function loadImage(counter) {
-              // Break out if no more images
-              if (counter==imgAddresses.length) { return; }
-            
-              // Grab an image obj
-              var I = document.getElementById("img"+counter);
-            
-              // Monitor load or error events, moving on to next image in either case
-              try {
-                  I.onload = I.onerror = function() {checkRun(counter);}
-                  I.src = imgAddresses[counter];
-                  I.parentNode.href = imgAddresses[counter];
-              } catch (error) {
-              }
-            }
-            const Nshow = 2100;
-            var currentRun = 0;
-            var waitingOn = 0;
-            function checkRun(cval) {
-                imgloaded[cval]=true;
-                if (imgloaded.slice(0, currentRun*Nshow).some(element => element === true) & cval-(cval%Nshow)==Nshow*waitingOn) {
-                    queueRun();
-                }
-            }
-            function queueRun() {
-                for (let i = currentRun*Nshow; i < (currentRun+1)*Nshow; i++) {
-                  loadImage(i);
-                }
-                waitingOn = currentRun;
-                currentRun++;
-                // console.log(currentRun)
-                // console.log(imgAddresses.length)
-            }
-            queueRun();
-            
-            //for (let i = 0; i < imgAddresses.length; i++) {
-            //  loadImage(i);
-            //  }
-            
-            var mylastupdate = Date.now() / 1000;
-            setInterval(function(){
-                var xhr = new XMLHttpRequest();
-                xhr.open('GET', '/check_for_refresh');
-                xhr.onload = function() {
-                    if (xhr.status === 200) {
-                        var response = JSON.parse(xhr.responseText);
-                        if (response.lastupdate > mylastupdate) {
-                            location.reload();
-                        }
-                    }
-                };
-                xhr.onerror = function() {
-                document.querySelector('.serverdown').innerHTML = "Server is not running.";
-                };
-                xhr.send();
-            }, 1000);
-            </script>
-            """
-            # global replacemenowval
-            # replacemenowval = tofill
-            script = script.replace('replacemenow',str(fileuris))
-            file.write(script)
-            
-            # Write the HTML footer
-            file.write("</body>\n")
-            file.write("</html>\n")
-        # return 
         
-
-        import webbrowser, pathlib
-        print('Gallery: '+pathlib.Path(gloc).as_uri())
-        # webbrowser.open(pathlib.Path(gloc).as_uri())
-        # webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
-    
-    # def unzip_ppt_open_svg(filename):
+        for svg in win.render_threads.keys():
+            win.render_threads[svg].displayed = False
+        
+        newls = Gtk.ListStore(str, GdkPixbuf.Pixbuf,str)
+        blnk = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, win.MAX_IMWIDTH, win.MAX_IMHEIGHT)
+        rts = dict();
+        jj=0;
+        global watcher_threads
+        for wt in watcher_threads:
+            # svg_filenames,thumbnails,header,slidenums,islinked = wt.files,wt.thumbnails,wt.header,wt.slidenums,wt.islinked
+            for ii, svg in enumerate(wt.files):
+                if wt.slidenums is not None:
+                    label = 'Slide {0}'.format(wt.slidenums[ii])+(' (linked)' if wt.islinked[ii] else '')
+                else:
+                    label = os.path.split(svg)[-1];
+                label = os.path.split(wt.header)[-1]+'\n'+label
+                
+                
+                if svg in win.render_threads and win.render_threads[svg].rendered:
+                    newls.append((label, win.render_threads[svg].pixbuf,svg))
+                    win.render_threads[svg].displayed = True
+                else:
+                    newls.append((label, blnk,svg))
+                    rts[jj] = RenderThread(svg, win.MAX_IMWIDTH, win.MAX_IMHEIGHT);
+                    win.render_threads[svg]  = rts[jj];
+                jj+=1
+        
+        win.iconview.set_model(newls)
+        win.liststore.clear();
+        win.liststore = newls;
+        
+        ldisplay = float('-Inf');
+        while any([not(rt.rendered) or not(rt.displayed) for rt in rts.values()]):
+            sleep = True;
+            if len([rt for rt in rts.values() if rt.rendering])<10:
+                unrendered = [rt for rt in rts.values() if not(rt.rendering) and not(rt.rendered)]
+                if len(unrendered)>0:
+                    unrendered[0].start();
+                sleep = False
+            undisplayed = [(k,v) for k,v in rts.items() if not(v.displayed) and v.rendered]
+            if len(undisplayed)>0 and time.time()-ldisplay>1:
+                for ud in undisplayed:
+                    k,v = ud
+                    v.display(win.liststore,k)
+                ldisplay = time.time();
+                sleep = False
+            if sleep:
+                time.sleep(0.01)
+                    
 
     class WatcherThread(threading.Thread):
         # A thread that generates an SVG gallery of files, then watches
@@ -376,6 +222,7 @@ try:
             # self.threadID = threadID
             self.fof = file_or_folder
             self.stopped = False
+            self.render_started = False
 
         def get_image_slidenums(self,dirin):
             import os
@@ -450,7 +297,7 @@ try:
                 self.header = self.fof
                 print("Temp dir: "+temp_dir)
             elif os.path.isdir(self.fof):
-                self.files = get_svgs(self.fof);
+                self.files = sorted(get_svgs(self.fof),key=str.casefold);
                 self.thumbnails = copy.copy(self.files)
                 self.header = self.fof
                 self.slidenums = None
@@ -473,15 +320,15 @@ try:
             self.thumbnails = tns
 
                 
-            make_svg_display()
+            make_svg_display(self.win)
             
-            global myapp, refreshapp
-            if myapp is None:
-                myapp = Make_Flask_App(temp_dir);
-                webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
-            else:
-                refreshapp = True
-            self.convert_emfs()
+            # global myapp, refreshapp
+            # if myapp is None:
+            #     myapp = Make_Flask_App(temp_dir);
+            #     webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
+            # else:
+            #     refreshapp = True
+            # self.convert_emfs()
             
             
         def convert_emfs(self):
@@ -555,17 +402,28 @@ try:
     converted_files = dict()
     lastupdate = time.time();
     watcher_threads = [];
-    def process_selection(file):
+    def process_selection(file,win):
+        if os.path.isdir(file) and os.path.isfile(os.path.join(file,'Gallery.cfg')):
+            with open(os.path.join(file,'Gallery.cfg'), "r") as f:
+                lines = f.readlines()
+                lines = [line.strip() for line in lines]
+                for ln in lines:
+                    process_selection(os.path.join(file,ln),win)
+                return
+        
         global watcher_threads
-        # for wt in watcher_threads:
-        #     wt.stopped = True
+        for wt in watcher_threads:
+            if file==wt.fof:
+                wt.stopped = True
+                watcher_threads.remove(wt);
         wt = WatcherThread(file)
+        wt.win = win;
         wt.start()
         watcher_threads.append(wt)
       
     def quitnow():
-        import requests
-        requests.get('http://localhost:{}/stop'.format(str(PORTNUMBER)))  # kill Flask app
+        # import requests
+        # requests.get('http://localhost:{}/stop'.format(str(PORTNUMBER)))  # kill Flask app
         
         for wt in watcher_threads:
             wt.stopped = True
@@ -585,12 +443,12 @@ try:
     if guitype=='gtk':            
         import gi
         gi.require_version('Gtk', '3.0')
-        from gi.repository import Gtk, GdkPixbuf
+        from gi.repository import Gtk, GdkPixbuf, Gdk
         
-        class HelloWorldWindow(Gtk.Window):
+        class GalleryWindow(Gtk.Window):
             def __init__(self):
                 Gtk.Window.__init__(self, title="Powerpoint SVG Extractor")
-                self.set_default_size(400, -1)  # set width to 400 pixels, height can be automatic
+                self.set_default_size(1134, 772)  # set width to 400 pixels, height can be automatic
                 self.set_position(Gtk.WindowPosition.CENTER)
                 
                 self.selected_file_label = Gtk.TextView()
@@ -598,27 +456,43 @@ try:
                 self.selected_file_label.set_wrap_mode(Gtk.WrapMode.CHAR)
                 self.selected_file_label.get_buffer().set_text('No file selected.')
         
-                # Adding a scrolled window to the TextView
-                self.scrolled_window = Gtk.ScrolledWindow()
-                self.scrolled_window.set_size_request(400, 200)
-                self.scrolled_window.set_hexpand(True)
-                self.scrolled_window.set_vexpand(True)
-                self.scrolled_window.add(self.selected_file_label)
-                            
-                # Adding an Image widget to display the SVG
-                # pixbuf = GdkPixbuf.Pixbuf.new_from_file('test.svg')
-                # width, height = pixbuf.get_width(), pixbuf.get_height()
-                # scale = min(100/width, 100/height)
-                # pixbuf = pixbuf.scale_simple(int(width*scale), int(height*scale), GdkPixbuf.InterpType.BILINEAR)
-                # self.svg_image = Gtk.Image()
-                # self.svg_image.set_from_pixbuf(pixbuf)
                 
+                # Adding an IconView widget to display the SVGs
+                self.iconview = Gtk.IconView()
+                self.iconview.set_text_column(0)
+                self.iconview.set_pixbuf_column(1)
+                self.MAX_IMWIDTH = 200;
+                self.MAX_IMHEIGHT = self.MAX_IMWIDTH*0.7;
+                self.EXTRA = 30;
+                self.SPCING = 15;
+                DISPLAY_WIDTH=(self.MAX_IMWIDTH+self.SPCING)*5+self.EXTRA;
+                self.iconview.set_columns(int((DISPLAY_WIDTH-self.EXTRA)/((self.MAX_IMWIDTH+self.SPCING))))
+                self.iconview.set_item_width(0)
+                self.iconview.set_item_padding(self.SPCING/2)
+                self.iconview.set_margin(0)
+        
+                # Create a ListStore to store the SVG filenames
+                self.liststore = Gtk.ListStore(str, GdkPixbuf.Pixbuf,str)
+                cell_pixbuf = Gtk.CellRendererPixbuf()
+                self.iconview.pack_start(cell_pixbuf, False)
+                self.iconview.set_model(self.liststore)
+                
+                # Create a scrolled window to contain the IconView
+                self.scrolled_window2 = Gtk.ScrolledWindow()
+                self.scrolled_window2.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+                self.scrolled_window2.set_size_request(self.MAX_IMWIDTH,self.MAX_IMHEIGHT)
+                self.scrolled_window2.add(self.iconview)
+        
+                # Connect the selection_changed signal to a callback function
+                self.iconview.connect('item_activated', self.on_iconview_selection_changed)
+                self.connect("size-allocate", self.on_size_allocate)
+                self.render_threads = dict();
+
                 self.containing_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-                self.containing_box.set_valign(Gtk.Align.CENTER)
+                self.containing_box.set_valign(Gtk.Align.FILL)
                 self.containing_box.set_margin_top(20)
                 self.containing_box.set_margin_bottom(20)
-                self.containing_box.pack_start(self.scrolled_window, True, True, 0)
-                # self.containing_box.pack_start(self.svg_image, False, False, 0)
+                self.containing_box.pack_start(self.scrolled_window2, True, True, 0)
         
                 self.file_button = Gtk.Button(label="Select File")
                 self.file_button.connect("clicked", self.on_file_button_clicked)
@@ -637,6 +511,22 @@ try:
                 self.box.pack_start(self.exit_button, False, False, 0)
                 self.add(self.box)
                 
+            def on_size_allocate(self, widget, allocation):
+                display_width = allocation.width
+                import math
+                num_columns = int(math.floor((display_width-self.EXTRA)/((self.MAX_IMWIDTH+self.SPCING))))
+                self.iconview.set_columns(num_columns)
+            
+            def on_iconview_selection_changed(self, iconview, *args):
+                selected_items = iconview.get_selected_items()
+                if selected_items:
+                    path = selected_items[0]
+                    model = iconview.get_model()
+                    filename = model[path][2]
+                    # print the filename
+                    print("Selected icon: " + filename)
+                    with open(os.devnull, 'w') as devnull:
+                        subprocess.Popen([bfn, filename], stdout=devnull, stderr=devnull)
                 
             def print_text(self, text):
                 buffer = self.selected_file_label.get_buffer()
@@ -649,7 +539,7 @@ try:
                 self.selected_file_label.scroll_to_mark(buffer.get_insert(), 0, True, 0, 0)
 
             def on_button_clicked(self, widget):
-                print("Hello World")
+                # print("Hello World")
                 self.destroy()
                 
             def on_file_button_clicked(self, widget):
@@ -663,7 +553,7 @@ try:
                 if response == Gtk.ResponseType.ACCEPT:
                     selected_file = native.get_filename()
                     self.print_text(selected_file)
-                    process_selection(selected_file)
+                    process_selection(selected_file,self)
                 native.destroy()
                 
             def on_folder_button_clicked(self, widget):
@@ -672,16 +562,16 @@ try:
                 if response == Gtk.ResponseType.ACCEPT:
                     selected_file = native.get_filename()
                     self.print_text(selected_file)
-                    process_selection(selected_file)
+                    process_selection(selected_file,self)
                 native.destroy()
                 
                 
-        win = HelloWorldWindow()
+        win = GalleryWindow()
         win.set_keep_above(True)
         # win.connect("destroy", quitnow)
         def quit_and_close(self):
-            quitnow()
             Gtk.main_quit();
+            quitnow()
         win.connect("destroy", quit_and_close)
         win.show_all()
         win.set_keep_above(False)

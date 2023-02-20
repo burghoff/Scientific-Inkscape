@@ -147,7 +147,7 @@ def Change_Justification(els, justification):
 
 
 # Split different lines
-def Split_Lines(els):
+def Split_Lines(els,ignoreinkscape=True):
     # newlls = []
     lls = ellls(els);
     for jj in range(len(lls)):
@@ -155,11 +155,11 @@ def Split_Lines(els):
         if (
             ll.lns is not None
             and len(ll.lns) > 1
-            and not (ll.ismlinkscape)
+            and (not(ll.ismlinkscape) or not(ignoreinkscape))
             and not (ll.issvg2)
         ):
             for il in reversed(range(1, len(ll.lns))):
-                newtxt = ll.Split_Off_Words(ll.lns[il].ws)
+                newtxt = ll.Split_Off_Characters(ll.lns[il].cs)
                 els.append(newtxt)
                 # newlls.append(newtxt.parsed_text)
     # lls += newlls

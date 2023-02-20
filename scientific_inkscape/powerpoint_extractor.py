@@ -164,7 +164,7 @@ class PowerpointExtractor(inkex.EffectExtension):
         bloc, bnm = os.path.split(bfn)
         pyloc, pybin = os.path.split(sys.executable)
 
-        aepy = os.path.join(dh.si_dir, "powerpoint_extractor_script.py")
+        aepy = os.path.join(dh.si_dir, "powerpoint_extractor_script_flask.py")
         
 
         # Pass settings using a config file. Include the current path so Inkex can be called if needed.
