@@ -541,13 +541,55 @@ class ParsedText:
                     sws[ii].prevsametspan = (
                         sws[ii - 1].cs[-1].loc.pel == sws[ii].cs[0].loc.pel
                     )
+    
+    # Strip every sodipodi:role line from an element without changing positions
+    def Strip_Sodipodirole_Line(self):
+        if any([d.get('sodipodi:role')=='line' for d in self.textds]):
+            # Store old positions
+            oxs = [c.pts_ut[0].x for ln in self.lns for c in ln.cs]
+            oys = [c.pts_ut[0].y for ln in self.lns for c in ln.cs]
+            odxs = [c.dx for ln in self.lns for c in ln.cs]
+            odys = [c.dy for ln in self.lns for c in ln.cs]
+            [d.set('sodipodi:role',None) for d in self.textds]
+            self.__init__(self.textel, self.ctable) # reparse
+            
+            # Correct the position of the first character
+            cs = [c for ln in self.lns for c in ln.cs]
+            for ii, ln in enumerate(self.lns):
+                myi = cs.index(ln.cs[0])
+                dx = oxs[myi]-cs[myi].pts_ut[0].x;
+                dy = oys[myi]-cs[myi].pts_ut[0].y;
+                if abs(dx)>0.001 or abs(dy)>0.001:
+                    newxv = [v+dx for v in ln.x]
+                    newyv = [v+dy for v in ln.y]
+                    if ln.continuex or ln.continuey:
+                        if ln.cs[0].loc.tt=='tail': # wrap in a trivial Tspan so we can set x and y
+                            ln.cs[0].add_style({'baseline-shift':0},setdefault=False)
+                        ln.xsrc = ln.cs[0].loc.el
+                        ln.ysrc = ln.cs[0].loc.el
+                        ln.continuex = False
+                        ln.continuey = False
+                    ln.change_pos(newx=newxv, newy=newyv)
+            
+            # Fix non-first dxs
+            ndxs = [c.dx for ln in self.lns for c in ln.cs]
+            ndys = [c.dy for ln in self.lns for c in ln.cs]
+            for ii,c in enumerate(cs):
+                if c.ln.cs.index(c)>0:
+                    if abs(odxs[ii]-ndxs[ii])>0.001 or abs(odys[ii]-ndys[ii])>0.001:
+                        c.dx = odxs[ii]
+                        c.dy = odys[ii]
+            self.Update_Delta();
+            for ln in self.lns:
+                for w in ln.ws:
+                    w.charpos = None
+
 
     @staticmethod
     def GetXY(el, xy):
         val = el.get(xy)
         if val is None:
-            val = [None]
-            # None forces inheritance
+            val = [None]  # None forces inheritance
         else:
             tmp = []
             for x in val.split():
@@ -693,6 +735,10 @@ class ParsedText:
                     dyset = " ".join([str(v) for v in dy])
                 self.textel.set("dx", dxset)
                 self.textel.set("dy", dyset)
+                for w in [w for ln in self.lns for w in ln.ws]:
+                    w.dxeff = None
+                    w.charpos = None
+                    # dh.idebug('here')
             self.dxs = dxs
             self.dys = dys
 
@@ -1576,6 +1622,7 @@ class tword:
     def dxeff(self, di):
         if di is None:
             self._dxeff = None
+            self.charpos = None
 
     # Word properties
     def get_fs(self):
@@ -2032,7 +2079,7 @@ class tchar:
         # Update the dx/dy value in the ParsedText
         self.ln.pt.Update_Delta()
 
-    def add_style(self, sty):
+    def add_style(self, sty, setdefault=True):
         # Adds a style to an existing character by wrapping it in a new Tspan
         # t = Tspan();
         t = dh.new_element(Tspan, self.loc.el)
@@ -2077,7 +2124,7 @@ class tchar:
         # need to explicitly assign the default value
         newspfd = t.cspecified_style
         for a in newspfd:
-            if a not in sty:
+            if a not in sty and setdefault:
                 sty[a] = dh.default_style_atts[a]
                 # dh.idebug([t.get_id2(),a,sty])
 
@@ -2093,6 +2140,7 @@ class tchar:
         else:  # sub
             sty = "font-size:" + str(sz) + "%;baseline-shift:sub"
         self.add_style(sty)
+
 
     # def applypending(self):
     #     self.add_style(self.pending_style);
@@ -2450,44 +2498,60 @@ class Character_Table:
             import os
             os.remove(tmpname)
         else:
-            # dh.idebug(ct)  
-            for sty in ct:
-                joinch = ' ';
-                mystrs = [v[0] for k,v in nbb.items() if v[1]==sty]
-                myids  = [k    for k,v in nbb.items() if v[1]==sty]
-                
-                success,fm = pr.Set_Text_Style(sty)
-                if not(success):
-                    return self.meas_char_ws(els, forcecommand=True)
-                pr.Render_Text(joinch.join(mystrs))
-                exts,nu = pr.Get_Character_Extents(fm[1])
-                ws = [v[0][2] for v in exts]
-                if nu>0:
-                    # dh.idebug(nu)
-                    return self.meas_char_ws(els, forcecommand=True)
-                
-                cnt=0; x=0;
-                for ii in range(len(mystrs)):
-                    s = slice(cnt,cnt+len(mystrs[ii]))
-                    w = sum(ws[s]);
+            # Pango doesn't play well with multithreading
+            # Add a lock to prevent multiple simultaneous calls
+            global pangolocked
+            if 'pangolocked' not in globals():
+                pangolocked = False
+            finished = False
+            while not(finished):
+                if pangolocked:
+                    import random, time
+                    time.sleep(random.uniform(0.010, 0.020))
+                else:
+                    pangolocked = True
+                    for sty in ct:
+                        joinch = ' ';
+                        mystrs = [v[0] for k,v in nbb.items() if v[1]==sty]
+                        myids  = [k    for k,v in nbb.items() if v[1]==sty]
                         
-                    firstch = exts[s][0];
-                    (xb,yb,wb,hb) = tuple(firstch[2]);
-                    if myids[ii] not in bareids:
-                        xb = x; wb = w; # use logical width
-                    if mystrs[ii]==prefix+suffix:
-                        ycorr = hb+yb
+                        success,fm = pr.Set_Text_Style(sty)
+                        if not(success):
+                            pangolocked = False
+                            return self.meas_char_ws(els, forcecommand=True)
+                        pr.Render_Text(joinch.join(mystrs))
+                        exts,nu = pr.Get_Character_Extents(fm[1])
+                        ws = [v[0][2] for v in exts]
+                        if nu>0:
+                            # dh.idebug(nu)
+                            pangolocked = False
+                            return self.meas_char_ws(els, forcecommand=True)
                         
-                    nbb[myids[ii]] = [v*TEXTSIZE for v in [xb,yb,wb,hb]]
-                    cnt += len(mystrs[ii])+len(joinch);
-                    x += w;    
-                    
-                # Certain Windows fonts do not seem to comply with the Pango spec.
-                # The ascent+descent of a font is supposed to match its logical height,
-                # but this is not always the case. Correct using the top of the 'I' character.
-                for ii in range(len(mystrs)):
-                    # if myids[ii] in bareids:
-                    nbb[myids[ii]][1] -= ycorr*TEXTSIZE
+                        cnt=0; x=0;
+                        for ii in range(len(mystrs)):
+                            s = slice(cnt,cnt+len(mystrs[ii]))
+                            w = sum(ws[s]);
+                                
+                            # print(len(exts))
+                            firstch = exts[s][0];
+                            (xb,yb,wb,hb) = tuple(firstch[2]);
+                            if myids[ii] not in bareids:
+                                xb = x; wb = w; # use logical width
+                            if mystrs[ii]==prefix+suffix:
+                                ycorr = hb+yb
+                                
+                            nbb[myids[ii]] = [v*TEXTSIZE for v in [xb,yb,wb,hb]]
+                            cnt += len(mystrs[ii])+len(joinch);
+                            x += w;    
+                            
+                        # Certain Windows fonts do not seem to comply with the Pango spec.
+                        # The ascent+descent of a font is supposed to match its logical height,
+                        # but this is not always the case. Correct using the top of the 'I' character.
+                        for ii in range(len(mystrs)):
+                            # if myids[ii] in bareids:
+                            nbb[myids[ii]][1] -= ycorr*TEXTSIZE
+                    pangolocked = False
+                    finished = True
             
 
         dkern = dict()

@@ -531,9 +531,10 @@ def get_points(el, irange=None):
 # Unlinks clones and composes transform/clips/etc, along with descendants
 def unlink2(el):
     if isinstance(el, (Use)):
-        useid = el.get("xlink:href")
+        # useid = el.get("xlink:href")
         # idebug([el.croot,el.root])
-        useel = getElementById2(el.croot, useid[1:])
+        # useel = getElementById2(el.croot, useid[1:])
+        useel = el.get_link("xlink:href")
         if useel is not None:
             d = useel.duplicate2()
 
@@ -875,9 +876,7 @@ def merge_clipmask(node, newclipurl, mask=False):
 
     if newclipurl is not None:
         svg = node.croot
-        cmstr = "clip-path"
-        if mask:
-            cmstr = "mask"
+        cmstr = "mask" if mask else "clip-path"
 
         if node.ctransform is not None:
             # Clip-paths on nodes with a transform have the transform
@@ -1202,46 +1201,52 @@ def bounding_box2(el,dotransform=True,includestroke=True):
         el._cbbox = dict()
         
     if (dotransform,includestroke) not in el._cbbox:
-        ret = bbox(None)
-        if isinstance(el, (inkex.TextElement)):
-            ret = el.parsed_text.get_full_extent();
-        elif isinstance(el, otp_support):
-            pth = get_path2(el)
-            if len(pth)>0:
-                bb = Path(pth).to_absolute().bounding_box()
+        try:
+            ret = bbox(None)
+            if isinstance(el, (inkex.TextElement)):
+                ret = el.parsed_text.get_full_extent();
+            elif isinstance(el, otp_support):
+                pth = get_path2(el)
+                if len(pth)>0:
+                    bb = Path(pth).to_absolute().bounding_box()
+                    
+                    sw = implicitpx(el.cspecified_style.get('stroke-width','0px'))
+                    if el.cspecified_style.get('stroke') is None or not(includestroke):
+                        sw = 0;
+                    ret = bbox([bb.left-sw/2, bb.top-sw/2,
+                                bb.width+sw,bb.height+sw])
+            elif isinstance(el,(SvgDocumentElement,Group,inkex.Layer,inkex.ClipPath)) or isMask(el):
+                ks = [d for d in list(el) if not(isinstance(d, (lxml.etree._Comment)))]
+                for d in ks:
+                    dbb = bounding_box2(d,dotransform=False,includestroke=includestroke);
+                    if not(dbb.isnull):
+                        ret = ret.union(dbb.transform(d.ctransform))
+            elif isinstance(el,(inkex.Image)):
+                ret = bbox([implicitpx(el.get(v, "0")) for v in ['x',"y","width","height"]]);
+            elif isinstance(el,(inkex.Use,)):
+                lel = el.get_link('xlink:href');
                 
-                sw = implicitpx(el.cspecified_style.get('stroke-width','0px'))
-                if el.cspecified_style.get('stroke') is None or not(includestroke):
-                    sw = 0;
-                ret = bbox([bb.left-sw/2, bb.top-sw/2,
-                            bb.width+sw,bb.height+sw])
-        elif isinstance(el,(SvgDocumentElement,Group,inkex.Layer,inkex.ClipPath)) or isMask(el):
-            for d in list(el):
-                dbb = bounding_box2(d,dotransform=False,includestroke=includestroke);
-                if not(dbb.isnull):
-                    ret = ret.union(dbb.transform(d.ctransform))
-        elif isinstance(el,(inkex.Image)):
-            ret = bbox([implicitpx(el.get(v, "0")) for v in ['x',"y","width","height"]]);
-        elif isinstance(el,(inkex.Use,)):
-            lel = el.get_link('xlink:href');
-            
-            if lel is not None:
-                ret = bounding_box2(lel,dotransform=False)
-                ret = ret.transform(lel.ctransform) # clones have the transform of the link, but not anything above
-    
-        if not(ret.isnull):
-            for cm in ['clip-path','mask']:
-                clip = el.get_link(cm)
-                if clip is not None:
-                   cbb = bounding_box2(clip,dotransform=False,includestroke=False)
-                   if not(cbb.isnull):
-                       ret = ret.intersection(cbb)
-                   else:
-                       ret = bbox(None)
-                
-            if dotransform:
-                if not(ret.isnull):
-                    ret = ret.transform(el.ccomposed_transform)
+                if lel is not None:
+                    ret = bounding_box2(lel,dotransform=False)
+                    ret = ret.transform(lel.ctransform) # clones have the transform of the link, but not anything above
+        
+            if not(ret.isnull):
+                for cm in ['clip-path','mask']:
+                    clip = el.get_link(cm)
+                    if clip is not None:
+                       cbb = bounding_box2(clip,dotransform=False,includestroke=False)
+                       if not(cbb.isnull):
+                           ret = ret.intersection(cbb)
+                       else:
+                           ret = bbox(None)
+                    
+                if dotransform:
+                    if not(ret.isnull):
+                        ret = ret.transform(el.ccomposed_transform)
+        except:
+            # For some reason errors are occurring silently
+            import traceback
+            idebug(traceback.format_exc())
                     
         el._cbbox[(dotransform,includestroke)] = ret
     return el._cbbox[(dotransform,includestroke)]
@@ -1334,6 +1339,7 @@ def Check_BB2(slf):
 
 # e.g., bbs = dh.Get_Bounding_Boxes(self.options.input_file);
 # Gets all of a document's bounding boxes (by ID) using a binary call
+# Result in uu
 def Get_Bounding_Boxes(filename, inkscape_binary=None,extra_args=[], svg=None):
     tFStR = commandqueryall(filename, inkscape_binary=inkscape_binary,extra_args=extra_args)        
     # Parse the output
@@ -1752,6 +1758,35 @@ def deleteup(el):
         if myc is not None and len(myc) == 0:
             deleteup(myp)
 
+# Splits a text element into its consituent parts by duplication (deleting original)
+# Order is text, child1, child1 tail, child2, child2 tail, etc.
+def split_text(el):
+    ds = [];
+    for ii,s in reversed(list(enumerate(list(el)))):
+        # pop out copy with tail
+        if s.tail is not None:
+            dup = el.duplicate2();
+            dup.text = s.tail;
+            for jj,s2 in reversed(list(enumerate(list(dup)))):
+                delete2(s2)
+            ds.append(dup)
+        
+        # pop out copy with child
+        dup = el.duplicate2();
+        dup.text = None;
+        for jj,s2 in reversed(list(enumerate(list(dup)))):
+            if jj!=ii:
+                delete2(s2)
+            else:
+                s2.tail = None
+        ds.append(dup)
+        s.delete();
+        
+    if len(list(el))==0 and el.text is not None:
+        dup = el.duplicate2();
+        ds.append(dup)
+    el.delete2();
+    return list(reversed(ds))
 
 # Combines a group of path-like elements
 def combine_paths(els, mergeii=0):

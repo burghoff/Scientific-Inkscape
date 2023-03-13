@@ -133,6 +133,7 @@ class myThread(threading.Thread):
                         self.es = False
                         updatefiles = [self.selectedfile]
 
+                    
                     loopme = True
                     while loopme:
                         for f in sorted(updatefiles):
@@ -144,19 +145,22 @@ class myThread(threading.Thread):
                             fthr.file = f;
                             fthr.outtemplate = autoexporter.joinmod(self.writedir, os.path.split(f)[1])
                             self.thread_queue.append(fthr)
-                            
-                        loopme = len(updatefiles) > 0 and self.dm
                         
-                    MAXTHREADS = 10;
-                    while len(self.thread_queue)>0 and len(self.running_threads)<=MAXTHREADS:
-                        self.thread_queue[0].start();
-                        self.running_threads.append(self.thread_queue[0])
-                        self.thread_queue.remove(self.thread_queue[0])
-                        time.sleep(WHILESLEEP);
-                    for thr in reversed(self.running_threads):
-                        if not(thr.is_alive()):
-                            self.running_threads.remove(thr)
-                            self.promptpending = True
+                        MAXTHREADS = 10;
+                        while len(self.thread_queue)>0 and len(self.running_threads)<MAXTHREADS:
+                            self.thread_queue[0].start();
+                            self.running_threads.append(self.thread_queue[0])
+                            self.thread_queue.remove(self.thread_queue[0])
+                            time.sleep(WHILESLEEP);
+                        for thr in reversed(self.running_threads):
+                            if not(thr.is_alive()):
+                                self.running_threads.remove(thr)
+                                self.promptpending = True
+                              
+                        # Debug mode: infinite loop
+                        while self.dm and any([thr.is_alive() for thr in self.running_threads]):
+                            time.sleep(WHILESLEEP)
+                        loopme = self.dm
                                 
                     if self.promptpending and len(self.running_threads)+len(self.thread_queue)==0:
                         if guitype=='terminal':
@@ -194,7 +198,7 @@ if guitype=='gtk':
         warnings.simplefilter('ignore')      
         import gi
         gi.require_version('Gtk', '3.0')
-        from gi.repository import Gtk
+        from gi.repository import Gtk, GObject, Gdk, GLib
     
     class AutoexporterWindow(Gtk.Window):
         def __init__(self,ct):
@@ -202,10 +206,20 @@ if guitype=='gtk':
             self.set_default_size(500, -1)  # set width to 400 pixels, height can be automatic
             self.set_position(Gtk.WindowPosition.CENTER)
             
+            # settings = Gtk.Settings.get_default()
+            # settings.set_property("gtk-font-name", "Monospace 8")
+            
             self.selected_file_label = Gtk.TextView()
+            # self.selected_file_label.set_font_family('Monospace')
+            # self.selected_file_label.text_view_set_monospace();
+            # font_desc = Pango.FontDescription('Ubuntu Mono 8')
+            # self.selected_file_label.modify_font(font_desc)
             self.selected_file_label.set_editable(False)
             self.selected_file_label.set_wrap_mode(Gtk.WrapMode.CHAR)
             self.selected_file_label.get_buffer().set_text('No file selected.')
+            
+            buffer = self.selected_file_label.get_buffer()
+            buffer.connect('insert-text', self.on_text_buffer_insert_text) # auto-scroll
     
             # Adding a scrolled window to the TextView
             self.scrolled_window = Gtk.ScrolledWindow()
@@ -220,6 +234,29 @@ if guitype=='gtk':
             self.containing_box.set_margin_bottom(20)
             self.containing_box.pack_start(self.scrolled_window, True, True, 0)
             # self.containing_box.pack_start(self.svg_image, False, False, 0)
+            
+            
+            self.liststore = Gtk.ListStore(str, str)
+            self.treeview = Gtk.TreeView(model=self.liststore)
+            renderer_text = Gtk.CellRendererText()
+            column_text = Gtk.TreeViewColumn("Filename", renderer_text, text=0)
+            self.treeview.append_column(column_text)
+            renderer_text = Gtk.CellRendererText()
+            column_text = Gtk.TreeViewColumn("Message", renderer_text, text=1)
+            self.treeview.append_column(column_text)
+            self.scrolled_window_files = Gtk.ScrolledWindow()
+            self.scrolled_window_files.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+            self.scrolled_window_files.set_size_request(600, 300)
+            self.scrolled_window_files.set_vexpand(True)
+            self.scrolled_window_files.add(self.treeview)
+            self.lsvals = [];
+            
+            
+            self.liststore.connect("row-inserted", self.on_row_inserted)
+            self.maxlsrows = 100;            
+            self.treeview.connect('size-allocate', self.on_treeview_size_allocate) # auto-scroll
+
+            
     
             self.file_button = Gtk.Button(label="Select watch directory")
             self.file_button.connect("clicked", self.watch_folder_button_clicked)
@@ -239,6 +276,7 @@ if guitype=='gtk':
                     
             self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             self.box.pack_start(self.containing_box, True, True, 0)
+            self.box.pack_start(self.scrolled_window_files, True, True, 0)
             self.box.pack_start(self.file_button, False, False, 0)
             self.box.pack_start(self.folder_button, False, False, 0)
             self.box.pack_start(self.ea_button, False, False, 0)
@@ -247,6 +285,27 @@ if guitype=='gtk':
             self.add(self.box)
             
             self.ct = ct;
+            
+        def on_treeview_size_allocate(self, widget, allocation):
+            if len(self.liststore)>0:
+                path = Gtk.TreePath.new_from_string(str(len(self.liststore)-1))
+                column = None
+                self.treeview.scroll_to_cell(path, column, False, 0.0, 1.0)
+        
+        def on_text_buffer_insert_text(self, buffer, iter, text, length):
+            mark = buffer.get_insert()
+            self.selected_file_label.scroll_to_mark(mark, 0.0, True, 0.0, 1.0)
+            
+        def on_row_inserted(self, store, path, iter):
+            # Count the number of rows currently in the store
+            num_rows = len(self.liststore)
+    
+            # If the number of rows exceeds 100, remove the oldest rows
+            if num_rows > self.maxlsrows:
+                for i in range(num_rows - self.maxlsrows):
+                    self.liststore.remove(self.liststore.get_iter_first())
+            
+                    # win.selected_file_label.scroll_to_mark(win.selected_file_label.get_buffer().get_insert(), 0.0, True, 0.0, 1.0);
             
         def print_text(self, text):
             # buffer = self.selected_file_label.get_buffer()
@@ -259,12 +318,47 @@ if guitype=='gtk':
             # # buffer.move_mark(buffer.get_insert(), end_iter)
             # self.selected_file_label.scroll_to_mark(buffer.get_insert(), 0, True, 0, 0)
             
-            buffer = self.selected_file_label.get_buffer()
-            self.selected_file_label.get_buffer()
-            start, end = buffer.get_bounds()
-            if buffer.get_text(start, end, False)=='No file selected.':
-                buffer.set_text('')
-            buffer.insert(buffer.get_end_iter(), text+'\n')
+            lns = text.split('\n')
+            tor = []
+            for ln in lns:
+                if 'Export formats: ' in ln or 'Rasterization DPI: ' in ln:
+                    continue
+                if ':' in ln and len(ln.split(':'))==2:
+                    ln2 = [v.strip(' ') for v in ln.split(':')]
+                    self.liststore.append(ln2)
+                    # time.sleep(0.25)
+                    
+                    # ms = [ii for ii in range(len(self.lsvals)) if ln2[0]==self.lsvals[ii][0]]
+                    # if len(ms)==0:
+                    #     self.liststore.append(ln2)
+                    #     self.lsvals.append(ln2)
+                    # else:
+                    #     for m in reversed(ms):
+                    #         nval = [self.lsvals[m][0],self.lsvals[m][1]+'\n'+ln2[1]]
+                            
+                    #         self.lsvals.remove(self.lsvals[m])
+                    #         iterv =self.liststore.get_iter_first()
+                    #         for mv in range(m):
+                    #             iterv = self.liststore.iter_next(iterv)
+                    #         self.liststore.remove(iterv)
+                            
+                    #         self.lsvals.append(nval)
+                    #         self.liststore.append(nval)
+                            
+                            
+                    #         self.liststore.remove(self.liststore.get_iter_first())
+                    tor.append(ln)
+            lns = [item for item in lns if item not in tor]
+            text = '\n'.join(lns)
+            # text = len(text)
+            
+            if len(text)>0:
+                buffer = self.selected_file_label.get_buffer()
+                self.selected_file_label.get_buffer()
+                start, end = buffer.get_bounds()
+                if buffer.get_text(start, end, False)=='No file selected.':
+                    buffer.set_text('')
+                buffer.insert(buffer.get_end_iter(), text+'\n')
             # bei = buffer.get_end_iter();
             # self.selected_file_label.scroll_to_iter(bei, 0.0, True, 0.0, 1.0)
             
@@ -332,11 +426,16 @@ if guitype=='gtk':
         def run(self):
             while not(self.stopped):
                 if len(self.buffer)>0:
-                    time.sleep(0.25);
-                    self.win.print_text('\n'.join(self.buffer));
+                    # Gdk.threads_enter()
+                    # self.win.print_text('\n'.join(self.buffer));
+                    # self.buffer = [];
+                    # # time.sleep(0.25);
+                    # # win.selected_file_label.scroll_to_mark(win.selected_file_label.get_buffer().get_insert(), 0.0, True, 0.0, 1.0);
+                    # Gdk.threads_leave()
+                    
+                    # Needed to behave with multithreading
+                    GLib.idle_add(self.win.print_text, '\n'.join(self.buffer))
                     self.buffer = [];
-                    # time.sleep(0.25);
-                    # win.selected_file_label.scroll_to_mark(win.selected_file_label.get_buffer().get_insert(), 0.0, True, 0.0, 1.0);
     global pt
     pt = printThread(win);
     pt.start();

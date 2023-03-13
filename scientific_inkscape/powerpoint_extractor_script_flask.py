@@ -6,6 +6,10 @@ DEBUG = False
 WHILESLEEP = 0.25;
 
 PORTNUMBER = 5001
+
+IMAGE_WIDTH = 175;
+IMAGE_HEIGHT = IMAGE_WIDTH*0.7;
+
 try:
     import sys, platform, subprocess, os, threading, datetime, time, copy, pickle, re
     import numpy as np
@@ -28,6 +32,8 @@ try:
     with open(aes, "rb") as f:
         input_options = pickle.load(f)
     os.remove(aes)
+    
+    from autoexporter import orig_key
     
     # Need to silence output in Mac or else doesn't run outside shell
     # silenced = platform.system().lower()=="darwin" and not(input_options.inshell)
@@ -195,8 +201,6 @@ try:
     
     def make_svg_display():
         import os
-        IMAGE_WIDTH = 200;
-        IMAGE_HEIGHT = IMAGE_WIDTH*0.7;
     
         # Create the HTML file
         global temp_dir
@@ -214,6 +218,7 @@ try:
               float: none;
               width: IMAGE_WIDTHpx;
               display: inline-block;
+              vertical-align: top; /* Add this line to align the tops */
             }
             
             div.gallery:hover {
@@ -229,11 +234,23 @@ try:
             div.desc {
               padding: 15px;
               text-align: center;
+              word-wrap: break-word;
             }
             body {
                 font-family: Roboto, Arial, sans-serif;
                 font-size: 14;
               }
+            @supports not (-ms-ime-align: auto) {
+              details summary { 
+                cursor: pointer;
+              }
+            
+              details summary > * { 
+                display: inline;
+              }
+            
+              /* Plus any other <details>/<summary> styles you want IE to ignore.
+            }
             </style>
             """
             css_styles = css_styles.replace('IMAGE_WIDTH', str(IMAGE_WIDTH))
@@ -253,7 +270,7 @@ try:
             for wt in watcher_threads:
                 svg_filenames,thumbnails,header,slidenums,islinked = wt.files,wt.thumbnails,wt.header,wt.slidenums,wt.islinked
                 
-                file.write('<h1>'+header+'</h1>\n<div class="serverdown" style="color: #e41a1cff;"></div>')
+                file.write('<details open><summary><h2>'+header+'</h2></summary>\n<div class="serverdown" style="color: #e41a1cff;"></div>')
                 # Loop through the SVG filenames and write an img tag for each one
                 for ii, svg in enumerate(svg_filenames):
                     gallery = """
@@ -261,7 +278,7 @@ try:
                       <a target="_blank" href="#">
                         <img src="#" alt="" id='img{2}'>
                       </a>
-                      <div class="desc">{4}<a href="http://localhost:{3}/process?param={0}" class="open">Open in Inkscape</a></div>
+                      <div class="desc">{4}<a href="http://localhost:{3}/process?param={0}" class="open">Open current</a>{5}</div>
                     </div>
                     """
                     myloc = "file://" + svg;
@@ -273,8 +290,14 @@ try:
                         label = 'Slide {0}'.format(slidenums[ii])+(' (linked)' if islinked[ii] else '')+'<br>'
                     else:
                         label = os.path.split(svg)[-1]+'<br>';
-                    file.write(gallery.format(myloc,os.path.split(svg)[-1],len(fileuris),str(PORTNUMBER),label))
+                    embed = ''
+                    if wt.embeds is not None:
+                        if wt.embeds[ii]:
+                            embed = pathlib.Path(wt.embeds[ii]).as_uri()
+                            embed = '<br><a href="http://localhost:{0}/process?param={1}" class="open">Open original</a><br>'.format(str(PORTNUMBER),embed)
+                    file.write(gallery.format(myloc,os.path.split(svg)[-1],len(fileuris),str(PORTNUMBER),label,embed))
                     fileuris.append(tnloc);
+                file.write('</details>')
                 
             #<br><a href="http://localhost:5000/stop" id="stop_link">Stop Server</a>
             file.write("""
@@ -348,7 +371,7 @@ try:
                     }
                 };
                 xhr.onerror = function() {
-                document.querySelector('.serverdown').innerHTML = "Server is not running.";
+                document.querySelector('.serverdown').innerHTML = "Server is not running, files cannot be opened.";
                 };
                 xhr.send();
             }, 1000);
@@ -453,18 +476,42 @@ try:
                 self.thumbnails = copy.copy(self.files)
                 self.header = self.fof
                 print("Temp dir: "+temp_dir)
+                
+                import chardet
+                self.embeds = []
+                for fn in self.files:
+                    ev = False
+                    if fn.endswith('.svg'):
+                        with open(fn, 'rb') as f:
+                            data = f.read()
+                            result = chardet.detect(data)
+                            file_encoding = result['encoding']
+                            
+                        with open(fn, 'r', encoding=file_encoding) as f:
+                            file_content = f.read()
+                            if orig_key in file_content:
+                                import re
+                                key = orig_key + r":\s*(.+?)<"
+                                match = re.search(key, file_content);
+                                if match:
+                                    orig_file = match.group(1)
+                                    if os.path.exists(orig_file):
+                                        ev = os.path.abspath(orig_file)
+                    self.embeds.append(ev)
+
             elif os.path.isdir(self.fof):
                 self.files = get_svgs(self.fof);
                 self.thumbnails = copy.copy(self.files)
                 self.header = self.fof
                 self.slidenums = None
                 self.islinked = None
+                self.embeds = None
                 
                 
             tndir = os.path.join(temp_dir,'thumbnails')
             if not os.path.exists(tndir):
                 os.makedirs(tndir)
-            numtns = len(os.listdir(tndir))
+            numtns = len(os.listdir(tndir)) 
             tns = [];
             for f in self.files:
                 if f.endswith('.emf'):
@@ -475,6 +522,7 @@ try:
                 else:
                     tns.append(f)
             self.thumbnails = tns
+
 
                 
             make_svg_display()
@@ -613,7 +661,7 @@ try:
     if guitype=='gtk':            
         import gi
         gi.require_version('Gtk', '3.0')
-        from gi.repository import Gtk, GdkPixbuf
+        from gi.repository import Gtk, GdkPixbuf, Gio
         
         class HelloWorldWindow(Gtk.Window):
             def __init__(self):
@@ -621,31 +669,33 @@ try:
                 self.set_default_size(400, -1)  # set width to 400 pixels, height can be automatic
                 self.set_position(Gtk.WindowPosition.CENTER)
                 
-                self.selected_file_label = Gtk.TextView()
-                self.selected_file_label.set_editable(False)
-                self.selected_file_label.set_wrap_mode(Gtk.WrapMode.CHAR)
-                self.selected_file_label.get_buffer().set_text('No file selected.')
+                # self.selected_file_label = Gtk.TextView()
+                # self.selected_file_label.set_editable(False)
+                # self.selected_file_label.set_wrap_mode(Gtk.WrapMode.CHAR)
+                # self.selected_file_label.get_buffer().set_text('No file selected.')
         
-                # Adding a scrolled window to the TextView
-                self.scrolled_window = Gtk.ScrolledWindow()
-                self.scrolled_window.set_size_request(400, 200)
-                self.scrolled_window.set_hexpand(True)
-                self.scrolled_window.set_vexpand(True)
-                self.scrolled_window.add(self.selected_file_label)
+                # # Adding a scrolled window to the TextView
+                # self.scrolled_window = Gtk.ScrolledWindow()
+                # self.scrolled_window.set_size_request(400, 200)
+                # self.scrolled_window.set_hexpand(True)
+                # self.scrolled_window.set_vexpand(True)
+                # self.scrolled_window.add(self.selected_file_label)
                 
                 self.containing_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
                 self.containing_box.set_valign(Gtk.Align.CENTER)
                 self.containing_box.set_margin_top(20)
                 self.containing_box.set_margin_bottom(20)
-                self.containing_box.pack_start(self.scrolled_window, True, True, 0)
+                # self.containing_box.pack_start(self.scrolled_window, True, True, 0)
                 # self.containing_box.pack_start(self.svg_image, False, False, 0)
         
-                self.file_button = Gtk.Button(label="Select file")
+                self.file_button = Gtk.Button(label="Add file")
                 self.file_button.connect("clicked", self.on_file_button_clicked)
                 
-                self.folder_button = Gtk.Button(label="Select folder")
+                self.folder_button = Gtk.Button(label="Add folder")
                 self.folder_button.connect("clicked", self.on_folder_button_clicked)
                 
+                self.clear_button = Gtk.Button(label="Clear selections")
+                self.clear_button.connect("clicked", self.clear_clicked)
                 
                 self.gallery_button = Gtk.Button(label="Open gallery")
                 self.gallery_button.connect("clicked", self.gallery_button_clicked)
@@ -653,11 +703,30 @@ try:
                 self.exit_button = Gtk.Button(label="Exit")
                 self.exit_button.connect("clicked", self.on_button_clicked)
             
+            
+                # Create a list store to hold the file information
+                self.liststore = Gtk.ListStore(str, str)
+                self.treeview = Gtk.TreeView(model=self.liststore)
+                renderer_text = Gtk.CellRendererText()
+                column_text = Gtk.TreeViewColumn("Name", renderer_text, text=0)
+                self.treeview.append_column(column_text)
+                renderer_text = Gtk.CellRendererText()
+                column_text = Gtk.TreeViewColumn("Location", renderer_text, text=1)
+                self.treeview.append_column(column_text)
+                self.scrolled_window_files = Gtk.ScrolledWindow()
+                self.scrolled_window_files.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+                self.scrolled_window_files.set_size_request(600, 200)
+                self.scrolled_window_files.set_vexpand(True)
+                self.scrolled_window_files.add(self.treeview)
+
+            
                         
                 self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-                self.box.pack_start(self.containing_box, True, True, 0)
+                # self.box.pack_start(self.containing_box, True, True, 0)
+                self.box.pack_start(self.scrolled_window_files, True, True, 0)
                 self.box.pack_start(self.file_button, False, False, 0)
                 self.box.pack_start(self.folder_button, False, False, 0)
+                self.box.pack_start(self.clear_button, False, False, 0)
                 self.box.pack_start(self.gallery_button, False, False, 0)
                 self.box.pack_start(self.exit_button, False, False, 0)
                 self.add(self.box)
@@ -687,7 +756,11 @@ try:
                 response = native.run()
                 if response == Gtk.ResponseType.ACCEPT:
                     selected_file = native.get_filename()
-                    self.print_text(selected_file)
+                    # self.print_text(selected_file)
+                    
+                    file_name = os.path.basename(selected_file)
+                    file_dir = os.path.dirname(selected_file)
+                    self.liststore.append([file_name, file_dir])
                     process_selection(selected_file)
                 native.destroy()
                 
@@ -696,13 +769,25 @@ try:
                 response = native.run()
                 if response == Gtk.ResponseType.ACCEPT:
                     selected_file = native.get_filename()
-                    self.print_text(selected_file)
+                    # self.print_text(selected_file)
+                    
+                    file_name = os.path.basename(selected_file)
+                    file_dir = os.path.dirname(selected_file)
+                    self.liststore.append([file_name, file_dir])
+                    process_selection(selected_file)
+                    
                     process_selection(selected_file)
                 native.destroy()
                 
             
             def gallery_button_clicked(self, widget):
                 webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
+            def clear_clicked(self, widget):
+                global watcher_threads
+                for wt in watcher_threads:
+                    wt.stopped = True
+                    watcher_threads.remove(wt)
+                self.liststore.clear()
                 
         win = HelloWorldWindow()
         win.set_keep_above(True)
