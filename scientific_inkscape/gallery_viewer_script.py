@@ -5,15 +5,13 @@
 DEBUG = False
 WHILESLEEP = 0.25;
 
-PORTNUMBER = 5001
 
 IMAGE_WIDTH = 175;
 IMAGE_HEIGHT = IMAGE_WIDTH*0.7;
 
+
 try:
-    import sys, platform, subprocess, os, threading, datetime, time, copy, pickle, re
-    import numpy as np
-    
+    import sys, subprocess, os, threading, time, copy, pickle, chardet
     try:
         import gi
         gi.require_version('Gtk', '3.0')
@@ -28,61 +26,22 @@ try:
             guitype = 'terminal'
     
     from dhelpers import si_tmp
-    aes = si_tmp(filename='si_ppe_settings.p')
+    aes = si_tmp(filename='si_gv_settings.p')
     with open(aes, "rb") as f:
         input_options = pickle.load(f)
     os.remove(aes)
-    
     from autoexporter import orig_key
-    
-    # Need to silence output in Mac or else doesn't run outside shell
-    # silenced = platform.system().lower()=="darwin" and not(input_options.inshell)
-    # if silenced:
-    #     os.system(
-    #         "osascript -e 'tell application \"Terminal\" to close first window' & exit"
-    #     )
-    #     sys.stdout = open(os.devnull, 'w')
-    #     sys.stderr = open(os.devnull, 'w')
-    # silenced = False
-    # def print(*args):
-    #     if not(silenced):
-    #         print(args)
-    
-    # Clear out leftover temp files from the last time we ran
-    # mypath = os.path.dirname(os.path.realpath(sys.argv[0]))
-    lftover_tmp = si_tmp(filename='si_ae_leftovertemp.p')
-    # lftover_tmp = os.path.join(os.path.dirname(os.path.realpath(__file__)),'tmp','"si_ae_leftovertemp.p"')
-    leftover_temps = [];
-    if os.path.exists(lftover_tmp):
-        f = open(lftover_tmp, "rb")
-        leftover_temps = pickle.load(f)
-        f.close()
-        os.remove(lftover_tmp)
-        for tf in leftover_temps:
-            if os.path.exists(tf):
-                try:
-                    os.rmdir(tf)
-                    leftover_temps.remove(tf)
-                except PermissionError:
-                    pass
-            else:
-                leftover_temps.remove(tf)
                 
     bfn       = input_options.inkscape_bfn
     sys.path += input_options.syspath
+    PORTNUMBER = input_options.portnum
     
-    import inkex
-    from inkex import Vector2d, Transform
     import dhelpers as dh
-    
-    import sys
-    import webbrowser
+    import sys, webbrowser, urllib, pathlib
 
     current_script_directory = os.path.dirname(os.path.abspath(__file__))
     sys.path += [os.path.join(current_script_directory,'packages')]
     
-    import urllib
-    import pathlib
     def file_uri_to_path(file_uri, path_class=pathlib.PurePath):
         # https://stackoverflow.com/questions/5977576/is-there-a-convenient-way-to-map-a-file-uri-to-os-path
         """
@@ -108,6 +67,8 @@ try:
         return result
     
     def Make_Flask_App():
+        import warnings
+        warnings.simplefilter("ignore", DeprecationWarning); # prevent warning that process is open
         from flask import Flask, request, url_for, jsonify, send_from_directory
         app = Flask(__name__)
         
@@ -187,7 +148,7 @@ try:
     
     
     global temp_dir
-    temp_dir = si_tmp(dirbase='ppe');
+    temp_dir = si_tmp(dirbase='gv');
     
     # global temp_dir
     # import tempfile
@@ -196,8 +157,6 @@ try:
     import os
     import zipfile
     import shutil
-    import subprocess
-    import tempfile
     
     def make_svg_display():
         import os
@@ -270,7 +229,7 @@ try:
             for wt in watcher_threads:
                 svg_filenames,thumbnails,header,slidenums,islinked = wt.files,wt.thumbnails,wt.header,wt.slidenums,wt.islinked
                 
-                file.write('<details open><summary><h2>'+header+'</h2></summary>\n<div class="serverdown" style="color: #e41a1cff;"></div>')
+                file.write('<br><details open><summary><h2>'+header+'</h2></summary>\n<div class="serverdown" style="color: #e41a1cff;"></div>')
                 # Loop through the SVG filenames and write an img tag for each one
                 for ii, svg in enumerate(svg_filenames):
                     gallery = """
@@ -282,14 +241,13 @@ try:
                     </div>
                     """
                     myloc = "file://" + svg;
-                    
-                    import pathlib
                     myloc = pathlib.Path(svg).as_uri()
                     tnloc = pathlib.Path(thumbnails[ii]).as_uri()
                     if slidenums is not None:
                         label = 'Slide {0}'.format(slidenums[ii])+(' (linked)' if islinked[ii] else '')+'<br>'
                     else:
-                        label = os.path.split(svg)[-1]+'<br>';
+                        pn = ' ({0})'.format(wt.pagenums[ii]) if wt.pagenums[ii] is not None else ''
+                        label = os.path.split(svg)[-1]+pn+'<br>';
                     embed = ''
                     if wt.embeds is not None:
                         if wt.embeds[ii]:
@@ -319,7 +277,7 @@ try:
             var imgAddresses = replacemenow;
             var imgloaded = imgAddresses.map(() => false);
     
-            function loadImage(counter) {
+/*             function loadImage(counter) {
               // Break out if no more images
               if (counter==imgAddresses.length) { return; }
             
@@ -352,11 +310,14 @@ try:
                 // console.log(currentRun)
                 // console.log(imgAddresses.length)
             }
-            queueRun();
+            queueRun(); */
             
-            //for (let i = 0; i < imgAddresses.length; i++) {
-            //  loadImage(i);
-            //  }
+            for (let i = 0; i < imgAddresses.length; i++) {
+                var I = document.getElementById("img"+i);
+                I.src = imgAddresses[i];
+                I.parentNode.href = imgAddresses[i];
+                imgloaded[i] = true;
+            }
             
             var mylastupdate = Date.now() / 1000;
             setInterval(function(){
@@ -387,13 +348,33 @@ try:
             file.write("</html>\n")
         # return 
         
-
-        import webbrowser, pathlib
         print('Gallery: '+pathlib.Path(gloc).as_uri())
-        # webbrowser.open(pathlib.Path(gloc).as_uri())
-        # webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
+        
+    # Opens a file with unknown encoding, trying utf-8 first
+    # chardet can be slow
+    class OpenWithEncoding:
+        def __init__(self, filename, mode='r'):
+            self.filename = filename
+            self.mode = mode
+            self.file = None
     
-    # def unzip_ppt_open_svg(filename):
+        def __enter__(self):
+            try:
+                self.file = open(self.filename, self.mode, encoding='utf-8')
+            except UnicodeDecodeError:
+                with open(self.filename, 'rb') as f:
+                    raw_data = f.read()
+                    result = chardet.detect(raw_data)  
+                    encoding = result['encoding']
+    
+                self.file = open(self.filename, self.mode, encoding=encoding)
+    
+            return self.file
+    
+        def __exit__(self, exc_type, exc_value, traceback):
+            if self.file is not None:
+                self.file.close()
+            return False  # Don't suppress exceptions
 
     class WatcherThread(threading.Thread):
         # A thread that generates an SVG gallery of files, then watches
@@ -430,8 +411,14 @@ try:
             print("Running on file:", self.fof)
             global temp_dir
             
-            numc = sum([f.startswith('contents') for f in os.listdir(temp_dir)])
-            contents = os.path.join(temp_dir,'contents'+str(numc))
+            import random
+            contentsmade = False
+            while not(contentsmade):
+                contents = os.path.join(temp_dir, 'contents'+str(random.randint(1, 100000)))
+                if not(os.path.exists(contents)):
+                    os.mkdir(contents)
+                    contentsmade = True
+            
             def get_svgs(dirin):
                 svg_filenames = []
                 for file in os.listdir(dirin):
@@ -440,12 +427,16 @@ try:
                 svg_filenames.sort()
                 return svg_filenames
 
+            tndir = os.path.join(contents,'thumbnails')
+            if not os.path.exists(tndir):
+                os.makedirs(tndir)
+            numtns = len(os.listdir(tndir))
+            
             if os.path.isfile(self.fof):
                 # Unzip the ppt file to the temp directory
                 with zipfile.ZipFile(self.fof, 'r') as zip_ref:
                     zip_ref.extractall(contents)
                 ppt_media_dir = os.path.join(contents, 'ppt', 'media')
-                print(ppt_media_dir)
                 self.files = get_svgs(ppt_media_dir);
                 self.slidenums = self.get_image_slidenums(contents)
                 
@@ -467,6 +458,8 @@ try:
                         new_slidenums.append(slide)
                 new_files_and_slidenums = sorted(zip(new_files, new_slidenums), key=lambda x: (x[1], x[0]))
                 self.files, self.slidenums = zip(*new_files_and_slidenums)
+                self.files = list(self.files)
+                self.slidenums = list(self.slidenums)
                 self.slidenums = [v if v!=float('inf') else '?' for v in self.slidenums]
                 self.islinked = [f in linked for f in self.files]
 
@@ -477,17 +470,11 @@ try:
                 self.header = self.fof
                 print("Temp dir: "+temp_dir)
                 
-                import chardet
                 self.embeds = []
                 for fn in self.files:
                     ev = False
                     if fn.endswith('.svg'):
-                        with open(fn, 'rb') as f:
-                            data = f.read()
-                            result = chardet.detect(data)
-                            file_encoding = result['encoding']
-                            
-                        with open(fn, 'r', encoding=file_encoding) as f:
+                        with OpenWithEncoding(fn) as f:
                             file_content = f.read()
                             if orig_key in file_content:
                                 import re
@@ -498,6 +485,7 @@ try:
                                     if os.path.exists(orig_file):
                                         ev = os.path.abspath(orig_file)
                     self.embeds.append(ev)
+                self.pagenums = [None]*len(self.files)
 
             elif os.path.isdir(self.fof):
                 self.files = get_svgs(self.fof);
@@ -507,30 +495,50 @@ try:
                 self.islinked = None
                 self.embeds = None
                 
-                
-            tndir = os.path.join(temp_dir,'thumbnails')
-            if not os.path.exists(tndir):
-                os.makedirs(tndir)
-            numtns = len(os.listdir(tndir)) 
-            tns = [];
-            for f in self.files:
-                if f.endswith('.emf'):
+                for ii,fn in enumerate(self.files):
+                    tns = []
+                    if fn.endswith('.svg'):
+                        with OpenWithEncoding(fn) as f:
+                            contents = f.read()
+                            import re
+                            match = re.search(r'<\s*inkscape:page[\s\S]*?>', contents)
+                            if match:
+                                svg = dh.svg_from_file(fn);
+                                pgs = svg.cdocsize.pgs
+                                haspgs = svg.cdocsize.inkscapehaspgs 
+                                
+                                if haspgs and len(pgs)>1:
+                                    vbs = [svg.cdocsize.pxtouu(pg.bbpx) for pg in pgs]
+                                    for vb in vbs:
+                                        svg.set_viewbox(vb)
+                                        tnsvg = os.path.join(tndir,str(numtns)+'.svg')
+                                        numtns+=1
+                                        dh.overwrite_svg(svg,tnsvg)
+                                        tns.append(tnsvg)
+                    if len(tns)>0:
+                        self.files[ii] = [fn]*len(tns)
+                        self.thumbnails[ii] = tns
+                    else:
+                        self.files[ii] = [self.files[ii]]
+                        self.thumbnails[ii] = [self.thumbnails[ii]]
+                self.files = [fn for fnl in self.files for fn in fnl]
+                self.pagenums = [pn if len(tnl)>1 else None for tnl in self.thumbnails for pn in range(1,1+len(tnl))]
+                self.thumbnails = [tn for tnl in self.thumbnails for tn in tnl]
+                        
+            for ii,tn in enumerate(self.thumbnails):
+                if tn.endswith('.emf'):
                     tnpng = os.path.join(tndir,str(numtns)+'.png')
                     numtns+=1
-                    print(tnpng)
-                    tns.append(tnpng)
-                else:
-                    tns.append(f)
-            self.thumbnails = tns
-
-
-                
-            make_svg_display()
+                    self.thumbnails[ii] = tnpng
+                    
             
+            print(self.files)
+            print(self.thumbnails)
+                
+            make_svg_display()            
             global myapp, refreshapp
             if myapp is None:
                 myapp = Make_Flask_App();
-                
                 global openedgallery
                 if not(openedgallery):
                     webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
@@ -581,6 +589,7 @@ try:
                         
 
         def run(self):
+            print('Initial run')
             self.run_on_fof()
             
             def get_modtimes():
@@ -636,6 +645,7 @@ try:
                 watcher_threads.remove(wt);
         wt = WatcherThread(file)
         wt.win = win;
+        print('About to start')
         wt.start()
         watcher_threads.append(wt)
       
@@ -661,45 +671,26 @@ try:
     if guitype=='gtk':            
         import gi
         gi.require_version('Gtk', '3.0')
-        from gi.repository import Gtk, GdkPixbuf, Gio
-        
         class HelloWorldWindow(Gtk.Window):
             def __init__(self):
-                Gtk.Window.__init__(self, title="Powerpoint SVG Extractor")
+                Gtk.Window.__init__(self, title="Gallery Viewer")
                 self.set_default_size(400, -1)  # set width to 400 pixels, height can be automatic
                 self.set_position(Gtk.WindowPosition.CENTER)
                 
-                # self.selected_file_label = Gtk.TextView()
-                # self.selected_file_label.set_editable(False)
-                # self.selected_file_label.set_wrap_mode(Gtk.WrapMode.CHAR)
-                # self.selected_file_label.get_buffer().set_text('No file selected.')
-        
-                # # Adding a scrolled window to the TextView
-                # self.scrolled_window = Gtk.ScrolledWindow()
-                # self.scrolled_window.set_size_request(400, 200)
-                # self.scrolled_window.set_hexpand(True)
-                # self.scrolled_window.set_vexpand(True)
-                # self.scrolled_window.add(self.selected_file_label)
                 
                 self.containing_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
                 self.containing_box.set_valign(Gtk.Align.CENTER)
                 self.containing_box.set_margin_top(20)
                 self.containing_box.set_margin_bottom(20)
-                # self.containing_box.pack_start(self.scrolled_window, True, True, 0)
-                # self.containing_box.pack_start(self.svg_image, False, False, 0)
         
-                self.file_button = Gtk.Button(label="Add file")
+                self.file_button = Gtk.Button(label="Add Powerpoint file")
                 self.file_button.connect("clicked", self.on_file_button_clicked)
-                
                 self.folder_button = Gtk.Button(label="Add folder")
                 self.folder_button.connect("clicked", self.on_folder_button_clicked)
-                
                 self.clear_button = Gtk.Button(label="Clear selections")
                 self.clear_button.connect("clicked", self.clear_clicked)
-                
                 self.gallery_button = Gtk.Button(label="Open gallery")
                 self.gallery_button.connect("clicked", self.gallery_button_clicked)
-                
                 self.exit_button = Gtk.Button(label="Exit")
                 self.exit_button.connect("clicked", self.on_button_clicked)
             
@@ -775,8 +766,6 @@ try:
                     file_dir = os.path.dirname(selected_file)
                     self.liststore.append([file_name, file_dir])
                     process_selection(selected_file)
-                    
-                    process_selection(selected_file)
                 native.destroy()
                 
             
@@ -801,7 +790,7 @@ try:
         Gtk.main()
     elif guitype=='tkinter':
         root = tk.Tk()
-        root.title("Powerpoint SVG Extractor")
+        root.title("Gallery Viewer")
         root.attributes("-topmost", True)
         root.wm_minsize(width=350, height=-1)
         def open_file():

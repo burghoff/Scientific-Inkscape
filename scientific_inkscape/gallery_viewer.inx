@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+    <name>Gallery viewer</name>
+    <id>burghoff.gallery_viewer</id>
+    <param name="tab" type="notebook">        
+        <page name="scaling" gui-text="Options">
+        <label>The Gallery Viewer provides a convenient way of viewing and opening the SVG contents of a Powerpoint slide or directory.</label>
+        <param name="portnum" type="int" min="0" max="65535" gui-text="Port number"
+        gui-description="Port for the Gallery Viewer to listen on. &#13;If the default does not work, try another.">5001</param>
+        </page>
+    </param>
+    <effect needs-live-preview="false">
+        <object-type>text</object-type>
+        <effects-menu>
+            <submenu name="Scientific"/>
+        </effects-menu>
+    </effect>
+    <script>
+        <command location="inx" interpreter="python">gallery_viewer.py</command>
+    </script>
+</inkscape-extension>

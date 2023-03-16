@@ -11,40 +11,23 @@ import numpy as np
 import tempfile
 systmpdir = os.path.abspath(tempfile.gettempdir());
 aes = os.path.join(systmpdir, "si_ae_settings.p")
-f = open(aes, "rb")
-input_options = pickle.load(f)
-f.close()
+
+with open(aes, "rb") as f:
+    input_options = pickle.load(f)
 os.remove(aes)
-
-# Clear out leftover temp files from the last time we ran
-# mypath = os.path.dirname(os.path.realpath(sys.argv[0]))
-lftover_tmp = os.path.join(systmpdir, "si_ae_leftovertemp.p")
-leftover_temps = [];
-if os.path.exists(lftover_tmp):
-    f = open(lftover_tmp, "rb")
-    leftover_temps = pickle.load(f)
-    f.close()
-    os.remove(lftover_tmp)
-    for tf in leftover_temps:
-        if os.path.exists(tf):
-            try:
-                os.rmdir(tf)
-                leftover_temps.remove(tf)
-            except PermissionError:
-                pass
-        else:
-            leftover_temps.remove(tf)
-
 watchdir  = input_options.watchdir
 writedir  = input_options.writedir
 bfn       = input_options.inkscape_bfn
 sys.path += input_options.syspath
 guitype   = input_options.guitype
 
+# print('hello')
+# sys.exit()
+
 import inkex
 import dhelpers as dh
 import autoexporter
-from autoexporter import AutoExporter
+from autoexporter import AutoExporter, Delete_Dir
 
 def mprint(*args,**kwargs):
     if guitype=='gtk':
@@ -58,8 +41,8 @@ def get_files(dirin):
     fs = []
     try:
         for f in os.scandir(dirin):
-            exclude = '_portable.svg'
-            if f.name[-4:] == ".svg" and f.name[-len(exclude):] != exclude:
+            excludes = ['_portable.svg','_plain.svg']
+            if f.name[-4:] == ".svg" and all([not(f.name.endswith(ex)) for ex in excludes]):
                 fs.append(os.path.join(os.path.abspath(dirin), f.name))
         return fs
     except:# (FileNotFoundError, OSError):
@@ -80,8 +63,7 @@ def get_modtimes(dirin):
         return None
         
 # Threading class
-leftover_temps = [];
-class myThread(threading.Thread):
+class monitorThread(threading.Thread):
     def __init__(self, threadID):
         threading.Thread.__init__(self)
         self.threadID = threadID
@@ -93,6 +75,7 @@ class myThread(threading.Thread):
         self.dm = False # debug mode
         self.thread_queue = [];
         self.running_threads = [];
+        self.finished_threads = [];
         self.promptpending = True;
 
     def run(self):
@@ -141,13 +124,13 @@ class myThread(threading.Thread):
                                 # Stop exports already in progress
                                 if x.file == f:
                                     x.stopped = True;
-                            fthr = myThread('autoexporter')
+                            fthr = monitorThread('autoexporter')
                             fthr.file = f;
                             fthr.outtemplate = autoexporter.joinmod(self.writedir, os.path.split(f)[1])
                             self.thread_queue.append(fthr)
                         
                         MAXTHREADS = 10;
-                        while len(self.thread_queue)>0 and len(self.running_threads)<MAXTHREADS:
+                        while len(self.thread_queue)>0 and len(self.running_threads)<MAXTHREADS and not(self.stopped):
                             self.thread_queue[0].start();
                             self.running_threads.append(self.thread_queue[0])
                             self.thread_queue.remove(self.thread_queue[0])
@@ -155,6 +138,7 @@ class myThread(threading.Thread):
                         for thr in reversed(self.running_threads):
                             if not(thr.is_alive()):
                                 self.running_threads.remove(thr)
+                                self.finished_threads.append(thr)
                                 self.promptpending = True
                               
                         # Debug mode: infinite loop
@@ -166,8 +150,39 @@ class myThread(threading.Thread):
                         if guitype=='terminal':
                             mprint(promptstring)
                         self.promptpending = False
-                            
                 time.sleep(WHILESLEEP)
+            
+            # Stop any threads still running after exit
+            for t in self.running_threads:
+                t.stopped = True
+            while any([thr.is_alive() for thr in self.running_threads]):
+                time.sleep(WHILESLEEP) # let threads finish up
+            for thr in reversed(self.running_threads):
+                self.running_threads.remove(thr)
+                self.finished_threads.append(thr)
+            
+            
+            # Clear out leftover temp files from the last time we ran
+            leftover_temps = []
+            lftover_tmp = os.path.join(systmpdir, "si_ae_leftovertemp.p")
+            if os.path.exists(lftover_tmp):
+                with open(lftover_tmp, "rb") as f:
+                    leftover_temps = pickle.load(f)
+                    for tf in reversed(leftover_temps):
+                        if os.path.exists(tf):
+                            try:
+                                os.rmdir(tf)
+                                leftover_temps.remove(tf)
+                            except:
+                                pass
+                os.remove(lftover_tmp)
+            for thr in self.finished_threads:
+                if hasattr(thr,'tempdir'):
+                    if os.path.isdir(thr.tempdir):
+                        leftover_temps.append(thr.tempdir)
+            if len(leftover_temps)>0:
+                with open(lftover_tmp, "wb") as f:
+                    pickle.dump(leftover_temps, f)
                 
         if self.threadID == 'prompt':
             self.ui = input('')
@@ -183,13 +198,11 @@ class myThread(threading.Thread):
             opts = copy.copy(input_options)
             opts.debug = DEBUG
             opts.prints = mprint;
-            opts.mythread = self;
+            opts.aeThread = self;
             opts.original_file = self.file;
             ftd = AutoExporter().export_all(
                 bfn, self.file, self.outtemplate, opts.formats, opts
             )
-            if ftd is not None:
-                leftover_temps.append(ftd)
 
 if guitype=='gtk':   
     import warnings
@@ -198,7 +211,7 @@ if guitype=='gtk':
         warnings.simplefilter('ignore')      
         import gi
         gi.require_version('Gtk', '3.0')
-        from gi.repository import Gtk, GObject, Gdk, GLib
+        from gi.repository import Gtk, GLib
     
     class AutoexporterWindow(Gtk.Window):
         def __init__(self,ct):
@@ -206,14 +219,7 @@ if guitype=='gtk':
             self.set_default_size(500, -1)  # set width to 400 pixels, height can be automatic
             self.set_position(Gtk.WindowPosition.CENTER)
             
-            # settings = Gtk.Settings.get_default()
-            # settings.set_property("gtk-font-name", "Monospace 8")
-            
             self.selected_file_label = Gtk.TextView()
-            # self.selected_file_label.set_font_family('Monospace')
-            # self.selected_file_label.text_view_set_monospace();
-            # font_desc = Pango.FontDescription('Ubuntu Mono 8')
-            # self.selected_file_label.modify_font(font_desc)
             self.selected_file_label.set_editable(False)
             self.selected_file_label.set_wrap_mode(Gtk.WrapMode.CHAR)
             self.selected_file_label.get_buffer().set_text('No file selected.')
@@ -233,8 +239,6 @@ if guitype=='gtk':
             self.containing_box.set_margin_top(20)
             self.containing_box.set_margin_bottom(20)
             self.containing_box.pack_start(self.scrolled_window, True, True, 0)
-            # self.containing_box.pack_start(self.svg_image, False, False, 0)
-            
             
             self.liststore = Gtk.ListStore(str, str)
             self.treeview = Gtk.TreeView(model=self.liststore)
@@ -251,26 +255,18 @@ if guitype=='gtk':
             self.scrolled_window_files.add(self.treeview)
             self.lsvals = [];
             
-            
             self.liststore.connect("row-inserted", self.on_row_inserted)
             self.maxlsrows = 100;            
             self.treeview.connect('size-allocate', self.on_treeview_size_allocate) # auto-scroll
 
-            
-    
             self.file_button = Gtk.Button(label="Select watch directory")
             self.file_button.connect("clicked", self.watch_folder_button_clicked)
-            
             self.folder_button = Gtk.Button(label="Select write directory")
             self.folder_button.connect("clicked", self.write_folder_button_clicked)
-            
             self.ea_button = Gtk.Button(label="Export all")
             self.ea_button.connect("clicked", self.export_all_clicked)
-            
-            
             self.ef_button = Gtk.Button(label="Export file")
             self.ef_button.connect("clicked", self.export_file_clicked)
-            
             self.exit_button = Gtk.Button(label="Exit")
             self.exit_button.connect("clicked", self.exit_clicked)
                     
@@ -287,12 +283,14 @@ if guitype=='gtk':
             self.ct = ct;
             
         def on_treeview_size_allocate(self, widget, allocation):
+            # Scroll to end after file inserted
             if len(self.liststore)>0:
                 path = Gtk.TreePath.new_from_string(str(len(self.liststore)-1))
                 column = None
                 self.treeview.scroll_to_cell(path, column, False, 0.0, 1.0)
         
         def on_text_buffer_insert_text(self, buffer, iter, text, length):
+            # Scroll to end after text printed
             mark = buffer.get_insert()
             self.selected_file_label.scroll_to_mark(mark, 0.0, True, 0.0, 1.0)
             
@@ -305,18 +303,7 @@ if guitype=='gtk':
                 for i in range(num_rows - self.maxlsrows):
                     self.liststore.remove(self.liststore.get_iter_first())
             
-                    # win.selected_file_label.scroll_to_mark(win.selected_file_label.get_buffer().get_insert(), 0.0, True, 0.0, 1.0);
-            
         def print_text(self, text):
-            # buffer = self.selected_file_label.get_buffer()
-            # # sz = buffer.get_char_count()
-            # start, end = buffer.get_bounds()
-            # if buffer.get_text(start, end, False)=='No file selected.':
-            #     buffer.set_text('')
-            # buffer.insert(buffer.get_end_iter(), text+'\n')
-            # # end_iter = buffer.get_end_iter()
-            # # buffer.move_mark(buffer.get_insert(), end_iter)
-            # self.selected_file_label.scroll_to_mark(buffer.get_insert(), 0, True, 0, 0)
             
             lns = text.split('\n')
             tor = []
@@ -350,7 +337,6 @@ if guitype=='gtk':
                     tor.append(ln)
             lns = [item for item in lns if item not in tor]
             text = '\n'.join(lns)
-            # text = len(text)
             
             if len(text)>0:
                 buffer = self.selected_file_label.get_buffer()
@@ -359,15 +345,6 @@ if guitype=='gtk':
                 if buffer.get_text(start, end, False)=='No file selected.':
                     buffer.set_text('')
                 buffer.insert(buffer.get_end_iter(), text+'\n')
-            # bei = buffer.get_end_iter();
-            # self.selected_file_label.scroll_to_iter(bei, 0.0, True, 0.0, 1.0)
-            
-            # bi = buffer.get_insert();
-            
-            # start, end = buffer.get_bounds()
-            # self.selected_file_label.get_buffer().place_cursor(end)
-            # self.selected_file_label.scroll_mark_onscreen(buffer.get_insert())
-
 
         def exit_clicked(self, widget):
             self.destroy()
@@ -377,10 +354,8 @@ if guitype=='gtk':
             response = native.run()
             if response == Gtk.ResponseType.ACCEPT:
                 selected_file = native.get_filename()
-                # self.print_text(selected_file)
                 self.ct.watchdir = selected_file
                 self.ct.nf = True;
-                # process_selection(selected_file)
             native.destroy()
             
         def write_folder_button_clicked(self, widget):
@@ -388,7 +363,6 @@ if guitype=='gtk':
             response = native.run()
             if response == Gtk.ResponseType.ACCEPT:
                 selected_file = native.get_filename()
-                # self.print_text(selected_file)
                 self.ct.writedir = selected_file
                 self.ct.nf = True;
             native.destroy()
@@ -396,7 +370,7 @@ if guitype=='gtk':
         
         def export_all_clicked(self, widget):
             self.ct.ea = True;
-            # self.ct.dm = True
+            # self.ct.dm = True 
             
         def export_file_clicked(self, widget):
             native = Gtk.FileChooserNative.new("Please choose a file", self, Gtk.FileChooserAction.OPEN, None, None)
@@ -411,10 +385,10 @@ if guitype=='gtk':
                 self.ct.es = True;
             native.destroy()
     
-    t1 = myThread('filechecker')
-    t1.watchdir = watchdir
-    t1.writedir = writedir
-    win = AutoexporterWindow(t1)
+    fc = monitorThread('filechecker')
+    fc.watchdir = watchdir
+    fc.writedir = writedir
+    win = AutoexporterWindow(fc)
     win.set_keep_above(True)
     
     class printThread(threading.Thread):
@@ -426,15 +400,8 @@ if guitype=='gtk':
         def run(self):
             while not(self.stopped):
                 if len(self.buffer)>0:
-                    # Gdk.threads_enter()
-                    # self.win.print_text('\n'.join(self.buffer));
-                    # self.buffer = [];
-                    # # time.sleep(0.25);
-                    # # win.selected_file_label.scroll_to_mark(win.selected_file_label.get_buffer().get_insert(), 0.0, True, 0.0, 1.0);
-                    # Gdk.threads_leave()
-                    
-                    # Needed to behave with multithreading
                     GLib.idle_add(self.win.print_text, '\n'.join(self.buffer))
+                    time.sleep(0.25)
                     self.buffer = [];
     global pt
     pt = printThread(win);
@@ -450,15 +417,12 @@ if guitype=='gtk':
         mprint("Python does not have PIL, images will not be cropped or converted to JPG\n")
     else:
         mprint("Python has PIL\n")
-    t1.start();
+    fc.start();
     
     def quit_and_close(self):
-        Gtk.main_quit();
-        t1.stopped = True;
+        fc.stopped = True;
         pt.stopped = True;
-        pid = os.getpid()
-        import signal
-        os.kill(pid, signal.SIGINT) # or signal.SIGTERM
+        Gtk.main_quit();
         
     win.connect("destroy", quit_and_close)
     win.show_all()
@@ -467,8 +431,6 @@ if guitype=='gtk':
 else:
     try:
         import tkinter
-        from tkinter import filedialog
-    
         promptstring = "\nEnter D to change directories, R to change DPI, F to export a file, A to export all now, and Q to quit: "
         hastkinter = True
     except:
@@ -560,52 +522,52 @@ else:
         return d
     
     # Main loop
-    t1 = myThread('filechecker')
-    t1.watchdir = watchdir
-    t1.writedir = writedir
-    if t1.watchdir is None or t1.writedir is None:
-        t1.watchdir, t1.writedir = Get_Directories()
+    fc = monitorThread('filechecker')
+    fc.watchdir = watchdir
+    fc.writedir = writedir
+    if fc.watchdir is None or fc.writedir is None:
+        fc.watchdir, fc.writedir = Get_Directories()
     
     
-    t1.start()
-    while t1.nf:  # wait until it's done initializing
+    fc.start()
+    while fc.nf:  # wait until it's done initializing
         pass
-    t2 = myThread('prompt');
+    t2 = monitorThread('prompt');
     t2.start()
     keeprunning = True
     while keeprunning:
         if not (t2.is_alive()):
             if t2.ui in ["Q", "q"]:
-                t1.stopped = True
+                fc.stopped = True
                 keeprunning = False
             elif t2.ui in ["D", "d"]:
                 if hastkinter:
                     try:
-                        t1.watchdir, t1.writedir = Get_Directories()
-                        t1.nf = True
+                        fc.watchdir, fc.writedir = Get_Directories()
+                        fc.nf = True
                     except:
                         pass
             elif t2.ui in ["R", "r"]:
                 input_options.dpi = int(input("Enter new rasterization DPI: "))
             elif t2.ui in ["A", "a"]:
-                t1.ea = True
+                fc.ea = True
             elif t2.ui in ["F", "f"]:
                 if hastkinter:
                     try:
-                        t1.selectedfile = Get_File(t1.watchdir)
-                        t1.es = True
+                        fc.selectedfile = Get_File(fc.watchdir)
+                        fc.es = True
                     except:
                         pass
             elif t2.ui in ["#"]:
-                t1.dm = True
+                fc.dm = True
                 # entering # starts an infinite export loop in the current dir
-                t1.ea = True
+                fc.ea = True
             else:
                 mprint("Invalid input!")
             if keeprunning:
-                t2 = myThread('prompt')
+                t2 = monitorThread('prompt')
                 t2.start()
-                t1.promptpending = True
+                fc.promptpending = True
         time.sleep(WHILESLEEP)
     
     # On macOS close the terminal we opened
@@ -614,8 +576,3 @@ else:
         os.system(
             "osascript -e 'tell application \"Terminal\" to close first window' & exit"
         )
-        
-if len(leftover_temps)>0:
-    f = open(lftover_tmp, "wb")
-    pickle.dump(leftover_temps, f)
-    f.close()

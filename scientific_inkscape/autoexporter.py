@@ -17,8 +17,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-# PDFLATEX = False
-
+USE_TERMINAL = False;
 DEBUGGING = False
 dispprofile = False
 
@@ -26,7 +25,7 @@ import subprocess
 import inkex
 from inkex import TextElement, Transform, PathElement, Vector2d
 
-import os, sys
+import os, sys, time
 import numpy as np
 
 sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0])))  # make sure my directory is on the path
@@ -37,22 +36,24 @@ import image_helpers as ih
 def joinmod(dirc, f):
     return os.path.join(os.path.abspath(dirc), f)
 def subprocess_check(inputargs,input_opts):
-    if hasattr(input_opts,'mythread') and input_opts.mythread.stopped == True:
-        sys.exit()
+    if hasattr(input_opts,'aeThread') and input_opts.aeThread.stopped == True:
+        delete_quit(input_opts.aeThread.tempdir)
     dh.subprocess_repeat(inputargs)
-    if hasattr(input_opts,'mythread') and input_opts.mythread.stopped == True:
-        sys.exit()
+    if hasattr(input_opts,'aeThread') and input_opts.aeThread.stopped == True:
+        delete_quit(input_opts.aeThread.tempdir)
 def get_svg(fin):
     svg = inkex.load_svg(fin).getroot()
     return svg
 
+def delete_quit(tempdir):
+    Delete_Dir(tempdir)
+    sys.exit()
 orig_key = 'si_ae_original_filename'
 
 # Runs a Python script using a Python binary in a working directory
 # It detaches from Inkscape, allowing it to continue running after the extension has finished
 def gtk_call(python_bin,python_script,python_wd):
-    DEVNULL = dh.si_tmp(filename='ae_ppe_output.txt')
-    # dh.idebug(DEVNULL)
+    DEVNULL = dh.si_tmp(filename='si_ae_output.txt')
     with open(DEVNULL, 'w') as devnull:
         subprocess.Popen([python_bin, python_script], stdout=devnull, stderr=devnull)
 
@@ -122,7 +123,31 @@ def terminal_call(python_bin,python_script,python_wd):
                     escp(sys.executable) + " " + escp(python_script) + " >/dev/null",
                 )
             )
-    
+
+# Delete a directory and its contents, trying repeatedly on failure
+def Delete_Dir(dirpath):
+    MAXATTEMPTS = 2
+    for t in list(set(os.listdir(dirpath))):
+        deleted = False
+        nattempts = 0;
+        while not(deleted) and nattempts<MAXATTEMPTS:
+            try:
+                os.remove(joinmod(dirpath,t))
+                deleted = True
+            except:
+                time.sleep(5)
+                nattempts += 1
+    if dirpath is not None:
+        deleted = False
+        nattempts = 0;
+        while not(deleted) and nattempts<MAXATTEMPTS:
+            try:
+                # print('Attempting to delete '+os.path.split(dirpath)[-1])
+                os.rmdir(dirpath)
+                deleted = True
+            except:
+                time.sleep(5)
+                nattempts += 1
 
 PTH_COMMANDS = list('MLHVCSQTAZmlhvcsqtaz')
 class AutoExporter(inkex.EffectExtension):
@@ -143,7 +168,7 @@ class AutoExporter(inkex.EffectExtension):
             "--useeps", type=inkex.Boolean, default=False, help="Export EPS?"
         )
         pars.add_argument(
-            "--usepsvg", type=inkex.Boolean, default=False, help="Export Portable SVG?"
+            "--usepsvg", type=inkex.Boolean, default=False, help="Export plain SVG?"
         )
         pars.add_argument("--dpi", default=600, help="Rasterization DPI")
         pars.add_argument("--dpi_im", default=300, help="Resampling DPI")
@@ -281,7 +306,8 @@ class AutoExporter(inkex.EffectExtension):
                 guitype = 'gtk'
             except:
                 guitype = 'terminal'
-            # guitype = 'terminal'
+            if USE_TERMINAL:
+                guitype = 'terminal'
             optcopy.guitype = guitype
 
             import tempfile
@@ -322,7 +348,7 @@ class AutoExporter(inkex.EffectExtension):
             dh.debug(s.getvalue())
 
         if self.options.testmode:
-            nf = os.path.abspath(pth[0:-4] + "_portable.svg")
+            nf = os.path.abspath(pth[0:-4] + "_plain.svg")
             stream = self.options.output
 
             if isinstance(stream, str):
@@ -346,11 +372,14 @@ class AutoExporter(inkex.EffectExtension):
     def export_all(self, bfn, fin, outtemplate, exp_fmts, input_options):
         # Make a temp directory
         import tempfile
-        tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
-        # print(tempdir)
+        # tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
+        tempdir = dh.si_tmp(dirbase='ae');
         if input_options.debug:
             if input_options.prints:
                 input_options.prints("\n    " + joinmod(tempdir, ""))
+        if hasattr(input_options,'aeThread'):
+            input_options.aeThread.tempdir = tempdir
+        
         tempbase = joinmod(tempdir, 't')
         input_options.input_file = fin;
         
@@ -394,15 +423,16 @@ class AutoExporter(inkex.EffectExtension):
         # Remove temporary outputs and directory
         failed_to_delete = None
         if not (input_options.debug):
-            # for t in list(set(tempoutputs)):
-            #     os.remove(t)
-            for t in list(set(os.listdir(tempdir))):
-                os.remove(joinmod(tempdir,t)) 
-            if tempdir is not None:
-                try:
-                    os.rmdir(tempdir)
-                except PermissionError:
-                    failed_to_delete = tempdir
+            # # for t in list(set(tempoutputs)):
+            # #     os.remove(t)
+            # for t in list(set(os.listdir(tempdir))):
+            #     os.remove(joinmod(tempdir,t)) 
+            # if tempdir is not None:
+            #     try:
+            #         os.rmdir(tempdir)
+            #     except PermissionError:
+            #         failed_to_delete = tempdir
+            Delete_Dir(tempdir)
         else:
             dh.idebug(tempdir)
         return failed_to_delete
@@ -445,7 +475,7 @@ class AutoExporter(inkex.EffectExtension):
             # tmpoutputs.append(tmp)
 
         if fformat == "psvg":
-            myoutput = myoutput.replace(".psvg", "_portable.svg")
+            myoutput = myoutput.replace(".psvg", "_plain.svg")
             
         
         def overwrite_output(filein,fileout):  
@@ -581,7 +611,7 @@ class AutoExporter(inkex.EffectExtension):
                     finalname = myoutput
                 else:
                     pnum = mout.split('_page_')[-1].strip('.svg');
-                    finalname = myoutput.replace('_portable.svg','_page_'+pnum+'_portable.svg')
+                    finalname = myoutput.replace('_plain.svg','_page_'+pnum+'_plain.svg')
                 # print(finalname)
                 
                 # dh.idebug(input_options.svgtopdf_vbs)
@@ -981,7 +1011,7 @@ class AutoExporter(inkex.EffectExtension):
                 el.set("d", newd)
                 
     def Bezier_to_Split(self, el):
-        # Converts the Bezier TLD to split (for the Portable SVG)
+        # Converts the Bezier TLD to split (for the plain SVG)
         if isinstance(el, dh.otp_support) and not (isinstance(el, (PathElement))):
             dh.object_to_path(el)
         d = el.get("d")
@@ -1512,7 +1542,7 @@ if __name__ == "__main__":
 #     try:
 #         ScourInkscape().run(sargs, myoutput)
 #     except:  # Scour failed
-#         dh.idebug("\nWarning: Optimizer failed, making portable SVG instead")
+#         dh.idebug("\nWarning: Optimizer failed, making plain SVG instead")
 #         if not(input_options.usepdf):
 #             # Convert to PDF
 #             tmp3 = basetemp.replace(".svg", "_tmp_small.pdf")

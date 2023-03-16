@@ -741,7 +741,7 @@ def Pango_Test():
     # Only works in Inkscape v1.1
     from gi.repository import Pango
     from gi.repository import PangoCairo as pc
-    import cairo
+    from gi.repository import cairo
     
     RADIUS = 500
     FONT = "Bahnschrift Light Condensed, "+str(RADIUS/5)
