@@ -102,7 +102,43 @@ class FlattenPlots(inkex.EffectExtension):
         )
         pars.add_argument("--v", type=str, default="1.2", help="Version for debugging")
 
-    def runflatten(self):
+    def duplicate_layer1(self):
+        # For testing, duplicate selection and flatten its elements
+        import random
+
+        random.seed(1)
+        sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
+        # should work with both v1.0 and v1.1
+        for el in sel:
+            d = el.duplicate2()
+            el.getparent().insert(list(el.getparent()).index(el), d)
+            if d.get("inkscape:label") is not None:
+                el.set("inkscape:label", el.get("inkscape:label") + " flat")
+                d.set("inkscape:label", d.get("inkscape:label") + " original")
+            d.set("sodipodi:insensitive", "true")
+            # lock original
+            d.set("opacity", 0.3)
+        sel = [list(el) for el in sel]
+        import itertools
+
+        sel = list(itertools.chain.from_iterable(sel))
+        return sel
+
+    def effect(self):
+        # lprofile = os.getenv("LINEPROFILE") == "True"
+
+        if self.options.testmode:
+            self.options.deepungroup = True
+            self.options.fixtext = True
+            self.options.removerectw = True
+            self.options.splitdistant = True
+            self.options.mergenearby = True
+            self.options.fixshattering = True
+            self.options.mergesubsuper = True
+            self.options.setreplacement = True
+            self.options.replacement = "sans-serif"
+            self.options.justification = 1
+            
         import random
         random.seed(1)
         
@@ -156,14 +192,11 @@ class FlattenPlots(inkex.EffectExtension):
             nels = []; oels = [] 
             for el in seld:
                 if isinstance(el, inkex.Use):
-                    useid = el.get("xlink:href")
-                    if useid is not None:
-                        useel = dh.getElementById2(el.croot, useid[1:])
-                        if not(isinstance(useel, (inkex.Symbol))):
-                            # dh.idebug('c1 '+el.get_id2())
-                            ul = dh.unlink2(el)
-                            nels.append(ul);
-                            oels.append(el);
+                    useel = el.get_link("xlink:href")
+                    if useel is not None and not(isinstance(useel, (inkex.Symbol))):
+                        ul = dh.unlink2(el)
+                        nels.append(ul);
+                        oels.append(el);
             for nel in nels:
                 seld += nel.descendants2
             for oel in oels:
@@ -307,129 +340,6 @@ class FlattenPlots(inkex.EffectExtension):
             ):
                 if el.text is not None:
                     el.text = None
-
-        # dh.debug(time.time()-tic)
-
-    def duplicate_layer1(self):
-        # For testing, duplicate selection and flatten its elements
-        import random
-
-        random.seed(1)
-        sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
-        # should work with both v1.0 and v1.1
-        for el in sel:
-            d = el.duplicate2()
-            el.getparent().insert(list(el.getparent()).index(el), d)
-            if d.get("inkscape:label") is not None:
-                el.set("inkscape:label", el.get("inkscape:label") + " flat")
-                d.set("inkscape:label", d.get("inkscape:label") + " original")
-            d.set("sodipodi:insensitive", "true")
-            # lock original
-            d.set("opacity", 0.3)
-        sel = [list(el) for el in sel]
-        import itertools
-
-        sel = list(itertools.chain.from_iterable(sel))
-        return sel
-
-    def effect(self):
-        cprofile = True
-        cprofile = False
-
-        lprofile = os.getenv("LINEPROFILE") == "True"
-
-        if self.options.testmode:
-            cprofile = True
-            self.options.deepungroup = True
-            self.options.fixtext = True
-            self.options.removerectw = True
-            self.options.splitdistant = True
-            self.options.mergenearby = True
-            self.options.fixshattering = True
-            self.options.mergesubsuper = True
-            self.options.setreplacement = True
-            self.options.replacement = "sans-serif"
-            self.options.justification = 1
-
-        if cprofile or lprofile:
-            import io
-
-            if self.options.testmode:
-                profiledir = (
-                    os.path.split(os.path.abspath(str(self.options.input_file)))[0]
-                    + "/outputs"
-                )
-            else:
-                profiledir = dh.get_script_path()
-
-        if cprofile:
-            import cProfile, pstats
-            from pstats import SortKey
-
-            pr = cProfile.Profile()
-            pr.enable()
-
-        needtorun = True
-        if lprofile:
-            try:
-                from line_profiler import LineProfiler
-
-                lp = LineProfiler()
-                import TextParser
-                from inspect import getmembers, isfunction, isclass, getmodule
-
-                fns = []
-                for m in [dh, TextParser, RemoveKerning, Style0, inkex.transforms]:
-                    fns += [v[1] for v in getmembers(m, isfunction)]
-                    for c in getmembers(m, isclass):
-                        if getmodule(c[1]) is m:
-                            fns += [v[1] for v in getmembers(c[1], isfunction)]
-                            for p in getmembers(
-                                c[1], lambda o: isinstance(o, property)
-                            ):
-                                if p[1].fget is not None:
-                                    fns += [p[1].fget]
-                                if p[1].fset is not None:
-                                    fns += [p[1].fset]
-                for fn in fns:
-                    lp.add_function(fn)
-                lpw = lp(self.runflatten)
-                lpw()
-                stdouttrap = io.StringIO()
-                lp.print_stats(stdouttrap)
-
-                ppath = os.path.abspath(os.path.join(profiledir, "lprofile.csv"))
-                result = stdouttrap.getvalue()
-                f = open(ppath, "w", encoding="utf-8")
-                f.write(result)
-                f.close()
-                needtorun = False
-            except ImportError:
-                pass
-
-        if needtorun:
-            self.runflatten()
-
-        if cprofile:
-            pr.disable()
-            s = io.StringIO()
-            sortby = SortKey.CUMULATIVE
-            pr.dump_stats(os.path.abspath(os.path.join(profiledir, "cprofile.prof")))
-            ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-            ps.print_stats()
-            ppath = os.path.abspath(os.path.join(profiledir, "cprofile.csv"))
-
-            result = s.getvalue()
-            prefix = result.split("ncalls")[0]
-            # chop the string into a csv-like buffer
-            result = "ncalls" + result.split("ncalls")[-1]
-            result = "\n".join(
-                [",".join(line.rstrip().split(None, 5)) for line in result.split("\n")]
-            )
-            result = prefix + "\n" + result
-            f = open(ppath, "w")
-            f.write(result)
-            f.close()
 
 
 if __name__ == "__main__":

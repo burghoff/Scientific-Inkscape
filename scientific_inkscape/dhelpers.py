@@ -531,9 +531,6 @@ def get_points(el, irange=None):
 # Unlinks clones and composes transform/clips/etc, along with descendants
 def unlink2(el):
     if isinstance(el, (Use)):
-        # useid = el.get("xlink:href")
-        # idebug([el.croot,el.root])
-        # useel = getElementById2(el.croot, useid[1:])
         useel = el.get_link("xlink:href")
         if useel is not None:
             d = useel.duplicate2()
@@ -611,7 +608,7 @@ def ungroup(groupel):
                     gparent.insert(gindex + 1, el)
                     # places above
 
-        if len(groupel.getchildren()) == 0:
+        if len(list(groupel)) == 0:
             groupel.delete2()
 
 # Group a list of elements, placing the group in the location of the first element            
@@ -622,7 +619,7 @@ def group(el_list,moveTCM=False):
     for el in el_list:
         g.append(el)
         
-    # If moveTCM is set and grouping one element, can move transform/clip/mask to group
+    # If moveTCM is set and are grouping one element, move transform/clip/mask to group
     # Handy for adding and properly composing transforms/clips/masks
     if moveTCM and len(el_list)==1:
         g.ctransform = el.ctransform;              el.ctransform = None;
@@ -670,11 +667,7 @@ def compose_all(el, clipurl, maskurl, transform, style):
 # I think this is an Inkscape bug
 # Fix by creating a style specific to my id that includes the new clipping/masking
 def fix_css_clipmask(el, mask=False):
-    if not (mask):
-        cm = "clip-path"
-    else:
-        cm = "mask"
-
+    cm = "clip-path" if not mask else "mask"
     svg = el.croot
     if svg is not None:
         cssdict = svg.cssdict
@@ -1565,7 +1558,7 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
         astr = el.text
         if astr is None:
             astr = ""
-        for k in el.getchildren():
+        for k in list(el):
             if isinstance(k, (Tspan, FlowPara, FlowSpan)):
                 astr += alltext(k)
                 tl = k.tail
@@ -1578,7 +1571,7 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
     if forcereplace or any([nonascii(c) for c in alltext(el)]):
         alltxt = [el.text]
         el.text = ""
-        for k in el.getchildren():
+        for k in list(el):
             if isinstance(k, (Tspan, FlowPara, FlowSpan)):
                 dupe = k.duplicate2();
                 alltxt.append(dupe)
@@ -1754,7 +1747,7 @@ def deleteup(el):
     myp = el.getparent()
     el.delete2()
     if myp is not None:
-        myc = myp.getchildren()
+        myc = list(myp)
         if myc is not None and len(myc) == 0:
             deleteup(myp)
 
@@ -2297,34 +2290,108 @@ def isMask(el):
 
 def Run_SI_Extension(effext,name):
     Version_Check(name)
-    try:
-        effext.run()
-    except lxml.etree.XMLSyntaxError:
+    
+    alreadyran = False
+    cprofile = False
+    lprofile = False
+    if cprofile or lprofile:
+        import io
+        profiledir = get_script_path()
+
+        if cprofile:
+            import cProfile, pstats
+            from pstats import SortKey
+    
+            pr = cProfile.Profile()
+            pr.enable()
+        if lprofile:
+            try:
+                from line_profiler import LineProfiler
+    
+                lp = LineProfiler()
+                import TextParser
+                from inspect import getmembers, isfunction, isclass, getmodule
+    
+                fns = []
+                import RemoveKerning
+                for m in [sys.modules[__name__], TextParser, RemoveKerning, Style0, inkex.transforms]:
+                    fns += [v[1] for v in getmembers(m, isfunction)]
+                    for c in getmembers(m, isclass):
+                        if getmodule(c[1]) is m:
+                            fns += [v[1] for v in getmembers(c[1], isfunction)]
+                            for p in getmembers(
+                                c[1], lambda o: isinstance(o, property)
+                            ):
+                                if p[1].fget is not None:
+                                    fns += [p[1].fget]
+                                if p[1].fset is not None:
+                                    fns += [p[1].fset]
+                for fn in fns:
+                    lp.add_function(fn)
+                lpw = lp(effext.effect)
+                lpw()
+                stdouttrap = io.StringIO()
+                lp.print_stats(stdouttrap)
+    
+                ppath = os.path.abspath(os.path.join(profiledir, "lprofile.csv"))
+                result = stdouttrap.getvalue()
+                f = open(ppath, "w", encoding="utf-8")
+                f.write(result)
+                f.close()
+                alreadyran = True
+            except ImportError:
+                pass
+
+    if not(alreadyran):
         try:
-            s = effext;
-            s.parse_arguments(sys.argv[1:])
-            if s.options.input_file is None:
-                s.options.input_file = sys.stdin
-            elif "DOCUMENT_PATH" not in os.environ:
-                os.environ["DOCUMENT_PATH"] = s.options.input_file
-            
-            
-            def overwrite_output(filein,fileout):      
-                try:
-                    os.remove(fileout)
-                except:
-                    pass
-                arg2 = [Get_Binary_Loc(),"--export-filename",fileout,filein,]
-                subprocess_repeat(arg2)
-            tmpname=s.options.input_file.strip('.svg')+'_tmp.svg'
-            overwrite_output(s.options.input_file,tmpname);
-            os.remove(s.options.input_file)
-            os.rename(tmpname,s.options.input_file)
-            s.run()
-        except:
-            inkex.utils.errormsg(
-                "Error reading file! Extensions can only run on SVG files.\n\nIf this is a file imported from another format, try saving as an SVG and restarting Inkscape. Alternatively, try pasting the contents into a new document."
-            )
+            effext.run()
+        except lxml.etree.XMLSyntaxError:
+            try:
+                s = effext;
+                s.parse_arguments(sys.argv[1:])
+                if s.options.input_file is None:
+                    s.options.input_file = sys.stdin
+                elif "DOCUMENT_PATH" not in os.environ:
+                    os.environ["DOCUMENT_PATH"] = s.options.input_file
+                
+                def overwrite_output(filein,fileout):      
+                    try:
+                        os.remove(fileout)
+                    except:
+                        pass
+                    arg2 = [Get_Binary_Loc(),"--export-filename",fileout,filein,]
+                    subprocess_repeat(arg2)
+                tmpname=s.options.input_file.strip('.svg')+'_tmp.svg'
+                overwrite_output(s.options.input_file,tmpname);
+                os.remove(s.options.input_file)
+                os.rename(tmpname,s.options.input_file)
+                effext.run()
+            except:
+                inkex.utils.errormsg(
+                    "Error reading file! Extensions can only run on SVG files.\n\nIf this is a file imported from another format, try saving as an SVG and restarting Inkscape. Alternatively, try pasting the contents into a new document."
+                )
+
+    if cprofile:
+        pr.disable()
+        s = io.StringIO()
+        sortby = SortKey.CUMULATIVE
+        pr.dump_stats(os.path.abspath(os.path.join(profiledir, "cprofile.prof")))
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats()
+        ppath = os.path.abspath(os.path.join(profiledir, "cprofile.csv"))
+
+        result = s.getvalue()
+        prefix = result.split("ncalls")[0]
+        # chop the string into a csv-like buffer
+        result = "ncalls" + result.split("ncalls")[-1]
+        result = "\n".join(
+            [",".join(line.rstrip().split(None, 5)) for line in result.split("\n")]
+        )
+        result = prefix + "\n" + result
+        f = open(ppath, "w")
+        f.write(result)
+        f.close()
+    
     write_debug()
 
 def vto_xpath(sty):

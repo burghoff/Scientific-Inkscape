@@ -854,8 +854,8 @@ class AutoExporter(inkex.EffectExtension):
                     import math
                     acts1 = acts[:math.ceil(len(acts)/2)]
                     acts2 = acts[math.ceil(len(acts)/2):]
-                    bbs = Split_Acts(filename=fn, inkscape_binary=inkbin, acts=acts1);
-                    bbs = Split_Acts(filename=fn, inkscape_binary=inkbin, acts=acts2);
+                    bbs = Split_Acts(fn=fn, inkbin=inkbin, acts=acts1);
+                    bbs = Split_Acts(fn=fn, inkbin=inkbin, acts=acts2);
                 return bbs;
                         
             oldwd = os.getcwd();

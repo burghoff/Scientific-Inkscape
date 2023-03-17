@@ -4,7 +4,9 @@
     <id>burghoff.gallery_viewer</id>
     <param name="tab" type="notebook">        
         <page name="scaling" gui-text="Options">
-        <label>The Gallery Viewer provides a convenient way of viewing and opening the SVG contents of a Powerpoint slide or directory.</label>
+        <label>The Gallery Viewer lets you view and the SVG contents of a Powerpoint slide deck or directory.:</label>
+        <label>- Each page is shown independently.</label>
+        <label>- If the file is an export made by the Autoexporter, a link to the original file will be available provided the file still exists.</label>
         <param name="portnum" type="int" min="0" max="65535" gui-text="Port number"
         gui-description="Port for the Gallery Viewer to listen on. &#13;If the default does not work, try another.">5001</param>
         </page>
