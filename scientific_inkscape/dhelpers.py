@@ -126,9 +126,11 @@ def descendants2(el, return_tails=False):
     if not (return_tails):
         return descendants
     else:
-        # For each descendants return a list of what element we expect our tails to precede
+        # For each descendant return a list of elements whose tails 
+        # would precede the descendant. There can be multiple tails.
+        # Note that it will be one longer than descendants because the final
+        # tail(s) will always be outside the descendant tree.
         precedingtails.append(pendingtails)
-        # will be one longer than descendants because of the last one
         return descendants, precedingtails, children_dict, parent_dict
 BaseElement.descendants2 = property(descendants2)
 

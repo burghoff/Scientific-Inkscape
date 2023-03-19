@@ -154,9 +154,11 @@ class ParsedText:
         ret = copy(self)
         ret.textel = self.textel.duplicate2()
         # d1 = dh.descendants2(self.textel);
-        d1 = self.textds
-        d2 = dh.descendants2(ret.textel)
-        ret.textds = d2
+        d1 = self.tree.ds
+        # d2 = dh.descendants2(ret.textel)
+        ret.tree = None
+        d2 = ret.tree.ds
+        # ret.textds = d2
         ret.ctable = self.ctable
         ret.lns = []
         for ln in self.lns:
@@ -217,16 +219,20 @@ class ParsedText:
     # A line is a collection of text that gets its position from a single source element.
     # This position may be directly set, continued from a previous line, or inherited from a previous line
     def Parse_Lines(self, srcsonly=False):
+        # dh.idebug('hello')
         el = self.textel
         # First we get the tree structure of the text and do all our gets
-        ds, pts, cd, pd = dh.descendants2(el, True)
+        # ds, pts, cd, pd = dh.descendants2(el, True)
+        ds, pts, pd = self.tree.ds, self.tree.ptails, self.tree.pdict
+        
         Nd = len(ds)
-        self.textds = ds
+        # self.textds = ds
+        # self.textpts = pts;
         ks = list(el)
         text = [d.text for d in ds]
         ptail = [[tel.tail for tel in pt] for pt in pts]  # preceding tails
-        if len(ptail) > 0 and len(ptail[-1]) > 0:
-            ptail[-1][-1] = None
+        # if len(ptail) > 0 and len(ptail[-1]) > 0:
+        #     ptail[-1][-1] = None
             # do not count el's tail
 
         # Next we find the top-level sodipodi:role lines
@@ -343,19 +349,19 @@ class ParsedText:
         # Finally, walk the text tree generating lines
         lns = []
         sprl_inherits = None
-        for di, tt in ttiterator(Nd):
-            if tt == 0:
-                txts = ptail[di]
-                tels = pts[di]
-            else:
-                txts = [text[di]]
-                tels = [ds[di]]
+        # for di, tt in ttgenerator(Nd):
+        #     if tt == 0:
+        #         txts = ptail[di]
+        #         tels = pts[di]
+        #     else:
+        #         txts = [text[di]]
+        #         tels = [ds[di]]
 
-            for ii in range(len(tels)):
-                tel = tels[ii]
-                txt = txts[ii]
-
-                # dh.idebug((ds[di].get_id2(),types[di],tt))
+        #     for ii in range(len(tels)):
+        #         tel = tels[ii]
+        #         txt = txts[ii]
+                
+        for di, tt, tel, txt in self.tree.dgenerator():
                 newsprl = tt == 1 and types[di] == "tlvlsprl"
                 if (txt is not None and len(txt) > 0) or newsprl:
                     sel = tel
@@ -544,13 +550,13 @@ class ParsedText:
     
     # Strip every sodipodi:role line from an element without changing positions
     def Strip_Sodipodirole_Line(self):
-        if any([d.get('sodipodi:role')=='line' for d in self.textds]):
+        if any([d.get('sodipodi:role')=='line' for d in self.tree.ds]):
             # Store old positions
             oxs = [c.pts_ut[0].x for ln in self.lns for c in ln.cs]
             oys = [c.pts_ut[0].y for ln in self.lns for c in ln.cs]
             odxs = [c.dx for ln in self.lns for c in ln.cs]
             odys = [c.dy for ln in self.lns for c in ln.cs]
-            [d.set('sodipodi:role',None) for d in self.textds]
+            [d.set('sodipodi:role',None) for d in self.tree.ds]
             self.__init__(self.textel, self.ctable) # reparse
             
             # Correct the position of the first character
@@ -591,13 +597,7 @@ class ParsedText:
         if val is None:
             val = [None]  # None forces inheritance
         else:
-            tmp = []
-            for x in val.split():
-                if x.lower() == "none":
-                    tmp.append(None)
-                else:
-                    tmp.append(dh.implicitpx(x))
-            val = tmp
+            val = [None if x.lower() == "none" else dh.implicitpx(x) for x in val.split()]
         return val
     
     # Traverse the element tree to find dx/dy values and apply them to the chars
@@ -628,7 +628,7 @@ class ParsedText:
                         if xy == "dy":
                             thec[0].dy = dxy[cnt]
                         cnt += 1
-            for k in el.getchildren():
+            for k in list(el):
                 cnt = self.Get_Delta(lns, k, xy, dxy, cnt, dxysrc)
                 if (
                     k.get("sodipodi:role") == "line"
@@ -651,52 +651,71 @@ class ParsedText:
                                 thec[0].dy = dxy[cnt]
                             cnt += 1
         if toplevel:
-            for k in el.getchildren():
+            for k in list(el):
                 self.Get_Delta(lns, k, xy)
         return cnt
 
     # Traverse the tree to find where deltas need to be located relative to the top-level text
-    def Get_DeltaNum(self, lns, el, topcnt=0):
-        allcs = [c for ln in lns for c in ln.cs]
-        # get text, then each child, then each child's tail
-        if el.text is not None:
-            for ii in range(len(el.text)):
-                thec = [
-                    c
-                    for c in allcs
-                    if c.loc.el == el and c.loc.tt == "text" and c.loc.ind == ii
-                ]
-                if len(thec) == 0:
-                    dh.debug("Missing " + el.text[ii])
-                    tll = ParsedText(self.textel, self.ctable)
-                    dh.debug(self.txt())
-                    dh.debug(tll.txt())
-                thec[0].deltanum = topcnt
-                topcnt += 1
-        for k in el.getchildren():
-            topcnt = self.Get_DeltaNum(lns, k, topcnt=topcnt)
+    # def Get_DeltaNum(self, lns, el, topcnt=0):
+    #     allcs = [c for ln in lns for c in ln.cs]
+    #     # get text, then each child, then each child's tail
+    #     if el.text is not None:
+    #         for ii in range(len(el.text)):
+    #             thec = [
+    #                 c
+    #                 for c in allcs
+    #                 if c.loc.el == el and c.loc.tt == "text" and c.loc.ind == ii
+    #             ]
+    #             if len(thec) == 0:
+    #                 dh.debug("Missing " + el.text[ii])
+    #                 tll = ParsedText(self.textel, self.ctable)
+    #                 dh.debug(self.txt())
+    #                 dh.debug(tll.txt())
+    #             thec[0].deltanum = topcnt
+    #             topcnt += 1
+    #     for k in list(el):
+    #         topcnt = self.Get_DeltaNum(lns, k, topcnt=topcnt)
+    #         if (
+    #             k.get("sodipodi:role") == "line"
+    #             and isinstance(k, Tspan)
+    #             and isinstance(k.getparent(), TextElement)
+    #         ):
+    #             topcnt += 1  # top-level Tspans have an implicit CR
+    #         if k.tail is not None:
+    #             for ii in range(len(k.tail)):
+    #                 thec = [
+    #                     c
+    #                     for c in allcs
+    #                     if c.loc.el == k and c.loc.tt == "tail" and c.loc.ind == ii
+    #                 ]
+    #                 if len(thec) == 0:
+    #                     dh.idebug("\nMissing " + k.tail[ii])
+    #                     tll = ParsedText(self.textel, self.ctable)
+    #                     dh.idebug(self.txt())
+    #                     dh.idebug(tll.txt())
+    #                     quit()
+    #                 thec[0].deltanum = topcnt
+    #                 topcnt += 1
+    #     return topcnt
+    
+    # Traverse the tree to find where deltas need to be located relative to the top-level text
+    def Get_DeltaNum(self):
+        allcs = [c for ln in self.lns for c in ln.cs]
+        topcnt=0
+        for di, tt, d, txt in self.tree.dgenerator():
+            ttv = 'tail' if tt==0 else 'text'
             if (
-                k.get("sodipodi:role") == "line"
-                and isinstance(k, Tspan)
-                and isinstance(k.getparent(), TextElement)
+                tt==0
+                and d.get("sodipodi:role") == "line"
+                and isinstance(d, Tspan)
+                and self.tree.pdict[d]==self.textel
             ):
-                topcnt += 1  # top-level Tspans have an implicit CR
-            if k.tail is not None:
-                for ii in range(len(k.tail)):
-                    thec = [
-                        c
-                        for c in allcs
-                        if c.loc.el == k and c.loc.tt == "tail" and c.loc.ind == ii
-                    ]
-                    if len(thec) == 0:
-                        dh.idebug("\nMissing " + k.tail[ii])
-                        tll = ParsedText(self.textel, self.ctable)
-                        dh.idebug(self.txt())
-                        dh.idebug(tll.txt())
-                        quit()
+                topcnt += 1  # top-level Tspans have an implicit CR at the beginning of the tail
+            if txt is not None:
+                for ii in range(len(txt)):
+                    thec = [c for c in allcs if c.loc == cloc(d,ttv,ii)]
                     thec[0].deltanum = topcnt
                     topcnt += 1
-        return topcnt
 
     # After dx/dy has changed, call this to write them to the text element
     # For simplicity, this is best done at the ParsedText level all at once
@@ -706,11 +725,11 @@ class ParsedText:
             dys = [c.dy for ln in self.lns for c in ln.cs]
 
             anynewx = self.dxs != dxs and any([dxv != 0 for dxv in self.dxs + dxs])
-            # only if new is not old and at least one is non-zero
             anynewy = self.dys != dys and any([dyv != 0 for dyv in self.dys + dys])
+            # only if new is not old and at least one is non-zero
 
             if anynewx or anynewy or forceupdate:
-                self.Get_DeltaNum(self.lns, self.textel)
+                self.Get_DeltaNum()
                 dx = []
                 dy = []
                 for ln in self.lns:
@@ -719,13 +738,11 @@ class ParsedText:
                             dx = extendind(dx, c.deltanum, c.dx, 0)
                             dy = extendind(dy, c.deltanum, c.dy, 0)
 
-                if not (self.flatdelta):  # flatten onto textel
-                    # for d in dh.descendants2(self.textel):
-                    for d in self.textds:
+                if not(self.flatdelta):  # flatten onto textel (only do once)
+                    for d in self.tree.ds:
                         d.set("dx", None)
                         d.set("dy", None)
                     self.flatdelta = True
-                    # only need to do this once
 
                 dxset = None
                 dyset = None
@@ -738,7 +755,6 @@ class ParsedText:
                 for w in [w for ln in self.lns for w in ln.ws]:
                     w.dxeff = None
                     w.charpos = None
-                    # dh.idebug('here')
             self.dxs = dxs
             self.dys = dys
 
@@ -909,7 +925,9 @@ class ParsedText:
     def Delete_Empty(self):
         dxl = [c.dx for ln in self.lns for c in ln.cs]
         dyl = [c.dy for ln in self.lns for c in ln.cs]
-        deleteempty(self.textel)
+        dltd = deleteempty(self.textel)
+        if dltd:
+            self.tree = None
         cnt = 0
         for ln in self.lns:
             for c in ln.cs:
@@ -1023,8 +1041,39 @@ class ParsedText:
                             ext = ext.union(dh.bbox(((p1.x,p1.y),(p2.x,p2.y))))
         return ext
                     
-
+    @property
+    def tree(self):
+        if not(hasattr(self,'_tree')):
+            self._tree = dinfo(self.textel)
+        return self._tree
+    @tree.setter
+    def tree(self, val):
+        if val is None and hasattr(self,'_tree'):
+            delattr(self,'_tree')
     
+    
+# Descendant info class
+class dinfo():
+    def __init__(self,el):
+        ds, pts, cd, pd = dh.descendants2(el, True)
+        self.ds = ds;
+        # Discard last element of last preceding tail, which just contains the element itself
+        # This tail is not rendered
+        if len(pts) > 0 and len(pts[-1]) > 0:
+            pts[-1] = pts[-1][:-1]  
+        self.ptails = pts;
+        self.cdict = cd;
+        self.pdict = pd;
+        
+    
+    # A generator for crawling through a specific text descendant tree
+    # Returns the current descendant index, tt, descendant element, and text
+    def dgenerator(self):
+        for di, tt in ttgenerator(len(self.ds)):
+            ds = self.ptails[di] if tt == 0 else [self.ds[di]]
+            for d in ds:
+                txt = d.tail if tt==0 else d.text
+                yield di, tt, d, txt
 
 
 # For lines, words, and chars
@@ -1488,7 +1537,6 @@ class tword:
                         cel = cel.getparent()
                     totail = cel
 
-                # dh.idebug(noneid(totail))
                 self.appendc(c.c, c.cw, mydx, c.dy, totail=totail)
                 newc = self.cs[-1]
 
@@ -2099,17 +2147,18 @@ class tchar:
             prt.tail = tbefore
             gp = prt.getparent()
             # parent is a Tspan, so insert it into the grandparent
-            pi = (gp.getchildren()).index(prt)
+            pi = list(gp).index(prt)
             gp.insert(pi + 1, t)
             # after the parent
 
             t.tail = tafter
 
         # dh.idebug([v.get_id() for v in dh.descendants2(self.ln.pt.textel)])
-        # dh.idebug([v.get_id() for v in self.ln.pt.textds])
-        textd = self.ln.pt.textds
+        # dh.idebug([v.get_id() for v in self.ln.pt.tree.ds])
+        # textd = self.ln.pt.textds
         # update the descendants list
-        textd.insert(textd.index(prt) + 1, t)
+        # textd.insert(textd.index(prt) + 1, t)
+        self.ln.pt.tree = None # invalidate
 
         myi = self.ln.cs.index(self)
         for ii in range(
@@ -2292,11 +2341,6 @@ class cloc:
         self.ind = ind
         # its index
 
-        # tmp = el;
-        # if isinstance(tmp.getparent(),(TextElement,Tspan)):
-        #     tmp = tmp.getparent()
-        # self.textel = tmp; # parent TextElement
-
         if self.tt == "text":
             self.pel = self.el  # parent element (different for tails)
         else:
@@ -2328,28 +2372,31 @@ class Character_Table:
         atxt = [];
         asty = [];
         for el in els:
-            ds, pts, cd, pd = dh.descendants2(el, True)
-            Nd = len(ds)
-            text = [d.text for d in ds]
-            ptail = [[tel.tail for tel in pt] for pt in pts]  # preceding tails
-            if len(ptail) > 0 and len(ptail[-1]) > 0:
-                ptail[-1][-1] = None
-                # do not count el's tail
+            # ds, pts, cd, pd = dh.descendants2(el, True)
+            # Nd = len(ds)
+            # text = [d.text for d in ds]
+            # ptail = [[tel.tail for tel in pt] for pt in pts]  # preceding tails
+            # if len(ptail) > 0 and len(ptail[-1]) > 0:
+            #     ptail[-1][-1] = None
+            #     # do not count el's tail
 
-            for di, tt in ttiterator(Nd):
-                if tt == 0:
-                    txts = ptail[di]
-                    tels = pts[di]
-                else:
-                    txts = [text[di]]
-                    tels = [ds[di]]
-                for ii in range(len(tels)):
-                    tel = tels[ii]
-                    txt = txts[ii]
+            # for di, tt in ttgenerator(Nd):
+            #     if tt == 0:
+            #         txts = ptail[di]
+            #         tels = pts[di]
+            #     else:
+            #         txts = [text[di]]
+            #         tels = [ds[di]]
+            #     for ii in range(len(tels)):
+            #         tel = tels[ii]
+            #         txt = txts[ii]
+            
+            tree = dinfo(el)
+            for di, tt, tel, txt in tree.dgenerator():
                     if txt is not None and len(txt) > 0:
                         sel = tel
                         if tt == 0:
-                            sel = pd[tel]
+                            sel = tree.pdict[tel]
                             # tails get their sty from the parent of the element the tail belongs to
                         sty = sel.cspecified_style
                         
@@ -2653,16 +2700,19 @@ class Character_Table:
 # Recursively delete empty elements
 # Tspans are deleted if they're totally empty, TextElements are deleted if they contain only whitespace
 def deleteempty(el):
-    for k in el.getchildren():
-        deleteempty(k)
+    anydeleted = False
+    for k in list(el):
+        d = deleteempty(k)
+        anydeleted = anydeleted or d
     txt = el.text
     tail = el.tail
     if (
         (txt is None or len((txt)) == 0)
         and (tail is None or len((tail)) == 0)
-        and len(el.getchildren()) == 0
+        and len(list(el)) == 0
     ):
         el.delete2()
+        anydeleted = True
         # delete anything empty
         # dh.debug(el.get_id())
     elif isinstance(el, (TextElement)):
@@ -2678,30 +2728,26 @@ def deleteempty(el):
             ]
         ):
             el.delete2()
+            anydeleted = True
             # delete any text elements that are just white space
+    return anydeleted
 
 
-# An iterator for crawling through a text descendant tree
+# A generator for crawling through a general text descendant tree
 # Returns the current descendant index and tt (0 for tail, 1 for text)
-class ttiterator:
-    def __init__(self, Nd):
-        self.Nd = Nd
-
-    def __iter__(self):
-        self.di = 0
-        self.tt = 0
-        return self
-
-    def __next__(self):
-        if self.tt == 1:
-            self.di += 1
-            self.tt = 0
+def ttgenerator(Nd):
+    di = 0
+    tt = 0
+    while True:
+        if tt == 1:
+            di += 1
+            tt = 0
         else:
-            self.tt = 1
-        if self.di == self.Nd and self.tt == 1:
-            raise StopIteration
+            tt = 1
+        if di == Nd and tt == 1:
+            return
         else:
-            return self.di, self.tt
+            yield di, tt
 
 
 def maxnone(xi):
@@ -2709,10 +2755,3 @@ def maxnone(xi):
         return max(xi)
     else:
         return None
-
-
-def noneid(el):
-    if el is None:
-        return None
-    else:
-        return el.get("id")
