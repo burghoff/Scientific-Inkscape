@@ -601,59 +601,51 @@ class ParsedText:
         return val
     
     # Traverse the element tree to find dx/dy values and apply them to the chars
-    def Get_Delta(self, lns, el, xy, dxin=None, cntin=None, dxysrc=None):
-        if dxin is None:
-            dxy = ParsedText.GetXY(el, xy)
-            dxysrc = el
-            cnt = 0
-            toplevel = True
-        else:
-            dxy = dxin
-            cnt = cntin
-            toplevel = False
-        if len(dxy) > 0 and dxy[0] is not None:
-            allcs = [c for ln in lns for c in ln.cs]
-            # get text, then each child, then each child's tail
-            if el.text is not None:
-                for ii in range(len(el.text)):
-                    thec = [
-                        c
-                        for c in allcs
-                        if c.loc.el == el and c.loc.tt == "text" and c.loc.ind == ii
-                    ]
-                    if cnt < len(dxy):
-                        # if dxy[cnt]==30: dh.debug(dxysrc.get_id())
-                        if xy == "dx":
-                            thec[0].dx = dxy[cnt]
-                        if xy == "dy":
-                            thec[0].dy = dxy[cnt]
-                        cnt += 1
-            for k in list(el):
-                cnt = self.Get_Delta(lns, k, xy, dxy, cnt, dxysrc)
-                if (
-                    k.get("sodipodi:role") == "line"
-                    and isinstance(k, Tspan)
-                    and isinstance(k.getparent(), TextElement)
-                ):
-                    cnt += 1
-                    # top-level Tspans have an implicit CR
-                if k.tail is not None:
-                    for ii in range(len(k.tail)):
-                        thec = [
-                            c
-                            for c in allcs
-                            if c.loc.el == k and c.loc.tt == "tail" and c.loc.ind == ii
-                        ]
-                        if cnt < len(dxy):
-                            if xy == "dx":
-                                thec[0].dx = dxy[cnt]
-                            if xy == "dy":
-                                thec[0].dy = dxy[cnt]
-                            cnt += 1
-        if toplevel:
-            for k in list(el):
-                self.Get_Delta(lns, k, xy)
-        return cnt
+    # def Get_Delta(self, lns, el, xy, dxin=None, cntin=None, dxysrc=None):
+    #     if dxin is None:
+    #         dxy = ParsedText.GetXY(el, xy)
+    #         dxysrc = el
+    #         cnt = 0
+    #         toplevel = True
+    #     else:
+    #         dxy = dxin
+    #         cnt = cntin
+    #         toplevel = False
+    #     if len(dxy) > 0 and dxy[0] is not None:
+    #         allcs = [c for ln in lns for c in ln.cs]
+    #         # get text, then each child, then each child's tail
+    #         if el.text is not None:
+    #             for ii in range(len(el.text)):
+    #                 thec = [c for c in allcs if c.loc == cloc(el,"text",ii)]
+    #                 if cnt < len(dxy):
+    #                     # if dxy[cnt]==30: dh.debug(dxysrc.get_id())
+    #                     if xy == "dx":
+    #                         thec[0].dx = dxy[cnt]
+    #                     if xy == "dy":
+    #                         thec[0].dy = dxy[cnt]
+    #                     cnt += 1
+    #         for k in list(el):
+    #             cnt = self.Get_Delta(lns, k, xy, dxy, cnt, dxysrc)
+    #             if (
+    #                 k.get("sodipodi:role") == "line"
+    #                 and isinstance(k, Tspan)
+    #                 and isinstance(k.getparent(), TextElement)
+    #             ):
+    #                 cnt += 1
+    #                 # top-level Tspans have an implicit CR
+    #             if k.tail is not None:
+    #                 for ii in range(len(k.tail)):
+    #                     thec = [c for c in allcs if c.loc == cloc(k,"tail",ii)]
+    #                     if cnt < len(dxy):
+    #                         if xy == "dx":
+    #                             thec[0].dx = dxy[cnt]
+    #                         if xy == "dy":
+    #                             thec[0].dy = dxy[cnt]
+    #                         cnt += 1
+    #     if toplevel:
+    #         for k in list(el):
+    #             self.Get_Delta(lns, k, xy)
+    #     return cnt
 
     # Traverse the tree to find where deltas need to be located relative to the top-level text
     # def Get_DeltaNum(self, lns, el, topcnt=0):
@@ -708,7 +700,7 @@ class ParsedText:
                 tt==0
                 and d.get("sodipodi:role") == "line"
                 and isinstance(d, Tspan)
-                and self.tree.pdict[d]==self.textel
+                and isinstance(self.tree.pdict[d],TextElement)
             ):
                 topcnt += 1  # top-level Tspans have an implicit CR at the beginning of the tail
             if txt is not None:
@@ -716,6 +708,34 @@ class ParsedText:
                     thec = [c for c in allcs if c.loc == cloc(d,ttv,ii)]
                     thec[0].deltanum = topcnt
                     topcnt += 1
+                    
+    def Get_Delta(self, lns, el, xy):
+        for do in self.tree.ds:
+            dxy = ParsedText.GetXY(do, xy)
+            # Objects lower in the descendant list override ancestors
+            if len(dxy) > 0 and dxy[0] is not None:
+                allcs = [c for ln in self.lns for c in ln.cs]
+                cnt = 0;
+                for di, tt, d, txt in self.tree.dgenerator(subel=do):
+                    ttv = 'tail' if tt==0 else 'text'
+                    if (
+                        tt==0
+                        and d.get("sodipodi:role") == "line"
+                        and isinstance(d, Tspan)
+                        and isinstance(self.tree.pdict[d],TextElement)
+                    ):
+                        cnt  += 1  # top-level Tspans have an implicit CR at the beginning of the tail
+                    if txt is not None:
+                        for ii in range(len(txt)):
+                            thec = [c for c in allcs if c.loc == cloc(d,ttv,ii)]
+                            if cnt < len(dxy):
+                                if xy == "dx":
+                                    thec[0].dx = dxy[cnt]
+                                if xy == "dy":
+                                    thec[0].dy = dxy[cnt]
+                            cnt += 1
+                    if cnt >= len(dxy):
+                        break
 
     # After dx/dy has changed, call this to write them to the text element
     # For simplicity, this is best done at the ParsedText level all at once
@@ -1044,7 +1064,7 @@ class ParsedText:
     @property
     def tree(self):
         if not(hasattr(self,'_tree')):
-            self._tree = dinfo(self.textel)
+            self._tree = dtree(self.textel)
         return self._tree
     @tree.setter
     def tree(self, val):
@@ -1052,28 +1072,53 @@ class ParsedText:
             delattr(self,'_tree')
     
     
-# Descendant info class
-class dinfo():
+# Descendant tree class
+class dtree():
     def __init__(self,el):
         ds, pts, cd, pd = dh.descendants2(el, True)
         self.ds = ds;
-        # Discard last element of last preceding tail, which just contains the element itself
-        # This tail is not rendered
-        if len(pts) > 0 and len(pts[-1]) > 0:
-            pts[-1] = pts[-1][:-1]  
         self.ptails = pts;
         self.cdict = cd;
         self.pdict = pd;
         
-    
     # A generator for crawling through a specific text descendant tree
-    # Returns the current descendant index, tt, descendant element, and text
-    def dgenerator(self):
-        for di, tt in ttgenerator(len(self.ds)):
+    # Returns the current descendant index, tt (0 for tail, 1 for text),
+    # descendant element, and text. When starting at subel, only gets the
+    # tree subset corresponding to that element
+    def dgenerator(self, subel=None):
+        if subel is None:
+            starti = 0
+            stopi  = len(self.ds)
+            subel = self.ds[0]
+        else:
+            starti = self.ds.index(subel)
+            stopi = [ii for ii,pt in enumerate(self.ptails) if subel in pt][0]
+            
+        for di, tt in ttgenerator(len(self.ds),starti,stopi):
             ds = self.ptails[di] if tt == 0 else [self.ds[di]]
             for d in ds:
+                if tt==0 and d==subel: # finish at my own tail (do not yield it)
+                    return
                 txt = d.tail if tt==0 else d.text
                 yield di, tt, d, txt
+
+
+# A generator for crawling through a general text descendant tree
+# Returns the current descendant index and tt (0 for tail, 1 for text)
+def ttgenerator(Nd,starti=0,stopi=None):
+    di = starti
+    if stopi is None: stopi = Nd
+    tt = 0
+    while True:
+        if tt == 1:
+            di += 1
+            tt = 0
+        else:
+            tt = 1
+        if di == stopi and tt == 1:
+            return
+        else:
+            yield di, tt
 
 
 # For lines, words, and chars
@@ -2391,7 +2436,7 @@ class Character_Table:
             #         tel = tels[ii]
             #         txt = txts[ii]
             
-            tree = dinfo(el)
+            tree = dtree(el)
             for di, tt, tel, txt in tree.dgenerator():
                     if txt is not None and len(txt) > 0:
                         sel = tel
@@ -2732,22 +2777,6 @@ def deleteempty(el):
             # delete any text elements that are just white space
     return anydeleted
 
-
-# A generator for crawling through a general text descendant tree
-# Returns the current descendant index and tt (0 for tail, 1 for text)
-def ttgenerator(Nd):
-    di = 0
-    tt = 0
-    while True:
-        if tt == 1:
-            di += 1
-            tt = 0
-        else:
-            tt = 1
-        if di == Nd and tt == 1:
-            return
-        else:
-            yield di, tt
 
 
 def maxnone(xi):

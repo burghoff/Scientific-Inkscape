@@ -2295,7 +2295,7 @@ def Run_SI_Extension(effext,name):
     
     alreadyran = False
     cprofile = False
-    lprofile = False
+    lprofile = os.getenv("LINEPROFILE") == "True"
     if cprofile or lprofile:
         import io
         profiledir = get_script_path()
