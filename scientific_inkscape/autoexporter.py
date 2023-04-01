@@ -49,6 +49,7 @@ def delete_quit(tempdir):
     Delete_Dir(tempdir)
     sys.exit()
 orig_key = 'si_ae_original_filename'
+dup_key = 'si_ae_original_duplicate'
 
 # Runs a Python script using a Python binary in a working directory
 # It detaches from Inkscape, allowing it to continue running after the extension has finished
@@ -514,11 +515,14 @@ class AutoExporter(inkex.EffectExtension):
                 osvg = get_svg(filein);   # original has pages
                 if hasattr(input_options,'ctable'):
                     osvg._char_table = input_options.ctable
-                bbs = dh.BB2(type('DummyClass', (), {'svg': osvg}));  
                 
                 pgs = osvg.cdocsize.pgs
                 haspgs = osvg.cdocsize.inkscapehaspgs 
                 if (haspgs or input_options.testmode) and len(pgs)>1:
+                    bbs = dh.BB2(type('DummyClass', (), {'svg': osvg}));  
+                    dl = input_options.duplicatelabels
+                    # dh.idebug(dl)
+                    
                     outputs = [];
                     pgiis = range(len(pgs)) if not(input_options.testmode) else [input_options.testpage-1]
                     for ii in pgiis:
@@ -526,6 +530,7 @@ class AutoExporter(inkex.EffectExtension):
                         psvg = get_svg(fileout);  # plain SVG has no pages
                         pgs2 = psvg.cdocsize.pgs
                         
+                        # dh.idebug('Page '+str(ii))
                                                 
                         self.Change_Viewbox_To_Page(psvg, pgs[ii])
                         # Only need to delete other Pages in testmode since plain SVGs have none
@@ -536,7 +541,16 @@ class AutoExporter(inkex.EffectExtension):
                         # Delete content not on current page
                         pgbb = dh.bbox(psvg.cdocsize.effvb)
                         for k,v in bbs.items():
-                            if not(dh.bbox(v).intersect(pgbb)):
+                            # dh.idebug((k,v,pgbb.sbb))
+                            
+                            removeme = not(dh.bbox(v).intersect(pgbb))
+                            if k in dl:
+                                if dl[k] in bbs: # remove duplicate label if removing original
+                                    removeme = not(dh.bbox(bbs[dl[k]]).intersect(pgbb))
+                                else:
+                                    removeme = False
+                                
+                            if removeme:
                                 el = psvg.getElementById2(k);
                                 if el is not None:
                                     el.delete2();
@@ -592,7 +606,7 @@ class AutoExporter(inkex.EffectExtension):
                 svg = get_svg(mout)
                 vds = dh.visible_descendants(svg)
                 for d in vds:
-                    if isinstance(d,(TextElement)):
+                    if isinstance(d,(TextElement)) and d.get_id2() not in input_options.excludetxtids:
                         self.Scale_Text(d)
                     elif isinstance(d,(inkex.Image)):
                         if ih.hasPIL:
@@ -755,6 +769,8 @@ class AutoExporter(inkex.EffectExtension):
                 
         # Strip all sodipodi:role lines from document
         # Conversion to plain SVG does this automatically but poorly
+        excludetxtids = [];
+        input_options.duplicatelabels = dict()
         if input_options.usepsvg:  
             import TextParser # noqa
             tels = [el for el in vds if isinstance(el, inkex.TextElement)]
@@ -764,12 +780,26 @@ class AutoExporter(inkex.EffectExtension):
             for el in tels:
                 el.parsed_text.Strip_Sodipodirole_Line();
                 self.SubSuper_Fix(el)
+                
+                # Preserve duplicate of text to be converted to paths
+                if input_options.texttopath:
+                    d = el.duplicate2();
+                    excludetxtids.append(d.get_id2())
+                    g = dh.group([d])
+                    g.set('display','none')
+                   
+                    te = dh.new_element(inkex.TextElement, svg)
+                    te.text = '{0}: {1}'.format(dup_key,el.get_id2())
+                    te.set('display','none')
+                    g.append(te)  # Remember the original ID
+                    excludetxtids.append(te.get_id2())
+                    input_options.duplicatelabels[te.get_id2()] = el.get_id2()
         
         dh.flush_stylesheet_entries(svg) # since we ungrouped
         tmp = tempbase+"_mod.svg"
         dh.overwrite_svg(svg, tmp)
         cfile = tmp
-
+        input_options.excludetxtids = excludetxtids;
 
         do_rasterizations = len(raster_ids+image_ids)>0
         do_stroketopaths  = input_options.texttopath or input_options.stroketopath or len(stps)>0;
@@ -782,7 +812,7 @@ class AutoExporter(inkex.EffectExtension):
             tels = []
             if input_options.texttopath:
                 for el in vd:
-                    if isinstance(el, (inkex.TextElement)):
+                    if isinstance(el, (inkex.TextElement)) and el.get_id2() not in excludetxtids:
                         tels.append(el.get_id2())
  
             pels = [];
@@ -1197,7 +1227,7 @@ class AutoExporter(inkex.EffectExtension):
             if dyv[0] is not None: d.set('dy',tline.writev([v*s for v in dyv]))
                 
             fs,sf,tmp,tmp = dh.Get_Composed_Width(d,'font-size',nargout=4)
-            dh.Set_Style_Comp(d, 'font-size', str(fs/sf*s))    
+            dh.Set_Style_Comp(d, 'font-size', "{:.3f}".format(fs/sf*s))    
                 
             otherpx = ['letter-spacing','inline-size','stroke-width','stroke-dasharray']
             for oth in otherpx:

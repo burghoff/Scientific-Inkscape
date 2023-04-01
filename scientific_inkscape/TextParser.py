@@ -362,146 +362,127 @@ class ParsedText:
         #         txt = txts[ii]
                 
         for di, tt, tel, txt in self.tree.dgenerator():
-                newsprl = tt == 1 and types[di] == "tlvlsprl"
-                if (txt is not None and len(txt) > 0) or newsprl:
-                    sel = tel
+            newsprl = tt == 1 and types[di] == "tlvlsprl"
+            if (txt is not None and len(txt) > 0) or newsprl:
+                sel = tel
+                if tt == 0:
+                    sel = pd[tel]
+                    # tails get their sty from the parent of the element the tail belongs to
+                sty = sel.cspecified_style
+                ct = sel.ccomposed_transform
+                fs, sf, ct, ang = dh.Get_Composed_Width(sel, "font-size", 4)
+
+                if newsprl:
+                    lh = dh.Get_Composed_LineHeight(sel)
+                nsty = Character_Table.normalize_style(sty)
+
+                # Make a new line if we're sprl or if we have a new x or y
+                if len(lns) == 0 or (
+                    tt == 1
+                    and (
+                        newsprl
+                        or (
+                            types[di] == "normal"
+                            and (ixs[di][0] is not None or iys[di][0] is not None)
+                        )
+                    )
+                ):
+                    edi = di
                     if tt == 0:
-                        sel = pd[tel]
-                        # tails get their sty from the parent of the element the tail belongs to
-                    sty = sel.cspecified_style
-                    ct = sel.ccomposed_transform
-                    fs, sf, ct, ang = dh.Get_Composed_Width(sel, "font-size", 4)
-
+                        edi = ds.index(sel)
+                    xv = ixs[edi]
+                    xsrc = xsrcs[edi]
+                    yv = iys[edi]
+                    ysrc = ysrcs[edi]
                     if newsprl:
-                        lh = dh.Get_Composed_LineHeight(sel)
-                    nsty = Character_Table.normalize_style(sty)
-
-                    # Make a new line if we're sprl or if we have a new x or y
-                    if len(lns) == 0 or (
-                        tt == 1
-                        and (
-                            newsprl
-                            or (
-                                types[di] == "normal"
-                                and (ixs[di][0] is not None or iys[di][0] is not None)
-                            )
-                        )
-                    ):
-                        edi = di
-                        if tt == 0:
-                            edi = ds.index(sel)
-                        xv = ixs[edi]
-                        xsrc = xsrcs[edi]
-                        yv = iys[edi]
-                        ysrc = ysrcs[edi]
-                        if newsprl:
-                            if len(lns) == 0:
-                                xv = [ixs[0][0]]
-                                xsrc = xsrcs[0]
-                                yv = [iys[0][0]]
-                                ysrc = ysrcs[0]
-                            else:
-                                xv = [sprl_inherits.x[0]]
-                                xsrc = sprl_inherits.xsrc
-                                yv = [sprl_inherits.y[0] + lh / sf]
-                                ysrc = sprl_inherits.ysrc
-                            issprl = True
-                            continuex = False
-                            continuey = False
+                        if len(lns) == 0:
+                            xv = [ixs[0][0]]
+                            xsrc = xsrcs[0]
+                            yv = [iys[0][0]]
+                            ysrc = ysrcs[0]
                         else:
-                            continuex = False
-                            issprl = False
-                            if xv[0] is None:
-                                if len(lns) > 0:
-                                    xv = copy(lns[-1].x)
-                                    xsrc = lns[-1].xsrc
-                                else:
-                                    xv = copy(ixs[0])
-                                    xsrc = xsrcs[0]
-                                continuex = True
-                                # issprl = True;
-                            continuey = False
-                            if yv[0] is None:
-                                if len(lns) > 0:
-                                    yv = copy(lns[-1].y)
-                                    ysrc = lns[-1].ysrc
-                                else:
-                                    yv = copy(iys[0])
-                                    ysrc = ysrcs[0]
-                                continuey = True
+                            xv = [sprl_inherits.x[0]]
+                            xsrc = sprl_inherits.xsrc
+                            yv = [sprl_inherits.y[0] + lh / sf]
+                            ysrc = sprl_inherits.ysrc
+                        issprl = True
+                        continuex = False
+                        continuey = False
+                    else:
+                        continuex = False
+                        issprl = False
+                        if xv[0] is None:
+                            if len(lns) > 0:
+                                xv = copy(lns[-1].x)
+                                xsrc = lns[-1].xsrc
+                            else:
+                                xv = copy(ixs[0])
+                                xsrc = xsrcs[0]
+                            continuex = True
+                            # issprl = True;
+                        continuey = False
+                        if yv[0] is None:
+                            if len(lns) > 0:
+                                yv = copy(lns[-1].y)
+                                ysrc = lns[-1].ysrc
+                            else:
+                                yv = copy(iys[0])
+                                ysrc = ysrcs[0]
+                            continuey = True
 
-                        if srcsonly:  # quit and return srcs of first line
-                            return xsrc, ysrc
+                    if srcsonly:  # quit and return srcs of first line
+                        return xsrc, ysrc
 
-                        tlvlno = None
-                        if di < Nd and ds[di] in ks:
-                            tlvlno = ks.index(ds[di])
-                        elif edi == 0:
-                            tlvlno = 0
+                    tlvlno = None
+                    if di < Nd and ds[di] in ks:
+                        tlvlno = ks.index(ds[di])
+                    elif edi == 0:
+                        tlvlno = 0
 
-                        anch = sty.get("text-anchor")
-                        if len(lns) > 0 and nspr[edi] != "line":
-                            if lns[-1].anchor is not None:
-                                anch = lns[
-                                    -1
-                                ].anchor  # non-spr lines inherit the previous line's anchor
-                        if anch is None:
-                            anch = "start"
-                        txtdir = sty.get("direction")
-                        if txtdir is not None:
-                            if txtdir == "rtl":
-                                if anch == "start":
-                                    anch = "end"
-                                elif anch == "end":
-                                    anch = "start"
-                        
-                        sprlabove = []
-                        cel = ds[edi];
-                        while cel!=el:
-                            if cel.get('sodipodi:role')=='line':
-                                sprlabove.append(cel);
-                            cel = pd[cel]
-                        
-                        lns.append(
-                            tline(
-                                self,
-                                xv,
-                                yv,
-                                xsrc,
-                                ysrc,
-                                issprl,
-                                sprlabove,
-                                anch,
-                                ct,
-                                ang,
-                                tlvlno,
-                                sty,
-                                continuex,
-                                continuey,
-                            )
+                    anch = sty.get("text-anchor")
+                    if len(lns) > 0 and nspr[edi] != "line":
+                        if lns[-1].anchor is not None:
+                            anch = lns[
+                                -1
+                            ].anchor  # non-spr lines inherit the previous line's anchor
+                    if anch is None:
+                        anch = "start"
+                    txtdir = sty.get("direction")
+                    if txtdir is not None:
+                        if txtdir == "rtl":
+                            if anch == "start":
+                                anch = "end"
+                            elif anch == "end":
+                                anch = "start"
+                    
+                    sprlabove = []
+                    cel = ds[edi];
+                    while cel!=el:
+                        if cel.get('sodipodi:role')=='line':
+                            sprlabove.append(cel);
+                        cel = pd[cel]
+                    
+                    lns.append(tline(self,xv,yv,xsrc,ysrc,issprl,sprlabove,
+                            anch,ct,ang,tlvlno,sty,continuex,continuey))
+
+                    if newsprl or len(lns) == 1:
+                        sprl_inherits = lns[-1]
+
+                if txt is not None:
+                    for jj in range(len(txt)):
+                        c = txt[jj]
+                        prop = self.ctable.get_prop(c, nsty) * fs
+                        ttv = 'tail' if tt==0 else 'text'
+                        lns[-1].addc(
+                            tchar(c, fs, sf, prop, sty, nsty, cloc(tel, ttv, jj))
                         )
 
-                        if newsprl or len(lns) == 1:
-                            sprl_inherits = lns[-1]
-
-                    if txt is not None:
-
-                        for jj in range(len(txt)):
-                            c = txt[jj]
-                            prop = self.ctable.get_prop(c, nsty) * fs
-                            ttv = "text"
-                            if tt == 0:
-                                ttv = "tail"
-                            lns[-1].addc(
-                                tchar(c, fs, sf, prop, sty, nsty, cloc(tel, ttv, jj))
-                            )
-
-                            if jj == 0:
-                                lsp0 = lns[-1].cs[-1].lsp
-                                bshft0 = lns[-1].cs[-1].bshft
-                            else:
-                                lns[-1].cs[-1].lsp = lsp0
-                                lns[-1].cs[-1].bshft = bshft0
+                        if jj == 0:
+                            lsp0 = lns[-1].cs[-1].lsp
+                            bshft0 = lns[-1].cs[-1].bshft
+                        else:
+                            lns[-1].cs[-1].lsp = lsp0
+                            lns[-1].cs[-1].bshft = bshft0
         return lns
 
     def Finish_Lines(self):
@@ -599,96 +580,6 @@ class ParsedText:
         else:
             val = [None if x.lower() == "none" else dh.implicitpx(x) for x in val.split()]
         return val
-    
-    # Traverse the element tree to find dx/dy values and apply them to the chars
-    # def Get_Delta(self, lns, el, xy, dxin=None, cntin=None, dxysrc=None):
-    #     if dxin is None:
-    #         dxy = ParsedText.GetXY(el, xy)
-    #         dxysrc = el
-    #         cnt = 0
-    #         toplevel = True
-    #     else:
-    #         dxy = dxin
-    #         cnt = cntin
-    #         toplevel = False
-    #     if len(dxy) > 0 and dxy[0] is not None:
-    #         allcs = [c for ln in lns for c in ln.cs]
-    #         # get text, then each child, then each child's tail
-    #         if el.text is not None:
-    #             for ii in range(len(el.text)):
-    #                 thec = [c for c in allcs if c.loc == cloc(el,"text",ii)]
-    #                 if cnt < len(dxy):
-    #                     # if dxy[cnt]==30: dh.debug(dxysrc.get_id())
-    #                     if xy == "dx":
-    #                         thec[0].dx = dxy[cnt]
-    #                     if xy == "dy":
-    #                         thec[0].dy = dxy[cnt]
-    #                     cnt += 1
-    #         for k in list(el):
-    #             cnt = self.Get_Delta(lns, k, xy, dxy, cnt, dxysrc)
-    #             if (
-    #                 k.get("sodipodi:role") == "line"
-    #                 and isinstance(k, Tspan)
-    #                 and isinstance(k.getparent(), TextElement)
-    #             ):
-    #                 cnt += 1
-    #                 # top-level Tspans have an implicit CR
-    #             if k.tail is not None:
-    #                 for ii in range(len(k.tail)):
-    #                     thec = [c for c in allcs if c.loc == cloc(k,"tail",ii)]
-    #                     if cnt < len(dxy):
-    #                         if xy == "dx":
-    #                             thec[0].dx = dxy[cnt]
-    #                         if xy == "dy":
-    #                             thec[0].dy = dxy[cnt]
-    #                         cnt += 1
-    #     if toplevel:
-    #         for k in list(el):
-    #             self.Get_Delta(lns, k, xy)
-    #     return cnt
-
-    # Traverse the tree to find where deltas need to be located relative to the top-level text
-    # def Get_DeltaNum(self, lns, el, topcnt=0):
-    #     allcs = [c for ln in lns for c in ln.cs]
-    #     # get text, then each child, then each child's tail
-    #     if el.text is not None:
-    #         for ii in range(len(el.text)):
-    #             thec = [
-    #                 c
-    #                 for c in allcs
-    #                 if c.loc.el == el and c.loc.tt == "text" and c.loc.ind == ii
-    #             ]
-    #             if len(thec) == 0:
-    #                 dh.debug("Missing " + el.text[ii])
-    #                 tll = ParsedText(self.textel, self.ctable)
-    #                 dh.debug(self.txt())
-    #                 dh.debug(tll.txt())
-    #             thec[0].deltanum = topcnt
-    #             topcnt += 1
-    #     for k in list(el):
-    #         topcnt = self.Get_DeltaNum(lns, k, topcnt=topcnt)
-    #         if (
-    #             k.get("sodipodi:role") == "line"
-    #             and isinstance(k, Tspan)
-    #             and isinstance(k.getparent(), TextElement)
-    #         ):
-    #             topcnt += 1  # top-level Tspans have an implicit CR
-    #         if k.tail is not None:
-    #             for ii in range(len(k.tail)):
-    #                 thec = [
-    #                     c
-    #                     for c in allcs
-    #                     if c.loc.el == k and c.loc.tt == "tail" and c.loc.ind == ii
-    #                 ]
-    #                 if len(thec) == 0:
-    #                     dh.idebug("\nMissing " + k.tail[ii])
-    #                     tll = ParsedText(self.textel, self.ctable)
-    #                     dh.idebug(self.txt())
-    #                     dh.idebug(tll.txt())
-    #                     quit()
-    #                 thec[0].deltanum = topcnt
-    #                 topcnt += 1
-    #     return topcnt
     
     # Traverse the tree to find where deltas need to be located relative to the top-level text
     def Get_DeltaNum(self):

@@ -363,7 +363,7 @@ def Get_Composed_Width(el, comp, nargout=1):
 
     if "%" in sc:  # relative width, get parent width
         cel = el
-        while sc != cel.cstyle.get(comp):
+        while sc != cel.cstyle.get(comp) and sc != cel.get(comp):
             cel = cel.getparent()
             # figure out ancestor where % is coming from
 
@@ -1388,6 +1388,21 @@ from inkex import load_svg
 def svg_from_file(fin):
     svg = load_svg(fin).getroot()
     return svg
+
+def el_from_string(strin):
+    prefix = '''
+    <svg
+       xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+       xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+       xmlns="http://www.w3.org/2000/svg"
+       xmlns:svg="http://www.w3.org/2000/svg"
+       xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+       xmlns:cc="http://creativecommons.org/ns#"
+       xmlns:dc="http://purl.org/dc/elements/1.1/">
+      '''
+    svgtxt = prefix + strin + '</svg>'
+    nsvg = svg_from_file(svgtxt)
+    return list(nsvg)[0]
 
 # Write to disk, removing any existing file
 def overwrite_svg(svg, fileout):

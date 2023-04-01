@@ -31,6 +31,7 @@ try:
         input_options = pickle.load(f)
     os.remove(aes)
     from autoexporter import orig_key
+    from autoexporter import dup_key
                 
     bfn       = input_options.inkscape_bfn
     sys.path += input_options.syspath
@@ -38,6 +39,7 @@ try:
     
     import dhelpers as dh
     import sys, webbrowser, urllib, pathlib
+    import inkex
 
     current_script_directory = os.path.dirname(os.path.abspath(__file__))
     sys.path += [os.path.join(current_script_directory,'packages')]
@@ -123,12 +125,59 @@ try:
         @app.route("/process", methods=["GET"])
         def process():
             param = request.args.get("param")
-            # svg_file = os.path.normpath(param).strip('file:\\');
-            # svg_file = re.sub("^file:\\\\", "", os.path.normpath(param))
             svg_file = file_uri_to_path(param)
             if svg_file is not None:
                 print('Opening'+str(svg_file))
-                subprocess.run([bfn, svg_file]);
+                
+                with OpenWithEncoding(svg_file) as f:
+                    file_content = f.read()
+                    if dup_key in file_content:
+                        global temp_dir
+                        deembedsmade = False
+                        while not(deembedsmade):
+                            deembeds = os.path.join(temp_dir, 'deembeds')
+                            deembedsmade = os.path.exists(deembeds)
+                            if not(deembedsmade):
+                                os.mkdir(deembeds)
+                                
+                        tsvg = os.path.join(deembeds,'tmp_'+str(len(os.listdir(deembeds)))+'.svg')
+                        svg = dh.svg_from_file(svg_file);
+                        
+                        for d in dh.descendants2(svg):
+                            if isinstance(d,inkex.TextElement) and d.text is not None and dup_key in d.text:
+                                dupid = d.text[len(dup_key+': '):]
+                                dup = dh.getElementById2(svg,dupid)
+                                g = d.getparent();
+                                d.delete2();
+                                dup.delete2();
+                                g.set('display',None) # office converts to att
+                                dh.ungroup(g);
+                                
+                        
+                        
+                        dh.overwrite_svg(svg,tsvg)
+                        subprocess.run([bfn, tsvg]);
+                    else:
+                        subprocess.run([bfn, svg_file]);
+                                
+                        
+                        # import shutil
+                        # shutil.copy2(converted_files[hashed], fileout)
+                        
+                        
+                        
+                        # import re
+                        # key = orig_key + r":\s*(.+?)<"
+                        # match = re.search(key, file_content);
+                        # if match:
+                        #     orig_file = match.group(1)
+                        #     if os.path.exists(orig_file):
+                        #         ev = os.path.abspath(orig_file)
+                
+                
+                
+                
+                
             return f"The parameter received is: {param}"
         
         @app.route('/check_for_refresh')

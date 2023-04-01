@@ -3,14 +3,14 @@
   <sodipodi:namedview units="in" showgrid="false" inkscape:document-rotation="0" inkscape:current-layer="layer1" inkscape:document-units="mm" inkscape:cy="-52.527932" inkscape:cx="1191.98" inkscape:zoom="0.49497475" inkscape:pageshadow="2" inkscape:pageopacity="0.0" borderopacity="1.0" bordercolor="#666666" pagecolor="#ffffff" id="base" inkscape:showpageshadow="2" inkscape:pagecheckerboard="0" inkscape:deskcolor="#d1d1d1" inkscape:window-width="1920" inkscape:window-height="1017" inkscape:window-x="-8" inkscape:window-y="-8" inkscape:window-maximized="1">
     </sodipodi:namedview>
   <metadata id="metadata23">
-    <rdf:RDF id="RDF135">
-      <cc:Work rdf:about="" id="Work847">
-        <dc:format id="format764">image/svg+xml</dc:format>
-        <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage" id="type255"/>
+    <rdf:RDF id="RDF495">
+      <cc:Work rdf:about="" id="Work450">
+        <dc:format id="format651">image/svg+xml</dc:format>
+        <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage" id="type788"/>
       </cc:Work>
     </rdf:RDF>
   </metadata>
   <g id="layer1" inkscape:groupmode="layer" inkscape:label="Layer 1">
-    <text xml:space="preserve" style="font-size:100.0;line-height:1.25;font-family:Arial;-inkscape-font-specification:'Arial, Normal';letter-spacing:0.0;word-spacing:0px;opacity:1.0" x="209.35099417959157" y="426.8585203377856" id="text1676" transform="matrix(0.180205 0 0 0.180205 345.067 -28.702)"><tspan id="tspan1674" x="209.35099417959157" y="426.8585203377856" style="font-size:100.0">hello</tspan></text>
-    </g>
-<text id="text788" style="display:none">si_ae_original_filename: G:\My Drive\Storage\Github\Academic-Inkscape\tests\data\svg\Multipage_nonuniform.svg</text></svg>
+    <text xml:space="preserve" style="font-size:100.000;line-height:1.25;font-family:Arial;-inkscape-font-specification:'Arial, Normal';letter-spacing:0.0;word-spacing:0px;opacity:1.0" x="209.35099417959157" y="426.8585203377856" id="text1676" transform="matrix(0.180205 0 0 0.180205 345.067 -28.702)"><tspan id="tspan1674" x="209.35099417959157" y="426.8585203377856" style="font-size:100.000">hello</tspan></text>
+    <g id="g445" display="none"><text xml:space="preserve" style="font-size:148.615px;line-height:1.25;font-family:Arial;-inkscape-font-specification:'Arial, Normal';letter-spacing:0px;word-spacing:0px" x="311.12698" y="634.37579" transform="matrix(0.121256 0 0 0.121256 345.067 -28.702)" id="text762"><tspan id="tspan3" x="311.12698" y="634.37579">hello</tspan></text><text id="text721" display="none">si_ae_original_duplicate: text1676</text></g></g>
+<text id="text31" style="display:none">si_ae_original_filename: G:\My Drive\Storage\Github\Academic-Inkscape\tests\data\svg\Multipage_nonuniform.svg</text></svg>

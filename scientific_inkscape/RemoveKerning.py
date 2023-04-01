@@ -89,7 +89,7 @@ def remove_kerning(
 
 
 def ellls(els):
-    return [el.parsed_text for el in els]
+    return [TextParser.get_parsed_text(el) for el in els]
 
 def Final_Cleanup(els):
     for el in els:
