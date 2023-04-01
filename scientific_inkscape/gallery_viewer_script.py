@@ -147,10 +147,12 @@ try:
                             if isinstance(d,inkex.TextElement) and d.text is not None and dup_key in d.text:
                                 dupid = d.text[len(dup_key+': '):]
                                 dup = dh.getElementById2(svg,dupid)
+                                if dup is not None:
+                                    dup.delete2();
                                 g = d.getparent();
                                 d.delete2();
-                                dup.delete2();
                                 g.set('display',None) # office converts to att
+                                dh.Set_Style_Comp(g, 'display', None)
                                 dh.ungroup(g);
                                 
                         

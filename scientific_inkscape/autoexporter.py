@@ -518,10 +518,9 @@ class AutoExporter(inkex.EffectExtension):
                 
                 pgs = osvg.cdocsize.pgs
                 haspgs = osvg.cdocsize.inkscapehaspgs 
-                if (haspgs or input_options.testmode) and len(pgs)>1:
+                if (haspgs or input_options.testmode) and len(pgs)>0:
                     bbs = dh.BB2(type('DummyClass', (), {'svg': osvg}));  
                     dl = input_options.duplicatelabels
-                    # dh.idebug(dl)
                     
                     outputs = [];
                     pgiis = range(len(pgs)) if not(input_options.testmode) else [input_options.testpage-1]
@@ -529,8 +528,6 @@ class AutoExporter(inkex.EffectExtension):
                         # match the viewbox to each page and delete them
                         psvg = get_svg(fileout);  # plain SVG has no pages
                         pgs2 = psvg.cdocsize.pgs
-                        
-                        # dh.idebug('Page '+str(ii))
                                                 
                         self.Change_Viewbox_To_Page(psvg, pgs[ii])
                         # Only need to delete other Pages in testmode since plain SVGs have none
@@ -541,22 +538,19 @@ class AutoExporter(inkex.EffectExtension):
                         # Delete content not on current page
                         pgbb = dh.bbox(psvg.cdocsize.effvb)
                         for k,v in bbs.items():
-                            # dh.idebug((k,v,pgbb.sbb))
-                            
                             removeme = not(dh.bbox(v).intersect(pgbb))
                             if k in dl:
                                 if dl[k] in bbs: # remove duplicate label if removing original
                                     removeme = not(dh.bbox(bbs[dl[k]]).intersect(pgbb))
                                 else:
                                     removeme = False
-                                
                             if removeme:
                                 el = psvg.getElementById2(k);
                                 if el is not None:
                                     el.delete2();
                           
                         pnum = str(ii+1);  
-                        addendum = '_page_'+pnum if not(input_options.testmode) else ''
+                        addendum = '_page_'+pnum if not(input_options.testmode or len(pgs)==1) else ''
                         outparts = fileout.split('.')
                         pgout = '.'.join(outparts[:-1])+addendum+'.'+outparts[-1]
                         dh.overwrite_svg(psvg,pgout)
