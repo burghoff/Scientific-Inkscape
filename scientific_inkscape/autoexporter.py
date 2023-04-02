@@ -788,6 +788,11 @@ class AutoExporter(inkex.EffectExtension):
                     g.append(te)  # Remember the original ID
                     excludetxtids.append(te.get_id2())
                     input_options.duplicatelabels[te.get_id2()] = el.get_id2()
+                    
+                    # Make sure nested tspans have fill specified (STP bug)
+                    for d in el.descendants2[1:]:
+                        if 'fill' in d.cspecified_style and d.cspecified_style['fill']!='#000000':
+                            dh.Set_Style_Comp(d, 'fill', d.cspecified_style['fill'])
         
         dh.flush_stylesheet_entries(svg) # since we ungrouped
         tmp = tempbase+"_mod.svg"
