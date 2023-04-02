@@ -816,6 +816,7 @@ class AutoExporter(inkex.EffectExtension):
                     stpels = vd 
                 elif len(stps)>0:
                     stpels = [el for el in vd if el.get_id2() in stps]
+                stpels = [el for el in stpels if el.get_id2() not in raster_ids]
                 pels = self.Stroke_to_Path_Fixes(stpels)        
                 dh.overwrite_svg(svg, cfile)
 
