@@ -38,11 +38,27 @@ def mprint(*args,**kwargs):
 
 # Get svg files in directory
 def get_files(dirin):
+    import re
+    from datetime import datetime
+    def ends_with_date(s):
+        pattern = r'\.(\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.\d{1,6})\.svg$'
+        match = re.search(pattern, s)
+        if match:
+            date_string = match.group(1)
+            custom_format = "%Y_%m_%d_%H_%M_%S.%f"
+            try:
+                datetime.strptime(date_string, custom_format)
+                return True
+            except ValueError:
+                return False
+        return False
+    
+    
     fs = []
     try:
         for f in os.scandir(dirin):
             excludes = ['_portable.svg','_plain.svg']
-            if f.name[-4:] == ".svg" and all([not(f.name.endswith(ex)) for ex in excludes]):
+            if f.name.endswith(".svg") and all([not(f.name.endswith(ex)) for ex in excludes]) and not(ends_with_date(f.name)):
                 fs.append(os.path.join(os.path.abspath(dirin), f.name))
         return fs
     except:# (FileNotFoundError, OSError):

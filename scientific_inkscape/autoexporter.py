@@ -543,7 +543,7 @@ class AutoExporter(inkex.EffectExtension):
                                 if dl[k] in bbs: # remove duplicate label if removing original
                                     removeme = not(dh.bbox(bbs[dl[k]]).intersect(pgbb))
                                 else:
-                                    removeme = False
+                                    removeme = True
                             if removeme:
                                 el = psvg.getElementById2(k);
                                 if el is not None:
@@ -776,7 +776,7 @@ class AutoExporter(inkex.EffectExtension):
                 self.SubSuper_Fix(el)
                 
                 # Preserve duplicate of text to be converted to paths
-                if input_options.texttopath:
+                if input_options.texttopath and el.get('display')!='none':
                     d = el.duplicate2();
                     excludetxtids.append(d.get_id2())
                     g = dh.group([d])

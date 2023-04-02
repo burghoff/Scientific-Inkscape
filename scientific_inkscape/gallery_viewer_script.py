@@ -153,6 +153,7 @@ try:
                                 d.delete2();
                                 g.set('display',None) # office converts to att
                                 dh.Set_Style_Comp(g, 'display', None)
+                                list(g)[0].set_id(dupid)
                                 dh.ungroup(g);
                                 
                         
