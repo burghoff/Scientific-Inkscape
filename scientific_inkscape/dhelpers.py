@@ -2454,7 +2454,7 @@ def vto_xpath(sty):
 
 def Version_Check(caller):
     siv = "v1.2.29"  # Scientific Inkscape version
-    maxsupport = "1.2.0"
+    maxsupport = "1.3.1"
     minsupport = "1.1.0"
 
     logname = "Log.txt"
