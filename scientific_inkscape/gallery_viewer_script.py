@@ -185,7 +185,8 @@ try:
         
         @app.route('/check_for_refresh')
         def check_for_refresh():
-            global refreshapp, lastupdate
+            global refreshapp, lastupdate, openedgallery
+            openedgallery = True
             if refreshapp:
                 refreshapp = False
                 lastupdate = time.time();
@@ -591,6 +592,7 @@ try:
             global myapp, refreshapp
             if myapp is None:
                 myapp = Make_Flask_App();
+                time.sleep(1); # wait to see if check_for_refresh called
                 global openedgallery
                 if not(openedgallery):
                     webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
