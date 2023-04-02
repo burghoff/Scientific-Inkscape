@@ -40,7 +40,6 @@ from inkex import (
     Path,
     Line,
     PathElement,
-    command,
     SvgDocumentElement,
     Group,
     Polyline,
@@ -505,10 +504,6 @@ def implicitpx(strin):
     else:
         return inkex.units.convert_unit(strin.lower().strip(), "px")
 
-
-#    return inkex.units.convert_unit(str.lower().strip(), 'px', default='px') # fails pre-1.1, default is px anyway
-
-
 # Get points of a path, element, or rectangle in the global coordinate system
 def get_points(el, irange=None):
     pth = Path(get_path2(el)).to_absolute()
@@ -574,14 +569,6 @@ def unlink2(el):
             return el
     else:
         return el
-
-# Unlinks a clone, then searches the descendants of the clone to unlink any
-# other clones that are found.
-# def recursive_unlink2(el):
-#     el = unlink2(el)
-#     for d in el.descendants2:
-#         if isinstance(el, (Use)):
-#             recursive_unlink2(el)
 
 unungroupable = (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment)
 def ungroup(groupel):
@@ -1057,68 +1044,8 @@ BaseElement.get_id2 = get_id2_func
 # Correctly calculates path for rectangles and ellipses
 # Gets Path object
 def get_path2(el):
-    # class MiniRect:  # mostly from inkex.elements._polygons
-    #     def __init__(self, el):
-    #         self.left = implicitpx(el.get("x", "0"))
-    #         self.top = implicitpx(el.get("y", "0"))
-    #         self.width = implicitpx(el.get("width", "0"))
-    #         self.height = implicitpx(el.get("height", "0"))
-    #         self.rx = implicitpx(el.get("rx", el.get("ry", "0")))
-    #         self.ry = implicitpx(el.get("ry", el.get("rx", "0")))
-    #         self.right = self.left + self.width
-    #         self.bottom = self.top + self.height
-
-    #     def get_path(self):
-    #         """Calculate the path as the box around the rect"""
-    #         if self.rx:
-    #             rx, ry = self.rx, self.ry  # pylint: disable=invalid-name
-    #             return (
-    #                 "M {1},{0.top}"
-    #                 "L {2},{0.top}    A {0.rx},{0.ry} 0 0 1 {0.right},{3}"
-    #                 "L {0.right},{4}  A {0.rx},{0.ry} 0 0 1 {2},{0.bottom}"
-    #                 "L {1},{0.bottom} A {0.rx},{0.ry} 0 0 1 {0.left},{4}"
-    #                 "L {0.left},{3}   A {0.rx},{0.ry} 0 0 1 {1},{0.top} z".format(
-    #                     self,
-    #                     self.left + rx,
-    #                     self.right - rx,
-    #                     self.top + ry,
-    #                     self.bottom - ry,
-    #                 )
-    #             )
-    #         return "M {0.left},{0.top} h {0.width} v {0.height} h {1} z".format(
-    #             self, -self.width
-    #         )
-
-    # class MiniEllipse:  # mostly from inkex.elements._polygons
-    #     def __init__(self, el):
-    #         self.cx = implicitpx(el.get("cx", "0"))
-    #         self.cy = implicitpx(el.get("cy", "0"))
-    #         if isinstance(el, (inkex.Ellipse)):  # ellipse
-    #             self.rx = implicitpx(el.get("rx", "0"))
-    #             self.ry = implicitpx(el.get("ry", "0"))
-    #         else:  # circle
-    #             self.rx = implicitpx(el.get("r", "0"))
-    #             self.ry = implicitpx(el.get("r", "0"))
-
-    #     def get_path(self):
-    #         return (
-    #             "M {cx},{y} "
-    #             "a {rx},{ry} 0 1 0 {rx}, {ry} "
-    #             "a {rx},{ry} 0 0 0 -{rx}, -{ry} z"
-    #         ).format(cx=self.cx, y=self.cy - self.ry, rx=self.rx, ry=self.ry)
-
-    # class MiniLine:
-    #     def __init__(self,el):
-    #         self.x1 = implicitpx(el.get("x1", "0"))
-    #         self.y1 = implicitpx(el.get("y1", "0"))
-    #         self.x2 = implicitpx(el.get("x2", "0"))
-    #         self.y2 = implicitpx(el.get("y2", "0"))
-    #     def get_path(self):
-    #         return Path(f"M{self.x1},{self.y1} L{self.x2},{self.y2}")
-
     # mostly from inkex.elements._polygons
     if isinstance(el, (inkex.Rectangle)):
-        # pth = Path(MiniRect(el).get_path())
         left   = implicitpx(el.get("x", "0"))
         top    = implicitpx(el.get("y", "0"))
         width  = implicitpx(el.get("width", "0"))
@@ -1144,7 +1071,6 @@ def get_path2(el):
         )
     
     elif isinstance(el, (inkex.Circle, inkex.Ellipse)):
-        # pth = Path(MiniEllipse(el).get_path())
         cx = implicitpx(el.get("cx", "0"))
         cy = implicitpx(el.get("cy", "0"))
         if isinstance(el, (inkex.Ellipse)):  # ellipse
@@ -1310,9 +1236,7 @@ def BB2(slf,els=None,forceupdate=False):
             tname = os.path.abspath(temp.name);
             overwrite_svg(slf.svg, tname)
             ret = Get_Bounding_Boxes(filename=tname, svg=slf.svg)
-                
-        # ret = Get_Bounding_Boxes(slf, forceupdate)
-        # dh.idebug('fallback')
+
     return ret
 
 def Check_BB2(slf):
@@ -1356,17 +1280,10 @@ def Get_Bounding_Boxes(filename, inkscape_binary=None,extra_args=[], svg=None):
     if svg is None:
         # If SVG not supplied, load from file
         svg = svg_from_file(filename);
-    # vb = svg.get_viewbox2();
-    # Viewbox function now automatically corrects non-uniform scale
-    # pxperuu = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
-    
-    # idebug(bbs)
     
     ds = svg.cdocsize;
     for k in bbs:
         bbs[k] = ds.pxtouu(bbs[k])
-        # bbs[k] = [bbs[k][0]/svg.cdocsize.uuw+vb[0],bbs[k][1]/svg.cdocsize.uuh+vb[1],
-        #           bbs[k][2]/svg.cdocsize.uuw,      bbs[k][3]/svg.cdocsize.uuh]  
     return bbs
 
 
@@ -1510,18 +1427,6 @@ def toc():
     global lasttic
     idebug(time.time()-lasttic)
 
-# def get_parent_svg(el):
-#     if not (hasattr(el, "svg")):
-#         # slightly faster than el.root
-#         myn = el
-#         while myn.getparent() is not None:
-#             myn = myn.getparent()
-#         if isinstance(myn, SvgDocumentElement):
-#             el.svg = myn
-#         else:
-#             el.svg = None
-#     return el.svg
-
 # A cached root property
 def get_croot(el):
     if not (hasattr(el, "_croot")):
@@ -1533,12 +1438,8 @@ def get_croot(el):
         else:
             el._croot = None
     return el._croot
-
-
 def set_croot(el, ri):
     el._croot = ri
-
-
 BaseElement.croot = property(get_croot, set_croot)
 
 # Modified from Inkex's get function
@@ -1755,9 +1656,6 @@ def global_transform(el, trnsfrm, irange=None, trange=None,preserveStroke=True):
                 el, "stroke-dasharray", str([sdv / sf for sdv in sd]).strip("[").strip("]")
             )
             # fix dash
-
-
-
 
 # Delete and prune empty ancestor groups
 def deleteup(el):
@@ -2064,43 +1962,6 @@ def document_size(svg):
             return align, meetOrSlice
         align, meetOrSlice =  parse_preserve_aspect_ratio(svg.get('preserveAspectRatio'))
         
-        # Version of code that pre-converts percentages. Delete 3.1.23
-        # Convert percentage width/height to pixels
-        # if wu=='%' or hu=='%':
-        #     if align!='none':
-        #         xf = wn/100 if wu=='%' else inkex.units.convert_unit(str(wn)+' '+wu, 'px')/vb[2]
-        #         yf = hn/100 if hu=='%' else inkex.units.convert_unit(str(hn)+' '+hu, 'px')/vb[3]
-        #         f = min(xf,yf) if meetOrSlice=='meet' else max(xf,yf)
-        #         xmf = {"xMin" : 0, "xMid": 0.5, "xMax":1}[align[0:4]]
-        #         ymf = {"YMin" : 0, "YMid": 0.5, "YMax":1}[align[4:]]
-        #         if wu=='%':
-        #             wn, wu = vb[2], 'px'
-        #             vb[0],vb[2] = vb[0]+vb[2]*(1-xf/f)*xmf, vb[2]/f
-        #         if hu=='%':
-        #             hn, hu = vb[3], 'px'
-        #             vb[1],vb[3] = vb[1]+vb[3]*(1-yf/f)*ymf, vb[3]/f
-        #     else:
-        #         if wu=='%':
-        #             wn, wu, vb[2] = vb[2], 'px', vb[2]/(wn/100)
-        #         if hu=='%':
-        #             hn, hu, vb[3] = vb[3], 'px', vb[3]/(hn/100)
-        # wpx = inkex.units.convert_unit(str(wn)+' '+wu, 'px')
-        # hpx = inkex.units.convert_unit(str(hn)+' '+hu, 'px')
-        # # # When a document has non-uniform scaling, the viewbox is typically stretched to make it uniform
-        # if align!='none':
-        #     pxperuu_x = wpx / vb[2]
-        #     pxperuu_y = hpx / vb[3]
-        #     pxperuu = min(pxperuu_x,pxperuu_y) if meetOrSlice=='meet' else max(pxperuu_x,pxperuu_y)
-        #     xmf = {"xMin" : 0, "xMid": 0.5, "xMax":1}[align[0:4]]
-        #     ymf = {"YMin" : 0, "YMid": 0.5, "YMax":1}[align[4:]]
-        #     effvb = [vb[0]+vb[2]*(1-pxperuu_x/pxperuu)*xmf,
-        #              vb[1]+vb[3]*(1-pxperuu_y/pxperuu)*ymf,
-        #              vb[2]*pxperuu_x/pxperuu,
-        #              vb[3]*pxperuu_y/pxperuu]
-        # else:
-        #     # atypical case of no stretching
-        #     effvb = [vb[0],vb[1],vb[2],vb[3]]
-            
         
         xf = inkex.units.convert_unit(str(wn)+' '+wu, 'px')/vb[2] if wu!='%' else wn/100 # width  of uu in px pre-stretch
         yf = inkex.units.convert_unit(str(hn)+' '+hu, 'px')/vb[3] if hu!='%' else hn/100 # height of uu in px pre-stretch
@@ -2199,70 +2060,6 @@ def standardize_viewbox(svg):
         pg.set('width', str(newbbuu[2]))
         pg.set('height',str(newbbuu[3]))
 inkex.SvgDocumentElement.standardize_viewbox = standardize_viewbox
-
-# Returns effective viewbox of all documents
-# def get_viewbox2_fcn(svg):
-#     # vb = svg.get_viewbox()
-#     # if vb == [0, 0, 0, 0]: 
-#     #     vb = [0, 0, implicitpx(svg.get("width")), implicitpx(svg.get("height"))]
-        
-#     # # When a document has non-uniform scaling, Inkscape automatically stretches
-#     # # the viewbox to make it uniform
-#     # pxperuu_x = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
-#     # pxperuu_y = float(inkex.units.convert_unit(svg.get('height'), 'px')  or vb[3]) / float(vb[3])
-#     # pxperuu = min(pxperuu_x,pxperuu_y)
-#     # effvb = [vb[0]+vb[2]/2*(1-pxperuu_x/pxperuu),
-#     #          vb[1]+vb[3]/2*(1-pxperuu_y/pxperuu),
-#     #          vb[2]*pxperuu_x/pxperuu,
-#     #          vb[3]*pxperuu_y/pxperuu]
-#     # return effvb
-#     return svg.cdocsize.effvb
-# inkex.SvgDocumentElement.get_viewbox2 = get_viewbox2_fcn
-
-# Conversion between pixels and user units for a document
-# def cpxperuu_fcn(svg):
-#     # if not(hasattr(svg, "_cpxperuu")):
-#     #     vb = svg.get_viewbox2();
-#     #     svg._cpxperuu = float(inkex.units.convert_unit(svg.get('width' ), 'px')  or vb[2]) / float(vb[2])
-#     #     # vb function ensures uniform scaling
-#     # return svg._cpxperuu
-#     return svg.cdocsize.uupx
-# inkex.SvgDocumentElement.cpxperuu = property(cpxperuu_fcn)
-
-# The original unittouu function did not properly convert to uu when a scale is applied. 
-# def unittouu2(svg,x):
-#     return inkex.units.convert_unit(x,'px')/svg.cpxperuu
-# inkex.SvgDocumentElement.unittouu2 = unittouu2
-
-# Gets the absolute size of a uu in pixels
-# Also returns the unit the document width & height are specified in
-# def get_uusz(svg):
-#     # if not (hasattr(svg, "_ccuuszpx")):
-#     #     vb = svg.get_viewbox2()
-#     #     wunit = inkex.units.parse_unit(svg.get('width'))
-#     #     if wunit is not None:
-#     #         wunit = wunit[1]                  # document width unit
-#     #     else:
-#     #         wunit = 'px'
-#     #     hunit = inkex.units.parse_unit(svg.get('height'))
-#     #     if hunit is not None:
-#     #         hunit = hunit[1]                  # document height unit
-#     #     else:
-#     #         hunit = 'px'
-#     #     uuw = inkex.units.convert_unit(svg.get('width'),'px')/vb[2]    # uu width in px
-#     #     uuh = inkex.units.convert_unit(svg.get('height'),'px')/vb[3]   # uu height in px
-#     #     svg._ccuuszpx = (uuw,uuh,wunit,hunit)
-#     # return svg._ccuuszpx
-#     return (svg.cdocsize.uuw,svg.cdocsize.uuh,svg.cdocsize.wunit,svg.cdocsize.hunit)
-# inkex.SvgDocumentElement.uusz = property(get_uusz)
-
-# Sets the viewbox of a document, updating its width and height correspondingly
-# def set_viewbox_fcn(svg,newvb):
-#     uuw,uuh,wunit,hunit = svg.cdocsize.uuw,svg.cdocsize.uuh,svg.cdocsize.wunit,svg.cdocsize.hunit
-#     svg.set('width', str(inkex.units.convert_unit(str(newvb[2]*uuw)+'px', wunit))+wunit)
-#     svg.set('height',str(inkex.units.convert_unit(str(newvb[3]*uuh)+'px', hunit))+hunit)
-#     svg.set('viewBox',' '.join([str(v) for v in newvb]))
-# inkex.SvgDocumentElement.set_viewbox = set_viewbox_fcn
 
 
 # Override Transform's __matmul__ to give old versions __matmul__

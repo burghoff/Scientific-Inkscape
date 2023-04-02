@@ -551,7 +551,7 @@ class ParsedText:
                     newyv = [v+dy for v in ln.y]
                     if ln.continuex or ln.continuey:
                         if ln.cs[0].loc.tt=='tail': # wrap in a trivial Tspan so we can set x and y
-                            ln.cs[0].add_style({'baseline-shift':0},setdefault=False)
+                            ln.cs[0].add_style({'baseline-shift':'0%'},setdefault=False)
                         ln.xsrc = ln.cs[0].loc.el
                         ln.ysrc = ln.cs[0].loc.el
                         ln.continuex = False

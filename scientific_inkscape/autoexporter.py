@@ -1147,8 +1147,7 @@ class AutoExporter(inkex.EffectExtension):
             
     # Replace super and sub with numerical values
     # Collapse Tspans with 0% baseline-shift, which Office displays incorrectly    
-    def SubSuper_Fix(self,el):       
-        tosplit = []
+    def SubSuper_Fix(self,el):
         for d in reversed(el.descendants2): # all Tspan sizes
             bs = d.ccascaded_style.get('baseline-shift')
             if bs is not None and bs.replace(' ','')=='0%':
