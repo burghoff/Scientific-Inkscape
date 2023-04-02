@@ -100,7 +100,7 @@ class TextGhoster(inkex.EffectExtension):
             if len(fss) > 0:
                 fs = max(fss)
             else:
-                fs = dh.implicitpx('8pt')
+                fs = dh.ipx('8pt')
             border = fs * EXTENT;# / (self.svg.cscale)
 
             gb.set("stdDeviation", border * STDDEV)

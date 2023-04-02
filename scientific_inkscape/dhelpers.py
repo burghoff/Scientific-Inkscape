@@ -46,7 +46,7 @@ from inkex import (
     ShapeElement,
     BaseElement,
 )
-from applytransform_mod import ApplyTransform
+from applytransform_mod import fuseTransform
 import lxml, math, re, sys, os
 from Style0 import Style0
 
@@ -301,7 +301,7 @@ def set_ccascaded_style(el, si):
         delattr(el, "_ccascaded_style")
 BaseElement.ccascaded_style = property(get_cascaded_style, set_ccascaded_style)
 
-# Ccached style attribute that invalidates the cached cascaded / specified
+# Cached style attribute that invalidates the cached cascaded / specified
 # style whenever the style is changed. Always use this when setting styles.
 def get_cstyle(el):
     if not (hasattr(el, "_cstyle")):
@@ -376,7 +376,7 @@ def Get_Composed_Width(el, comp, nargout=1):
         if comp == "font-size":
             sc = {"small": "10px", "medium": "12px", "large": "14px"}.get(sc, sc)
 
-        sw = implicitpx(sc)
+        sw = ipx(sc)
         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))  # scale factor
         if nargout == 4:
             return sw * sf, sf, ct, ang
@@ -413,7 +413,7 @@ def Get_Composed_List(el, comp, nargout=1):
     elif sc is not None:
         sw = sc.split(",")
         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))
-        sw = [implicitpx(x) * sf for x in sw]
+        sw = [ipx(x) * sf for x in sw]
         if nargout == 1:
             return sw
         else:
@@ -494,7 +494,8 @@ def urender(v, u):
         return None
 
 
-def implicitpx(strin):
+def ipx(strin):
+    # Implicit pixel function
     # For many properties, a size specification of '1px' actually means '1uu'
     # Even if the size explicitly says '1mm' and the user units are mm, this will be
     # first converted to px and then interpreted to mean user units. (So '1mm' would
@@ -1046,12 +1047,12 @@ BaseElement.get_id2 = get_id2_func
 def get_path2(el):
     # mostly from inkex.elements._polygons
     if isinstance(el, (inkex.Rectangle)):
-        left   = implicitpx(el.get("x", "0"))
-        top    = implicitpx(el.get("y", "0"))
-        width  = implicitpx(el.get("width", "0"))
-        height = implicitpx(el.get("height", "0"))
-        rx = implicitpx(el.get("rx", el.get("ry", "0")))
-        ry = implicitpx(el.get("ry", el.get("rx", "0")))
+        left   = ipx(el.get("x", "0"))
+        top    = ipx(el.get("y", "0"))
+        width  = ipx(el.get("width", "0"))
+        height = ipx(el.get("height", "0"))
+        rx = ipx(el.get("rx", el.get("ry", "0")))
+        ry = ipx(el.get("ry", el.get("rx", "0")))
         right = left + width
         bottom = top + height
         if rx:
@@ -1071,14 +1072,14 @@ def get_path2(el):
         )
     
     elif isinstance(el, (inkex.Circle, inkex.Ellipse)):
-        cx = implicitpx(el.get("cx", "0"))
-        cy = implicitpx(el.get("cy", "0"))
+        cx = ipx(el.get("cx", "0"))
+        cy = ipx(el.get("cy", "0"))
         if isinstance(el, (inkex.Ellipse)):  # ellipse
-            rx = implicitpx(el.get("rx", "0"))
-            ry = implicitpx(el.get("ry", "0"))
+            rx = ipx(el.get("rx", "0"))
+            ry = ipx(el.get("ry", "0"))
         else:  # circle
-            rx = implicitpx(el.get("r", "0"))
-            ry = implicitpx(el.get("r", "0"))
+            rx = ipx(el.get("r", "0"))
+            ry = ipx(el.get("r", "0"))
         return Path((
             "M {cx},{y} "
             "a {rx},{ry} 0 1 0 {rx}, {ry} "
@@ -1086,10 +1087,10 @@ def get_path2(el):
         ).format(cx=cx, y=cy-ry, rx=rx, ry=ry))
         
     elif isinstance(el, Line): # updated in v1.2
-        x1 = implicitpx(el.get("x1", "0"))
-        y1 = implicitpx(el.get("y1", "0"))
-        x2 = implicitpx(el.get("x2", "0"))
-        y2 = implicitpx(el.get("y2", "0"))
+        x1 = ipx(el.get("x1", "0"))
+        y1 = ipx(el.get("y1", "0"))
+        x2 = ipx(el.get("x2", "0"))
+        y2 = ipx(el.get("y2", "0"))
         pth = Path(f"M{x1},{y1} L{x2},{y2}")
     else:
         pth = el.get_path()
@@ -1131,7 +1132,7 @@ def bounding_box2(el,dotransform=True,includestroke=True):
                 if len(pth)>0:
                     bb = Path(pth).to_absolute().bounding_box()
                     
-                    sw = implicitpx(el.cspecified_style.get('stroke-width','0px'))
+                    sw = ipx(el.cspecified_style.get('stroke-width','0px'))
                     if el.cspecified_style.get('stroke') is None or not(includestroke):
                         sw = 0;
                     ret = bbox([bb.left-sw/2, bb.top-sw/2,
@@ -1143,7 +1144,7 @@ def bounding_box2(el,dotransform=True,includestroke=True):
                     if not(dbb.isnull):
                         ret = ret.union(dbb.transform(d.ctransform))
             elif isinstance(el,(inkex.Image)):
-                ret = bbox([implicitpx(el.get(v, "0")) for v in ['x',"y","width","height"]]);
+                ret = bbox([ipx(el.get(v, "0")) for v in ['x',"y","width","height"]]);
             elif isinstance(el,(inkex.Use,)):
                 lel = el.get_link('xlink:href');
                 
@@ -1345,14 +1346,15 @@ BaseElement.ancestors2 = get_ancestors
 def get_link_fcn(el,typestr,svg=None):
     if svg is None:
         svg = el.croot   # need to specify svg for Styles but not BaseElements
-    if el.get(typestr) is not None:
+    tv = el.get(typestr);
+    if tv is not None:
         if typestr=='xlink:href':
-            urlid = el.get(typestr)[1:]
+            urlel = getElementById2(svg, tv[1:])
+        elif tv.startswith('url'):
+            urlel = getElementById2(svg, tv[5:-1])
         else:
-            urlid = el.get(typestr)[5:-1]
-        urlel = getElementById2(svg, urlid)
-        if urlel is not None:
-            return urlel
+            urlel = None
+        return urlel
     return None
 BaseElement.get_link = get_link_fcn
 Style0.get_link      = get_link_fcn
@@ -1643,7 +1645,7 @@ def global_transform(el, trnsfrm, irange=None, trange=None,preserveStroke=True):
     sd = Get_Composed_List(el, "stroke-dasharray")
 
     el.ctransform = newtr  # Add the new transform
-    ApplyTransform().recursiveFuseTransform(el, irange=irange, trange=trange)
+    fuseTransform(el, irange=irange, trange=trange)
 
     if preserveStroke:
         if sw is not None:
@@ -1739,10 +1741,7 @@ def combine_paths(els, mergeii=0):
 # Alpha is its effective alpha including opacity
 # Note to self: inkex.Color inherits from list
 def get_strokefill(el):
-    # if styin is None:
     sty = el.cspecified_style
-    # else:
-    #     sty = styin
     strk = sty.get("stroke", None)
     fill = sty.get("fill", None)
     op = float(sty.get("opacity", 1.0))
@@ -1936,7 +1935,7 @@ def document_size(svg):
         hstr = svg.get("height")
         
         if rvb == [0, 0, 0, 0]: 
-            vb = [0, 0, implicitpx(wstr), implicitpx(hstr)]
+            vb = [0, 0, ipx(wstr), ipx(hstr)]
         else:
             vb = [float(v) for v in rvb]  # just in case
             
@@ -1988,8 +1987,8 @@ def document_size(svg):
         nvs = [el for el in list(svg) if isinstance(el,inkex.NamedView)]
         pgs = [el for nv in nvs for el in list(nv) if el.tag==inkex.addNS('page','inkscape')]
         for pg in pgs:
-            pg.bbuu = [implicitpx(pg.get('x')),    implicitpx(pg.get('y')),
-                       implicitpx(pg.get('width')),implicitpx(pg.get('height'))]     
+            pg.bbuu = [ipx(pg.get('x')),    ipx(pg.get('y')),
+                       ipx(pg.get('width')),ipx(pg.get('height'))]     
             pg.bbpx = [pg.bbuu[0]*xf,pg.bbuu[1]*yf,pg.bbuu[2]*xf,pg.bbuu[3]*yf]                      
                       
         class DocSize:

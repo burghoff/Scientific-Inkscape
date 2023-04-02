@@ -47,7 +47,7 @@ sys.path.append(
 )  # make sure my directory is on the path
 import dhelpers as dh
 
-from applytransform_mod import ApplyTransform
+from applytransform_mod import fuseTransform
 import math
 
 badels = (
@@ -300,7 +300,7 @@ class Homogenizer(inkex.EffectExtension):
 
         if self.options.fusetransforms:
             for el in sela:
-                ApplyTransform().recursiveFuseTransform(el)
+                fuseTransform(el)
 
         if dispprofile:
             pr.disable()

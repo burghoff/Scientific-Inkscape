@@ -1202,7 +1202,7 @@ class AutoExporter(inkex.EffectExtension):
             fs = d.ccascaded_style.get('font-size')
             fs = {"small": "10px", "medium": "12px", "large": "14px"}.get(fs, fs)
             if fs is not None and '%' not in fs:
-                szs.append(dh.implicitpx(fs))
+                szs.append(dh.ipx(fs))
         if len(szs)==0:
             maxsz = dh.default_style_atts['font-size']
             maxsz = {"small": 10, "medium": 12, "large": 14}.get(maxsz, maxsz)
@@ -1235,9 +1235,9 @@ class AutoExporter(inkex.EffectExtension):
                     othv = dh.default_style_atts[oth]
                 if othv is not None:
                     if ',' not in othv:
-                        dh.Set_Style_Comp(d, oth, str(dh.implicitpx(othv)*s))
+                        dh.Set_Style_Comp(d, oth, str(dh.ipx(othv)*s))
                     else:
-                        dh.Set_Style_Comp(d, oth, ','.join([str(dh.implicitpx(v)*s) for v in othv.split(',')]))
+                        dh.Set_Style_Comp(d, oth, ','.join([str(dh.ipx(v)*s) for v in othv.split(',')]))
                 
             shape = d.ccascaded_style.get_link('shape-inside',svg);
             if shape is not None:
@@ -1307,8 +1307,8 @@ class AutoExporter(inkex.EffectExtension):
         dh.replace_element(el, newel)
         newel.set('x',0); myx=0;
         newel.set('y',0); myy=0;
-        newel.set('width',1);  myw = dh.implicitpx(newel.get("width"));
-        newel.set('height',1); myh = dh.implicitpx(newel.get("height"));
+        newel.set('width',1);  myw = dh.ipx(newel.get("width"));
+        newel.set('height',1); myh = dh.ipx(newel.get("height"));
         newel.set('xlink:href',el.get('xlink:href'))
         
         sty = ''
@@ -1381,8 +1381,8 @@ class AutoExporter(inkex.EffectExtension):
             # Has Pages
             # pgvbs = []
             # for pg in pgs:
-            #     pgbb = [dh.implicitpx(pg.get('x')),    dh.implicitpx(pg.get('y')),
-            #             dh.implicitpx(pg.get('width')),dh.implicitpx(pg.get('height'))]
+            #     pgbb = [dh.ipx(pg.get('x')),    dh.ipx(pg.get('y')),
+            #             dh.ipx(pg.get('width')),dh.ipx(pg.get('height'))]
             #     pgbbpx = svg.cdocsize.uutopx(pgbb);
             #     newbb  = svg.cdocsize.pxtouu([pgbbpx[0]-m,pgbbpx[1]-m,pgbbpx[2]+2*m,pgbbpx[3]+2*m])
             #     pg.set('x',     str(newbb[0]))
@@ -1390,10 +1390,10 @@ class AutoExporter(inkex.EffectExtension):
             #     pg.set('width', str(newbb[2]))
             #     pg.set('height',str(newbb[3]))
                 
-                # x = dh.implicitpx(pg.get('x'))*uuw
-                # y = dh.implicitpx(pg.get('y'))*uuh
-                # w = dh.implicitpx(pg.get('width'))*uuw
-                # h = dh.implicitpx(pg.get('height'))*uuh
+                # x = dh.ipx(pg.get('x'))*uuw
+                # y = dh.ipx(pg.get('y'))*uuh
+                # w = dh.ipx(pg.get('width'))*uuw
+                # h = dh.ipx(pg.get('height'))*uuh
                 
                 # pg.set('x',str((x-m)/uuw))
                 # pg.set('y',str((y-m)/uuh))
@@ -1418,11 +1418,6 @@ class AutoExporter(inkex.EffectExtension):
 
         
     def Change_Viewbox_To_Page(self,svg,pg):
-        # oldvb = svg.cdocsize.effvb;
-        # newvb = [dh.implicitpx(pg.get('x'))+oldvb[0],\
-        #          dh.implicitpx(pg.get('y'))+oldvb[1],\
-        #          dh.implicitpx(pg.get('width')),\
-        #          dh.implicitpx(pg.get('height'))]
         newvb = pg.croot.cdocsize.pxtouu(pg.bbpx)
         svg.set_viewbox(newvb)
         
@@ -1442,7 +1437,7 @@ class AutoExporter(inkex.EffectExtension):
                 sty = el.cspecified_style
                 if 'stroke' in sty and sty['stroke']!='none':
                     sw = sty.get('stroke-width')
-                    if dh.implicitpx(sw)==0:
+                    if dh.ipx(sw)==0:
                         # Fix bug on zero-stroke paths
                         sty['stroke'] = 'none'
                         el.cstyle = sty;
@@ -1505,13 +1500,13 @@ class AutoExporter(inkex.EffectExtension):
                             
                             csty = el.cspecified_style
                             if 'stroke-width' in csty:
-                                sw = dh.implicitpx(csty['stroke-width'])
+                                sw = dh.ipx(csty['stroke-width'])
                                 dh.Set_Style_Comp(el, 'stroke-width',str(sw*SCALEBY))
                             if 'stroke-dasharray' in csty:
                                 sd = csty["stroke-dasharray"].split(",")
                                 dh.Set_Style_Comp(
                                     el, "stroke-dasharray",
-                                    str([dh.implicitpx(sdv)*SCALEBY for sdv in sd]).strip("[").strip("]"))
+                                    str([dh.ipx(sdv)*SCALEBY for sdv in sd]).strip("[").strip("]"))
                         
                         
                         # Fix bug on start markers where auto-start-reverse oriented markers

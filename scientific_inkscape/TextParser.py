@@ -578,7 +578,7 @@ class ParsedText:
         if val is None:
             val = [None]  # None forces inheritance
         else:
-            val = [None if x.lower() == "none" else dh.implicitpx(x) for x in val.split()]
+            val = [None if x.lower() == "none" else dh.ipx(x) for x in val.split()]
         return val
     
     # Traverse the tree to find where deltas need to be located relative to the top-level text
@@ -1917,9 +1917,9 @@ class tchar:
                     fs2 = styv.get("font-size")
                     if fs2 is None:
                         fs2 = "12px"
-                    lspv = float(lspv.strip("em")) * dh.implicitpx(fs2)
+                    lspv = float(lspv.strip("em")) * dh.ipx(fs2)
                 else:
-                    lspv = dh.implicitpx(lspv)
+                    lspv = dh.ipx(lspv)
             else:
                 lspv = 0
             self._lsp = lspv
@@ -1980,7 +1980,7 @@ class tchar:
             fs2, sf2, tmp, tmp = dh.Get_Composed_Width(fsel, "font-size", 4)
             bshft = fs2 / sf2 * float(bshft.strip("%")) / 100
         else:
-            bshft = dh.implicitpx(bshft)
+            bshft = dh.ipx(bshft)
         return bshft
 
     def delc(self):
