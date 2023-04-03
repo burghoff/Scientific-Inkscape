@@ -133,17 +133,6 @@ def descendants2(el, return_tails=False):
         return descendants, precedingtails, children_dict, parent_dict
 BaseElement.descendants2 = property(descendants2)
 
-# Sets a style property
-def Set_Style_Comp(el, comp, val):
-    sty = el.cstyle
-    if val is None:
-        if sty.get(comp) is not None:
-            del sty[comp]
-    else:
-        sty[comp] = val
-    el.cstyle = sty  # set element style
-
-
 def dupe_cssdict_entry(oldid, newid, svg):
     # duplicate a style in cssdict
     if svg is not None:
@@ -303,18 +292,57 @@ BaseElement.ccascaded_style = property(get_cascaded_style, set_ccascaded_style)
 
 # Cached style attribute that invalidates the cached cascaded / specified
 # style whenever the style is changed. Always use this when setting styles.
-def get_cstyle(el):
-    if not (hasattr(el, "_cstyle")):
-        el._cstyle = Style0(el.get("style"))  # el.get() is very efficient
-    return el._cstyle
-def set_cstyle(el, nsty):
-    el.style = nsty
-    if not(isinstance(nsty,Style0)):
-        nsty = Style0(nsty);
-    el._cstyle = nsty
-    el.ccascaded_style = None
-    el.cspecified_style = None
-BaseElement.cstyle = property(get_cstyle, set_cstyle)
+# def get_cstyle(el):
+#     if not (hasattr(el, "_cstyle")):
+#         el._cstyle = Style0(el.get("style"))  # el.get() is very efficient
+#     return el._cstyle
+# def set_cstyle(el, nsty):
+#     el.style = nsty
+#     if not(isinstance(nsty,Style0)):
+#         nsty = Style0(nsty);
+#     el._cstyle = nsty
+#     el.ccascaded_style = None
+#     el.cspecified_style = None
+# BaseElement.cstyle = property(get_cstyle, set_cstyle)
+
+# Sets a style property
+# def Set_Style_Comp(el, comp, val):
+#     sty = el.cstyle
+#     if val is None:
+#         if sty.get(comp) is not None:
+#             del sty[comp]
+#     else:
+#         sty[comp] = val
+#     el.cstyle = sty  # set element style
+
+
+# Cached style attribute that invalidates the cached cascaded / specified
+# style whenever the style is changed. Always use this when setting styles.
+class CStyle(Style0):
+    # Modifies Style0 to delete key when value set to None
+    def __init__(self,val,el):
+        self.el = el
+        super().__init__(val)
+    def __setitem__(self, key, value):
+        if value is None:
+            if key in self:
+                del self[key]
+        else:
+            super().__setitem__(key, value)
+        self.el.cstyle = self
+class CStyleDescriptor:
+    def __get__(self, el, owner):
+        if not hasattr(el, "_cstyle"):
+            el._cstyle = CStyle(el.get("style"),el)
+        return el._cstyle
+    def __set__(self, el, value):
+        el.style = value
+        if not isinstance(value, CStyle):
+            value = CStyle(value,el)
+        el._cstyle = value
+        el.ccascaded_style = None
+        el.cspecified_style = None
+BaseElement.cstyle = CStyleDescriptor()
 
 # Cached composed_transform, which can be invalidated by changes to transform of any ancestor.
 # Currently is not invalidated when the element is moved, so beware!
@@ -673,7 +701,8 @@ def fix_css_clipmask(el, mask=False):
             svg.stylesheet_entries["#" + el.get_id()] = cm + ":" + el.get(cm)
             mycss[cm] = el.get(cm)
     if el.cstyle.get(cm) is not None:  # also clear local style
-        Set_Style_Comp(el, cm, None)
+        # Set_Style_Comp(el, cm, None)
+        el.cstyle[cm] = None
 
 
 # Adding to the stylesheet is slow, so as a workaround we only do this once
@@ -1650,13 +1679,13 @@ def global_transform(el, trnsfrm, irange=None, trange=None,preserveStroke=True):
     if preserveStroke:
         if sw is not None:
             neww, sf, ct, ang = Get_Composed_Width(el, "stroke-width", nargout=4)
-            Set_Style_Comp(el, "stroke-width", str(sw / sf))
+            # Set_Style_Comp(el, "stroke-width", str(sw / sf))
+            el.cstyle["stroke-width"]=str(sw / sf)
             # fix width
         if not (sd in [None, "none"]):
             nd, sf = Get_Composed_List(el, "stroke-dasharray", nargout=2)
-            Set_Style_Comp(
-                el, "stroke-dasharray", str([sdv / sf for sdv in sd]).strip("[").strip("]")
-            )
+            # Set_Style_Comp(el, "stroke-dasharray", str([sdv / sf for sdv in sd]).strip("[").strip("]"))
+            el.cstyle["stroke-dasharray"]=str([sdv / sf for sdv in sd]).strip("[").strip("]")
             # fix dash
 
 # Delete and prune empty ancestor groups

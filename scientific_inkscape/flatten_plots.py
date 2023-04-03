@@ -259,16 +259,19 @@ class FlattenPlots(inkex.EffectExtension):
                         and el.getparent() is not None
                     ):  # textelements not deleted
                         ff = el.cspecified_style.get("font-family")
-                        dh.Set_Style_Comp(el, "-inkscape-font-specification", None)
+                        # dh.Set_Style_Comp(el, "-inkscape-font-specification", None)
+                        el.cstyle["-inkscape-font-specification"]= None
                         if ff == None or ff == "none" or ff == "":
-                            dh.Set_Style_Comp(el, "font-family", replacement)
+                            # dh.Set_Style_Comp(el, "font-family", replacement)
+                            el.cstyle["font-family"]=replacement
                         elif ff == replacement:
                             pass
                         else:
                             ff = [x.strip("'").strip() for x in ff.split(",")]
                             if not (ff[-1].lower() == replacement.lower()):
                                 ff.append(replacement)
-                            dh.Set_Style_Comp(el, "font-family", ",".join(ff))
+                            # dh.Set_Style_Comp(el, "font-family", ",".join(ff))
+                            el.cstyle["font-family"]=",".join(ff)
 
             if fixshattering or mergesubsuper or splitdistant or mergenearby:
                 jdict = {1: "middle", 2: "start", 3: "end", 4: None}

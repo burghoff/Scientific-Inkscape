@@ -124,7 +124,8 @@ class TextGhoster(inkex.EffectExtension):
             r.set("rx", str(border))
             # r.set('style','fill:#ffffff;filter:url(#'+fid+')')
             r.cstyle = "fill:#ffffff;stroke:none;filter:url(#{0})".format(fid)
-            dh.Set_Style_Comp(r, "opacity", str(OPACITY))
+            # dh.Set_Style_Comp(r, "opacity", str(OPACITY))
+            r.cstyle["opacity"]=str(OPACITY)
 
             dh.global_transform(g, oldts[g.get_id()])
 

@@ -792,7 +792,8 @@ class AutoExporter(inkex.EffectExtension):
                     # Make sure nested tspans have fill specified (STP bug)
                     for d in el.descendants2[1:]:
                         if 'fill' in d.cspecified_style and d.cspecified_style['fill']!='#000000':
-                            dh.Set_Style_Comp(d, 'fill', d.cspecified_style['fill'])
+                            # dh.Set_Style_Comp(d, 'fill', d.cspecified_style['fill'])
+                            d.cstyle['fill']= d.cspecified_style['fill']
         
         dh.flush_stylesheet_entries(svg) # since we ungrouped
         tmp = tempbase+"_mod.svg"
@@ -1123,13 +1124,16 @@ class AutoExporter(inkex.EffectExtension):
                         for a, v in dsty.items():
                             if (a == "stroke" or a == "fill") and "context" in v:
                                 if v == "context-stroke":
-                                    dh.Set_Style_Comp(d, a, sty.get("stroke",'none'))
+                                    # dh.Set_Style_Comp(d, a, sty.get("stroke",'none'))
+                                    d.cstyle[a]=sty.get("stroke",'none')
                                 elif v == "context-fill":
-                                    dh.Set_Style_Comp(d, a, sty.get("fill",'none'))
+                                    # dh.Set_Style_Comp(d, a, sty.get("fill",'none'))
+                                    d.cstyle[a]= sty.get("fill",'none')
                                 else:  # I don't know what this is
                                     handled = False
                     if handled:
-                        dh.Set_Style_Comp(el, m, dup.get_id2(as_url=2))
+                        # dh.Set_Style_Comp(el, m, dup.get_id2(as_url=2))
+                        el.cstyle[m]=dup.get_id2(as_url=2)
         return mkrs
                             
     def Opacity_Fix(self, el):
@@ -1139,10 +1143,13 @@ class AutoExporter(inkex.EffectExtension):
         if sty.get('opacity') is not None and isinstance(el,dh.otp_support):
             sf = dh.get_strokefill(el) # fuses opacity and stroke-opacity/fill-opacity
             if sf.stroke is not None:
-                dh.Set_Style_Comp(el,'stroke-opacity',sf.stroke.alpha)
+                # dh.Set_Style_Comp(el,'stroke-opacity',sf.stroke.alpha)
+                el.cstyle['stroke-opacity']=sf.stroke.alpha
             if sf.fill is not None:
-                dh.Set_Style_Comp(el,'fill-opacity',sf.fill.alpha)
-            dh.Set_Style_Comp(el,'opacity',1);
+                # dh.Set_Style_Comp(el,'fill-opacity',sf.fill.alpha)
+                el.cstyle['fill-opacity']=sf.fill.alpha
+            # dh.Set_Style_Comp(el,'opacity',1);
+            el.cstyle['opacity']=1;
                 
             
     # Replace super and sub with numerical values
@@ -1226,7 +1233,8 @@ class AutoExporter(inkex.EffectExtension):
             if dyv[0] is not None: d.set('dy',tline.writev([v*s for v in dyv]))
                 
             fs,sf,tmp,tmp = dh.Get_Composed_Width(d,'font-size',nargout=4)
-            dh.Set_Style_Comp(d, 'font-size', "{:.3f}".format(fs/sf*s))    
+            # dh.Set_Style_Comp(d, 'font-size', "{:.3f}".format(fs/sf*s))    
+            d.cstyle['font-size']= "{:.3f}".format(fs/sf*s)
                 
             otherpx = ['letter-spacing','inline-size','stroke-width','stroke-dasharray']
             for oth in otherpx:
@@ -1235,16 +1243,19 @@ class AutoExporter(inkex.EffectExtension):
                     othv = dh.default_style_atts[oth]
                 if othv is not None:
                     if ',' not in othv:
-                        dh.Set_Style_Comp(d, oth, str(dh.ipx(othv)*s))
+                        # dh.Set_Style_Comp(d, oth, str(dh.ipx(othv)*s))
+                        d.cstyle[oth]= str(dh.ipx(othv)*s)
                     else:
-                        dh.Set_Style_Comp(d, oth, ','.join([str(dh.ipx(v)*s) for v in othv.split(',')]))
+                        # dh.Set_Style_Comp(d, oth, ','.join([str(dh.ipx(v)*s) for v in othv.split(',')]))
+                        d.cstyle[oth]= ','.join([str(dh.ipx(v)*s) for v in othv.split(',')])
                 
             shape = d.ccascaded_style.get_link('shape-inside',svg);
             if shape is not None:
                 dup = shape.duplicate2();
                 svg.defs2.append(dup);
                 dup.ctransform = inkex.Transform((s,0,0,s,0,0)) @ dup.ctransform
-                dh.Set_Style_Comp(d, 'shape-inside', dup.get_id2(as_url=2))
+                # dh.Set_Style_Comp(d, 'shape-inside', dup.get_id2(as_url=2))
+                d.cstyle['shape-inside']=dup.get_id2(as_url=2)
 
         el.ctransform = inkex.Transform((1/s,0,0,1/s,0,0))
         dh.ungroup(g)
@@ -1501,12 +1512,14 @@ class AutoExporter(inkex.EffectExtension):
                             csty = el.cspecified_style
                             if 'stroke-width' in csty:
                                 sw = dh.ipx(csty['stroke-width'])
-                                dh.Set_Style_Comp(el, 'stroke-width',str(sw*SCALEBY))
+                                # dh.Set_Style_Comp(el, 'stroke-width',str(sw*SCALEBY))
+                                el.cstyle['stroke-width']=str(sw*SCALEBY)
                             if 'stroke-dasharray' in csty:
                                 sd = csty["stroke-dasharray"].split(",")
-                                dh.Set_Style_Comp(
-                                    el, "stroke-dasharray",
-                                    str([dh.ipx(sdv)*SCALEBY for sdv in sd]).strip("[").strip("]"))
+                                # dh.Set_Style_Comp(
+                                #     el, "stroke-dasharray",
+                                #     str([dh.ipx(sdv)*SCALEBY for sdv in sd]).strip("[").strip("]"))
+                                el.cstyle["stroke-dasharray"]=str([dh.ipx(sdv)*SCALEBY for sdv in sd]).strip("[").strip("]")
                         
                         
                         # Fix bug on start markers where auto-start-reverse oriented markers

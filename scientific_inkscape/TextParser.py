@@ -1191,9 +1191,11 @@ class tline:
 
                     # dh.idebug([w.txt(),newx,newxv])
                     self.change_pos(newxv)
-                    dh.Set_Style_Comp(w.cs[0].loc.el, "text-anchor", newanch)
+                    # dh.Set_Style_Comp(w.cs[0].loc.el, "text-anchor", newanch)
+                    w.cs[0].loc.el.cstyle["text-anchor"]=newanch
                     alignd = {"start": "start", "middle": "center", "end": "end"}
-                    dh.Set_Style_Comp(w.cs[0].loc.el, "text-align", alignd[newanch])
+                    # dh.Set_Style_Comp(w.cs[0].loc.el, "text-align", alignd[newanch])
+                    w.cs[0].loc.el.cstyle["text-align"]=alignd[newanch]
 
                 self.anchor = newanch
                 for w in self.ws:

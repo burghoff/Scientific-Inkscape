@@ -173,7 +173,8 @@ class Homogenizer(inkex.EffectExtension):
                             if bshift in ["sub", "super"]:
                                 psz = szd[d.getparent().get_id()]
                                 pct = mysz / psz * 100
-                                dh.Set_Style_Comp(d, "font-size", str(pct) + "%")
+                                # dh.Set_Style_Comp(d, "font-size", str(pct) + "%")
+                                d.cstyle["font-size"] = str(pct) + "%"
                     maxsz = maxsz / self.svg.cdocsize.unittouu("1pt")
                     szs.append(maxsz)
             # Determine scale and/or size
@@ -210,7 +211,8 @@ class Homogenizer(inkex.EffectExtension):
                     newsize = actualsize * (fontsize / 100)
                 fs = el.cstyle.get("font-size")
                 if fs is None or not ("%" in fs):  # keep sub/superscripts relative size
-                    dh.Set_Style_Comp(el, "font-size", str(newsize / sf) + "px")
+                    # dh.Set_Style_Comp(el, "font-size", str(newsize / sf) + "px")
+                    el.cstyle["font-size"]= str(newsize / sf) + "px"
 
         
 
@@ -232,8 +234,10 @@ class Homogenizer(inkex.EffectExtension):
 
         if setfontfamily:
             for el in reversed(sel):
-                dh.Set_Style_Comp(el, "font-family", fontfamily)
-                dh.Set_Style_Comp(el, "-inkscape-font-specification", None)
+                # dh.Set_Style_Comp(el, "font-family", fontfamily)
+                el.cstyle["font-family"] = fontfamily
+                # dh.Set_Style_Comp(el, "-inkscape-font-specification", None)
+                el.cstyle["-inkscape-font-specification"]= None
                 if fontfamily.lower() in ["avenir", "whitney", "whitney book"] and isinstance(
                     el, (TextElement, FlowRoot)
                 ):
@@ -294,9 +298,8 @@ class Homogenizer(inkex.EffectExtension):
                         newsize = setstrokew
                     else:
                         newsize = szd[elid] * (setstrokew / 100)
-                    dh.Set_Style_Comp(
-                        el, "stroke-width", str(newsize / sfd[elid]) + "px"
-                    )
+                    # dh.Set_Style_Comp(el, "stroke-width", str(newsize / sfd[elid]) + "px")
+                    el.cstyle["stroke-width"]=str(newsize / sfd[elid]) + "px"
 
         if self.options.fusetransforms:
             for el in sela:

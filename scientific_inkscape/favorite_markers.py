@@ -355,9 +355,11 @@ class FavoriteMarkers(inkex.EffectExtension):
                 dh.set_random_id2(m, prefix=newname)
             else:
                 m = previousmkr
-            dh.Set_Style_Comp(el, "marker-" + mtype, "url(#" + m.get_id() + ")")
+            # dh.Set_Style_Comp(el, "marker-" + mtype, "url(#" + m.get_id() + ")")
+            el.cstyle["marker-" + mtype]="url(#" + m.get_id() + ")"
         else:
-            dh.Set_Style_Comp(el, "marker-" + mtype, None)
+            # dh.Set_Style_Comp(el, "marker-" + mtype, None)
+            el.cstyle["marker-" + mtype]=None
 
         # dh.debug(mkrname+mtype)
         # dh.debug(mkrdat)
