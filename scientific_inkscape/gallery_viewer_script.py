@@ -152,7 +152,7 @@ try:
                                 g = d.getparent();
                                 d.delete2();
                                 g.set('display',None) # office converts to att
-                                dh.Set_Style_Comp(g, 'display', None)
+                                g.cstyle['display'] = None
                                 list(g)[0].set_id(dupid)
                                 dh.ungroup(g);
                                 

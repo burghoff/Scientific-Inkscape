@@ -25,7 +25,7 @@ import subprocess
 import inkex
 from inkex import TextElement, Transform, PathElement, Vector2d
 
-import os, sys, time
+import os, sys, time, re
 import numpy as np
 
 sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0])))  # make sure my directory is on the path
@@ -877,15 +877,28 @@ class AutoExporter(inkex.EffectExtension):
         # actions into a single call that also gets the Bounding Boxes
         if len(allacts)>0:
             # Windows cannot handle arguments that are too long. If this happens,
-            # split the export actions in half and run on each
+            # split the actions in half and run on each
             def Split_Acts(fn, inkbin, acts):
+                # dh.idebug(acts)
                 try:
                     eargs = ["--actions",''.join(acts)]
                     bbs = dh.Get_Bounding_Boxes(filename=fn, inkscape_binary=inkbin, extra_args = eargs)
                 except FileNotFoundError:
                     import math
-                    acts1 = acts[:math.ceil(len(acts)/2)]
-                    acts2 = acts[math.ceil(len(acts)/2):]
+                    if len(acts)==1:
+                        if 'select' in acts[0] and 'object-stroke-to-path' in acts[0]:
+                            match = re.search(r'select:(.*?); object-stroke-to-path', acts[0])
+                            selects = match.group(1).split(',')
+                            after = re.search(r'; object-stroke-to-path(.*)', acts[0]).group(1)
+                            mp = math.ceil(len(selects)/2);
+                            acts1 = ['select:'+','.join(selects[:mp])+'; object-stroke-to-path'+after]
+                            acts2 = ['select:'+','.join(selects[mp:])+'; object-stroke-to-path'+after]
+                        else:
+                            inkex.utils.errormsg('Argument too long and cannot split')
+                            quit()
+                    else:
+                        acts1 = acts[:math.ceil(len(acts)/2)]
+                        acts2 = acts[math.ceil(len(acts)/2):]
                     bbs = Split_Acts(fn=fn, inkbin=inkbin, acts=acts1);
                     bbs = Split_Acts(fn=fn, inkbin=inkbin, acts=acts2);
                 return bbs;
