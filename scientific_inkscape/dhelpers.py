@@ -985,12 +985,13 @@ inkex.SvgDocumentElement.cdescendants = property(getcdescendants)
 # Deletes an element from cached dicts on deletion
 def delete2(el):
     svg = el.croot
-    if svg is not None:
-        try:
-            del svg.iddict[el.get_id2()]
-        except KeyError:
-            pass
-    el.croot = None
+    for d in el.descendants2:
+        if svg is not None:
+            try:
+                del svg.iddict[d.get_id2()]
+            except KeyError:
+                pass
+        d.croot = None
     el.delete()
 
 
@@ -1400,6 +1401,7 @@ def subprocess_repeat(argin):
     for ii in range(NATTEMPTS):
         timeout = BASE_TIMEOUT * (ii + 1)
         try:
+            os.environ["SELF_CALL"] = "true" # seems to be needed for 1.3
             p = subprocess.run(
                 argin,
                 shell=False,
@@ -1493,6 +1495,60 @@ def get_mod(slf, *types):
         ],
     )
 
+# An efficient Pythonic version of Clean Up Document
+def clean_up_document(svg):
+    # defs types that do nothing unless they are referenced
+    prune = ["clipPath", "mask", "linearGradient", "radialGradient", "pattern",
+             "symbol", "marker", "filter", "animate", "animateTransform", 
+             "animateMotion", "textPath", "font", "font-face"]
+    prune = [inkex.addNS(v,'svg') for v in prune]
+    
+    # defs types that don't need to be referenced
+    exclude = [inkex.addNS(v,'svg') for v in ["style","glyph"]]
+    
+    def should_prune(el):
+        return el.tag in prune or (el.getparent()==svg.defs2 and el.tag not in exclude)
+    
+    # style atts that could have urls
+    styleatt = ["fill", "stroke", "clip-path", "mask", "filter",
+                "marker-start", "marker-mid", "marker-end", "marker", "font", 
+                "font-family", "fill-opacity", "stroke-opacity", "opacity"]
+    xlink = [inkex.addNS("href", "xlink"),"href"]
+    
+    attids = {sa : dict() for sa in styleatt}
+    xlinks = dict()
+
+    # Make dicts of all url-containing style atts and xlinks
+    for d in svg.cdescendants:
+        for attName in d.attrib.keys():
+            if attName in styleatt:
+                if d.attrib[attName].startswith('url'):
+                    attids[attName][d.get_id2()] = d.attrib[attName][5:-1]
+            elif attName in xlink:
+                if d.attrib[attName].startswith('#'):
+                    xlinks[d.get_id2()] = d.attrib[attName][1:]
+            elif attName=='style':
+                sty = Style0(d.attrib[attName])
+                for an2 in sty.keys():
+                    if an2 in styleatt:
+                        if sty[an2].startswith('url'):
+                            attids[an2][d.get_id2()] = sty[an2][5:-1] 
+    deletedsome = True
+    while deletedsome:
+        ds = svg.cdescendants
+        deletedsome = False
+        for el in ds:
+            if should_prune(el):
+                eldids = [dv.get_id2() for dv in el.descendants2]
+                if not(any([any([idv in attids[av].values() for av in styleatt]) or idv in xlinks.values() for idv in eldids])):
+                    el.delete2()
+                    deletedsome = True  
+                    for did in eldids:
+                        for anm in styleatt:
+                            if did in attids[anm]:
+                                del attids[anm][did]
+                        if did in xlinks:
+                            del xlinks[did]         
 
 # When non-ascii characters are detected, replace all non-letter characters with the specified font
 # Mainly for fonts like Avenir

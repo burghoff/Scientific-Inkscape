@@ -660,6 +660,7 @@ class AutoExporter(inkex.EffectExtension):
                     te = dh.new_element(inkex.TextElement, svg)
                 te.text = orig_key + ': {0}'.format(input_options.original_file)
                 te.set('style','display:none')
+                dh.clean_up_document(svg) # Clean up
                 dh.overwrite_svg(svg, finalname)
 
         if input_options.prints:
