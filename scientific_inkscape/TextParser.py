@@ -955,7 +955,7 @@ class ParsedText:
     @property
     def tree(self):
         if not(hasattr(self,'_tree')):
-            self._tree = dtree(self.textel)
+            self._tree = txttree(self.textel)
         return self._tree
     @tree.setter
     def tree(self, val):
@@ -964,7 +964,7 @@ class ParsedText:
     
     
 # Descendant tree class
-class dtree():
+class txttree():
     def __init__(self,el):
         ds, pts, cd, pd = dh.descendants2(el, True)
         self.ds = ds;
@@ -2329,7 +2329,7 @@ class Character_Table:
             #         tel = tels[ii]
             #         txt = txts[ii]
             
-            tree = dtree(el)
+            tree = txttree(el)
             for di, tt, tel, txt in tree.dgenerator():
                     if txt is not None and len(txt) > 0:
                         sel = tel

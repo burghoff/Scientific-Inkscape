@@ -53,6 +53,7 @@ from Style0 import Style0
 
 def descendants2(el, return_tails=False):
     # Like Inkex's descendants(), but avoids recursion to avoid recursion depth issues
+    # Excludes comments
     cel = el
     keepgoing = True
     childrendone = False
@@ -66,12 +67,14 @@ def descendants2(el, return_tails=False):
     index_dict = dict()
     pendingtails = []
 
+    def mlist(elv):
+        return [v for v in elv if not(isinstance(v,lxml.etree._Comment))]
+
     def getchildren_dict(eli):
         if not (eli in children_dict):
-            children_dict[eli] = list(eli)
-            for ii in range(len(children_dict[eli])):
-                index_dict[children_dict[eli][ii]] = ii
-                # store index for later
+            children_dict[eli] = mlist(eli)
+            for ii, child in enumerate(children_dict[eli]):
+                index_dict[child] = ii  # store index for later
         return children_dict[eli]
 
     def myindex(eli):  # index amongst siblings
@@ -120,7 +123,7 @@ def descendants2(el, return_tails=False):
                 keepgoing = True
                 childrendone = True
                 continue
-    descendants = [v for v in descendants if isinstance(v, (BaseElement, str))]
+    # descendants = [v for v in descendants if isinstance(v, (BaseElement, str))]
 
     if not (return_tails):
         return descendants
@@ -968,7 +971,7 @@ def add_to_iddict(el, todel=None):
 def getiddict(svg):
     if not (hasattr(svg, "_iddict")):
         svg._iddict = dict()
-        for el in descendants2(svg):
+        for el in svg.descendants2:
             svg._iddict[el.get_id2()] = el
     return svg._iddict
 
@@ -978,9 +981,46 @@ inkex.SvgDocumentElement.iddict = property(getiddict)
 # A cached list of all descendants of an svg (not necessarily in order)
 def getcdescendants(svg):
     return list(svg.iddict.values())
-
-
 inkex.SvgDocumentElement.cdescendants = property(getcdescendants)
+
+
+# A cached list of all descendants of an svg in order
+# Currently only handles deletions appropriately
+class dtree():
+    def __init__(self,svg):
+        ds, pts, cd, pd = descendants2(svg, True)
+        self.ds = ds;
+        self.iids = {d: ii for ii,d in enumerate(ds)} # desc. index by el
+        iipts = {ptv: (ii,jj) for ii,pt in enumerate(pts) for jj,ptv in enumerate(pt)}
+        self.range = [(ii,iipts[d][0]) for ii,d in enumerate(ds)]
+    def iterel(self,el):
+        try:
+            eli = self.iids[el]
+            for ii in range(self.range[eli][0],self.range[eli][1]):
+                yield self.ds[ii]
+        except:
+            pass
+    def delel(self,el):
+        try:
+            eli = self.iids[el]
+            strt = self.range[eli][0]
+            stop = self.range[eli][1]
+            self.ds  = self.ds[:strt]  + self.ds[stop:]
+            self.range  = self.range[:strt]  + self.range[stop:]
+            N = stop - strt
+            self.range  = [(x - N if x > strt else x, y - N if y > strt else y) for x, y in self.range]
+            self.iids = {d: ii for ii,d in enumerate(self.ds)} # desc. index by el
+        except:
+            pass    
+def get_cd2(svg):
+    if not (hasattr(svg, "_cd2")):
+        svg._cd2 = dtree(svg)
+    return svg._cd2
+def set_cd2(svg,sv):
+    if sv is None and hasattr(svg, "_cd2"):
+        delattr(svg, "_cd2")
+inkex.SvgDocumentElement.cdescendants2 = property(get_cd2,set_cd2)
+
 
 # Deletes an element from cached dicts on deletion
 def delete2(el):
@@ -992,8 +1032,9 @@ def delete2(el):
             except KeyError:
                 pass
         d.croot = None
+    if hasattr(svg, "_cd2"):
+        svg.cdescendants2.delel(el)
     el.delete()
-
 
 BaseElement.delete2 = delete2
 
@@ -1518,8 +1559,9 @@ def clean_up_document(svg):
     attids = {sa : dict() for sa in styleatt}
     xlinks = dict()
 
+    
     # Make dicts of all url-containing style atts and xlinks
-    for d in svg.cdescendants:
+    for d in svg.cdescendants2.ds:
         for attName in d.attrib.keys():
             if attName in styleatt:
                 if d.attrib[attName].startswith('url'):
@@ -1533,14 +1575,17 @@ def clean_up_document(svg):
                     if an2 in styleatt:
                         if sty[an2].startswith('url'):
                             attids[an2][d.get_id2()] = sty[an2][5:-1] 
+
     deletedsome = True
     while deletedsome:
-        ds = svg.cdescendants
+        ds = svg.cdescendants2.ds
+        allurls = set([v for sa in styleatt for v in attids[sa].values()] + list(xlinks.values()))
+        # sets much faster than lists for membership testing
         deletedsome = False
         for el in ds:
             if should_prune(el):
-                eldids = [dv.get_id2() for dv in el.descendants2]
-                if not(any([any([idv in attids[av].values() for av in styleatt]) or idv in xlinks.values() for idv in eldids])):
+                eldids = [dv.get_id2() for dv in svg.cdescendants2.iterel(el)]
+                if not(any([idv in allurls for idv in eldids])):
                     el.delete2()
                     deletedsome = True  
                     for did in eldids:
@@ -2207,12 +2252,12 @@ def Run_SI_Extension(effext,name):
                 from line_profiler import LineProfiler
     
                 lp = LineProfiler()
-                import TextParser
+                import TextParser, RemoveKerning, flatten_plots
                 from inspect import getmembers, isfunction, isclass, getmodule
     
                 fns = []
-                import RemoveKerning
-                for m in [sys.modules[__name__], TextParser, RemoveKerning, Style0, inkex.transforms]:
+                for m in [sys.modules[__name__], TextParser, RemoveKerning, Style0,
+                          inkex.transforms, getmodule(effext)]:
                     fns += [v[1] for v in getmembers(m, isfunction)]
                     for c in getmembers(m, isclass):
                         if getmodule(c[1]) is m:
@@ -2226,9 +2271,10 @@ def Run_SI_Extension(effext,name):
                                     fns += [p[1].fset]
                 for fn in fns:
                     lp.add_function(fn)
-                lpw = lp(effext.effect)
-                lpw()
+                   
+                lp(effext.run)()
                 stdouttrap = io.StringIO()
+                lp.dump_stats(os.path.abspath(os.path.join(profiledir, "lprofile.prof")))
                 lp.print_stats(stdouttrap)
     
                 ppath = os.path.abspath(os.path.join(profiledir, "lprofile.csv"))
