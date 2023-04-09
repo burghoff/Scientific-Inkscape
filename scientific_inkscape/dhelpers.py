@@ -51,7 +51,7 @@ import lxml, math, re, sys, os
 from Style0 import Style0
 
 
-def descendants2(el, return_tails=False):
+def descendants2_old(el, return_tails=False):
     # Like Inkex's descendants(), but avoids recursion to avoid recursion depth issues
     # Excludes comments
     cel = el
@@ -124,7 +124,7 @@ def descendants2(el, return_tails=False):
                 childrendone = True
                 continue
     # descendants = [v for v in descendants if isinstance(v, (BaseElement, str))]
-    [d.get_id2() for d in descendants]
+    # [d.get_id2() for d in descendants]
 
     if not (return_tails):
         return descendants
@@ -135,7 +135,37 @@ def descendants2(el, return_tails=False):
         # tail(s) will always be outside the descendant tree.
         precedingtails.append(pendingtails)
         return descendants, precedingtails, children_dict, parent_dict
+
+def descendants2(el, return_tails=False):
+    descendants = [el]
+    precedingtails = [[]]
+    endsat = [(el,None)]
+    for d in el.iterdescendants():
+        if not(isinstance(d,lxml.etree._Comment)):
+            if return_tails:
+                precedingtails.append([])
+                while endsat[-1][1]==d:
+                    precedingtails[-1].append(endsat.pop()[0])
+                nsib = d.getnext()
+                if nsib is None:
+                    endsat.append((d,endsat[-1][1]))
+                else:
+                    endsat.append((d,nsib))
+            descendants.append(d)
+
+    if not return_tails:
+        return descendants
+    else:
+        precedingtails.append([])
+        while len(endsat)>0:
+            precedingtails[-1].append(endsat.pop()[0])
+        return descendants, precedingtails
+
 BaseElement.descendants2 = descendants2
+
+
+
+
 
 def dupe_cssdict_entry(oldid, newid, svg):
     # duplicate a style in cssdict
@@ -968,12 +998,20 @@ def add_to_iddict(el, todel=None):
     if todel is not None:
         del svg.iddict[todel]
 
-
+llgetid = lambda x : lxml.etree.ElementBase.get(x,'id',None)
+# a low-level get is faster for getting ids
 def getiddict(svg):
     if not (hasattr(svg, "_iddict")):
         svg._iddict = dict()
+        toassign = []
         for el in svg.descendants2():
-            svg._iddict[el.get_id2()] = el
+            if "id" in el.attrib:
+                svg._iddict[llgetid(el)] = el
+            else:
+                toassign.append(el)
+        for el in toassign:
+            set_random_id2(el, el.TAG)
+            svg._iddict[llgetid(el)] = el
     return svg._iddict
 inkex.SvgDocumentElement.iddict = property(getiddict)
 
@@ -987,7 +1025,7 @@ inkex.SvgDocumentElement.cdescendants = property(getcdescendants)
 # Currently only handles deletions appropriately
 class dtree():
     def __init__(self,svg):
-        ds, pts, cd, pd = descendants2(svg, True)
+        ds, pts = descendants2(svg, True)
         self.ds = ds;
         self.iids = {d: ii for ii,d in enumerate(ds)} # desc. index by el
         iipts = {ptv: (ii,jj) for ii,pt in enumerate(pts) for jj,ptv in enumerate(pt)}
@@ -1020,7 +1058,6 @@ def set_cd2(svg,sv):
         delattr(svg, "_cd2")
 inkex.SvgDocumentElement.cdescendants2 = property(get_cd2,set_cd2)
 
-
 # Deletes an element from cached dicts on deletion
 def delete2(el):
     svg = el.croot
@@ -1034,9 +1071,7 @@ def delete2(el):
     if hasattr(svg, "_cd2"):
         svg.cdescendants2.delel(el)
     el.delete()
-
 BaseElement.delete2 = delete2
-
 
 def defs2(svg):
     # Defs get that avoids xpath. Looks for a defs under the svg
@@ -1056,10 +1091,8 @@ inkex.SvgDocumentElement.defs2 = property(defs2)
 # size based on the current number of ids
 # Modified from Inkex's get_unique_id
 import random
-
-
 def get_unique_id2(svg, prefix):
-    ids = svg.get_ids()
+    ids = get_ids2(svg) 
     new_id = None
     size = math.ceil(math.log10(len(ids))) + 1
     _from = 10 ** size - 1
@@ -1068,9 +1101,16 @@ def get_unique_id2(svg, prefix):
         # Do not use randint because py2/3 incompatibility
         new_id = prefix + str(int(random.random() * _from - _to) + _to)
     svg.ids.add(new_id)
-    # debug(new_id)
     return new_id
 
+def get_ids2(svg):
+    """Returns a set of unique document ids"""
+    if not svg.ids:
+        if hasattr(svg,"_iddict"): # don't use iddict, called by getiddict
+            svg.ids = set(svg._iddict.keys())
+        else:
+            svg.ids = set(svg.xpath("//@id"))
+    return svg.ids
 
 # Version that is non-random, useful for debugging
 # global idcount
@@ -1098,18 +1138,14 @@ def get_id2_func(el, as_url=0):
     """
     if "id" not in el.attrib:
         set_random_id2(el, el.TAG)
-        # idebug('unassigned '+el.getparent().get_id())
-    eid = el.get("id")
+    # eid = el.get("id")
+    eid = llgetid(el)
     if as_url > 0:
         eid = "#" + eid
     if as_url > 1:
         eid = f"url({eid})"
     return eid
-
-
 BaseElement.get_id2 = get_id2_func
-
-
 
 # Modified from Inkex's get_path
 # Correctly calculates path for rectangles and ellipses
@@ -1488,8 +1524,30 @@ def write_debug():
         f.close()
 
 
-def idebug(x):
-    inkex.utils.debug(x)
+def idebug(x,printids=True):
+    def is_nested_list_of_base_elements(x):
+        if not isinstance(x, (list,tuple)):
+            return False
+        for element in x:
+            if isinstance(element, (list,tuple)):
+                if not is_nested_list_of_base_elements(element):
+                    return False
+            elif not isinstance(element, BaseElement):
+                return False
+        return True
+    
+    if printids and is_nested_list_of_base_elements(x):
+        def process_nested_list(input_list):
+            if isinstance(input_list, list):
+                return [process_nested_list(e) for e in input_list]
+            if isinstance(input_list, tuple):
+                return tuple([process_nested_list(e) for e in input_list])
+            elif isinstance(input_list, BaseElement):
+                return input_list.get_id2()
+        pv = process_nested_list(x)
+    else:
+        pv = x
+    inkex.utils.debug(pv)
 
 import time
 global lasttic
@@ -1559,7 +1617,13 @@ def clean_up_document(svg):
     xlinks = dict()
 
     
+    def miterdescendants(el):
+        yield el
+        for d in el.iterdescendants():
+            yield d
+    
     # Make dicts of all url-containing style atts and xlinks
+    # for d in miterdescendants(svg):
     for d in svg.cdescendants2.ds:
         for attName in d.attrib.keys():
             if attName in styleatt:
@@ -1576,22 +1640,16 @@ def clean_up_document(svg):
                             if sty[an2].startswith('url'):
                                 attids[an2][d.get_id2()] = sty[an2][5:-1] 
 
-    def miterdescendants(el):
-        yield el
-        for d in el.iterdescendants():
-            yield d
-
     deletedsome = True
     while deletedsome:
-        ds = svg.cdescendants2.ds
         allurls = set([v for sa in styleatt for v in attids[sa].values()] + list(xlinks.values()))
         # sets much faster than lists for membership testing
         deletedsome = False
-        for el in ds:
+        # for el in miterdescendants(svg):
+        for el in svg.cdescendants2.ds:
             if should_prune(el):
-                eld = svg.cdescendants2.iterel(el)
-                eldids = [dv.get_id2() for dv in eld]
                 # eldids = [dv.get_id2() for dv in miterdescendants(el)]
+                eldids = [dv.get_id2() for dv in svg.cdescendants2.iterel(el)]
                 if not(any([idv in allurls for idv in eldids])):
                     el.delete2()
                     deletedsome = True  

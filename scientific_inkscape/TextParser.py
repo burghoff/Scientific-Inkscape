@@ -966,12 +966,12 @@ class ParsedText:
 # Descendant tree class
 class txttree():
     def __init__(self,el):
-        ds, pts, cd, pd = dh.descendants2(el, True)
+        ds, pts = dh.descendants2(el, True)
         self.ds = ds;
         self.ptails = pts;
-        self.cdict = cd;
-        self.pdict = pd;
-        
+        # self.cdict = cd;
+        # self.pdict = pd;
+        self.pdict = {d:d.getparent() for d in ds}        
     # A generator for crawling through a specific text descendant tree
     # Returns the current descendant index, tt (0 for tail, 1 for text),
     # descendant element, and text. When starting at subel, only gets the
