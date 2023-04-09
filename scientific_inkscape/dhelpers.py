@@ -124,6 +124,7 @@ def descendants2(el, return_tails=False):
                 childrendone = True
                 continue
     # descendants = [v for v in descendants if isinstance(v, (BaseElement, str))]
+    [d.get_id2() for d in descendants]
 
     if not (return_tails):
         return descendants
@@ -134,7 +135,7 @@ def descendants2(el, return_tails=False):
         # tail(s) will always be outside the descendant tree.
         precedingtails.append(pendingtails)
         return descendants, precedingtails, children_dict, parent_dict
-BaseElement.descendants2 = property(descendants2)
+BaseElement.descendants2 = descendants2
 
 def dupe_cssdict_entry(oldid, newid, svg):
     # duplicate a style in cssdict
@@ -971,11 +972,9 @@ def add_to_iddict(el, todel=None):
 def getiddict(svg):
     if not (hasattr(svg, "_iddict")):
         svg._iddict = dict()
-        for el in svg.descendants2:
+        for el in svg.descendants2():
             svg._iddict[el.get_id2()] = el
     return svg._iddict
-
-
 inkex.SvgDocumentElement.iddict = property(getiddict)
 
 # A cached list of all descendants of an svg (not necessarily in order)
@@ -1025,7 +1024,7 @@ inkex.SvgDocumentElement.cdescendants2 = property(get_cd2,set_cd2)
 # Deletes an element from cached dicts on deletion
 def delete2(el):
     svg = el.croot
-    for d in el.descendants2:
+    for d in el.descendants2():
         if svg is not None:
             try:
                 del svg.iddict[d.get_id2()]
@@ -1570,11 +1569,17 @@ def clean_up_document(svg):
                 if d.attrib[attName].startswith('#'):
                     xlinks[d.get_id2()] = d.attrib[attName][1:]
             elif attName=='style':
-                sty = Style0(d.attrib[attName])
-                for an2 in sty.keys():
-                    if an2 in styleatt:
-                        if sty[an2].startswith('url'):
-                            attids[an2][d.get_id2()] = sty[an2][5:-1] 
+                if 'url' in d.attrib[attName]:
+                    sty = Style0(d.attrib[attName])
+                    for an2 in sty.keys():
+                        if an2 in styleatt:
+                            if sty[an2].startswith('url'):
+                                attids[an2][d.get_id2()] = sty[an2][5:-1] 
+
+    def miterdescendants(el):
+        yield el
+        for d in el.iterdescendants():
+            yield d
 
     deletedsome = True
     while deletedsome:
@@ -1584,7 +1589,9 @@ def clean_up_document(svg):
         deletedsome = False
         for el in ds:
             if should_prune(el):
-                eldids = [dv.get_id2() for dv in svg.cdescendants2.iterel(el)]
+                eld = svg.cdescendants2.iterel(el)
+                eldids = [dv.get_id2() for dv in eld]
+                # eldids = [dv.get_id2() for dv in miterdescendants(el)]
                 if not(any([idv in allurls for idv in eldids])):
                     el.delete2()
                     deletedsome = True  
@@ -1666,7 +1673,7 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
     # Inkscape automatically prunes empty text/tails
     # Do the same so future parsing is not affected
     if isinstance(el,inkex.TextElement):
-        for d in el.descendants2:
+        for d in el.descendants2():
             if d.text is not None and d.text=='':
                 d.text = None
             if d.tail is not None and d.tail=='':

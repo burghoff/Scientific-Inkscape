@@ -198,7 +198,7 @@ class FlattenPlots(inkex.EffectExtension):
                         nels.append(ul);
                         oels.append(el);
             for nel in nels:
-                seld += nel.descendants2
+                seld += nel.descendants2()
             for oel in oels:
                 seld.remove(oel)
             gs = [el for el in seld if isinstance(el, Group)]

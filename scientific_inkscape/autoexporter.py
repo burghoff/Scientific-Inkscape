@@ -791,7 +791,7 @@ class AutoExporter(inkex.EffectExtension):
                     input_options.duplicatelabels[te.get_id2()] = el.get_id2()
                     
                     # Make sure nested tspans have fill specified (STP bug)
-                    for d in el.descendants2[1:]:
+                    for d in el.descendants2()[1:]:
                         if 'fill' in d.cspecified_style and d.cspecified_style['fill']!='#000000':
                             # dh.Set_Style_Comp(d, 'fill', d.cspecified_style['fill'])
                             d.cstyle['fill']= d.cspecified_style['fill']
@@ -1169,7 +1169,7 @@ class AutoExporter(inkex.EffectExtension):
     # Replace super and sub with numerical values
     # Collapse Tspans with 0% baseline-shift, which Office displays incorrectly    
     def SubSuper_Fix(self,el):
-        for d in reversed(el.descendants2): # all Tspan sizes
+        for d in reversed(el.descendants2()): # all Tspan sizes
             bs = d.ccascaded_style.get('baseline-shift')
             if bs is not None and bs.replace(' ','')=='0%':
                 # see if any ancestors with non-zero shift
@@ -1219,7 +1219,7 @@ class AutoExporter(inkex.EffectExtension):
         from TextParser import ParsedText, tline      
         svg = el.croot;
         szs = []
-        for d in el.descendants2: # all Tspan sizes
+        for d in el.descendants2(): # all Tspan sizes
             fs = d.ccascaded_style.get('font-size')
             fs = {"small": "10px", "medium": "12px", "large": "14px"}.get(fs, fs)
             if fs is not None and '%' not in fs:
@@ -1235,7 +1235,7 @@ class AutoExporter(inkex.EffectExtension):
         # Make a dummy group so we can properly compose the transform
         g = dh.group([el],moveTCM=True)
         
-        for d in reversed(el.descendants2):
+        for d in reversed(el.descendants2()):
             xv = ParsedText.GetXY(d,'x')
             yv = ParsedText.GetXY(d,'y')
             dxv = ParsedText.GetXY(d,'dx')
