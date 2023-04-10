@@ -361,6 +361,21 @@ BaseElement.ccascaded_style = property(get_cascaded_style, set_ccascaded_style)
 #         sty[comp] = val
 #     el.cstyle = sty  # set element style
 
+import inspect
+global callinfo
+callinfo = dict()
+def store_caller_info():
+    # Get the frame object for the caller
+    caller_frame = inspect.stack()[2]
+    # Extract the filename and line number
+    filename = caller_frame.filename
+    line_number = caller_frame.lineno
+    lstr = f"{filename} at line {line_number}"
+    global callinfo
+    if lstr in callinfo:
+        callinfo[lstr]+=1
+    else:
+        callinfo[lstr]=1
 
 # Cached style attribute that invalidates the cached cascaded / specified
 # style whenever the style is changed. Always use this when setting styles.
@@ -368,14 +383,20 @@ class CStyle(Style0):
     # Modifies Style0 to delete key when value set to None
     def __init__(self,val,el):
         self.el = el
+        self.init = True
         super().__init__(val)
+        self.init = False
     def __setitem__(self, key, value):
-        if value is None:
-            if key in self:
-                del self[key]
-        else:
+        if self.init:
+            # OrderedDict sets items during initialization, use super()
             super().__setitem__(key, value)
-        self.el.cstyle = self
+        else:
+            if value is None:
+                if key in self:
+                    del self[key]
+            else:
+                super().__setitem__(key, value)
+            self.el.cstyle = self
 class CStyleDescriptor:
     def __get__(self, el, owner):
         if not hasattr(el, "_cstyle"):
@@ -2338,6 +2359,13 @@ def Run_SI_Extension(effext,name):
         effext.run()
         flush_stylesheet_entries(effext.svg)
         
+        # Display caller info if any
+        # global callinfo
+        # sorted_items = sorted(callinfo.items(), key=lambda x: x[1], reverse=True)
+        # for key, value in sorted_items:
+        #     idebug(f"{key}: {value}")
+
+        
     
     alreadyran = False
     cprofile = False
@@ -2359,9 +2387,10 @@ def Run_SI_Extension(effext,name):
                 lp = LineProfiler()
                 import TextParser, RemoveKerning, flatten_plots
                 from inspect import getmembers, isfunction, isclass, getmodule
+                import pango_renderer
     
                 fns = []
-                for m in [sys.modules[__name__], TextParser, RemoveKerning, Style0,
+                for m in [sys.modules[__name__], TextParser, RemoveKerning, Style0, pango_renderer,
                           inkex.transforms, getmodule(effext)]:
                     fns += [v[1] for v in getmembers(m, isfunction)]
                     for c in getmembers(m, isclass):

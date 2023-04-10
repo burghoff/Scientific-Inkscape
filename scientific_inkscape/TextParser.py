@@ -1778,12 +1778,19 @@ class tword:
             """  Get the characters' pts"""
             (cstrt, cstop, lx, rx, by, ty) = self.charpos
 
+            # self._cpts_ut = [
+            #     np.column_stack((lx, by)),
+            #     np.column_stack((lx, ty)),
+            #     np.column_stack((rx, ty)),
+            #     np.column_stack((rx, by)),
+            # ] 
             self._cpts_ut = [
                 np.hstack((lx, by)),
                 np.hstack((lx, ty)),
                 np.hstack((rx, ty)),
                 np.hstack((rx, by)),
             ]
+
 
         return self._cpts_ut
 
@@ -1799,6 +1806,13 @@ class tword:
             (cstrt, cstop, lx, rx, by, ty) = self.charpos
 
             Nc = len(lx)
+            # ps = np.column_stack(
+            #     (
+            #         np.column_stack((lx, lx, rx, rx)).flatten(),
+            #         np.column_stack((by, ty, ty, by)).flatten(),
+            #         np.ones(4 * Nc),
+            #     )
+            # )
             ps = np.hstack(
                 (
                     np.vstack((lx, lx, rx, rx)),
