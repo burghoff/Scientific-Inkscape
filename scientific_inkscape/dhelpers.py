@@ -428,7 +428,6 @@ def set_ctransform(el, newt):
 BaseElement.ctransform = property(get_ctransform, set_ctransform)
 # fmt: on
 
-
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
 def Get_Composed_Width(el, comp, nargout=1):
@@ -1004,12 +1003,28 @@ def merge_clipmask(node, newclipurl, mask=False):
 
 # Repeated getElementById lookups can be really slow, so instead create a cached iddict property.
 # When an element is created that may be needed later, it must be added using add_to_iddict.
-def getElementById2(svg, elid):
+# def getElementById2(svg, eid,literal=False):
+#     if svg is not None:
+#         if not(literal):
+#             eid = eid.strip()[4:-1] if eid.startswith("url(") else eid
+#             eid = eid.lstrip("#")
+#         return svg.iddict.get(eid)
+#     else:
+#         return None
+# inkex.SvgDocumentElement.getElementById2 = getElementById2;
+
+urlpat = re.compile(r'^url\(#(.*)\)$|^#')
+def getElementById2(svg, eid: str, elm="*", literal=False):
+    if eid is not None and not literal:
+        eid = urlpat.sub(r'\1', eid.strip())
     if svg is not None:
-        return svg.iddict.get(elid)
+        return svg.iddict.get(eid)
     else:
         return None
+inkex.SvgDocumentElement.getElementById = getElementById2;
 inkex.SvgDocumentElement.getElementById2 = getElementById2;
+
+
 
 
 def add_to_iddict(el, todel=None):
@@ -2325,7 +2340,7 @@ def Run_SI_Extension(effext,name):
         
     
     alreadyran = False
-    cprofile = True
+    cprofile = False
     lprofile = os.getenv("LINEPROFILE") == "True"
     if cprofile or lprofile:
         import io
