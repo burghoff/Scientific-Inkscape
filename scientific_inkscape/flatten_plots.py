@@ -142,7 +142,7 @@ class FlattenPlots(inkex.EffectExtension):
         import random
         random.seed(1)
         
-        poprest = self.options.deepungroup
+        deepungroup = self.options.deepungroup
         removerectw = self.options.removerectw
         splitdistant = self.options.splitdistant and self.options.fixtext
         fixshattering = self.options.fixshattering and self.options.fixtext
@@ -162,7 +162,7 @@ class FlattenPlots(inkex.EffectExtension):
         seld = [v for el in sel for v in dh.descendants2(el)]
 
         # Move selected defs/clips/mask into global defs
-        if poprest:
+        if deepungroup:
             seldefs = [el for el in seld if isinstance(el, Defs)]
             for el in seldefs:
                 self.svg.defs2.append(el)
@@ -187,7 +187,7 @@ class FlattenPlots(inkex.EffectExtension):
             inkex.utils.errormsg("No objects selected!")
             return
 
-        if poprest:
+        if deepungroup:
             # Unlink all clones
             nels = []; oels = [] 
             for el in seld:
@@ -224,7 +224,9 @@ class FlattenPlots(inkex.EffectExtension):
             #             depths.append(depth)
             # sgs2 = [x for _, x in sorted(zip(depths, gs2), key=lambda pair: pair[0])]  # ascending depths
 
-            for g in reversed(gs):
+            sorted_gs = sorted(gs, key=lambda group: len(list(group)))
+            # ascending order of size to reduce number of calls
+            for g in sorted_gs:
                 # dh.idebug(g.get_id())
                 ks = g.getchildren()
                 if any([isinstance(k, lxml.etree._Comment) for k in ks]) and all(

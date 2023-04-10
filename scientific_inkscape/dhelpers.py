@@ -275,10 +275,17 @@ def get_cspecified_style(el):
         el._cspecified_style = ret
     return el._cspecified_style
 def set_cspecified_style(el, si):
-    if si is None and hasattr(el, "_cspecified_style"):  # invalidate
-        delattr(el, "_cspecified_style")
-        for k in list(el):
-            k.cspecified_style = None # invalidate children
+    # if si is None and hasattr(el, "_cspecified_style"):  # invalidate
+    #     delattr(el, "_cspecified_style")
+    #     for k in list(el):
+    #         k.cspecified_style = None # invalidate children
+    if si is None:
+        try:  # 50% faster than hasattr check
+            delattr(el, "_cspecified_style")
+            for k in list(el):
+                k.cspecified_style = None # invalidate children
+        except:
+            pass
 BaseElement.cspecified_style = property(
     get_cspecified_style, set_cspecified_style
 )
@@ -320,8 +327,13 @@ def get_cascaded_style(el):
         el._ccascaded_style = ret
     return el._ccascaded_style
 def set_ccascaded_style(el, si):
-    if si is None and hasattr(el, "_ccascaded_style"):
-        delattr(el, "_ccascaded_style")
+    # if si is None and hasattr(el, "_ccascaded_style"):
+    #     delattr(el, "_ccascaded_style")
+    if si is None:
+        try:  # 50% faster than hasattr check
+            delattr(el, "_ccascaded_style")
+        except:
+            pass
 BaseElement.ccascaded_style = property(get_cascaded_style, set_ccascaded_style)
 
 # Cached style attribute that invalidates the cached cascaded / specified
@@ -370,7 +382,15 @@ class CStyleDescriptor:
             el._cstyle = CStyle(el.get("style"),el)
         return el._cstyle
     def __set__(self, el, value):
-        el.style = value
+        # el.style = value
+        
+        vstr = str(value)
+        if vstr=='':
+            if 'style' in el.attrib:
+               del el.attrib['style']
+        else:
+            lxml.etree.ElementBase.set(el,'style',vstr)
+            
         if not isinstance(value, CStyle):
             value = CStyle(value,el)
         el._cstyle = value
@@ -2299,8 +2319,13 @@ def isMask(el):
 def Run_SI_Extension(effext,name):
     Version_Check(name)
     
+    def run_and_cleanup():
+        effext.run()
+        flush_stylesheet_entries(effext.svg)
+        
+    
     alreadyran = False
-    cprofile = False
+    cprofile = True
     lprofile = os.getenv("LINEPROFILE") == "True"
     if cprofile or lprofile:
         import io
@@ -2337,7 +2362,7 @@ def Run_SI_Extension(effext,name):
                 for fn in fns:
                     lp.add_function(fn)
                    
-                lp(effext.run)()
+                lp(run_and_cleanup)()
                 stdouttrap = io.StringIO()
                 lp.dump_stats(os.path.abspath(os.path.join(profiledir, "lprofile.prof")))
                 lp.print_stats(stdouttrap)
@@ -2353,7 +2378,7 @@ def Run_SI_Extension(effext,name):
 
     if not(alreadyran):
         try:
-            effext.run()
+            run_and_cleanup()
         except lxml.etree.XMLSyntaxError:
             try:
                 s = effext;
@@ -2374,7 +2399,7 @@ def Run_SI_Extension(effext,name):
                 overwrite_output(s.options.input_file,tmpname);
                 os.remove(s.options.input_file)
                 os.rename(tmpname,s.options.input_file)
-                effext.run()
+                run_and_cleanup()
             except:
                 inkex.utils.errormsg(
                     "Error reading file! Extensions can only run on SVG files.\n\nIf this is a file imported from another format, try saving as an SVG and restarting Inkscape. Alternatively, try pasting the contents into a new document."
