@@ -1104,7 +1104,7 @@ inkex.SvgDocumentElement.cdescendants = property(getcdescendants)
 NSatts,wrprops = dict(), dict()
 inkexget = inkex.BaseElement.get;
 EBget = lxml.etree.ElementBase.get;
-def fastget(self, attr, default=None):
+def fast_get(self, attr, default=None):
     try:
         # idebug((attr,NSatts[attr]))
         # count_callers()
@@ -1122,13 +1122,13 @@ def fastget(self, attr, default=None):
             else:
                 NSatts[attr] = inkex.addNS(attr)
             return inkexget(self, attr, default)
-inkex.BaseElement.get = fastget
+inkex.BaseElement.get = fast_get
 
 
 # Inkex's __setattr__ recomputes wrapped_props each time
 wprops = {row[0]: (row[-2], row[-1]) for row in inkex.BaseElement.WRAPPED_ATTRS}
 wpropskeys = set(wprops.keys())
-def fastsetattr(self, name, value):
+def fast_setattr(self, name, value):
     """Set the attribute, update it if needed"""
     if name in wpropskeys:
         (attr, cls) = wprops[name]
@@ -1140,7 +1140,31 @@ def fastsetattr(self, name, value):
             self.attrib.pop(attr, None)  # pylint: disable=no-member
     else:
         lxml.etree.ElementBase.__setattr__(self,name, value)
-inkex.BaseElement.__setattr__ = fastsetattr
+inkex.BaseElement.__setattr__ = fast_setattr
+
+# A version of end_points that avoids unnecessary instance checks for speed
+zZmM = {'z','Z','m','M'}
+def fast_end_points(self):
+    prev = inkex.Vector2d()
+    first = inkex.Vector2d()
+    for seg in self:  
+        end_point = seg.end_point(first, prev)
+        if seg.letter in zZmM:
+            first = end_point
+        prev = end_point
+        yield end_point
+inkex.paths.Path.end_points = property(fast_end_points)
+
+def fast_append(self, cmd):
+    """Append a command to this path including any chained commands"""
+    try:
+        self.extend(cmd)
+    except:
+        try:
+            list.append(self,cmd)
+        except:
+            pass
+inkex.paths.Path.append = fast_append
 
 # A cached list of all descendants of an svg in order
 # Currently only handles deletions appropriately
@@ -1572,7 +1596,7 @@ BaseElement.ancestors2 = get_ancestors
 # Reference a URL (return None if does not exist or invalid)
 def get_link_fcn(el,typestr,svg=None,llget=False):
     if llget:
-        tv = EBget(el,typestr);
+        tv = EBget(el,typestr); # fine for 'clip-path' & 'mask'
     else:
         tv = el.get(typestr);
     if tv is not None:
@@ -1681,6 +1705,18 @@ def tic():
 def toc():
     global lasttic
     idebug(time.time()-lasttic)
+    
+# Adds tag2 to the inkex classes, which holds the corresponding tag
+# Checking the tag can be much faster than instance checking (about 6x)
+try:
+    lt = dict(inkex.elements._parser.NodeBasedLookup.lookup_table)
+except:
+    lt = dict(inkex.elements._base.NodeBasedLookup.lookup_table)
+for k,v in lt.items():
+    for v2 in v:
+        v2.tag2 = inkex.addNS(k[1],k[0])
+tags = lambda x : set([v.tag2 for v in x]) # converts class tuple to set of tags
+        
 
 # A cached root property
 def get_croot(el):

@@ -180,8 +180,12 @@ class FlattenPlots(inkex.EffectExtension):
         
         
         ignores = (NamedView, Defs, Metadata, ForeignObject)
-        gs = [el for el in seld if isinstance(el, Group)]
-        ngs = [el for el in seld if not(isinstance(el, ignores+(Group,)))]
+        
+        gtag = inkex.Group.tag2
+        gigtags = dh.tags(ignores+(Group,))
+        
+        gs = [el for el in seld if el.tag==gtag]
+        ngs = [el for el in seld if el.tag not in gigtags]
 
         if len(gs) == 0 and len(ngs) == 0:
             inkex.utils.errormsg("No objects selected!")
@@ -201,28 +205,8 @@ class FlattenPlots(inkex.EffectExtension):
                 seld += nel.descendants2()
             for oel in oels:
                 seld.remove(oel)
-            gs = [el for el in seld if isinstance(el, Group)]
-            ngs = [el for el in seld if not(isinstance(el, ignores+(Group,)))]
-            
-            
-            
-            # def depth_iter(element):
-            #     stack = []
-            #     stack.append(iter([element]))
-            #     while stack:
-            #         e = next(stack[-1], None)
-            #         if e == None:
-            #             stack.pop()
-            #         else:
-            #             stack.append(iter(e))
-            #             yield (e, len(stack) - 1)
-            # gs2 = []; depths = []
-            # for el in sel:
-            #     for d, depth in depth_iter(el):
-            #         if isinstance(d,(Group)):
-            #             gs2.append(d)
-            #             depths.append(depth)
-            # sgs2 = [x for _, x in sorted(zip(depths, gs2), key=lambda pair: pair[0])]  # ascending depths
+            gs = [el for el in seld if el.tag==gtag]
+            ngs = [el for el in seld if el.tag not in gigtags]
 
             sorted_gs = sorted(gs, key=lambda group: len(list(group)))
             # ascending order of size to reduce number of calls
@@ -288,9 +272,13 @@ class FlattenPlots(inkex.EffectExtension):
                 )
 
         if removerectw:
+            prltag = dh.tags((PathElement, Rectangle, Line))
+            fltag  = dh.tags((FlowPara, FlowRegion, FlowRoot))
+            rtag = Rectangle.tag2
             for el in ngs:
-                if isinstance(el, (PathElement, Rectangle, Line)):
-                    if not(isinstance(el.getparent(),(FlowPara, FlowRegion, FlowRoot))):
+                if el.tag in prltag:
+                    myp = el.getparent()
+                    if myp is not None and not(myp.tag in fltag):
                         pts = list(Path(dh.get_path2(el)).end_points)
                         xs = [p.x for p in pts]
                         ys = [p.y for p in pts]
@@ -299,7 +287,7 @@ class FlattenPlots(inkex.EffectExtension):
                             maxsz = max(max(xs) - min(xs), max(ys) - min(ys))
                             tol = 1e-3 * maxsz
                             if (
-                                isinstance(el, (Rectangle))
+                                el.tag == rtag
                                 or 4 <= len(xs) <= 5
                                 and len(dh.uniquetol(xs, tol)) == 2
                                 and len(dh.uniquetol(ys, tol)) == 2
@@ -321,28 +309,22 @@ class FlattenPlots(inkex.EffectExtension):
         masks = [dh.EBget(el,"mask") for el in ds]
         clips = [url[5:-1] for url in clips if url is not None]
         masks = [url[5:-1] for url in masks if url is not None]
+        
+        ctag = inkex.ClipPath.tag2
         if hasattr(self.svg, "newclips"):
             for el in self.svg.newclips:
-                if isinstance(el, (inkex.ClipPath)) and not (el.get_id2() in clips):
+                if el.tag==ctag and not (el.get_id2() in clips):
                     dh.deleteup(el)
                 elif dh.isMask(el) and not (el.get_id2() in masks):
                     dh.deleteup(el)
 
+        ttags = dh.tags((Tspan, FlowPara, FlowRegion, TextPath))
+        ttags2 = dh.tags((StyleElement,TextElement,Tspan,TextPath,)+dh.flow_types)
         for el in reversed(ds):
-            if not (isinstance(el, (Tspan, FlowPara, FlowRegion, TextPath))):
+            if not (el.tag in ttags):
                 if el.tail is not None:
                     el.tail = None
-            if not (
-                isinstance(
-                    el,
-                    (
-                        StyleElement,
-                        TextElement,
-                        Tspan,
-                        TextPath,
-                    )+dh.flow_types,
-                )
-            ):
+            if not (el.tag in ttags2):
                 if el.text is not None:
                     el.text = None
 
