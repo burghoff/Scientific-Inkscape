@@ -214,7 +214,7 @@ def get_cssdict(svg):
         if hasall or len(simpleclasses) > 0:
             ds = svg.cdescendants
 
-            cs = [d.get("class") for d in ds]
+            cs = [EBget(d,"class") for d in ds]
             if hasall:
                 knownxpaths["//*"] = ds
             for xp in simpleclasses:
@@ -304,7 +304,7 @@ def get_cascaded_style(el):
         else:
             cssdict = dict()
 
-        csssty = cssdict.get(el.get_id())
+        csssty = cssdict.get(el.get_id2())
         locsty = el.cstyle
 
         # Add any presentation attributes to local style
@@ -362,16 +362,16 @@ BaseElement.ccascaded_style = property(get_cascaded_style, set_ccascaded_style)
 #     el.cstyle = sty  # set element style
 
 import inspect
-global callinfo
-callinfo = dict()
-def store_caller_info():
-    # Get the frame object for the caller
+def count_callers():
     caller_frame = inspect.stack()[2]
-    # Extract the filename and line number
     filename = caller_frame.filename
     line_number = caller_frame.lineno
     lstr = f"{filename} at line {line_number}"
     global callinfo
+    try:
+        callinfo
+    except:
+        callinfo = dict();
     if lstr in callinfo:
         callinfo[lstr]+=1
     else:
@@ -400,7 +400,7 @@ class CStyle(Style0):
 class CStyleDescriptor:
     def __get__(self, el, owner):
         if not hasattr(el, "_cstyle"):
-            el._cstyle = CStyle(el.get("style"),el)
+            el._cstyle = CStyle(EBget(el,"style"),el)
         return el._cstyle
     def __set__(self, el, value):
         # el.style = value
@@ -538,11 +538,14 @@ class v2d_simple():
         
 # Applies inverse of transform to point without making a new Transform
 def applyI_to_point(obj, pt):
-    det = (obj.matrix[0][0] * obj.matrix[1][1]) - (obj.matrix[0][1] * obj.matrix[1][0])
-    return v2d_simple(
-        (obj.matrix[1][1]  * (pt.x - obj.matrix[0][2]) + -obj.matrix[0][1] * (pt.y - obj.matrix[1][2])) / det,
-        (-obj.matrix[1][0] * (pt.x - obj.matrix[0][2]) +  obj.matrix[0][0] * (pt.y - obj.matrix[1][2])) / det,
-    )
+    m = obj.matrix
+    det = m[0][0] * m[1][1] - m[0][1] * m[1][0]
+    inv_det = 1 / det
+    sx = float(pt.x) - m[0][2]  # pt.x is sometimes a numpy float64?
+    sy = float(pt.y) - m[1][2]
+    x = (m[1][1] * sx - m[0][1] * sy) * inv_det
+    y = (m[0][0] * sy - m[1][0] * sx) * inv_det
+    return v2d_simple(x, y)
 inkex.Transform.applyI_to_point = applyI_to_point
 
 # Faster apply_to_point that gets rid of property calls
@@ -607,6 +610,9 @@ def ipx(strin):
     else:
         return inkex.units.convert_unit(strin.lower().strip(), "px")
 
+
+
+
 # Get points of a path, element, or rectangle in the global coordinate system
 def get_points(el, irange=None):
     pth = Path(get_path2(el)).to_absolute()
@@ -652,10 +658,10 @@ def unlink2(el):
             )
             compose_all(
                 d,
-                el.get("clip-path"),
-                el.get("mask"),
+                el.get_link('clip-path',llget=True),
+                el.get_link('mask',llget=True),
                 el.ctransform,
-                (el.ccascaded_style),
+                el.ccascaded_style,
             )
             replace_element(el, d)
             d.set("unlinked_clone", True)
@@ -682,25 +688,29 @@ def ungroup(groupel):
         gparent = groupel.getparent()
         gindex = list(gparent).index(groupel)  # group's location in parent
         gtransform = groupel.ctransform
-        gclipurl = groupel.get("clip-path")
-        gmaskurl = groupel.get("mask")
+        # gclipurl = groupel.get("clip-path")
+        # gmaskurl = groupel.get("mask")
+        
+        gclip = groupel.get_link('clip-path',llget=True)
+        gmask = groupel.get_link('mask',llget=True)
+        
         gstyle = groupel.ccascaded_style
 
-        els = list(groupel)
-        for el in list(reversed(els)):
+        # els = list(groupel)
+        for el in reversed(list(groupel)):
 
             if isinstance(el, lxml.etree._Comment):  # remove comments
                 groupel.remove(el)
 
             if not (isinstance(el, unungroupable)):
-                clippedout = compose_all(el, gclipurl, gmaskurl, gtransform, gstyle)
+                clippedout = compose_all(el, gclip, gmask, gtransform, gstyle)
                 if clippedout:
                     el.delete2()
                 else:
                     gparent.insert(gindex + 1, el)
                     # places above
 
-        if len(list(groupel)) == 0:
+        if len(groupel) == 0:
             groupel.delete2()
 
 # Group a list of elements, placing the group in the location of the first element            
@@ -723,7 +733,7 @@ def group(el_list,moveTCM=False):
 Itmat = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
 
 # For composing a group's properties onto its children (also group-like objects like Uses)
-def compose_all(el, clipurl, maskurl, transform, style):
+def compose_all(el, clip, mask, transform, style):
     if style is not None:  # style must go first since we may change it with CSS
         mysty = el.ccascaded_style
         compsty = style + mysty
@@ -732,14 +742,14 @@ def compose_all(el, clipurl, maskurl, transform, style):
         )  # opacity accumulates at each layer
         el.cstyle = compsty
 
-    if clipurl is not None:
+    if clip is not None:
         # idebug([el.get_id2(),clipurl])
-        cout = merge_clipmask(el, clipurl)  # clip applied before transform, fix first
-    if maskurl is not None:
-        merge_clipmask(el, maskurl, mask=True)
-    if clipurl is not None:
+        cout = merge_clipmask(el, clip)  # clip applied before transform, fix first
+    if mask is not None:
+        merge_clipmask(el, mask, mask=True)
+    if clip is not None:
         fix_css_clipmask(el)
-    if maskurl is not None:
+    if mask is not None:
         fix_css_clipmask(el, mask=True)
 
     if transform is not None:
@@ -749,7 +759,7 @@ def compose_all(el, clipurl, maskurl, transform, style):
             else:
                 el.ctransform = transform @ el.ctransform
 
-    if clipurl is None:
+    if clip is None:
         return False
     else:
         return cout
@@ -766,13 +776,13 @@ def fix_css_clipmask(el, mask=False):
     else:
         cssdict = dict()
 
-    mycss = cssdict.get(el.get_id())
+    mycss = cssdict.get(el.get_id2())
     if mycss is not None:
         if mycss.get(cm) is not None and mycss.get(cm) != el.get(cm):
             svg = el.croot
             if not (hasattr(svg, "stylesheet_entries")):
                 svg.stylesheet_entries = dict()
-            svg.stylesheet_entries["#" + el.get_id()] = cm + ":" + el.get(cm)
+            svg.stylesheet_entries["#" + el.get_id2()] = cm + ":" + el.get(cm)
             mycss[cm] = el.get(cm)
     if el.cstyle.get(cm) is not None:  # also clear local style
         # Set_Style_Comp(el, cm, None)
@@ -866,12 +876,22 @@ def replace_element(el1, el2):
 
 
 # Like list(set(lst)), but preserves order
+# def unique(lst):
+#     lst2 = [];
+#     for ii in reversed(range(len(lst))):
+#         if lst[ii] not in lst[:ii]:
+#             lst2.insert(0,lst[ii]) 
+#     if lst2!=unique2(lst):
+#         idebug(lst)
+#         idebug(lst2)
+#         idebug(unique2(lst))
+#         quit()
+#     return lst2
 def unique(lst):
-    lst2 = [];
-    for ii in reversed(range(len(lst))):
-        if lst[ii] not in lst[:ii]:
-            lst2.insert(0,lst[ii]) 
-    return lst2
+    seen = set()
+    seen_add = seen.add
+    return [x for x in lst if not (x in seen or seen_add(x))]
+
 
 def intersect_paths(ptha, pthb):
     # Intersect two rectangular paths. Could be generalized later
@@ -936,9 +956,9 @@ def isrectangle(el):
     
     # if I am clipped I may not be a rectangle
     if isrect:
-        if el.get_link('clip-path') is not None:
+        if el.get_link('clip-path',llget=True) is not None:
             isrect = False
-        if el.get_link('mask') is not None:
+        if el.get_link('mask',llget=True) is not None:
             isrect = False
             
     if isrect:
@@ -946,7 +966,7 @@ def isrectangle(el):
     else:
         return False, None
 
-def merge_clipmask(node, newclipurl, mask=False):
+def merge_clipmask(node, newclip, mask=False):
     # Modified from Deep Ungroup
     def compose_clips(el, ptha, pthb):
         newpath = intersect_paths(ptha, pthb)
@@ -960,7 +980,7 @@ def merge_clipmask(node, newclipurl, mask=False):
         el.delete2()
         return isempty  # if clipped out, safe to delete element
 
-    if newclipurl is not None:
+    if newclip is not None:
         svg = node.croot
         cmstr = "mask" if mask else "clip-path"
 
@@ -968,25 +988,26 @@ def merge_clipmask(node, newclipurl, mask=False):
             # Clip-paths on nodes with a transform have the transform
             # applied to the clipPath as well, which we don't want.
             # Duplicate the new clip and apply node's inverse transform to its children.
-            clippath = getElementById2(svg, newclipurl[5:-1])
-            if clippath is not None:
-                d = clippath.duplicate2()
+            # clippath = getElementById2(svg, newclipurl[5:-1])
+            if newclip is not None:
+                d = newclip.duplicate2()
                 if not (hasattr(svg, "newclips")):
                     svg.newclips = []
                 svg.newclips.append(d)  # for later cleanup
                 for k in list(d):
                     compose_all(k, None, None, -node.ctransform, None)
-                newclipurl = d.get_id2(2)
+                # newclipurl = d.get_id2(2)
+                newclip = d
 
-        newclipnode = getElementById2(svg, newclipurl[5:-1])
-        if newclipnode is not None:
-            for k in list(newclipnode):
+        # newclipnode = getElementById2(svg, newclipurl[5:-1])
+        if newclip is not None:
+            for k in list(newclip):
                 if isinstance(k, (Use)):
                     k = unlink2(k)
 
         
 
-        oldclip = node.get_link(cmstr)
+        oldclip = node.get_link(cmstr,llget=True)
         if oldclip is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
             for k in list(oldclip):
@@ -1000,8 +1021,8 @@ def merge_clipmask(node, newclipurl, mask=False):
             node.set(cmstr, d.get_id2(2))
 
             newclipisrect = False
-            if newclipnode is not None and len(list(newclipnode)) == 1:
-                newclipisrect, newclippth = isrectangle(list(newclipnode)[0])
+            if newclip is not None and len(newclip) == 1:
+                newclipisrect, newclippth = isrectangle(list(newclip)[0])
 
             couts = []
             for k in reversed(list(d)):  # may be deleting, so reverse
@@ -1011,12 +1032,12 @@ def merge_clipmask(node, newclipurl, mask=False):
                     # Since most clips are rectangles this semi-fixes the PDF clip export bug
                     cout = compose_clips(k, newclippth, oldclippth)
                 else:
-                    cout = merge_clipmask(k, newclipurl, mask)
+                    cout = merge_clipmask(k, newclip, mask)
                 couts.append(cout)
             cout = all(couts)
 
         if oldclip is None:
-            node.set(cmstr, newclipurl)
+            node.set(cmstr, newclip.get_id2(2))
             cout = False
 
         return cout
@@ -1054,7 +1075,8 @@ def add_to_iddict(el, todel=None):
     if todel is not None:
         del svg.iddict[todel]
 
-llgetid = lambda x : lxml.etree.ElementBase.get(x,'id',None)
+
+# llgetid = lambda x : lxml.etree.ElementBase.get(x,'id',None)
 # a low-level get is faster for getting ids
 def getiddict(svg):
     if not (hasattr(svg, "_iddict")):
@@ -1062,12 +1084,12 @@ def getiddict(svg):
         toassign = []
         for el in svg.descendants2():
             if "id" in el.attrib:
-                svg._iddict[llgetid(el)] = el
+                svg._iddict[EBget(el,'id')] = el
             else:
                 toassign.append(el)
         for el in toassign:
             set_random_id2(el, el.TAG)
-            svg._iddict[llgetid(el)] = el
+            svg._iddict[EBget(el,'id')] = el
     return svg._iddict
 inkex.SvgDocumentElement.iddict = property(getiddict)
 
@@ -1076,6 +1098,49 @@ def getcdescendants(svg):
     return list(svg.iddict.values())
 inkex.SvgDocumentElement.cdescendants = property(getcdescendants)
 
+
+# Inkex's get does a lot of namespace checking that can be cached for speed
+# This can be bypassed altogether for known attributes (by using EBget instead)
+NSatts,wrprops = dict(), dict()
+inkexget = inkex.BaseElement.get;
+EBget = lxml.etree.ElementBase.get;
+def fastget(self, attr, default=None):
+    try:
+        # idebug((attr,NSatts[attr]))
+        # count_callers()
+        return EBget(self,NSatts[attr], default)
+    except:
+        try:
+            # idebug(attr)
+            # count_callers()
+            value = getattr(self, wrprops[attr], None)
+            ret = str(value) if value else (default or None)
+            return ret
+        except:
+            if attr in self.wrapped_attrs:
+                (wrprops[attr], _) = self.wrapped_attrs[attr]
+            else:
+                NSatts[attr] = inkex.addNS(attr)
+            return inkexget(self, attr, default)
+inkex.BaseElement.get = fastget
+
+
+# Inkex's __setattr__ recomputes wrapped_props each time
+wprops = {row[0]: (row[-2], row[-1]) for row in inkex.BaseElement.WRAPPED_ATTRS}
+wpropskeys = set(wprops.keys())
+def fastsetattr(self, name, value):
+    """Set the attribute, update it if needed"""
+    if name in wpropskeys:
+        (attr, cls) = wprops[name]
+        if value:
+            if not isinstance(value, cls):
+                value = cls(value)
+            self.attrib[attr] = str(value)
+        else:
+            self.attrib.pop(attr, None)  # pylint: disable=no-member
+    else:
+        lxml.etree.ElementBase.__setattr__(self,name, value)
+inkex.BaseElement.__setattr__ = fastsetattr
 
 # A cached list of all descendants of an svg in order
 # Currently only handles deletions appropriately
@@ -1195,11 +1260,11 @@ def get_id2_func(el, as_url=0):
     if "id" not in el.attrib:
         set_random_id2(el, el.TAG)
     # eid = el.get("id")
-    eid = llgetid(el)
+    eid = EBget(el,'id')
     if as_url > 0:
         eid = "#" + eid
-    if as_url > 1:
-        eid = f"url({eid})"
+        if as_url > 1:
+            eid = f"url({eid})"
     return eid
 BaseElement.get_id2 = get_id2_func
 
@@ -1316,7 +1381,7 @@ def bounding_box2(el,dotransform=True,includestroke=True):
         
             if not(ret.isnull):
                 for cm in ['clip-path','mask']:
-                    clip = el.get_link(cm)
+                    clip = el.get_link(cm,llget=True)
                     if clip is not None:
                        cbb = bounding_box2(clip,dotransform=False,includestroke=False)
                        if not(cbb.isnull):
@@ -1505,11 +1570,14 @@ def get_ancestors(el,includeme=False):
 BaseElement.ancestors2 = get_ancestors
 
 # Reference a URL (return None if does not exist or invalid)
-def get_link_fcn(el,typestr,svg=None):
-    if svg is None:
-        svg = el.croot   # need to specify svg for Styles but not BaseElements
-    tv = el.get(typestr);
+def get_link_fcn(el,typestr,svg=None,llget=False):
+    if llget:
+        tv = EBget(el,typestr);
+    else:
+        tv = el.get(typestr);
     if tv is not None:
+        if svg is None:
+            svg = el.croot   # need to specify svg for Styles but not BaseElements
         if typestr=='xlink:href':
             urlel = getElementById2(svg, tv[1:])
         elif tv.startswith('url'):
@@ -1915,9 +1983,11 @@ def deleteup(el):
     myp = el.getparent()
     el.delete2()
     if myp is not None:
-        myc = list(myp)
-        if myc is not None and len(myc) == 0:
+        if not len(myp): # faster than getting children
             deleteup(myp)
+        # myc = list(myp)
+        # if myc is not None and len(myc) == 0:
+        #     deleteup(myp)
 
 # Splits a text element into its consituent parts by duplication (deleting original)
 # Order is text, child1, child1 tail, child2, child2 tail, etc.
@@ -2358,14 +2428,6 @@ def Run_SI_Extension(effext,name):
     def run_and_cleanup():
         effext.run()
         flush_stylesheet_entries(effext.svg)
-        
-        # Display caller info if any
-        # global callinfo
-        # sorted_items = sorted(callinfo.items(), key=lambda x: x[1], reverse=True)
-        # for key, value in sorted_items:
-        #     idebug(f"{key}: {value}")
-
-        
     
     alreadyran = False
     cprofile = False
@@ -2470,14 +2532,22 @@ def Run_SI_Extension(effext,name):
         f.write(result)
         f.close()
     
-    write_debug()
+    write_debug()    
+    # Display accumulated caller info if any
+    # global callinfo
+    # try:
+    #     callinfo
+    # except:
+    #     callinfo = dict();
+    # sorted_items = sorted(callinfo.items(), key=lambda x: x[1], reverse=True)
+    # for key, value in sorted_items:
+    #     idebug(f"{key}: {value}")
 
 def vto_xpath(sty):
     if (
         ivp[0] <= 1 and ivp[1] < 2
     ):  # pre-1.2: use v1.1 version of to_xpath from inkex.Style
         import re
-
         step_to_xpath = [
             (
                 re.compile(r"\[(\w+)\^=([^\]]+)\]"),

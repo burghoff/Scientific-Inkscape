@@ -87,10 +87,6 @@ def remove_kerning(
         tels = Final_Cleanup(tels)
     return dh.unique(els+tels)
 
-
-def ellls(els):
-    return [TextParser.get_parsed_text(el) for el in els]
-
 def Final_Cleanup(els):
     for el in els:
         # ll.Position_Check()
@@ -132,7 +128,7 @@ def Make_All_Editable(els):
 
 def Change_Justification(els, justification):
     if justification is not None:
-        for ll in ellls(els):
+        for ll in [TextParser.get_parsed_text(el) for el in els]:
             # ll.Position_Check()
             if not (ll.ismlinkscape) and not (
                 ll.issvg2
@@ -151,7 +147,7 @@ def Change_Justification(els, justification):
 # Split different lines
 def Split_Lines(els,ignoreinkscape=True):
     # newlls = []
-    lls = ellls(els);
+    lls = [TextParser.get_parsed_text(el) for el in els];
     for jj in range(len(lls)):
         ll = lls[jj]
         if (
@@ -171,7 +167,7 @@ def Split_Lines(els,ignoreinkscape=True):
 # Generate splitting of distantly-kerned text
 def Split_Distant_Words(els):
     # newlls = []
-    for ll in ellls(els):
+    for ll in [TextParser.get_parsed_text(el) for el in els]:
         if ll.lns is not None:
             for il in reversed(range(len(ll.lns))):
                 ln = ll.lns[il]
@@ -219,7 +215,7 @@ def Split_Distant_Words(els):
 # Generate splitting of distantly-kerned text
 def Split_Distant_Intraword(els):
     # newlls = []
-    for ll in ellls(els):
+    for ll in [TextParser.get_parsed_text(el) for el in els]:
         if ll.lns is not None and not (ll.ismlinkscape) and not (ll.issvg2):
             for ln in ll.lns:
                 for w in ln.ws:
@@ -289,7 +285,7 @@ def Split_Distant_Intraword(els):
 def Remove_Manual_Kerning(els, mergesupersub):
     # Generate list of merges
     ws = []
-    lls = ellls(els);
+    lls = [TextParser.get_parsed_text(el) for el in els];
     for ll in lls:
         if ll.lns is not None:
             ws += [w for ln in ll.lns for w in ln.ws]
@@ -355,7 +351,7 @@ import numpy as np
 def External_Merges(els, mergenearby, mergesupersub):
     # Generate list of merges
     ws = []
-    for ll in ellls(els):
+    for ll in [TextParser.get_parsed_text(el) for el in els]:
         if ll.lns is not None:
             ws += [w for ln in ll.lns for w in ln.ws]
         # ll.Position_Check()

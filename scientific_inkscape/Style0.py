@@ -18,7 +18,24 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import inkex
+# from dhelpers import count_callers
 
+import inspect
+def count_callers():
+    caller_frame = inspect.stack()[2]
+    filename = caller_frame.filename
+    line_number = caller_frame.lineno
+    lstr = f"{filename} at line {line_number}"
+    global callinfo
+    try:
+        callinfo
+    except:
+        callinfo = dict();
+    if lstr in callinfo:
+        callinfo[lstr]+=1
+    else:
+        callinfo[lstr]=1
+    inkex.utils.debug(lstr)
 
 class Style0(inkex.OrderedDict):
     """A list of style directives"""
@@ -28,11 +45,12 @@ class Style0(inkex.OrderedDict):
     unit_props = "stroke-width"
 
     def __init__(self, style=None, callback=None, **kw):
+        # count_callers()
         # inkex.utils.debug('init')
         # This callback is set twice because this is 'pre-initial' data (no callback)
         self.callback = None
         # Either a string style or kwargs (with dashes as underscores).
-        style = style or [(k.replace("_", "-"), v) for k, v in kw.items()]
+        style = ((k.replace("_", "-"), v) for k, v in kw.items()) if style is None else style
         if isinstance(style, str):
             style = self.parse_str(style)
         # Order raw dictionaries so tests can be made reliable
@@ -70,6 +88,13 @@ class Style0(inkex.OrderedDict):
             other = Style0(other)
         ret.update(other)
         return ret
+    
+    # A shallow copy that does not call __init__
+    def copy(self):
+        new_instance = type(self).__new__(type(self))
+        new_instance.callback = None
+        new_instance.update(self)
+        return new_instance
 
     def __iadd__(self, other):
         """Add style to this style, the same as style.update(dict)"""

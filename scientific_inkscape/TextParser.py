@@ -574,7 +574,7 @@ class ParsedText:
 
     @staticmethod
     def GetXY(el, xy):
-        val = el.get(xy)
+        val = dh.EBget(el,xy) # fine for 'x','y','dx','dy'
         if val is None:
             val = [None]  # None forces inheritance
         else:
@@ -2027,7 +2027,7 @@ class tchar:
             deltax = self.anchorfrac * cwo / self.sf
         if deltax != 0:
             newx = self.ln.x
-            nnii = [ii for ii in range(len(self.ln.x)) if self.ln.x[ii] is not None]
+            nnii = [ii for ii, x in enumerate(self.ln.x) if x is not None]
             # non-None
             newx[nnii[self.ln.ws.index(self.w)]] -= deltax
             self.ln.change_pos(newx)

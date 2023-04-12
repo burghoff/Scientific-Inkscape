@@ -232,7 +232,7 @@ class FlattenPlots(inkex.EffectExtension):
                 if any([isinstance(k, lxml.etree._Comment) for k in ks]) and all(
                     [
                         isinstance(k, (lxml.etree._Comment, Defs))
-                        or k.get("unlinked_clone") == "True"
+                        or dh.EBget(k,"unlinked_clone") == "True"
                         for k in ks
                     ]
                 ):
@@ -247,7 +247,7 @@ class FlattenPlots(inkex.EffectExtension):
                     g.set("mpl_comment", cmnt)
                     [g.remove(k) for k in ks if isinstance(k, lxml.etree._Comment)]
                     # remove comment, but leave grouped
-                elif g.get("mpl_comment") is not None:
+                elif dh.EBget(g,"mpl_comment") is not None:
                     pass
                 else:
                     dh.ungroup(g)
@@ -317,8 +317,8 @@ class FlattenPlots(inkex.EffectExtension):
         # tic = time.time();
         # ds = dh.descendants2(self.svg);
         ds = self.svg.cdescendants
-        clips = [el.get("clip-path") for el in ds]
-        masks = [el.get("mask") for el in ds]
+        clips = [dh.EBget(el,"clip-path") for el in ds]
+        masks = [dh.EBget(el,"mask") for el in ds]
         clips = [url[5:-1] for url in clips if url is not None]
         masks = [url[5:-1] for url in masks if url is not None]
         if hasattr(self.svg, "newclips"):
