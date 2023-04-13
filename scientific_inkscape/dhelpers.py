@@ -176,39 +176,32 @@ def dupe_cssdict_entry(oldid, newid, svg):
 
 
 estyle = Style0()
+estyle2 = inkex.Style()  # still using Inkex's Style here since from stylesheets
 def get_cssdict(svg):
-    if not (hasattr(svg, "_cssdict")):
+    try:
+        return svg._cssdict
+    except:
         # For certain xpaths such as classes, we can avoid xpath calls
         # by checking the class attributes on a document's descendants directly.
         # This is much faster for large documents.
         hasall = False
         simpleclasses = dict()
         simpleids = dict()
+        c1 = re.compile(r"\.([-\w]+)")
+        c2 = re.compile(r"#(\w+)")
         for sheet in svg.stylesheets:
             for style in sheet:
                 xp = vto_xpath(style)
                 if xp == "//*":
                     hasall = True
                 elif all(
-                    [
-                        re.compile(r"\.([-\w]+)").sub(r"IAMCLASS", r.rule) == "IAMCLASS"
-                        for r in style.rules
-                    ]
+                    [c1.sub(r"IAMCLASS", r.rule) == "IAMCLASS" for r in style.rules]
                 ):  # all rules are classes
-                    simpleclasses[xp] = [
-                        re.compile(r"\.([-\w]+)").sub(r"\1", r.rule)
-                        for r in style.rules
-                    ]
+                    simpleclasses[xp] = [c1.sub(r"\1", r.rule) for r in style.rules]
                 elif all(
-                    [
-                        re.compile(r"#(\w+)").sub(r"IAMID", r.rule) == "IAMID"
-                        for r in style.rules
-                    ]
+                    [c2.sub(r"IAMID", r.rule) == "IAMID" for r in style.rules]
                 ):  # all rules are ids
-                    simpleids[xp] = [
-                        re.compile(r"\.([-\w]+)").sub(r"\1", r.rule)[1:]
-                        for r in style.rules
-                    ]
+                    simpleids[xp] = [c1.sub(r"\1", r.rule)[1:] for r in style.rules]
 
         knownxpaths = dict()
         if hasall or len(simpleclasses) > 0:
@@ -221,9 +214,8 @@ def get_cssdict(svg):
                 knownxpaths[xp] = []
             for ii in range(len(ds)):
                 if cs[ii] is not None:
-                    cv = cs[ii].split(
-                        " "
-                    )  # only valid delimeter for multiple classes is space
+                    cv = cs[ii].split(" ") 
+                    # only valid delimeter for multiple classes is space
                     for xp in simpleclasses:
                         if any([v in cv for v in simpleclasses[xp]]):
                             knownxpaths[xp].append(ds[ii])
@@ -241,23 +233,22 @@ def get_cssdict(svg):
                 try:
                     # els = svg.xpath(style.to_xpath())  # original code
                     xp = vto_xpath(style)
+                    style0v = Style0(style)
                     if xp in knownxpaths:
                         els = knownxpaths[xp]
                     else:
                         els = svg.xpath(xp)
                     for elem in els:
                         elid = elem.get("id", None)
-                        if (
-                            elid is not None and style != inkex.Style()
-                        ):  # still using Inkex's Style here since from stylesheets
+                        if elid is not None and style != estyle2: 
                             if cssdict.get(elid) is None:
-                                cssdict[elid] = estyle.copy() + style
+                                cssdict[elid] = style0v.copy()
                             else:
                                 cssdict[elid] += style
                 except (lxml.etree.XPathEvalError, TypeError):
                     pass
         svg._cssdict = cssdict
-    return svg._cssdict
+        return svg._cssdict
 inkex.SvgDocumentElement.cssdict = property(get_cssdict)
 
 
@@ -1155,17 +1146,33 @@ def fast_end_points(self):
         yield end_point
 inkex.paths.Path.end_points = property(fast_end_points)
 
-def fast_append(self, cmd):
-    """Append a command to this path including any chained commands"""
-    try:
-        self.extend(cmd)
-    except:
-        try:
-            list.append(self,cmd)
-        except:
-            pass
-inkex.paths.Path.append = fast_append
 
+# Optimize init to avoid calls to append, which is unnecessarily slow
+ippcmd, ipcspth, ipln = inkex.paths.PathCommand, inkex.paths.CubicSuperPath, inkex.paths.Line
+def fast_init(self, path_d=None):
+    list.__init__(self)
+    ps = isinstance(path_d, str)
+    if ps:
+        # Returns a generator returning PathCommand objects
+        path_d = self.parse_string(path_d)
+    elif isinstance(path_d, ipcspth):
+        path_d = path_d.to_path()
+    for item in path_d or ():
+        if ps or isinstance(item, ippcmd):
+            list.append(self,item)  # parse_string only yields PathCommands
+        elif isinstance(item, (list, tuple)) and len(item) == 2:
+            if isinstance(item[1], (list, tuple)):
+                list.append(self,ippcmd.letter_to_class(item[0])(*item[1]))
+            else:
+                list.append(self,ipln(*item))
+        else:
+            raise TypeError(
+                f"Bad path type: {type(path_d).__name__}"
+                f"({type(item).__name__}, ...): {item}"
+            )
+inkex.paths.Path.__init__ = fast_init
+
+            
 # A cached list of all descendants of an svg in order
 # Currently only handles deletions appropriately
 class dtree():
@@ -2465,6 +2472,7 @@ def Run_SI_Extension(effext,name):
         effext.run()
         flush_stylesheet_entries(effext.svg)
     
+    tic()
     alreadyran = False
     cprofile = False
     lprofile = os.getenv("LINEPROFILE") == "True"
@@ -2578,6 +2586,7 @@ def Run_SI_Extension(effext,name):
     # sorted_items = sorted(callinfo.items(), key=lambda x: x[1], reverse=True)
     # for key, value in sorted_items:
     #     idebug(f"{key}: {value}")
+
 
 def vto_xpath(sty):
     if (
