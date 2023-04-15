@@ -2520,7 +2520,6 @@ def Run_SI_Extension(effext,name):
         effext.run()
         flush_stylesheet_entries(effext.svg)
     
-    # tic()
     alreadyran = False
     cprofile = False
     lprofile = os.getenv("LINEPROFILE") == "True"

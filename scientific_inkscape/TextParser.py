@@ -189,8 +189,7 @@ class ParsedText:
                 myi = d1.index(c.loc.el)
                 newloc = cloc(d2[myi], c.loc.tt, c.loc.ind)
                 prop = c.prop
-                prop.charw = c.cw
-                #                    prop = self.ctable.get_prop(' ',c.nsty)*c.fs # cannot just use old one for some reason???
+                # prop.charw = c.cw
                 ret.lns[-1].addc(tchar(c.c, c.fs, c.sf, prop, c.sty, c.nsty, newloc))
         ret.Finish_Lines()
         # generates the new words
@@ -471,7 +470,8 @@ class ParsedText:
                 if txt is not None:
                     for jj in range(len(txt)):
                         c = txt[jj]
-                        prop = self.ctable.get_prop(c, nsty) * fs
+                        # prop = self.ctable.get_prop(c, nsty) * fs
+                        prop = self.ctable.get_prop_mult(c, nsty, fs)
                         ttv = 'tail' if tt==0 else 'text'
                         lns[-1].addc(
                             tchar(c, fs, sf, prop, sty, nsty, cloc(tel, ttv, jj))
@@ -1371,7 +1371,7 @@ class tword:
         return "".join([c.c for c in self.cs])
 
     # Generate a new character and add it to the end of the word
-    def appendc(self, ncv, ncw, ndx, ndy, totail=None):
+    def appendc(self, ncv, ncprop, ndx, ndy, totail=None):
         # Add to document
         lc = self.cs[-1]
         # last character
@@ -1391,7 +1391,10 @@ class tword:
         # Make new character as a copy of the last one of the current word
         c = copy(lc)
         c.c = ncv
-        c.cw = ncw
+        # c.cw = ncw
+        c.prop = ncprop
+        c.cw = ncprop.charw
+        
         c.dx = ndx
         c.dy = ndy
         # c.pending_style = None;
@@ -1449,7 +1452,8 @@ class tword:
             # dh.idebug([self.txt(),nw.txt(),(bl2.x-br1.x)/(lc.sw/self.sf)])
             # dh.idebug([self.txt(),nw.txt(),lc.sw,lc.cw])
             for ii in range(numsp):
-                self.appendc(" ", lc.sw, -lc.lsp, 0)
+                self.appendc(" ", lc.ln.pt.ctable.get_prop_mult(' ',lc.nsty,lc.fs), -lc.lsp, 0)
+                # self.appendc(" ", lc.ln.pt.ctable.get_prop(' ',lc.nsty)*lc.fs, -lc.lsp, 0)
 
             fc = nw.cs[0]
             prevc = self.cs[-1]
@@ -1475,7 +1479,7 @@ class tword:
                         cel = cel.getparent()
                     totail = cel
 
-                self.appendc(c.c, c.cw, mydx, c.dy, totail=totail)
+                self.appendc(c.c, c.prop, mydx, c.dy, totail=totail)
                 newc = self.cs[-1]
 
                 newc.parsed_pts_ut = [
@@ -1667,8 +1671,8 @@ class tword:
                 cstop = []
                 cstrt = []
 
-            cstrt = np.array(cstrt)
-            cstop = np.array(cstop)
+            cstrt = np.array(cstrt,dtype=float)
+            cstop = np.array(cstop,dtype=float)
 
             ww = cstop[-1]
             offx = -self.anchorfrac * (
@@ -1685,13 +1689,13 @@ class tword:
 
             # dh.idebug(self.bshft)
             by = np.array(
-                [wy + sum(dyl[: ii + 1]) - bss[ii] for ii in range(len(dyl))]
+                [wy + sum(dyl[: ii + 1]) - bss[ii] for ii in range(len(dyl))],dtype=float
             ).reshape(-1, 1)
             ty = np.array(
                 [
                     wy + sum(dyl[: ii + 1]) - chs[ii] / self.sf - bss[ii]
                     for ii in range(len(dyl))
-                ]
+                ],dtype=float
             ).reshape(-1, 1)
 
             self._charpos = (cstrt, cstop, lx, rx, by, ty)
@@ -1817,10 +1821,10 @@ class tword:
                 (
                     np.vstack((lx, lx, rx, rx)),
                     np.vstack((by, ty, ty, by)),
-                    np.ones([4 * Nc, 1]),
+                    np.ones([4 * Nc, 1],dtype=float),
                 )
             )
-            M = np.vstack((np.array(self.transform.matrix), np.array([[0, 0, 1]])))
+            M = np.vstack((np.array(self.transform.matrix,dtype=float), np.array([[0, 0, 1]],dtype=float)))
             tps = np.dot(M, ps.T).T
             self._cpts_t = [
                 tps[0:Nc, 0:2],
@@ -2251,6 +2255,7 @@ def sortnone(x):  # sorts an x with Nones (skip Nones)
 
 
 # A class representing the properties of a single character
+# It is meant to be immutable...do not modify attributes
 class cprop:
     def __init__(self, char, cw, sw, ch, dr, dkerns,inkbb):
         self.char = char
@@ -2262,9 +2267,8 @@ class cprop:
         # cap height
         self.descrh = dr
         # descender height
-        self.dkerns = (
-            dkerns  # table of how much extra width a preceding character adds to me
-        )
+        self.dkerns = dkerns
+        # table of how much extra width a preceding character adds to me
         self.inkbb = inkbb;
 
     def __mul__(self, scl):
@@ -2307,15 +2311,23 @@ class Character_Table:
     def __init__(self, els):
         self.fonttestchars = 'pIaA10mMvo' # don't need that many, just to figure out which fonts we have
         self.ctable  = self.meas_char_ws(els)
+        self.mults = dict()
 
     def get_prop(self, char, sty):
-        if sty in list(self.ctable.keys()):
+        if sty in self.ctable:
             return self.ctable[sty][char]
         else:
             dh.debug("No style matches!")
             dh.debug("Character: " + char)
             dh.debug("Style: " + sty)
             dh.debug("Existing styles: " + str(list(self.ctable.keys())))
+            
+    def get_prop_mult(self,char,sty,scl):
+        try:
+            return self.mults[(char,sty,scl)]
+        except:
+            self.mults[(char,sty,scl)] = self.get_prop(char,sty) * scl
+            return self.mults[(char,sty,scl)]
 
     def generate_character_table(self, els):
         ctable = dict()
@@ -2554,43 +2566,42 @@ class Character_Table:
             
 
         dkern = dict()
-        for s in list(ct.keys()):
-            for ii in ct[s].keys():
+        for s in ct:
+            for ii in ct[s]:
                 ct[s][ii].bb = bbox(nbb[ct[s][ii].strid])
                 if KERN_TABLE:
                     precwidth = dict()
-                    for jj in ct[s][ii].dkern.keys():
+                    for jj in ct[s][ii].dkern:
                         precwidth[jj] = bbox(nbb[ct[s][ii].dkern[jj]]).w
                         # width including the preceding character and extra kerning
                     ct[s][ii].precwidth = precwidth
 
             if KERN_TABLE:
                 dkern[s] = dict()
-                for ii in ct[s].keys():
+                for ii in ct[s]:
                     mcw = ct[s][ii].bb.w  - ct[s][blnk].bb.w # my character width
-                    for jj in ct[s][ii].precwidth.keys():
-                        # myi = mycs.index(jj);
+                    for jj in ct[s][ii].precwidth:
                         pcw = ct[s][jj].bb.w - ct[s][blnk].bb.w          # preceding char width
                         bcw = ct[s][ii].precwidth[jj] - ct[s][blnk].bb.w  # both char widths
                         dkern[s][jj, ct[s][ii].strval] = bcw - pcw - mcw   # preceding char, then next char
 
-        for s in list(ct.keys()):
+        for s in ct:
             blnkwd = ct[s][blnk].bb.w;
             sw = ct[s][' '].bb.w - blnkwd      # space width
             ch = ct[s][blnk].bb.h          # cap height
             dr =  ct[s][pI].bb.y2          # descender
-            for ii in ct[s].keys():
+            
+            dkernscl = dict()
+            if KERN_TABLE:
+                for k in dkern[s]:
+                    dkernscl[k] = dkern[s][k]/TEXTSIZE
+            
+            for ii in ct[s]:
                 cw = ct[s][ii].bb.w - blnkwd # character width (full, including extra space on each side)
-                
-                
                 if ct[s][ii].bareid in nbb:
                     inkbb = nbb[ct[s][ii].bareid]
                 else:
                     inkbb = [ct[s][ii].bb.x1,ct[s][ii].bb.y1,0,0] # whitespace: make zero-width
-                dkernscl = dict()
-                if KERN_TABLE:
-                    for k in dkern[s].keys():
-                        dkernscl[k] = dkern[s][k]/TEXTSIZE
                 ct[s][ii] = cprop(
                     ct[s][ii].strval,
                     cw/TEXTSIZE,
@@ -2599,9 +2610,7 @@ class Character_Table:
                     dr/TEXTSIZE,
                     dkernscl, [v/TEXTSIZE for v in inkbb]
                 )
-                # dh.idebug((cw/TEXTSIZE,[v/TEXTSIZE for v in inkbb]))
-        # dh.idebug(nbb)
-        return ct #, nbb
+        return ct
 
     # For generating test characters, we want to normalize the style so that we don't waste time
     # generating a bunch of identical characters whose font-sizes are different. A style is generated

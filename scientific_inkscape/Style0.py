@@ -196,7 +196,9 @@ class Style0cb(Style0):
     
     # A shallow copy that does not call __init__
     def copy(self):
-        new_instance = super().copy()
+        new_instance = type(self).__new__(type(self))
+        for k,v in self.items():
+            inkex.OrderedDict.__setitem__(new_instance,k,v)
         new_instance.callback = self.callback
         return new_instance
 
