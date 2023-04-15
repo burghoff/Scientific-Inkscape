@@ -435,6 +435,7 @@ def get_ctransform(el):
     return el._ctransform
 def set_ctransform(el, newt):
     el.transform = newt
+    # wrapped_setattr(el, 'transform', newt)
     el._ctransform = newt
     el.ccomposed_transform = None
 BaseElement.ctransform = property(get_ctransform, set_ctransform)
@@ -1090,48 +1091,95 @@ def getcdescendants(svg):
 inkex.SvgDocumentElement.cdescendants = property(getcdescendants)
 
 
-# Inkex's get does a lot of namespace checking that can be cached for speed
-# This can be bypassed altogether for known attributes (by using EBget instead)
 NSatts,wrprops = dict(), dict()
 inkexget = inkex.BaseElement.get;
 EBget = lxml.etree.ElementBase.get;
+
+
+
+wrapped_props = {row[0]: (row[-2], row[-1]) for row in inkex.BaseElement.WRAPPED_ATTRS}
+wrapped_props_keys = set(wrapped_props.keys())
+
+wrapped_attrs =  {row[-2]: (row[0], row[-1]) for row in inkex.BaseElement.WRAPPED_ATTRS}
+wrapped_attrs_keys = set(wrapped_attrs.keys())
+        
+def fast_getattr(self, name):
+    """Get the attribute, but load it if it is not available yet"""
+    # if name in wrapped_props_keys:   # always satisfied
+    (attr, cls) = wrapped_props[name]
+    def _set_attr(new_item):
+        if new_item:
+            self.set(attr, str(new_item))
+        else:
+            self.attrib.pop(attr, None)  # pylint: disable=no-member
+
+    # pylint: disable=no-member
+    value = cls(self.attrib.get(attr, None), callback=_set_attr)
+    if name == "style":
+        value.element = self
+    fast_setattr(self, name, value)
+    return value
+    # raise AttributeError(f"Can't find attribute {self.typename}.{name}")
+
+def fast_setattr(self, name, value):
+    """Set the attribute, update it if needed"""
+    # if name in wrapped_props_keys:   # always satisfied
+    (attr, cls) = wrapped_props[name]
+    # Don't call self.set or self.get (infinate loop)
+    if value:
+        if not isinstance(value, cls):
+            value = cls(value)
+        self.attrib[attr] = str(value)
+    else:
+        self.attrib.pop(attr, None)  # pylint: disable=no-member
+    # else:
+    #     lxml.etree.ElementBase.__setattr__(self,name, value)
+
+# _base.py overloads __setattr__ and __getattr__, which adds a lot of overhead
+# since they're invoked for all class attributes, not just transform etc.
+# We remove the overloading and replicate it using properties. Since there
+# are only a few attributes to overload, this is fine.
+del inkex.BaseElement.__setattr__
+del inkex.BaseElement.__getattr__
+for prop in wrapped_props_keys:
+    get_func = lambda self, attr=prop: fast_getattr(self, attr)
+    set_func = lambda self, value, attr=prop: fast_setattr(self, attr, value)
+    setattr(inkex.BaseElement, prop, property(get_func, set_func))
+
+
+# Inkex's get does a lot of namespace checking that can be cached for speed
+# This can be bypassed altogether for known attributes (by using EBget instead)
 def fast_get(self, attr, default=None):
     try:
-        # idebug((attr,NSatts[attr]))
-        # count_callers()
         return EBget(self,NSatts[attr], default)
     except:
         try:
-            # idebug(attr)
-            # count_callers()
             value = getattr(self, wrprops[attr], None)
             ret = str(value) if value else (default or None)
             return ret
         except:
-            if attr in self.wrapped_attrs:
-                (wrprops[attr], _) = self.wrapped_attrs[attr]
+            if attr in wrapped_attrs_keys:
+                (wrprops[attr], _) = wrapped_attrs[attr]
             else:
                 NSatts[attr] = inkex.addNS(attr)
             return inkexget(self, attr, default)
 inkex.BaseElement.get = fast_get
 
-
-# Inkex's __setattr__ recomputes wrapped_props each time
-wprops = {row[0]: (row[-2], row[-1]) for row in inkex.BaseElement.WRAPPED_ATTRS}
-wpropskeys = set(wprops.keys())
-def fast_setattr(self, name, value):
-    """Set the attribute, update it if needed"""
-    if name in wpropskeys:
-        (attr, cls) = wprops[name]
-        if value:
-            if not isinstance(value, cls):
-                value = cls(value)
-            self.attrib[attr] = str(value)
-        else:
-            self.attrib.pop(attr, None)  # pylint: disable=no-member
+def fast_set(self, attr, value):
+    """Set element attribute named, with addNS support"""
+    if attr in wrapped_attrs:
+        # Always keep the local wrapped class up to date.
+        (prop, cls) = wrapped_attrs[attr]
+        setattr(self, prop, cls(value))
+        value = getattr(self, prop)
+        if not value:
+            return
+    if value is None:
+        self.attrib.pop(inkex.addNS(attr), None)  # pylint: disable=no-member
     else:
-        lxml.etree.ElementBase.__setattr__(self,name, value)
-inkex.BaseElement.__setattr__ = fast_setattr
+        value = str(value)
+        lxml.etree.ElementBase.set(self,inkex.addNS(attr), value)
+inkex.BaseElement.set = fast_set
 
 # A version of end_points that avoids unnecessary instance checks for speed
 zZmM = {'z','Z','m','M'}
@@ -2472,7 +2520,7 @@ def Run_SI_Extension(effext,name):
         effext.run()
         flush_stylesheet_entries(effext.svg)
     
-    tic()
+    # tic()
     alreadyran = False
     cprofile = False
     lprofile = os.getenv("LINEPROFILE") == "True"
@@ -2576,16 +2624,17 @@ def Run_SI_Extension(effext,name):
         f.write(result)
         f.close()
     
-    write_debug()    
+    write_debug()   
+    
     # Display accumulated caller info if any
-    # global callinfo
-    # try:
-    #     callinfo
-    # except:
-    #     callinfo = dict();
-    # sorted_items = sorted(callinfo.items(), key=lambda x: x[1], reverse=True)
-    # for key, value in sorted_items:
-    #     idebug(f"{key}: {value}")
+    global callinfo
+    try:
+        callinfo
+    except:
+        callinfo = dict();
+    sorted_items = sorted(callinfo.items(), key=lambda x: x[1], reverse=True)
+    for key, value in sorted_items:
+        idebug(f"{key}: {value}")
 
 
 def vto_xpath(sty):

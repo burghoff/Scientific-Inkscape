@@ -62,11 +62,13 @@ class TextGhoster(inkex.EffectExtension):
             el.getparent().insert(len(el.getparent().getchildren()), g)
             g.insert(0, el)
             # Transfer transform to group
-            g.set("transform", el.get("transform"))
-            el.set("transform", None)
+            # g.set("transform", el.get("transform"))
+            g.ctransform = el.ctransform
+            # el.set("transform", None)
+            el.ctransform = None
             # Remove transform
-            oldts[g.get_id()] = g.composed_transform()
-            dh.global_transform(g, -oldts[g.get_id()])
+            oldts[g.get_id2()] = g.ccomposed_transform
+            dh.global_transform(g, -oldts[g.get_id2()])
 
         # dh.idebug(sel)
         
@@ -82,13 +84,13 @@ class TextGhoster(inkex.EffectExtension):
             el.root.defs.insert(0, f)
             gb = inkex.Filter.GaussianBlur()
             f.insert(0, gb)
-            fid = f.get_id()
+            fid = f.get_id2()
 
             r = inkex.Rectangle()
             g.insert(0, r)
 
-            bb = bbs[el.get_id()]
-            ct = el.composed_transform()
+            bb = bbs[el.get_id2()]
+            ct = el.ccomposed_transform
             # bb = [v / (self.svg.cscale) for v in bb]
 
             fss = []
@@ -127,7 +129,7 @@ class TextGhoster(inkex.EffectExtension):
             # dh.Set_Style_Comp(r, "opacity", str(OPACITY))
             r.cstyle["opacity"]=str(OPACITY)
 
-            dh.global_transform(g, oldts[g.get_id()])
+            dh.global_transform(g, oldts[g.get_id2()])
 
         if dispprofile:
             pr.disable()
