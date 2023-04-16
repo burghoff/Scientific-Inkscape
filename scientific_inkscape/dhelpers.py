@@ -523,6 +523,7 @@ def Get_Composed_List(el, comp, nargout=1):
 # Modifications to Transform functions for speed
 
 # A simple Vector2d, just a tuple wrapper
+from typing import Generator
 class v2d_simple():
     def __init__(self,x,y):
         self.x = x;
@@ -537,13 +538,13 @@ def applyI_to_point(obj, pt):
     sy = float(pt.y) - m[1][2]
     x = (m[1][1] * sx - m[0][1] * sy) * inv_det
     y = (m[0][0] * sy - m[1][0] * sx) * inv_det
-    return v2d_simple(x, y)
+    return Vector2da(x, y)
 inkex.Transform.applyI_to_point = applyI_to_point
 
 # Faster apply_to_point that gets rid of property calls
 def apply_to_point_mod(obj, pt,simple=False):
     if simple:
-        return v2d_simple(
+        return Vector2da(
             obj.matrix[0][0] * pt.x + obj.matrix[0][1] * pt.y + obj.matrix[0][2],
             obj.matrix[1][0] * pt.x + obj.matrix[1][1] * pt.y + obj.matrix[1][2],
         )
@@ -671,7 +672,23 @@ def unlink2(el):
     else:
         return el
 
-unungroupable = (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment)
+
+# Adds tag2 to the inkex classes, which holds the corresponding tag
+# Checking the tag can be much faster than instance checking (about 6x)
+try:
+    lt = dict(inkex.elements._parser.NodeBasedLookup.lookup_table)
+except:
+    lt = dict(inkex.elements._base.NodeBasedLookup.lookup_table)
+for k,v in lt.items():
+    for v2 in v:
+        v2.tag2 = inkex.addNS(k[1],k[0])
+tags = lambda x : set([v.tag2 for v in x]) # converts class tuple to set of tags
+
+# unungroupable = (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment)
+unungroupable = tags((NamedView, Defs, Metadata, ForeignObject))
+ctag = lxml.etree.Comment
+unungroupable.add(ctag)
+
 def ungroup(groupel):
     # Ungroup a group, preserving style, clipping, and masking
     # Remove any comments
@@ -685,16 +702,15 @@ def ungroup(groupel):
         
         gclip = groupel.get_link('clip-path',llget=True)
         gmask = groupel.get_link('mask',llget=True)
-        
+
         gstyle = groupel.ccascaded_style
 
-        # els = list(groupel)
         for el in reversed(list(groupel)):
 
-            if isinstance(el, lxml.etree._Comment):  # remove comments
+            if el.tag == ctag:  # remove comments
                 groupel.remove(el)
 
-            if not (isinstance(el, unungroupable)):
+            if not (el.tag in unungroupable):
                 clippedout = compose_all(el, gclip, gmask, gtransform, gstyle)
                 if clippedout:
                     el.delete2()
@@ -1094,6 +1110,7 @@ inkex.SvgDocumentElement.cdescendants = property(getcdescendants)
 NSatts,wrprops = dict(), dict()
 inkexget = inkex.BaseElement.get;
 EBget = lxml.etree.ElementBase.get;
+EBset = lxml.etree.ElementBase.set;
 
 
 
@@ -1173,19 +1190,25 @@ def fast_set(self, attr, value):
         setattr(self, prop, cls(value))
         value = getattr(self, prop)
         if not value:
-            return
+            return 
+    try:
+        NSattr = NSatts[attr]
+    except:
+        NSatts[attr] = inkex.addNS(attr)
+        NSattr = NSatts[attr]
+        
     if value is None:
-        self.attrib.pop(inkex.addNS(attr), None)  # pylint: disable=no-member
+        self.attrib.pop(NSattr, None)  # pylint: disable=no-member
     else:
         value = str(value)
-        lxml.etree.ElementBase.set(self,inkex.addNS(attr), value)
+        EBset(self,NSattr, value)
 inkex.BaseElement.set = fast_set
 
 # A version of end_points that avoids unnecessary instance checks for speed
 zZmM = {'z','Z','m','M'}
 def fast_end_points(self):
-    prev = inkex.Vector2d()
-    first = inkex.Vector2d()
+    prev = Vector2da(0,0)
+    first = Vector2da(0,0)
     for seg in self:  
         end_point = seg.end_point(first, prev)
         if seg.letter in zZmM:
@@ -1414,11 +1437,11 @@ otp_support = (
 )
 flow_types = (inkex.FlowRoot,inkex.FlowPara,inkex.FlowRegion,inkex.FlowSpan,)
 
-
+ptag = inkex.addNS('path','svg');
 def object_to_path(el):
     if not (isinstance(el, (inkex.PathElement, inkex.TextElement))):
         pth = get_path2(el)
-        el.tag = inkex.addNS('path','svg'); #"{http://www.w3.org/2000/svg}path"
+        el.tag = ptag; #"{http://www.w3.org/2000/svg}path"
         el.set("d", str(pth))
 
 # Alternate bbox function that requires no command call (uses extents for text)
@@ -1489,6 +1512,10 @@ inkex.BaseElement.cbbox = property(bounding_box2,set_cbbox)
 inkex.SvgDocumentElement.cbbox = property(bounding_box2,set_cbbox)
 
 # A wrapper that replaces Get_Bounding_Boxes with Pythonic calls only if possible
+metatags = set([inkex.addNS('RDF','rdf'),
+              inkex.addNS('Work','cc'),
+              inkex.addNS('format','dc'),
+              inkex.addNS('type','dc')])
 def BB2(slf,els=None,forceupdate=False):
     if els is None:
         els = descendants2(slf.svg);
@@ -1501,10 +1528,7 @@ def BB2(slf,els=None,forceupdate=False):
             myp = el.getparent();
             ret = True
             if myp is None or isrendered(myp):
-                if el.tag in [inkex.addNS('RDF','rdf'),
-                              inkex.addNS('Work','cc'),
-                              inkex.addNS('format','dc'),
-                              inkex.addNS('type','dc')]:
+                if el.tag in metatags:
                     ret=False
                 elif isinstance(el,(NamedView, Defs, Metadata, ForeignObject, inkex.Guide,
                                     inkex.ClipPath,inkex.StyleElement,
@@ -1761,16 +1785,6 @@ def toc():
     global lasttic
     idebug(time.time()-lasttic)
     
-# Adds tag2 to the inkex classes, which holds the corresponding tag
-# Checking the tag can be much faster than instance checking (about 6x)
-try:
-    lt = dict(inkex.elements._parser.NodeBasedLookup.lookup_table)
-except:
-    lt = dict(inkex.elements._base.NodeBasedLookup.lookup_table)
-for k,v in lt.items():
-    for v2 in v:
-        v2.tag2 = inkex.addNS(k[1],k[0])
-tags = lambda x : set([v.tag2 for v in x]) # converts class tuple to set of tags
         
 
 # A cached root property
@@ -2224,17 +2238,8 @@ def get_script_path():
 
 # Return a document's visible descendants not in Defs/Metadata/etc
 def visible_descendants(svg):
-    ndefs = [
-        el
-        for el in list(svg)
-        if not (
-            isinstance(
-                el, ((inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.ForeignObject))
-            )
-        )
-    ]
+    ndefs = [el for el in list(svg) if not (el.tag in unungroupable)]
     return [v for el in ndefs for v in descendants2(el)]
-
 
 # Gets the location of the Inkscape binary
 # Functions copied from command.py
@@ -2499,6 +2504,69 @@ def matmul2(obj, matrix):
     )
 inkex.transforms.Transform.__matmul__ = matmul2
 
+def imatmul2(self, othermat):
+    if isinstance(othermat, (Transform)):
+        othermat = othermat.matrix
+    self.matrix = (
+        (self.matrix[0][0] * othermat[0][0] + self.matrix[0][1] * othermat[1][0],
+         self.matrix[0][0] * othermat[0][1] + self.matrix[0][1] * othermat[1][1],
+         self.matrix[0][0] * othermat[0][2] + self.matrix[0][1] * othermat[1][2] + self.matrix[0][2]),
+        (self.matrix[1][0] * othermat[0][0] + self.matrix[1][1] * othermat[1][0],
+         self.matrix[1][0] * othermat[0][1] + self.matrix[1][1] * othermat[1][1],
+         self.matrix[1][0] * othermat[0][2] + self.matrix[1][1] * othermat[1][2] + self.matrix[1][2])
+    )
+    if self.callback is not None:
+        self.callback(self)
+    return self
+inkex.transforms.Transform.__imatmul__ = imatmul2
+
+IV2d = inkex.transforms.ImmutableVector2d
+def IV2d_init(self, *args, fallback=None):
+    # count_callers()
+    try:
+        self._x, self._y = map(float, args) # 2 args most common
+    except:
+        try:
+            if len(args) == 0:
+                x, y = 0.0, 0.0
+            elif len(args) == 1:
+                x, y = self._parse(args[0])
+            else:
+                raise ValueError("too many arguments")
+        except (ValueError, TypeError) as error:
+            if fallback is None:
+                raise ValueError("Cannot parse vector and no fallback given") from error
+            x, y = IV2d(fallback)
+        self._x, self._y = float(x), float(y)
+inkex.transforms.ImmutableVector2d.__init__ = IV2d_init
+
+V2d = inkex.transforms.Vector2d
+class Vector2da(V2d):
+    __slots__ = ('_x', '_y') # preallocate for speed
+    def __init__(self,x,y):
+        self._x = float(x);
+        self._y = float(y);
+# Vector2da = v2d_simple
+def line_move_arc_end_point(self, first, prev):
+    return Vector2da(self.x, self.y)
+def horz_end_point(self, first, prev):
+    return Vector2da(self.x, prev.y)
+def vert_end_point(self, first, prev):
+    return Vector2da(prev.x, self.y)
+def curve_smooth_end_point(self, first, prev):
+    return Vector2da(self.x4, self.y4)
+def quadratic_tepid_quadratic_end_point(self, first, prev):
+    return Vector2da(self.x3, self.y3)
+inkex.paths.Line.end_point = line_move_arc_end_point
+inkex.paths.Move.end_point = line_move_arc_end_point
+inkex.paths.Arc.end_point = line_move_arc_end_point
+inkex.paths.Horz.end_point = horz_end_point
+inkex.paths.Vert.end_point = vert_end_point
+inkex.paths.Curve.end_point = curve_smooth_end_point
+inkex.paths.Smooth.end_point = curve_smooth_end_point
+inkex.paths.Quadratic.end_point = quadratic_tepid_quadratic_end_point
+inkex.paths.TepidQuadratic.end_point = quadratic_tepid_quadratic_end_point
+
 # Get default style attributes
 try:
     from inkex.properties import all_properties
@@ -2506,12 +2574,9 @@ except ModuleNotFoundError:
     from properties2 import all_properties
 default_style_atts = {a: v[1] for a, v in all_properties.items()}
 
-
+masktag = inkex.addNS('mask','svg')
 def isMask(el):
-    if ivp[0] <= 1 and ivp[1] < 2:  # pre-1.2: check tag
-        return el.tag[-4:] == "mask"
-    else:
-        return isinstance(el, (inkex.Mask))
+    return el.tag == masktag
 
 def Run_SI_Extension(effext,name):
     Version_Check(name)
@@ -2626,6 +2691,7 @@ def Run_SI_Extension(effext,name):
     write_debug()   
     
     # Display accumulated caller info if any
+    # from inkex.transforms import callinfo
     global callinfo
     try:
         callinfo

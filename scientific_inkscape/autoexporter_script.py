@@ -241,7 +241,7 @@ if guitype=='gtk':
             self.selected_file_label.get_buffer().set_text('No file selected.')
             
             buffer = self.selected_file_label.get_buffer()
-            buffer.connect('insert-text', self.on_text_buffer_insert_text) # auto-scroll
+            # buffer.connect('insert-text', self.on_text_buffer_insert_text) # auto-scroll
     
             # Adding a scrolled window to the TextView
             self.scrolled_window = Gtk.ScrolledWindow()
@@ -273,7 +273,7 @@ if guitype=='gtk':
             
             self.liststore.connect("row-inserted", self.on_row_inserted)
             self.maxlsrows = 100;            
-            self.treeview.connect('size-allocate', self.on_treeview_size_allocate) # auto-scroll
+            # self.treeview.connect('size-allocate', self.on_treeview_size_allocate) # auto-scroll
 
             self.file_button = Gtk.Button(label="Select watch directory")
             self.file_button.connect("clicked", self.watch_folder_button_clicked)
@@ -298,17 +298,17 @@ if guitype=='gtk':
             
             self.ct = ct;
             
-        def on_treeview_size_allocate(self, widget, allocation):
-            # Scroll to end after file inserted
-            if len(self.liststore)>0:
-                path = Gtk.TreePath.new_from_string(str(len(self.liststore)-1))
-                column = None
-                self.treeview.scroll_to_cell(path, column, False, 0.0, 1.0)
+        # def on_treeview_size_allocate(self, widget, allocation):
+        #     # Scroll to end after file inserted
+        #     if len(self.liststore)>0:
+        #         path = Gtk.TreePath.new_from_string(str(len(self.liststore)-1))
+        #         column = None
+        #         self.treeview.scroll_to_cell(path, column, False, 0.0, 1.0)
         
-        def on_text_buffer_insert_text(self, buffer, iter, text, length):
-            # Scroll to end after text printed
-            mark = buffer.get_insert()
-            self.selected_file_label.scroll_to_mark(mark, 0.0, True, 0.0, 1.0)
+        # def on_text_buffer_insert_text(self, buffer, iter, text, length):
+        #     # Scroll to end after text printed
+        #     mark = buffer.get_insert()
+        #     self.selected_file_label.scroll_to_mark(mark, 0.0, True, 0.0, 1.0)
             
         def on_row_inserted(self, store, path, iter):
             # Count the number of rows currently in the store

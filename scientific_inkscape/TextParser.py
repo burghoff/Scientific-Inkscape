@@ -59,7 +59,7 @@ sys.path.append(
     os.path.dirname(os.path.realpath(sys.argv[0]))
 )  # make sure my directory is on the path
 import dhelpers as dh
-from dhelpers import v2d_simple as v2ds
+from dhelpers import Vector2da as v2ds
 from dhelpers import bbox
 
 from pango_renderer import PangoRenderer
@@ -1156,11 +1156,16 @@ class tline:
         # dh.debug([self.x,len(self.ws)])
 
     def dell(self):  # deletes the whole line
-        for c in reversed(self.cs):
-            c.delc()
+        self.change_pos(self.x[:1])
+        for ii, c in enumerate(reversed(self.cs)):
+            if c.loc.tt == "text":
+                c.loc.el.text = c.loc.el.text[:c.loc.ind] + c.loc.el.text[c.loc.ind + 1:]
+            else:
+                c.loc.el.tail = c.loc.el.tail[:c.loc.ind] + c.loc.el.tail[c.loc.ind + 1:]
+        self.pt.Update_Delta()
+        
         if self in self.pt.lns:
             self.pt.lns.remove(self)
-        # self.pt = None;
 
     def txt(self):
         return "".join([c.c for c in self.cs])
@@ -2006,19 +2011,20 @@ class tchar:
     def delc(self):
         # Deletes character from document (and from my word/line)
         # Deleting a character causes the word to move if it's center- or right-justified. Adjust position to fix
-        myi = self.ln.cs.index(self)  # index in line
+        lncs = self.ln.cs
+        myi = lncs.index(self)  # index in line
         
         # Differential kerning affect on character width
         dko1 = dko2 = dkn = 0
-        if myi<len(self.ln.cs)-1:
-            dko2 = self.dkerns.get((self.ln.cs[myi].c,self.ln.cs[myi+1].c),0.0) # old from right
+        if myi<len(lncs)-1:
+            dko2 = self.dkerns.get((lncs[myi].c,lncs[myi+1].c),0.0) # old from right
             if myi > 0:
-                dkn = self.dkerns.get((self.ln.cs[myi-1].c,self.ln.cs[myi+1].c),0.0) # new
+                dkn = self.dkerns.get((lncs[myi-1].c,lncs[myi+1].c),0.0) # new
         if myi>0:
-            dko1 = self.dkerns.get((self.ln.cs[myi-1].c,self.ln.cs[myi].c),0.0) # old from left
+            dko1 = self.dkerns.get((lncs[myi-1].c,lncs[myi].c),0.0) # old from left
         dk = dko1+dko2-dkn
         
-        cwo = self.cw + dk + self.dx + self.lsp * (self.w.cs[0] != self)
+        cwo = self.cw + dk + self._dx + self.lsp * (self.w.cs[0] != self)
         if self.w.unrenderedspace and self.w.cs[-1] == self:
             if len(self.w.cs) > 1 and self.w.cs[-2].c != " ":
                 cwo = dk
@@ -2029,49 +2035,47 @@ class tchar:
             deltax = (self.anchorfrac - 1) * cwo / self.sf
         else:  # assume end of line
             deltax = self.anchorfrac * cwo / self.sf
+        
+        lnx = [v for v in self.ln.x]
+        changedx = False
         if deltax != 0:
-            newx = self.ln.x
-            nnii = [ii for ii, x in enumerate(self.ln.x) if x is not None]
+            nnii = [ii for ii, x in enumerate(lnx) if x is not None]
             # non-None
-            newx[nnii[self.ln.ws.index(self.w)]] -= deltax
-            self.ln.change_pos(newx)
+            lnx[nnii[self.ln.ws.index(self.w)]] -= deltax
+            changedx = True
+            # self.ln.change_pos(newx)
 
         # Delete from document
         if self.loc.tt == "text":
-            self.loc.el.text = del2(self.loc.el.text, self.loc.ind)
+            self.loc.el.text = self.loc.el.text[:self.loc.ind] + self.loc.el.text[self.loc.ind + 1:]
         else:
-            self.loc.el.tail = del2(self.loc.el.tail, self.loc.ind)
+            self.loc.el.tail = self.loc.el.tail[:self.loc.ind] + self.loc.el.tail[self.loc.ind + 1:]
 
-        if len(self.ln.x) > 1:
-            if myi < len(self.ln.x):
-                if (
-                    myi < len(self.ln.x) - 1
-                    and self.ln.x[myi] is not None
-                    and self.ln.x[myi + 1] is None
-                ):
-                    newx = del2(
-                        self.ln.x, myi + 1
-                    )  # next x is None, delete that instead
-                elif myi == len(self.ln.x) - 1 and len(self.ln.cs) > len(self.ln.x):
-                    newx = self.ln.x
-                    # last x, characters still follow
-                else:
-                    newx = del2(self.ln.x, myi)
-                newx = newx[: len(self.ln.cs) - 1]
-                # we haven't deleted the char yet, so make it len-1 long
-                self.ln.change_pos(newx)
+        # lnx = self.ln.x
+        if len(lnx) > 1 and myi < len(lnx):
+            if myi < len(lnx) - 1 and lnx[myi] is not None and lnx[myi + 1] is None:
+                newx = lnx[:myi + 1] + lnx[myi + 2:]  # next x is None, delete that instead
+            elif myi == len(lnx) - 1 and len(lncs) > len(lnx):
+                newx = lnx  # last x, characters still follow
+            else:
+                newx = lnx[:myi] + lnx[myi + 1:]
+            
+            lnx = newx[: len(lncs) - 1]
+            # we haven't deleted the char yet, so make it len-1 long
+            # self.ln.change_pos(newx)
+            changedx = True
+        if changedx:
+            self.ln.change_pos(lnx)
 
         # Delete from line
-        for ii in range(
-            myi + 1, len(self.ln.cs)
-        ):  # need to decrement index of subsequent objects with the same parent
-            ca = self.ln.cs[ii]
+        for ii, ca in enumerate(lncs[myi + 1:], start=myi + 1):
+            # need to decrement index of subsequent objects with the same parent
             if ca.loc.tt == self.loc.tt and ca.loc.el == self.loc.el:
                 ca.loc.ind -= 1
             if ca.w is not None:
                 i2 = ca.w.cs.index(ca)
                 ca.w.iis[i2] -= 1
-        self.ln.cs = del2(self.ln.cs, myi)
+        self.ln.cs = lncs[:myi] + lncs[myi + 1:]
         if len(self.ln.cs) == 0:  # line now empty, can delete
             self.ln.dell()
         # self.ln = None
