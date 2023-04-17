@@ -534,32 +534,19 @@ def applyI_to_point(obj, pt):
     m = obj.matrix
     det = m[0][0] * m[1][1] - m[0][1] * m[1][0]
     inv_det = 1 / det
-    sx = float(pt.x) - m[0][2]  # pt.x is sometimes a numpy float64?
-    sy = float(pt.y) - m[1][2]
+    sx = pt.x - m[0][2]  # pt.x is sometimes a numpy float64?
+    sy = pt.y - m[1][2]
     x = (m[1][1] * sx - m[0][1] * sy) * inv_det
     y = (m[0][0] * sy - m[1][0] * sx) * inv_det
     return Vector2da(x, y)
 inkex.Transform.applyI_to_point = applyI_to_point
 
 # Faster apply_to_point that gets rid of property calls
-def apply_to_point_mod(obj, pt,simple=False):
-    if simple:
-        return Vector2da(
-            obj.matrix[0][0] * pt.x + obj.matrix[0][1] * pt.y + obj.matrix[0][2],
-            obj.matrix[1][0] * pt.x + obj.matrix[1][1] * pt.y + obj.matrix[1][2],
-        )
-    else:
-        if isinstance(pt,(tuple,list)):
-            ptx = pt[0]; pty=pt[1];
-        else:
-            ptx = pt.x;  pty=pt.y
-        # idebug(ptx)
-        # idebug(pty)
-        return inkex.Vector2d(
-            obj.matrix[0][0] * ptx + obj.matrix[0][1] * pty + obj.matrix[0][2],
-            obj.matrix[1][0] * ptx + obj.matrix[1][1] * pty + obj.matrix[1][2],
-        )
-        # return old_atp(obj,pt)
+def apply_to_point_mod(obj, pt, simple=False):
+    ptx, pty = pt if isinstance(pt, (tuple, list)) else (pt.x, pt.y)
+    x = obj.matrix[0][0] * ptx + obj.matrix[0][1] * pty + obj.matrix[0][2]
+    y = obj.matrix[1][0] * ptx + obj.matrix[1][1] * pty + obj.matrix[1][2]
+    return Vector2da(x, y)
 old_atp = inkex.Transform.apply_to_point
 inkex.Transform.apply_to_point = apply_to_point_mod
 
@@ -695,21 +682,16 @@ def ungroup(groupel):
 
     if groupel.croot is not None:
         gparent = groupel.getparent()
-        gindex = list(gparent).index(groupel)  # group's location in parent
-        gtransform = groupel.ctransform
-        # gclipurl = groupel.get("clip-path")
-        # gmaskurl = groupel.get("mask")
+        gindex = gparent.index(groupel)  # group's location in parent
         
+        gtransform = groupel.ctransform
         gclip = groupel.get_link('clip-path',llget=True)
         gmask = groupel.get_link('mask',llget=True)
-
         gstyle = groupel.ccascaded_style
 
         for el in reversed(list(groupel)):
-
             if el.tag == ctag:  # remove comments
                 groupel.remove(el)
-
             if not (el.tag in unungroupable):
                 clippedout = compose_all(el, gclip, gmask, gtransform, gstyle)
                 if clippedout:
@@ -1220,28 +1202,71 @@ inkex.paths.Path.end_points = property(fast_end_points)
 
 # Optimize init to avoid calls to append, which is unnecessarily slow
 ippcmd, ipcspth, ipln = inkex.paths.PathCommand, inkex.paths.CubicSuperPath, inkex.paths.Line
-def fast_init(self, path_d=None):
-    list.__init__(self)
-    ps = isinstance(path_d, str)
-    if ps:
-        # Returns a generator returning PathCommand objects
-        path_d = self.parse_string(path_d)
-    elif isinstance(path_d, ipcspth):
-        path_d = path_d.to_path()
-    for item in path_d or ():
-        if ps or isinstance(item, ippcmd):
-            list.append(self,item)  # parse_string only yields PathCommands
+
+def process_items(items):
+    for item in items:
+        if isinstance(item, ippcmd):
+            yield item  # parse_string only yields PathCommands
         elif isinstance(item, (list, tuple)) and len(item) == 2:
             if isinstance(item[1], (list, tuple)):
-                list.append(self,ippcmd.letter_to_class(item[0])(*item[1]))
+                yield ippcmd.letter_to_class(item[0])(*item[1])
             else:
-                list.append(self,ipln(*item))
+                yield ipln(*item)
         else:
             raise TypeError(
-                f"Bad path type: {type(path_d).__name__}"
+                f"Bad path type: {type(items).__name__}"
                 f"({type(item).__name__}, ...): {item}"
             )
+def fast_init(self, path_d=None):
+    list.__init__(self)
+    if isinstance(path_d, str):
+        # Returns a generator returning PathCommand objects
+        path_d = self.parse_string(path_d)
+        self.extend(path_d)
+    else:
+        if isinstance(path_d, ipcspth):
+            path_d = path_d.to_path()
+        self.extend(process_items(path_d or ()))
+        
 inkex.paths.Path.__init__ = fast_init
+
+# Make parse_string faster by combining with strargs (about 20%)
+LEX_REX = inkex.paths.LEX_REX
+try:
+    NUMBER_REX = inkex.utils.NUMBER_REX
+except:
+    DIGIT_REX_PART = r"[0-9]"
+    DIGIT_SEQUENCE_REX_PART = rf"(?:{DIGIT_REX_PART}+)"
+    INTEGER_CONSTANT_REX_PART = DIGIT_SEQUENCE_REX_PART
+    SIGN_REX_PART = r"[+-]"
+    EXPONENT_REX_PART = rf"(?:[eE]{SIGN_REX_PART}?{DIGIT_SEQUENCE_REX_PART})"
+    FRACTIONAL_CONSTANT_REX_PART = rf"(?:{DIGIT_SEQUENCE_REX_PART}?\.{DIGIT_SEQUENCE_REX_PART}|{DIGIT_SEQUENCE_REX_PART}\.)"
+    FLOATING_POINT_CONSTANT_REX_PART = rf"(?:{FRACTIONAL_CONSTANT_REX_PART}{EXPONENT_REX_PART}?|{DIGIT_SEQUENCE_REX_PART}{EXPONENT_REX_PART})"
+    NUMBER_REX = re.compile(
+        rf"(?:{SIGN_REX_PART}?{FLOATING_POINT_CONSTANT_REX_PART}|{SIGN_REX_PART}?{INTEGER_CONSTANT_REX_PART})"
+    )
+ipPC = inkex.paths.PathCommand
+letter_to_class = ipPC._letter_to_class
+nargs_cache = {cmd: cmd.nargs for cmd in letter_to_class.values()}
+def fast_parse_string(cls, path_d):
+    for cmd, numbers in LEX_REX.findall(path_d):
+        args = [float(val) for val in NUMBER_REX.findall(numbers)]
+        cmd = letter_to_class[cmd]
+        cmd_nargs = nargs_cache[cmd]
+        i = 0
+        args_len = len(args)
+        while i < args_len or cmd_nargs == 0:
+            if args_len < i + cmd_nargs:
+                return
+            seg = cmd(*args[i: i + cmd_nargs])
+            i += cmd_nargs
+            cmd = seg.next_command
+            cmd_nargs = nargs_cache[cmd]
+            yield seg
+oldparse = inkex.paths.Path.parse_string
+inkex.paths.Path.parse_string = fast_parse_string
+newparse = inkex.paths.Path.parse_string
+
 
             
 # A cached list of all descendants of an svg in order
@@ -2546,7 +2571,6 @@ class Vector2da(V2d):
     def __init__(self,x,y):
         self._x = float(x);
         self._y = float(y);
-# Vector2da = v2d_simple
 def line_move_arc_end_point(self, first, prev):
     return Vector2da(self.x, self.y)
 def horz_end_point(self, first, prev):

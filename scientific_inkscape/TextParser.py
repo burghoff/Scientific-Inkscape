@@ -2525,6 +2525,7 @@ class Character_Table:
                     time.sleep(random.uniform(0.010, 0.020))
                 else:
                     pangolocked = True
+                    # dh.idebug(ct.keys())
                     for sty in ct:
                         joinch = ' ';
                         mystrs = [v[0] for k,v in nbb.items() if v[1]==sty]
@@ -2630,6 +2631,9 @@ class Character_Table:
         "text-rendering",
         "font-size",
     ]
+    
+    textshapeatt = [v for v in textshapeatt if v in ['font-family','font-weight','font-style','font-variant','font-stretch','font-size']]
+    
     # 'stroke','stroke-width' do not affect kerning at all
     @staticmethod
     def normalize_style(sty):
@@ -2656,9 +2660,12 @@ class Character_Table:
         
         sty2['font-family']=pr.get_true_font((ffam,fstr,fwgt,fsty));
         
-        sty2 = ";".join(
-            ["{0}:{1}".format(*seg) for seg in sty2.items()]
-        )  # from Style to_str
+        sty2 = inkex.OrderedDict(sorted(sty2.items())) # sort alphabetically by keys
+        for a in Character_Table.textshapeatt:
+            if sty2.get(a)==dh.default_style_atts[a]:
+                del sty2[a]
+        
+        sty2 = ";".join([f"{key}:{value}" for key, value in sty2.items()])
         return sty2
 
 

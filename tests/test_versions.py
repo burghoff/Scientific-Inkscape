@@ -1,24 +1,56 @@
-import subprocess, os
+import subprocess, os, time
+from test_main import vpaths
+vpy = dict()
+for k, v in vpaths.items():
+    bins = [vv for vv in v if os.path.split(vv)[-1]=='bin']
+    for b in bins:
+        f = os.path.join(b, 'python.exe');
+        if os.path.exists(f):
+            vpy[k] = f
+# print(vpy)
 
-test_versions = ['1.0','1.1','1.2.2','1.3']
+# test_versions = list(vpy.keys())
 
-for version in test_versions:
-  # Set the environment variable
-  env = dict(os.environ)
-  env['TESTMAINVERSION'] = version
+# Set column widths for Version and Pango columns
+version_col_width = 7
+pango_col_width = 6
 
-  # Call pytest and capture the output
-  result = subprocess.run(['pytest', 'test_main.py'], stdout=subprocess.PIPE, env=env)
+# Print table headers
+header = f"{ 'Version'.ljust(version_col_width)} :{ ' Pango'.ljust(pango_col_width)} :{ ' Results'}"
+print(header)
+print("-" * len(header))
 
-  # Split the output into lines
-  lines = result.stdout.decode('utf-8').split('\n')
-
-  # Print the lines that start with 'test_main.py'
-  for line in lines:
-    if line.startswith('test_main.py'):
-        pline = line.strip('test_main.py')
-        pversion = version + ' '*(6-len(version))
-        print(pversion + ':' + pline)
+for version, pyexec in vpy.items():
+    # Set the environment variable
+    env = dict(os.environ)
+    env['TESTMAINVERSION'] = version
+    
+    test_file = "test_main.py"
+    cmd = [pyexec, "-m", "pytest", test_file]
+    
+    tic = time.time()
+    process = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=subprocess.PIPE, text=True, env=env, shell=True)
+    stdout, stderr = process.communicate()
+    process.wait()
+    toc = time.time()-tic
+    
+    env_vars_file = "env_vars.txt"
+    env = dict()
+    if os.path.exists(env_vars_file):
+        with open(env_vars_file, "r") as f:
+            for env_line in f:
+                key, value = env_line.strip().split("=")
+                env[key] = value
+        os.remove(env_vars_file)
+    
+    lines = stdout.split('\n')
+    
+    for line in lines:
+        if line.startswith('test_main.py'):
+            pline = line.strip('test_main.py')
+            pversion = version.ljust(version_col_width)
+            pango_info = f"{'Yes' if env.get('HASPANGO', 'N/A') == 'True' else 'No'}".ljust(pango_col_width - 1)
+            print(f"{pversion} : {pango_info} :{pline}")
 
 # Delete the environment variable
 if 'TESTMAINVERSION' in os.environ:

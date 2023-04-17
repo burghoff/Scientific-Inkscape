@@ -40,51 +40,63 @@ class PangoRenderer():
         with warnings.catch_warnings():
             # Ignore ImportWarning for Gtk/Pango
             warnings.simplefilter('ignore') 
-            try:
-                import platform
-                if platform.system().lower() == "windows":
-                    # Windows does not have all of the typelibs needed for PangoFT2
-                    # Manually add the missing ones
-                    girep = os.path.join(os.path.dirname(os.path.dirname(dh.Get_Binary_Loc())),
-                                         'lib','girepository-1.0');
-                    if os.path.isdir(girep):
-                        tlibs = ['fontconfig-2.0.typelib','PangoFc-1.0.typelib','PangoFT2-1.0.typelib','freetype2-2.0.typelib']
-                        if any([not(os.path.exists(t)) for t in tlibs]):
-                            # gi looks in the order specified in GI_TYPELIB_PATH
-                            for newpath in [girep,os.path.join(dh.si_dir,'typelibs')]:
-                                cval = os.environ.get('GI_TYPELIB_PATH', '');
-                                if cval=='':
-                                    os.environ['GI_TYPELIB_PATH'] = newpath
-                                elif newpath not in cval:
-                                    os.environ['GI_TYPELIB_PATH'] = cval + os.pathsep + newpath
-                
-                import gi
-                gi.require_version("Gtk", "3.0")
-                
-                # GTk warning suppression from Martin Owens
-                # Can sometimes suppress debug output also?
-                from gi.repository import GLib
-                self.numlogs = 0;
-                def _nope(*args, **kwargs): #
-                    self.numlogs += 1;
-                    return GLib.LogWriterOutput.HANDLED
-                GLib.log_set_writer_func(_nope, None)
-                
-                from gi.repository import Pango
-                from gi.repository import Gdk
-                self.haspango = True;
-            except:
-                self.haspango = False;
-                
-            try:
-                # requires some typelibs we do not have
-                gi.require_version("PangoFT2", "1.0")
-                from gi.repository import PangoFT2
-                self.haspangoFT2 = True
-            except:
-                self.haspangoFT2 = False
-                
+            
+            self.haspango = False
+            self.haspangoFT2 = False
+            pangoenv = os.environ.get('USEPANGO', '')
+            if not(pangoenv=='False'):      
+                try:
+                    import platform
+                    if platform.system().lower() == "windows":
+                        # Windows does not have all of the typelibs needed for PangoFT2
+                        # Manually add the missing ones
+                        girep = os.path.join(os.path.dirname(os.path.dirname(dh.Get_Binary_Loc())),
+                                             'lib','girepository-1.0');
+                        if os.path.isdir(girep):
+                            tlibs = ['fontconfig-2.0.typelib','PangoFc-1.0.typelib','PangoFT2-1.0.typelib','freetype2-2.0.typelib']
+                            if any([not(os.path.exists(t)) for t in tlibs]):
+                                # gi looks in the order specified in GI_TYPELIB_PATH
+                                for newpath in [girep,os.path.join(dh.si_dir,'typelibs')]:
+                                    cval = os.environ.get('GI_TYPELIB_PATH', '');
+                                    if cval=='':
+                                        os.environ['GI_TYPELIB_PATH'] = newpath
+                                    elif newpath not in cval:
+                                        os.environ['GI_TYPELIB_PATH'] = cval + os.pathsep + newpath
+                    
+                    import gi
+                    gi.require_version("Gtk", "3.0")
+                    
+                    # GTk warning suppression from Martin Owens
+                    # Can sometimes suppress debug output also?
+                    from gi.repository import GLib
+                    self.numlogs = 0;
+                    def _nope(*args, **kwargs): #
+                        self.numlogs += 1;
+                        return GLib.LogWriterOutput.HANDLED
+                    GLib.log_set_writer_func(_nope, None)
+                    
+                    from gi.repository import Pango
+                    from gi.repository import Gdk
+                    Pango.Variant.NORMAL; # make sure this exists
+                    self.haspango = True;
+                except:
+                    self.haspango = False; 
+                    
+                try:
+                    # requires some typelibs we do not have
+                    gi.require_version("PangoFT2", "1.0")
+                    from gi.repository import PangoFT2
+                    self.haspangoFT2 = True
+                except:
+                    self.haspangoFT2 = False
     
+        if pangoenv in ['True','False']:
+            os.environ['HASPANGO']=str(self.haspango)
+            os.environ['HASPANGOFT2']=str(self.haspangoFT2)
+            with open("env_vars.txt", "w") as f:
+                f.write(f"HASPANGO={os.environ['HASPANGO']}")
+                f.write(f"\nHASPANGOFT2={os.environ['HASPANGOFT2']}")
+
         if self.haspango:
             self.disable_lcctype();
             if self.haspangoFT2:
