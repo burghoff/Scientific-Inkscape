@@ -26,6 +26,7 @@
 
 
 import inkex
+import speedups
 from inkex import (
     FlowPara,
     FlowSpan,
@@ -164,8 +165,8 @@ def descendants2(el, return_tails=False):
 BaseElement.descendants2 = descendants2
 
 
-
-
+EBget = lxml.etree.ElementBase.get;
+EBset = lxml.etree.ElementBase.set;
 
 def dupe_cssdict_entry(oldid, newid, svg):
     # duplicate a style in cssdict
@@ -326,31 +327,6 @@ def set_ccascaded_style(el, si):
         except:
             pass
 BaseElement.ccascaded_style = property(get_cascaded_style, set_ccascaded_style)
-
-# Cached style attribute that invalidates the cached cascaded / specified
-# style whenever the style is changed. Always use this when setting styles.
-# def get_cstyle(el):
-#     if not (hasattr(el, "_cstyle")):
-#         el._cstyle = Style0(el.get("style"))  # el.get() is very efficient
-#     return el._cstyle
-# def set_cstyle(el, nsty):
-#     el.style = nsty
-#     if not(isinstance(nsty,Style0)):
-#         nsty = Style0(nsty);
-#     el._cstyle = nsty
-#     el.ccascaded_style = None
-#     el.cspecified_style = None
-# BaseElement.cstyle = property(get_cstyle, set_cstyle)
-
-# Sets a style property
-# def Set_Style_Comp(el, comp, val):
-#     sty = el.cstyle
-#     if val is None:
-#         if sty.get(comp) is not None:
-#             del sty[comp]
-#     else:
-#         sty[comp] = val
-#     el.cstyle = sty  # set element style
 
 import inspect
 def count_callers():
@@ -519,47 +495,6 @@ def Get_Composed_List(el, comp, nargout=1):
             return None, None
 
 
-# fmt: off
-# Modifications to Transform functions for speed
-
-# A simple Vector2d, just a tuple wrapper
-from typing import Generator
-class v2d_simple():
-    def __init__(self,x,y):
-        self.x = x;
-        self.y = y;
-        
-# Applies inverse of transform to point without making a new Transform
-def applyI_to_point(obj, pt):
-    m = obj.matrix
-    det = m[0][0] * m[1][1] - m[0][1] * m[1][0]
-    inv_det = 1 / det
-    sx = pt.x - m[0][2]  # pt.x is sometimes a numpy float64?
-    sy = pt.y - m[1][2]
-    x = (m[1][1] * sx - m[0][1] * sy) * inv_det
-    y = (m[0][0] * sy - m[1][0] * sx) * inv_det
-    return Vector2da(x, y)
-inkex.Transform.applyI_to_point = applyI_to_point
-
-# Faster apply_to_point that gets rid of property calls
-def apply_to_point_mod(obj, pt, simple=False):
-    ptx, pty = pt if isinstance(pt, (tuple, list)) else (pt.x, pt.y)
-    x = obj.matrix[0][0] * ptx + obj.matrix[0][1] * pty + obj.matrix[0][2]
-    y = obj.matrix[1][0] * ptx + obj.matrix[1][1] * pty + obj.matrix[1][2]
-    return Vector2da(x, y)
-old_atp = inkex.Transform.apply_to_point
-inkex.Transform.apply_to_point = apply_to_point_mod
-
- # A faster bool (built-in bool is slow because it initializes multiple Transforms)
-# from math import fabs
-def Tbool(obj):
-    # return any([fabs(v1-v2)>obj.absolute_tolerance for v1,v2 in zip(obj.matrix[0]+obj.matrix[1],Itmat[0]+Itmat[1])])
-    # return any([fabs(obj.matrix[0][0]-1)>obj.absolute_tolerance,fabs(obj.matrix[0][1])>obj.absolute_tolerance,fabs(obj.matrix[0][2])>obj.absolute_tolerance,fabs(obj.matrix[1][0])>obj.absolute_tolerance,fabs(obj.matrix[1][1]-1)>obj.absolute_tolerance,fabs(obj.matrix[1][2])>obj.absolute_tolerance])
-    return obj.matrix!=Itmat     # exact, not within tolerance. I think this is fine
-inkex.Transform.__bool__ = Tbool
-# fmt: on
-
-
 # Unit parser and renderer
 def uparse(str):
     if str is not None:
@@ -622,8 +557,8 @@ def unlink2(el):
             d = useel.duplicate2()
 
             # xy translation treated as a transform (applied first, then clip/mask, then full xform)
-            tx = el.get("x")
-            ty = el.get("y")
+            tx = EBget(el,"x")
+            ty = EBget(el,"y")
             if tx is None:
                 tx = 0
             if ty is None:
@@ -720,9 +655,9 @@ def group(el_list,moveTCM=False):
     return g
 
 
-Itmat = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
 
 # For composing a group's properties onto its children (also group-like objects like Uses)
+Itmat = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
 def compose_all(el, clip, mask, transform, style):
     if style is not None:  # style must go first since we may change it with CSS
         mysty = el.ccascaded_style
@@ -866,17 +801,6 @@ def replace_element(el1, el2):
 
 
 # Like list(set(lst)), but preserves order
-# def unique(lst):
-#     lst2 = [];
-#     for ii in reversed(range(len(lst))):
-#         if lst[ii] not in lst[:ii]:
-#             lst2.insert(0,lst[ii]) 
-#     if lst2!=unique2(lst):
-#         idebug(lst)
-#         idebug(lst2)
-#         idebug(unique2(lst))
-#         quit()
-#     return lst2
 def unique(lst):
     seen = set()
     seen_add = seen.add
@@ -1089,183 +1013,7 @@ def getcdescendants(svg):
 inkex.SvgDocumentElement.cdescendants = property(getcdescendants)
 
 
-NSatts,wrprops = dict(), dict()
-inkexget = inkex.BaseElement.get;
-EBget = lxml.etree.ElementBase.get;
-EBset = lxml.etree.ElementBase.set;
 
-
-
-wrapped_props = {row[0]: (row[-2], row[-1]) for row in inkex.BaseElement.WRAPPED_ATTRS}
-wrapped_props_keys = set(wrapped_props.keys())
-
-wrapped_attrs =  {row[-2]: (row[0], row[-1]) for row in inkex.BaseElement.WRAPPED_ATTRS}
-wrapped_attrs_keys = set(wrapped_attrs.keys())
-        
-def fast_getattr(self, name):
-    """Get the attribute, but load it if it is not available yet"""
-    # if name in wrapped_props_keys:   # always satisfied
-    (attr, cls) = wrapped_props[name]
-    def _set_attr(new_item):
-        if new_item:
-            self.set(attr, str(new_item))
-        else:
-            self.attrib.pop(attr, None)  # pylint: disable=no-member
-
-    # pylint: disable=no-member
-    value = cls(self.attrib.get(attr, None), callback=_set_attr)
-    if name == "style":
-        value.element = self
-    fast_setattr(self, name, value)
-    return value
-    # raise AttributeError(f"Can't find attribute {self.typename}.{name}")
-
-def fast_setattr(self, name, value):
-    """Set the attribute, update it if needed"""
-    # if name in wrapped_props_keys:   # always satisfied
-    (attr, cls) = wrapped_props[name]
-    # Don't call self.set or self.get (infinate loop)
-    if value:
-        if not isinstance(value, cls):
-            value = cls(value)
-        self.attrib[attr] = str(value)
-    else:
-        self.attrib.pop(attr, None)  # pylint: disable=no-member
-    # else:
-    #     lxml.etree.ElementBase.__setattr__(self,name, value)
-
-# _base.py overloads __setattr__ and __getattr__, which adds a lot of overhead
-# since they're invoked for all class attributes, not just transform etc.
-# We remove the overloading and replicate it using properties. Since there
-# are only a few attributes to overload, this is fine.
-del inkex.BaseElement.__setattr__
-del inkex.BaseElement.__getattr__
-for prop in wrapped_props_keys:
-    get_func = lambda self, attr=prop: fast_getattr(self, attr)
-    set_func = lambda self, value, attr=prop: fast_setattr(self, attr, value)
-    setattr(inkex.BaseElement, prop, property(get_func, set_func))
-
-
-# Inkex's get does a lot of namespace checking that can be cached for speed
-# This can be bypassed altogether for known attributes (by using EBget instead)
-def fast_get(self, attr, default=None):
-    try:
-        return EBget(self,NSatts[attr], default)
-    except:
-        try:
-            value = getattr(self, wrprops[attr], None)
-            ret = str(value) if value else (default or None)
-            return ret
-        except:
-            if attr in wrapped_attrs_keys:
-                (wrprops[attr], _) = wrapped_attrs[attr]
-            else:
-                NSatts[attr] = inkex.addNS(attr)
-            return inkexget(self, attr, default)
-inkex.BaseElement.get = fast_get
-
-def fast_set(self, attr, value):
-    """Set element attribute named, with addNS support"""
-    if attr in wrapped_attrs:
-        # Always keep the local wrapped class up to date.
-        (prop, cls) = wrapped_attrs[attr]
-        setattr(self, prop, cls(value))
-        value = getattr(self, prop)
-        if not value:
-            return 
-    try:
-        NSattr = NSatts[attr]
-    except:
-        NSatts[attr] = inkex.addNS(attr)
-        NSattr = NSatts[attr]
-        
-    if value is None:
-        self.attrib.pop(NSattr, None)  # pylint: disable=no-member
-    else:
-        value = str(value)
-        EBset(self,NSattr, value)
-inkex.BaseElement.set = fast_set
-
-# A version of end_points that avoids unnecessary instance checks for speed
-zZmM = {'z','Z','m','M'}
-def fast_end_points(self):
-    prev = Vector2da(0,0)
-    first = Vector2da(0,0)
-    for seg in self:  
-        end_point = seg.end_point(first, prev)
-        if seg.letter in zZmM:
-            first = end_point
-        prev = end_point
-        yield end_point
-inkex.paths.Path.end_points = property(fast_end_points)
-
-
-# Optimize init to avoid calls to append, which is unnecessarily slow
-ippcmd, ipcspth, ipln = inkex.paths.PathCommand, inkex.paths.CubicSuperPath, inkex.paths.Line
-
-def process_items(items):
-    for item in items:
-        if isinstance(item, ippcmd):
-            yield item  # parse_string only yields PathCommands
-        elif isinstance(item, (list, tuple)) and len(item) == 2:
-            if isinstance(item[1], (list, tuple)):
-                yield ippcmd.letter_to_class(item[0])(*item[1])
-            else:
-                yield ipln(*item)
-        else:
-            raise TypeError(
-                f"Bad path type: {type(items).__name__}"
-                f"({type(item).__name__}, ...): {item}"
-            )
-def fast_init(self, path_d=None):
-    list.__init__(self)
-    if isinstance(path_d, str):
-        # Returns a generator returning PathCommand objects
-        path_d = self.parse_string(path_d)
-        self.extend(path_d)
-    else:
-        if isinstance(path_d, ipcspth):
-            path_d = path_d.to_path()
-        self.extend(process_items(path_d or ()))
-        
-inkex.paths.Path.__init__ = fast_init
-
-# Make parse_string faster by combining with strargs (about 20%)
-LEX_REX = inkex.paths.LEX_REX
-try:
-    NUMBER_REX = inkex.utils.NUMBER_REX
-except:
-    DIGIT_REX_PART = r"[0-9]"
-    DIGIT_SEQUENCE_REX_PART = rf"(?:{DIGIT_REX_PART}+)"
-    INTEGER_CONSTANT_REX_PART = DIGIT_SEQUENCE_REX_PART
-    SIGN_REX_PART = r"[+-]"
-    EXPONENT_REX_PART = rf"(?:[eE]{SIGN_REX_PART}?{DIGIT_SEQUENCE_REX_PART})"
-    FRACTIONAL_CONSTANT_REX_PART = rf"(?:{DIGIT_SEQUENCE_REX_PART}?\.{DIGIT_SEQUENCE_REX_PART}|{DIGIT_SEQUENCE_REX_PART}\.)"
-    FLOATING_POINT_CONSTANT_REX_PART = rf"(?:{FRACTIONAL_CONSTANT_REX_PART}{EXPONENT_REX_PART}?|{DIGIT_SEQUENCE_REX_PART}{EXPONENT_REX_PART})"
-    NUMBER_REX = re.compile(
-        rf"(?:{SIGN_REX_PART}?{FLOATING_POINT_CONSTANT_REX_PART}|{SIGN_REX_PART}?{INTEGER_CONSTANT_REX_PART})"
-    )
-ipPC = inkex.paths.PathCommand
-letter_to_class = ipPC._letter_to_class
-nargs_cache = {cmd: cmd.nargs for cmd in letter_to_class.values()}
-def fast_parse_string(cls, path_d):
-    for cmd, numbers in LEX_REX.findall(path_d):
-        args = [float(val) for val in NUMBER_REX.findall(numbers)]
-        cmd = letter_to_class[cmd]
-        cmd_nargs = nargs_cache[cmd]
-        i = 0
-        args_len = len(args)
-        while i < args_len or cmd_nargs == 0:
-            if args_len < i + cmd_nargs:
-                return
-            seg = cmd(*args[i: i + cmd_nargs])
-            i += cmd_nargs
-            cmd = seg.next_command
-            cmd_nargs = nargs_cache[cmd]
-            yield seg
-oldparse = inkex.paths.Path.parse_string
-inkex.paths.Path.parse_string = fast_parse_string
-newparse = inkex.paths.Path.parse_string
 
 
             
@@ -2503,93 +2251,7 @@ def standardize_viewbox(svg):
 inkex.SvgDocumentElement.standardize_viewbox = standardize_viewbox
 
 
-# Override Transform's __matmul__ to give old versions __matmul__
-# Also optimized for speed
-def matmul2(obj, matrix):
-    if isinstance(matrix, (Transform)):
-        othermat = matrix.matrix
-    elif isinstance(matrix, (tuple)):
-        othermat = matrix
-    else:
-        othermat = Transform(matrix).matrix
-        # I think this is never called
-    return Transform(
-        (
-            obj.matrix[0][0] * othermat[0][0] + obj.matrix[0][1] * othermat[1][0],
-            obj.matrix[1][0] * othermat[0][0] + obj.matrix[1][1] * othermat[1][0],
-            obj.matrix[0][0] * othermat[0][1] + obj.matrix[0][1] * othermat[1][1],
-            obj.matrix[1][0] * othermat[0][1] + obj.matrix[1][1] * othermat[1][1],
-            obj.matrix[0][0] * othermat[0][2]
-            + obj.matrix[0][1] * othermat[1][2]
-            + obj.matrix[0][2],
-            obj.matrix[1][0] * othermat[0][2]
-            + obj.matrix[1][1] * othermat[1][2]
-            + obj.matrix[1][2],
-        )
-    )
-inkex.transforms.Transform.__matmul__ = matmul2
 
-def imatmul2(self, othermat):
-    if isinstance(othermat, (Transform)):
-        othermat = othermat.matrix
-    self.matrix = (
-        (self.matrix[0][0] * othermat[0][0] + self.matrix[0][1] * othermat[1][0],
-         self.matrix[0][0] * othermat[0][1] + self.matrix[0][1] * othermat[1][1],
-         self.matrix[0][0] * othermat[0][2] + self.matrix[0][1] * othermat[1][2] + self.matrix[0][2]),
-        (self.matrix[1][0] * othermat[0][0] + self.matrix[1][1] * othermat[1][0],
-         self.matrix[1][0] * othermat[0][1] + self.matrix[1][1] * othermat[1][1],
-         self.matrix[1][0] * othermat[0][2] + self.matrix[1][1] * othermat[1][2] + self.matrix[1][2])
-    )
-    if self.callback is not None:
-        self.callback(self)
-    return self
-inkex.transforms.Transform.__imatmul__ = imatmul2
-
-IV2d = inkex.transforms.ImmutableVector2d
-def IV2d_init(self, *args, fallback=None):
-    # count_callers()
-    try:
-        self._x, self._y = map(float, args) # 2 args most common
-    except:
-        try:
-            if len(args) == 0:
-                x, y = 0.0, 0.0
-            elif len(args) == 1:
-                x, y = self._parse(args[0])
-            else:
-                raise ValueError("too many arguments")
-        except (ValueError, TypeError) as error:
-            if fallback is None:
-                raise ValueError("Cannot parse vector and no fallback given") from error
-            x, y = IV2d(fallback)
-        self._x, self._y = float(x), float(y)
-inkex.transforms.ImmutableVector2d.__init__ = IV2d_init
-
-V2d = inkex.transforms.Vector2d
-class Vector2da(V2d):
-    __slots__ = ('_x', '_y') # preallocate for speed
-    def __init__(self,x,y):
-        self._x = float(x);
-        self._y = float(y);
-def line_move_arc_end_point(self, first, prev):
-    return Vector2da(self.x, self.y)
-def horz_end_point(self, first, prev):
-    return Vector2da(self.x, prev.y)
-def vert_end_point(self, first, prev):
-    return Vector2da(prev.x, self.y)
-def curve_smooth_end_point(self, first, prev):
-    return Vector2da(self.x4, self.y4)
-def quadratic_tepid_quadratic_end_point(self, first, prev):
-    return Vector2da(self.x3, self.y3)
-inkex.paths.Line.end_point = line_move_arc_end_point
-inkex.paths.Move.end_point = line_move_arc_end_point
-inkex.paths.Arc.end_point = line_move_arc_end_point
-inkex.paths.Horz.end_point = horz_end_point
-inkex.paths.Vert.end_point = vert_end_point
-inkex.paths.Curve.end_point = curve_smooth_end_point
-inkex.paths.Smooth.end_point = curve_smooth_end_point
-inkex.paths.Quadratic.end_point = quadratic_tepid_quadratic_end_point
-inkex.paths.TepidQuadratic.end_point = quadratic_tepid_quadratic_end_point
 
 # Get default style attributes
 try:

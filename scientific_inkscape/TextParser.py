@@ -59,7 +59,8 @@ sys.path.append(
     os.path.dirname(os.path.realpath(sys.argv[0]))
 )  # make sure my directory is on the path
 import dhelpers as dh
-from dhelpers import Vector2da as v2ds
+from speedups import Vector2da as v2d
+import speedups as su
 from dhelpers import bbox
 
 from pango_renderer import PangoRenderer
@@ -78,13 +79,14 @@ def get_parsed_text(el):
 inkex.TextElement.parsed_text = property(get_parsed_text)
 
 # Add character table property and function to SVG
+tetag = TextElement.tag2
 def make_char_table_fcn(svg,els=None):
     # Can be called with els argument to examine list of elements only 
     # (otherwise use entire SVG)
     if els is None: 
-        tels = [d for d in svg.cdescendants if isinstance(d,TextElement)];
+        tels = [d for d in svg.cdescendants if d.tag==tetag];
     else:           
-        tels = [d for d in els              if isinstance(d,TextElement)]
+        tels = [d for d in els              if d.tag==tetag]
     svg._char_table = Character_Table(tels)
 def get_char_table(svg):
     if not (hasattr(svg, "_char_table")):
@@ -574,7 +576,7 @@ class ParsedText:
 
     @staticmethod
     def GetXY(el, xy):
-        val = dh.EBget(el,xy) # fine for 'x','y','dx','dy'
+        val = su.fget(el,xy) # fine for 'x','y','dx','dy'
         if val is None:
             val = [None]  # None forces inheritance
         else:
@@ -1733,10 +1735,10 @@ class tword:
             else:
                 ymin = ymax = wy
             self._pts_ut = [
-                v2ds(wx + offx / self.sf, ymax),
-                v2ds(wx + offx / self.sf, ymin),
-                v2ds(wx + (ww + offx) / self.sf, ymin),
-                v2ds(wx + (ww + offx) / self.sf, ymax),
+                v2d(wx + offx / self.sf, ymax),
+                v2d(wx + offx / self.sf, ymin),
+                v2d(wx + (ww + offx) / self.sf, ymin),
+                v2d(wx + (ww + offx) / self.sf, ymax),
             ]
         return self._pts_ut
 
@@ -2159,16 +2161,16 @@ class tchar:
     #     """  Interpolate the pts of a word to get a specific character's pts"""
     #     myi = self.w.cs.index(self)
     #     cput = self.w.cpts_ut;
-    #     ret_pts_ut = [v2ds(cput[0][myi][0],cput[0][myi][1]),\
-    #                   v2ds(cput[1][myi][0],cput[1][myi][1]),\
-    #                   v2ds(cput[2][myi][0],cput[2][myi][1]),\
-    #                   v2ds(cput[3][myi][0],cput[3][myi][1])]
+    #     ret_pts_ut = [v2d(cput[0][myi][0],cput[0][myi][1]),\
+    #                   v2d(cput[1][myi][0],cput[1][myi][1]),\
+    #                   v2d(cput[2][myi][0],cput[2][myi][1]),\
+    #                   v2d(cput[3][myi][0],cput[3][myi][1])]
 
     #     cpt = self.w.cpts_t;
-    #     ret_pts_t = [v2ds(cpt[0][myi][0],cpt[0][myi][1]),\
-    #                  v2ds(cpt[1][myi][0],cpt[1][myi][1]),\
-    #                  v2ds(cpt[2][myi][0],cpt[2][myi][1]),\
-    #                  v2ds(cpt[3][myi][0],cpt[3][myi][1])]
+    #     ret_pts_t = [v2d(cpt[0][myi][0],cpt[0][myi][1]),\
+    #                  v2d(cpt[1][myi][0],cpt[1][myi][1]),\
+    #                  v2d(cpt[2][myi][0],cpt[2][myi][1]),\
+    #                  v2d(cpt[3][myi][0],cpt[3][myi][1])]
 
     #     return ret_pts_ut, ret_pts_t
 
@@ -2178,10 +2180,10 @@ class tchar:
         myi = self.w.cs.index(self)
         cput = self.w.cpts_ut
         ret_pts_ut = [
-            v2ds(cput[0][myi][0], cput[0][myi][1]),
-            v2ds(cput[1][myi][0], cput[1][myi][1]),
-            v2ds(cput[2][myi][0], cput[2][myi][1]),
-            v2ds(cput[3][myi][0], cput[3][myi][1]),
+            v2d(cput[0][myi][0], cput[0][myi][1]),
+            v2d(cput[1][myi][0], cput[1][myi][1]),
+            v2d(cput[2][myi][0], cput[2][myi][1]),
+            v2d(cput[3][myi][0], cput[3][myi][1]),
         ]
         return ret_pts_ut
 
@@ -2190,10 +2192,10 @@ class tchar:
         myi = self.w.cs.index(self)
         cpt = self.w.cpts_t
         ret_pts_t = [
-            v2ds(cpt[0][myi][0], cpt[0][myi][1]),
-            v2ds(cpt[1][myi][0], cpt[1][myi][1]),
-            v2ds(cpt[2][myi][0], cpt[2][myi][1]),
-            v2ds(cpt[3][myi][0], cpt[3][myi][1]),
+            v2d(cpt[0][myi][0], cpt[0][myi][1]),
+            v2d(cpt[1][myi][0], cpt[1][myi][1]),
+            v2d(cpt[2][myi][0], cpt[2][myi][1]),
+            v2d(cpt[3][myi][0], cpt[3][myi][1]),
         ]
         return ret_pts_t
 
@@ -2205,7 +2207,7 @@ class tchar:
         nh = self.prop.inkbb[3]/self.sf;
         nx = put[0].x+self.prop.inkbb[0]/self.sf;
         ny = put[0].y+self.prop.inkbb[1]/self.sf+nh;
-        return [v2ds(nx,ny),v2ds(nx,ny-nh),v2ds(nx+nw,ny-nh),v2ds(nx+nw,ny)]
+        return [v2d(nx,ny),v2d(nx,ny-nh),v2d(nx+nw,ny-nh),v2d(nx+nw,ny)]
 
     # @property
     # def parsed_pts_ut(self):
