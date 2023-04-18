@@ -124,6 +124,7 @@ for prop in wrapped_props_keys:
 
 
 """ paths.py """
+# A faster version of Vector2d that only allows for 2 input args
 V2d = inkex.transforms.Vector2d
 class Vector2da(V2d):
     __slots__ = ('_x', '_y') # preallocation speeds
@@ -201,6 +202,14 @@ def fast_init(self, path_d=None):
         self.extend(process_items(path_d or ()))
 inkex.paths.Path.__init__ = fast_init
 
+# Cache PathCommand letters and remove property
+letts = dict()
+for pc in PCsubs:
+    letts[pc]=pc.letter
+del ipPC.letter
+for pc in PCsubs:
+    pc.letter = letts[pc]
+
 # Make parse_string faster by combining with strargs (about 20% faster)
 LEX_REX = inkex.paths.LEX_REX
 try:
@@ -218,6 +227,8 @@ except:
     )
 letter_to_class = ipPC._letter_to_class
 nargs_cache = {cmd: cmd.nargs for cmd in letter_to_class.values()}
+next_command_cache = {cmd: cmd.next_command for cmd in letter_to_class.values()}
+# inkex.utils.debug(next_command_cache)
 def fast_parse_string(cls, path_d):
     for cmd, numbers in LEX_REX.findall(path_d):
         args = [float(val) for val in NUMBER_REX.findall(numbers)]
@@ -230,7 +241,8 @@ def fast_parse_string(cls, path_d):
                 return
             seg = cmd(*args[i: i + cmd_nargs])
             i += cmd_nargs
-            cmd = seg.next_command
+            # cmd = seg.next_command
+            cmd = next_command_cache[type(seg)]
             cmd_nargs = nargs_cache[cmd]
             yield seg
 inkex.paths.Path.parse_string = fast_parse_string

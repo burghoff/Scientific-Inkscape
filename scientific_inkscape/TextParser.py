@@ -52,7 +52,7 @@
 KERN_TABLE = True # generate a fine kerning table for each font?
 TEXTSIZE = 100;   # size of rendered text
 
-import os, sys
+import os, sys, itertools
 import numpy as np
 
 sys.path.append(
@@ -1285,6 +1285,7 @@ class tword:
         self.cs = [c]
         self.iis = [ii]
         # character index in word
+        self.Ncs = len(self.iis)
         self._x = x
         self._y = y
         self.sf = c.sf
@@ -1307,6 +1308,7 @@ class tword:
         self.cs.append(c)
         self.cchange()
         self.iis.append(ii)
+        self.Ncs = len(self.iis)
         c.w = self
 
     def removec(self, ii):  # removes a char from a word
@@ -1314,6 +1316,7 @@ class tword:
         self.cs = del2(self.cs, ii)
         self.cchange()
         self.iis = del2(self.iis, ii)
+        self.Ncs = len(self.iis)
         if len(self.cs) == 0:  # word now empty
             self.delw()
         # myc.w = None
@@ -1334,7 +1337,7 @@ class tword:
     def x(self):
         if self.ln is not None:
             lnx = self.ln.x
-            if len(self.iis) > 0:
+            if self.Ncs > 0:
                 fi = self.iis[0]
                 if fi < len(lnx):
                     return lnx[fi]
@@ -1349,7 +1352,7 @@ class tword:
     def y(self):
         if self.ln is not None:
             lny = self.ln.y
-            if len(self.iis) > 0:
+            if self.Ncs > 0:
                 fi = self.iis[0]
                 if fi < len(lny):
                     return lny[fi]
@@ -1610,9 +1613,7 @@ class tword:
         if self._dxeff is None:
             dxlsp = [0] + self.lsp
             # letter-spacing applies to next character
-            self._dxeff = [self.cs[ii].dx + dxlsp[ii] for ii in range(len(self.cs))] + [
-                dxlsp[-1]
-            ]
+            self._dxeff = [c.dx + d for c, d in zip(self.cs, dxlsp)] + [dxlsp[-1]]
         return self._dxeff
 
     @dxeff.setter
@@ -1648,7 +1649,7 @@ class tword:
         self,
     ):  # If last char of a multichar line is a space, is not rendered
         return (
-            len(self.cs) > 1
+            self.Ncs > 1
             and self.cs[-1] == self.ln.cs[-1]
             and self.cs[-1].c in [" ", "\u00A0"]
         )
@@ -1657,29 +1658,28 @@ class tword:
     def charpos(self):
         # Where characters in a word are relative to the left side of the word, in x units
         if self._charpos is None:
-            if len(self.cs) > 0:
+            if self.Ncs > 0:
                 dxl = self.dxeff
                 wadj = [0 for c in self.cs]
                 if KERN_TABLE:
-                    for ii in range(1, len(self.cs)):
+                    for ii in range(1, self.Ncs):
                         dk = self.cs[ii].dkerns.get((self.cs[ii - 1].c, self.cs[ii].c))
                         if dk is None:
                             dk = 0
                             # for chars of different style
                         wadj[ii] = dk
-                tmp = [
-                    self.cs[ii].cw + dxl[ii] * self.sf + wadj[ii]
-                    for ii in range(len(self.cs))
-                ]
-                cstop = [sum(tmp[: ii + 1]) for ii in range(len(tmp))]
+                tmp = [self.cs[ii].cw + dxl[ii] * self.sf + wadj[ii] for ii in range(self.Ncs)]
+                cstop = list(itertools.accumulate(tmp))
                 # cumulative width up to and including the iith char
-                cstrt = [cstop[ii] - self.cs[ii].cw for ii in range(len(self.cs))]
+                cstrt = [cstop[ii] - self.cs[ii].cw for ii in range(self.Ncs)]
             else:
                 cstop = []
                 cstrt = []
 
             cstrt = np.array(cstrt,dtype=float)
             cstop = np.array(cstop,dtype=float)
+            
+            # dh.idebug((cstrt,cstop))
 
             ww = cstop[-1]
             offx = -self.anchorfrac * (
@@ -1688,22 +1688,14 @@ class tword:
             wx = self.x
             wy = self.y
 
-            lx = (wx + (cstrt + offx) / self.sf).reshape(-1, 1)
-            rx = (wx + (cstop + offx) / self.sf).reshape(-1, 1)
-            dyl = [c.dy for c in self.cs]
-            chs = [c.ch for c in self.cs]
-            bss = [c.bshft for c in self.cs]
+            lx = (wx + (cstrt + offx) / self.sf)[:, np.newaxis]
+            rx = (wx + (cstop + offx) / self.sf)[:, np.newaxis]
+            
+            dyl, chs, bss = zip(*[(c.dy, c.ch, c.bshft) for c in self.cs])
+            adyl = list(itertools.accumulate(dyl))
+            by = np.array([wy + dy - bs for dy, bs in zip(adyl, bss)],dtype=float)[:, np.newaxis]
+            ty = np.array([wy + dy - ch / self.sf - bs for dy, ch, bs in zip(adyl, chs, bss)],dtype=float)[:, np.newaxis]
 
-            # dh.idebug(self.bshft)
-            by = np.array(
-                [wy + sum(dyl[: ii + 1]) - bss[ii] for ii in range(len(dyl))],dtype=float
-            ).reshape(-1, 1)
-            ty = np.array(
-                [
-                    wy + sum(dyl[: ii + 1]) - chs[ii] / self.sf - bss[ii]
-                    for ii in range(len(dyl))
-                ],dtype=float
-            ).reshape(-1, 1)
 
             self._charpos = (cstrt, cstop, lx, rx, by, ty)
 
@@ -1946,7 +1938,7 @@ class tchar:
                         fs2 = "12px"
                     lspv = float(lspv.strip("em")) * dh.ipx(fs2)
                 else:
-                    lspv = dh.ipx(lspv)
+                    lspv = dh.ipx(lspv) or 0
             else:
                 lspv = 0
             self._lsp = lspv
@@ -2007,7 +1999,7 @@ class tchar:
             fs2, sf2, tmp, tmp = dh.Get_Composed_Width(fsel, "font-size", 4)
             bshft = fs2 / sf2 * float(bshft.strip("%")) / 100
         else:
-            bshft = dh.ipx(bshft)
+            bshft = dh.ipx(bshft) or 0
         return bshft
 
     def delc(self):
@@ -2461,7 +2453,7 @@ class Character_Table:
             f.write(svgstart.encode("utf8"))
             from xml.sax.saxutils import escape
         else:
-            nbb = dict()
+            nbb = inkex.OrderedDict()
             # dh.idebug(ct)
         
 
@@ -2485,20 +2477,24 @@ class Character_Table:
                 self.dkern = dkern;
                 self.bareid = bareid;
 
-        ct2 = dict(); bareids = [];
+        badchars = {'\n':' ','\r':''}
+        def effc(c):
+            return badchars.get(c,c)
+        
+        ct2 = inkex.OrderedDict(); bareids = [];
         for s in ct:
             ct2[s] = dict()
             for ii in range(len(ct[s])):
                 myc = ct[s][ii]
-                t  = Make_Character(prefix + myc + suffix, s)
-                tb = Make_Character(         myc         , s);
+                t  = Make_Character(prefix + effc(myc) + suffix, s)
+                tb = Make_Character(         effc(myc)         , s);
                 bareids.append(tb)
                 dkern = dict()
                 if KERN_TABLE:
                     for jj in range(len(ct[s])):
                         pc = ct[s][jj]
                         if myc in pct[s] and pc in pct[s][myc]:
-                            t2 = Make_Character(prefix + pc+myc + suffix, s)
+                            t2 = Make_Character(prefix + effc(pc)+effc(myc) + suffix, s)
                             # precede by all chars of the same style
                             dkern[pc] = t2
                 ct2[s][myc] = StringInfo(myc, t, dkern,tb)
@@ -2537,29 +2533,50 @@ class Character_Table:
                         if not(success):
                             pangolocked = False
                             return self.meas_char_ws(els, forcecommand=True)
-                        pr.Render_Text(joinch.join(mystrs))
-                        exts,nu = pr.Get_Character_Extents(fm[1])
-                        ws = [v[0][2] for v in exts]
+                        joinedstr = joinch.join(mystrs)+joinch+prefix
+                        
+                        # We need to render all the characters, but we don't need all of their extents.
+                        # For most of them we just need the first character, unless the following string
+                        # has length 1 (and may be differently differentially kerned)
+                        modw = [any(len(mystrs[i]) == 1 for i in range(ii, ii + 2) if 0 <= i < len(mystrs)) for ii in range(len(mystrs))]
+                        needexts = ["1" if len(s) == 1 else "1" + "0"*(len(s)-2)+ ('1' if modw[ii] else '0') for ii,s in enumerate(mystrs)]
+                        needexts2 = '0'.join(needexts) + '1' + '1'*len(prefix)
+                        # needexts2 = '1'*len(joinedstr)
+                        
+                        pr.Render_Text(joinedstr)
+                        exts,nu = pr.Get_Character_Extents(fm[1],needexts2)
+                        # ws = [v[0][2] if v is not None else None for v in exts] # logical width by char
                         if nu>0:
-                            # dh.idebug(nu)
                             pangolocked = False
                             return self.meas_char_ws(els, forcecommand=True)
                         
+                        sw = exts[-len(prefix)-1][0][2]
                         cnt=0; x=0;
-                        for ii in range(len(mystrs)):
-                            s = slice(cnt,cnt+len(mystrs[ii]))
-                            w = sum(ws[s]);
+                        for ii,mystr in enumerate(mystrs):
+                            # w = sum(ws[cnt:cnt+len(mystr)])
+                            if modw[ii]:
+                                altw = exts[cnt+len(mystr)-1][0][0] + exts[cnt+len(mystr)-1][0][2]- exts[cnt][0][0]
+                            else:
+                                altw = exts[cnt+len(mystr)+1][0][0] - exts[cnt][0][0] -sw
+                            w = altw
+
+                            if abs(altw-w)>1e-12:
+                                dh.idebug((w,cnt,altw-w))
+                                dh.idebug(mystr)
+                                # dh.idebug([ord(c) for c in mystr])
+                                dh.idebug(sty)
+                                dh.idebug([v[0] for v in exts[cnt:cnt+len(mystr)]])
+                                dh.idebug(len(mystrs[ii+1]))
                                 
-                            # print(len(exts))
-                            firstch = exts[s][0];
+                            firstch = exts[cnt];
                             (xb,yb,wb,hb) = tuple(firstch[2]);
                             if myids[ii] not in bareids:
                                 xb = x; wb = w; # use logical width
-                            if mystrs[ii]==prefix+suffix:
+                            if mystr==prefix+suffix:
                                 ycorr = hb+yb
                                 
                             nbb[myids[ii]] = [v*TEXTSIZE for v in [xb,yb,wb,hb]]
-                            cnt += len(mystrs[ii])+len(joinch);
+                            cnt += len(mystr)+len(joinch);
                             x += w;    
                             
                         # Certain Windows fonts do not seem to comply with the Pango spec.
@@ -2609,6 +2626,8 @@ class Character_Table:
                     inkbb = nbb[ct[s][ii].bareid]
                 else:
                     inkbb = [ct[s][ii].bb.x1,ct[s][ii].bb.y1,0,0] # whitespace: make zero-width
+                # if ct[s][ii].strval in badchars:
+                #     cw = 0
                 ct[s][ii] = cprop(
                     ct[s][ii].strval,
                     cw/TEXTSIZE,

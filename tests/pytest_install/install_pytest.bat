@@ -1,7 +1,8 @@
 @echo off
 
 python.exe get-pip.py
-python.exe -m pip install pytest
+pip uninstall pytest
+pip install -U --no-cache-dir pytest
 
 echo Done!
 pause

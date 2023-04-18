@@ -419,6 +419,7 @@ BaseElement.ctransform = property(get_ctransform, set_ctransform)
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
+flookup = {"small": "10px", "medium": "12px", "large": "14px"}
 def Get_Composed_Width(el, comp, nargout=1):
     cs = el.cspecified_style
     ct = el.ccomposed_transform
@@ -444,9 +445,9 @@ def Get_Composed_Width(el, comp, nargout=1):
             return fs * sc
     else:
         if comp == "font-size":
-            sc = {"small": "10px", "medium": "12px", "large": "14px"}.get(sc, sc)
-
-        sw = ipx(sc)
+            sw = ipx(sc) or ipx(flookup.get(sc)) or ipx(flookup.get(default_style_atts[comp]))
+        else:
+            sw = ipx(sc) or ipx(default_style_atts[comp])
         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))  # scale factor
         if nargout == 4:
             return sw * sf, sf, ct, ang
@@ -514,18 +515,38 @@ def urender(v, u):
         return None
 
 
+# def ipx(strin):
+#     # Implicit pixel function
+#     # For many properties, a size specification of '1px' actually means '1uu'
+#     # Even if the size explicitly says '1mm' and the user units are mm, this will be
+#     # first converted to px and then interpreted to mean user units. (So '1mm' would
+#     # up being bigger than 1 mm). This returns the size as Inkscape will interpret it (in uu)
+#     if strin is None:
+#         return None
+#     else:
+#         # if not(ipx2(strin)==inkex.units.convert_unit(strin.lower().strip(), "px")):
+#         #     idebug((strin,ipx2(strin),inkex.units.convert_unit(strin.lower().strip(), "px")))
+#         return inkex.units.convert_unit(strin.lower().strip(), "px")
+
+# Implicit pixel function
+# For many properties, a size specification of '1px' actually means '1uu'
+# Even if the size explicitly says '1mm' and the user units are mm, this will be
+# first converted to px and then interpreted to mean user units. (So '1mm' would
+# up being bigger than 1 mm). This returns the size as Inkscape will interpret it (in uu).
+#   No unit: Assumes 'px'
+#   Invalid unit: Returns None (used to return 0, changed 2023.04.18)
+from inkex.units import CONVERSIONS, BOTH_MATCH
+conv2 = {k:CONVERSIONS[k]/CONVERSIONS["px"] for k,v in CONVERSIONS.items()}  
+from functools import lru_cache
+@lru_cache(maxsize=None)
 def ipx(strin):
-    # Implicit pixel function
-    # For many properties, a size specification of '1px' actually means '1uu'
-    # Even if the size explicitly says '1mm' and the user units are mm, this will be
-    # first converted to px and then interpreted to mean user units. (So '1mm' would
-    # up being bigger than 1 mm). This returns the size as Inkscape will interpret it (in uu)
-    if strin is None:
+    try:
+        ret = BOTH_MATCH.match(strin)
+        value = float(ret.groups()[0])
+        from_unit = ret.groups()[-1] or "px"
+        return value * conv2[from_unit]
+    except:
         return None
-    else:
-        return inkex.units.convert_unit(strin.lower().strip(), "px")
-
-
 
 
 # Get points of a path, element, or rectangle in the global coordinate system
@@ -2295,7 +2316,7 @@ def Run_SI_Extension(effext,name):
     
                 fns = []
                 for m in [sys.modules[__name__], TextParser, RemoveKerning, Style0, pango_renderer,
-                          inkex.transforms, getmodule(effext)]:
+                          inkex.transforms, getmodule(effext), speedups]:
                     fns += [v[1] for v in getmembers(m, isfunction)]
                     for c in getmembers(m, isclass):
                         if getmodule(c[1]) is m:
@@ -2309,6 +2330,7 @@ def Run_SI_Extension(effext,name):
                                     fns += [p[1].fset]
                 for fn in fns:
                     lp.add_function(fn)
+                lp.add_function(ipx.__wrapped__)
                    
                 lp(run_and_cleanup)()
                 stdouttrap = io.StringIO()

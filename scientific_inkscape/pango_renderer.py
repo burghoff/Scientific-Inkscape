@@ -529,7 +529,7 @@ class PangoRenderer():
         return lr, ir, ir_rel
               
         
-    def Get_Character_Extents(self,ascent):
+    def Get_Character_Extents(self,ascent,needexts):
         # Iterate through the layout to get the logical width of each character
         # If there is differential kerning applied, it is applied to the 
         # width of the first character. For example, the 'V' in 'Voltage'
@@ -538,11 +538,19 @@ class PangoRenderer():
         loi = self.pangolayout.get_iter();
         ws=[];
         ce = loi.get_cluster_extents();
-        ws.append(self.process_extents(ce,ascent));
+        ii = 0;
+        if needexts[ii]=='1':
+            ws.append(self.process_extents(ce,ascent));
+        else:
+            ws.append(None)
         moved = loi.next_char();
         while moved:
             ce = loi.get_cluster_extents();
-            ws.append(self.process_extents(ce,ascent));
+            ii+=1
+            if needexts[ii]=='1':
+                ws.append(self.process_extents(ce,ascent));
+            else:
+                ws.append(None)
             moved = loi.next_char();
             
         numunknown = self.pangolayout.get_unknown_glyphs_count()

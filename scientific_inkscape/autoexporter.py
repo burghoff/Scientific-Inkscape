@@ -1258,10 +1258,10 @@ class AutoExporter(inkex.EffectExtension):
                 if othv is not None:
                     if ',' not in othv:
                         # dh.Set_Style_Comp(d, oth, str(dh.ipx(othv)*s))
-                        d.cstyle[oth]= str(dh.ipx(othv)*s)
+                        d.cstyle[oth]= str((dh.ipx(othv) or 0)*s)
                     else:
                         # dh.Set_Style_Comp(d, oth, ','.join([str(dh.ipx(v)*s) for v in othv.split(',')]))
-                        d.cstyle[oth]= ','.join([str(dh.ipx(v)*s) for v in othv.split(',')])
+                        d.cstyle[oth]= ','.join([str((dh.ipx(v) or 0)*s) for v in othv.split(',')])
                 
             shape = d.ccascaded_style.get_link('shape-inside',svg);
             if shape is not None:
@@ -1533,7 +1533,7 @@ class AutoExporter(inkex.EffectExtension):
                                 # dh.Set_Style_Comp(
                                 #     el, "stroke-dasharray",
                                 #     str([dh.ipx(sdv)*SCALEBY for sdv in sd]).strip("[").strip("]"))
-                                el.cstyle["stroke-dasharray"]=str([dh.ipx(sdv)*SCALEBY for sdv in sd]).strip("[").strip("]")
+                                el.cstyle["stroke-dasharray"]=str([(dh.ipx(sdv) or 0)*SCALEBY for sdv in sd]).strip("[").strip("]")
                         
                         
                         # Fix bug on start markers where auto-start-reverse oriented markers
