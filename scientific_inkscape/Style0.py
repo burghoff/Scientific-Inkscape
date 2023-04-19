@@ -21,6 +21,7 @@ import inkex
 # from dhelpers import count_callers
 
 import inspect
+from functools import lru_cache
 def count_callers():
     caller_frame = inspect.stack()[2]
     filename = caller_frame.filename
@@ -69,15 +70,18 @@ class Style0(inkex.OrderedDict):
         super().__init__(style)
 
     @staticmethod
+    @lru_cache(maxsize=None)
     def parse_str(style):
         """Create a dictionary from the value of an inline style attribute"""
         if style is None:
             style = ""
+        ret = []
         for directive in style.split(";"):
             if ":" in directive:
                 (name, value) = directive.split(":", 1)
                 # FUTURE: Parse value here for extra functionality
-                yield (name.strip().lower(), value.strip())
+                ret.append((name.strip().lower(), value.strip()))
+        return ret
 
     def __str__(self):
         """Format an inline style attribute from a dictionary"""
@@ -87,6 +91,9 @@ class Style0(inkex.OrderedDict):
         """Convert to string using a custom delimiter"""
         # return sep.join(["{0}:{1}".format(*seg) for seg in self.items()])
         return sep.join([f"{key}:{value}" for key, value in self.items()]) # about 40% faster
+    
+    def __hash__(self):
+        return hash(self.to_str())
 
     def __add__(self, other):
         """Add two styles together to get a third, composing them"""
@@ -216,6 +223,8 @@ class Style0cb(Style0):
         super().__setitem__(key, value)
         if self.callback is not None:
             self.callback(self)
+            
+# Style0 = inkex.Style
             
 # Replace Style wrapped attr with Style0
 inkex.BaseElement.WRAPPED_ATTRS = (

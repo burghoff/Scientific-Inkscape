@@ -53,6 +53,7 @@ KERN_TABLE = True # generate a fine kerning table for each font?
 TEXTSIZE = 100;   # size of rendered text
 
 import os, sys, itertools
+from functools import lru_cache
 import numpy as np
 
 sys.path.append(
@@ -702,8 +703,8 @@ class ParsedText:
                     cel = cel.getparent()
                 tlvl = cel
 
-                tlvl.getparent().set("x", tline.writev(ln.x))
-                tlvl.getparent().set("y", tline.writev(ln.y))
+                xyset(tlvl.getparent(),"x",ln.x)
+                xyset(tlvl.getparent(),"y",ln.y)
 
                 # tx = ln.el.get('x'); ty=ln.el.get('y');
                 # # myp = ln.el.getparent();
@@ -1073,21 +1074,18 @@ class tline:
 
     # x property
     def get_x(self):
-        if self.continuex:  # For continuing lines, need to calculate anchor position
-            if self.pt is not None:
-                ii = self.pt.lns.index(self)
-                if ii > 0 and len(self.pt.lns[ii - 1].ws) > 0:
-                    xf = self.anchorfrac
-                    xanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[
-                        3
-                    ].x - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0].x
-                    return [xanch]
-                else:
-                    return [0]
-            else:
-                return [0]
-        else:
+        if not self.continuex:
             return self._x
+        if self.pt is None:
+            return [0]
+        ii = self.pt.lns.index(self)
+        if ii > 0 and len(self.pt.lns[ii - 1].ws) > 0:
+            xf = self.anchorfrac
+            xanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[3].x - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0].x
+            return [xanch]
+        else:
+            return [0]
+
 
     def set_x(self, xi):
         self._x = xi
@@ -1096,21 +1094,18 @@ class tline:
 
     # y property
     def get_y(self):
-        if self.continuey:  # For continuing lines, need to calculate anchor position
-            if self.pt is not None:
-                ii = self.pt.lns.index(self)
-                if ii > 0 and len(self.pt.lns[ii - 1].ws) > 0:
-                    xf = self.anchorfrac
-                    yanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[
-                        3
-                    ].y - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0].y
-                    return [yanch]
-                else:
-                    return [0]
-            else:
-                return [0]
-        else:
+        if not self.continuey:
             return self._y
+        if self.pt is None:
+            return [0]
+        ii = self.pt.lns.index(self)
+        if ii > 0 and len(self.pt.lns[ii - 1].ws) > 0:
+            xf = self.anchorfrac
+            yanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[3].y - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0].y
+            return [yanch]
+        else:
+            return [0]
+
 
     def set_y(self, yi):
         self._y = yi
@@ -1209,11 +1204,10 @@ class tline:
                     w.pts_ut = None  # invalidate word positions
 
     @staticmethod
-    def writev(v):
-        if v == []:
-            return None
-        else:
-            return " ".join([str(w) for w in v])
+    def writevA(v):
+        return None if not(v) else str(v)[1:-1].replace(',','')
+    
+
 
     # Disable sodipodi:role = line
     def disablesodipodi(self, force=False):
@@ -1230,8 +1224,8 @@ class tline:
                 self.sprlabove = []
                 self.xsrc = newsrc
                 self.ysrc = newsrc
-                self.xsrc.set("x", tline.writev(self.x))  # fuse position to new source
-                self.ysrc.set("y", tline.writev(self.y))
+                xyset(self.xsrc,"x",self.x)  # fuse position to new source
+                xyset(self.ysrc,"y",self.y)
                 self.sprl = False
 
     # Update the line's position in the document, accounting for inheritance
@@ -1243,19 +1237,17 @@ class tline:
                 for ln in reversed(sibsrc):
                     ln.disablesodipodi()  # Disable sprl when lines share an xsrc
 
-            if all([v is None for v in newx[1:]]) and len(newx) > 0:
+            # if all([v is None for v in newx[1:]]) and len(newx) > 0:
+            if newx and not any(newx[1:]):
                 newx = [newx[0]]
-            oldx = self.x
-            self.x = newx
-            self.xsrc.set("x", tline.writev(newx))
+            oldx = self._x if not self.continuex else self.x
+            self._x = newx
+            xyset(self.xsrc,"x", newx)
             # dh.idebug([self.txt(),self.xsrc.get('x')])
 
-            if (
-                len(oldx) > 1 and len(self.x) == 1 and len(self.sprlabove)>0
-            ):  # would re-enable sprl
+            if len(oldx) > 1 and len(newx) == 1 and len(self.sprlabove)>0:  # would re-enable sprl
                 self.disablesodipodi()
 
-            # dh.idebug([self.txt(),self.xsrc.get_id(),self.xsrc.get('x')])
 
         if newy is not None:
             sibsrc = [ln for ln in self.pt.lns if ln.ysrc == self.ysrc]
@@ -1263,15 +1255,14 @@ class tline:
                 for ln in reversed(sibsrc):
                     ln.disablesodipodi()  # Disable sprl when lines share a ysrc
 
-            if all([v is None for v in newy[1:]]) and len(newy) > 0:
+            # if all([v is None for v in newy[1:]]) and len(newy) > 0:
+            if newy and not any(newy[1:]):
                 newy = [newy[0]]
-            oldy = self.y
-            self.y = newy
-            self.ysrc.set("y", tline.writev(newy))
+            oldy = self._y if not self.continuey else self.y
+            self._y = newy
+            xyset(self.ysrc,"y", newy)
 
-            if (
-                len(oldy) > 1 and len(self.y) == 1 and len(self.sprlabove)>0
-            ):  # would re-enable sprl
+            if len(oldy) > 1 and len(newy) == 1 and len(self.sprlabove)>0:  # would re-enable sprl
                 self.disablesodipodi()
         if reparse:
             self.parse_words()
@@ -1335,33 +1326,25 @@ class tword:
 
     @property
     def x(self):
-        if self.ln is not None:
-            lnx = self.ln.x
-            if self.Ncs > 0:
-                fi = self.iis[0]
-                if fi < len(lnx):
-                    return lnx[fi]
-                else:
-                    return lnx[-1]
-            else:
-                return 0
+        if self.ln and self.Ncs > 0:
+            lnx = self.ln._x if not self.ln.continuex else self.ln.x
+            # checking for continuex early eliminates most unnecessary calls
+            fi = self.iis[0]
+            return lnx[fi] if fi < len(lnx) else lnx[-1]
         else:
             return 0
 
+
     @property
     def y(self):
-        if self.ln is not None:
-            lny = self.ln.y
-            if self.Ncs > 0:
-                fi = self.iis[0]
-                if fi < len(lny):
-                    return lny[fi]
-                else:
-                    return lny[-1]
-            else:
-                return 0
+        if self.ln and self.Ncs > 0:
+            lny = self.ln._y if not self.ln.continuey else self.ln.y
+            # checking for continuex early eliminates most unnecessary calls
+            fi = self.iis[0]
+            return lny[fi] if fi < len(lny) else lny[-1]
         else:
             return 0
+
 
     @property
     def ntransform(self):
@@ -1660,13 +1643,11 @@ class tword:
         if self._charpos is None:
             if self.Ncs > 0:
                 dxl = self.dxeff
-                wadj = [0 for c in self.cs]
+                wadj = [0]*self.Ncs
                 if KERN_TABLE:
                     for ii in range(1, self.Ncs):
-                        dk = self.cs[ii].dkerns.get((self.cs[ii - 1].c, self.cs[ii].c))
-                        if dk is None:
-                            dk = 0
-                            # for chars of different style
+                        dk = self.cs[ii].dkerns.get((self.cs[ii - 1].c, self.cs[ii].c),0)
+                        # default to 0 for chars of different style
                         wadj[ii] = dk
                 tmp = [self.cs[ii].cw + dxl[ii] * self.sf + wadj[ii] for ii in range(self.Ncs)]
                 cstop = list(itertools.accumulate(tmp))
@@ -1787,12 +1768,19 @@ class tword:
             #     np.column_stack((rx, ty)),
             #     np.column_stack((rx, by)),
             # ] 
+            # self._cpts_ut = [
+            #     np.hstack((lx, by)),
+            #     np.hstack((lx, ty)),
+            #     np.hstack((rx, ty)),
+            #     np.hstack((rx, by)),
+            # ]
+            n_rows = lx.shape[0]
             self._cpts_ut = [
-                np.hstack((lx, by)),
-                np.hstack((lx, ty)),
-                np.hstack((rx, ty)),
-                np.hstack((rx, by)),
+                tuple((coord[i][0], v[i][0]) for i in range(n_rows)) for coord, v in zip((lx, lx, rx, rx), (by, ty, ty, by))
             ]
+
+
+
 
 
         return self._cpts_ut
@@ -1809,21 +1797,24 @@ class tword:
             (cstrt, cstop, lx, rx, by, ty) = self.charpos
 
             Nc = len(lx)
-            # ps = np.column_stack(
+
+            # ps = np.hstack(
             #     (
-            #         np.column_stack((lx, lx, rx, rx)).flatten(),
-            #         np.column_stack((by, ty, ty, by)).flatten(),
-            #         np.ones(4 * Nc),
+            #         np.vstack((lx, lx, rx, rx)),
+            #         np.vstack((by, ty, ty, by)),
+            #         np.ones([4 * Nc, 1],dtype=float),
             #     )
             # )
-            ps = np.hstack(
-                (
-                    np.vstack((lx, lx, rx, rx)),
-                    np.vstack((by, ty, ty, by)),
-                    np.ones([4 * Nc, 1],dtype=float),
-                )
-            )
-            M = np.vstack((np.array(self.transform.matrix,dtype=float), np.array([[0, 0, 1]],dtype=float)))
+            
+            ps = np.array([
+                (coord[i][0], v[i][0], 1)
+                for coord, v in zip((lx, lx, rx, rx), (by, ty, ty, by))
+                for i in range(Nc)
+            ],dtype=float)
+            
+            # M = np.vstack((np.array(self.transform.matrix,dtype=float), np.array([[0, 0, 1]],dtype=float)))
+            M = np.array(self.transform.matrix + ((0, 0, 1),),dtype=float) 
+            
             tps = np.dot(M, ps.T).T
             self._cpts_t = [
                 tps[0:Nc, 0:2],
@@ -2334,25 +2325,6 @@ class Character_Table:
         atxt = [];
         asty = [];
         for el in els:
-            # ds, pts, cd, pd = dh.descendants2(el, True)
-            # Nd = len(ds)
-            # text = [d.text for d in ds]
-            # ptail = [[tel.tail for tel in pt] for pt in pts]  # preceding tails
-            # if len(ptail) > 0 and len(ptail[-1]) > 0:
-            #     ptail[-1][-1] = None
-            #     # do not count el's tail
-
-            # for di, tt in ttgenerator(Nd):
-            #     if tt == 0:
-            #         txts = ptail[di]
-            #         tels = pts[di]
-            #     else:
-            #         txts = [text[di]]
-            #         tels = [ds[di]]
-            #     for ii in range(len(tels)):
-            #         tel = tels[ii]
-            #         txt = txts[ii]
-            
             tree = txttree(el)
             for di, tt, tel, txt in tree.dgenerator():
                     if txt is not None and len(txt) > 0:
@@ -2453,7 +2425,7 @@ class Character_Table:
             f.write(svgstart.encode("utf8"))
             from xml.sax.saxutils import escape
         else:
-            nbb = inkex.OrderedDict()
+            nbb = dict()
             # dh.idebug(ct)
         
 
@@ -2481,7 +2453,7 @@ class Character_Table:
         def effc(c):
             return badchars.get(c,c)
         
-        ct2 = inkex.OrderedDict(); bareids = [];
+        ct2 = dict(); bareids = [];
         for s in ct:
             ct2[s] = dict()
             for ii in range(len(ct[s])):
@@ -2502,7 +2474,6 @@ class Character_Table:
             ct2[s][pI]   = StringInfo(pI,   Make_Character(pI,   s), dict())
             ct2[s][blnk] = StringInfo(blnk, Make_Character(blnk, s), dict())
 
-        
         ct = ct2
         if not(usepango):
             f.write((svgtexts + svgstop).encode("utf8"))
@@ -2657,6 +2628,7 @@ class Character_Table:
     
     # 'stroke','stroke-width' do not affect kerning at all
     @staticmethod
+    @lru_cache(maxsize=None)
     def normalize_style(sty):
         nones = [None, "none", "None"]
         sty2 = inkex.OrderedDict()
@@ -2732,3 +2704,12 @@ def maxnone(xi):
         return max(xi)
     else:
         return None
+
+# A fast setter for 'x', 'y', 'dx', and 'dy' that uses lxml's set directly and
+# converts arrays to a string
+fset = su.fset
+def xyset(el,xy,v):
+    if not(v):
+        el.attrib.pop(xy, None)  # pylint: disable=no-member
+    else:
+        fset(el,xy, str(v)[1:-1].replace(',',''))

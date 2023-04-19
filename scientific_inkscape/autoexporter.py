@@ -1235,16 +1235,17 @@ class AutoExporter(inkex.EffectExtension):
         # Make a dummy group so we can properly compose the transform
         g = dh.group([el],moveTCM=True)
         
+        from TextParser import xyset
         for d in reversed(el.descendants2()):
             xv = ParsedText.GetXY(d,'x')
             yv = ParsedText.GetXY(d,'y')
             dxv = ParsedText.GetXY(d,'dx')
             dyv = ParsedText.GetXY(d,'dy')
             
-            if xv[0] is not None:  d.set('x',tline.writev([v*s for v in xv]))
-            if yv[0] is not None:  d.set('y',tline.writev([v*s for v in yv]))
-            if dxv[0] is not None: d.set('dx',tline.writev([v*s for v in dxv]))
-            if dyv[0] is not None: d.set('dy',tline.writev([v*s for v in dyv]))
+            if xv[0] is not None:  xyset(d,'x',[v*s for v in xv])
+            if yv[0] is not None:  xyset(d,'y',[v*s for v in yv])
+            if dxv[0] is not None: xyset(d,'dx',[v*s for v in dxv])
+            if dyv[0] is not None: xyset(d,'dy',[v*s for v in dyv])
                 
             fs,sf,tmp,tmp = dh.Get_Composed_Width(d,'font-size',nargout=4)
             # dh.Set_Style_Comp(d, 'font-size', "{:.3f}".format(fs/sf*s))    

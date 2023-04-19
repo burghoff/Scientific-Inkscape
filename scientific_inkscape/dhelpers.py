@@ -142,7 +142,8 @@ def descendants2(el, return_tails=False):
     precedingtails = [[]]
     endsat = [(el,None)]
     for d in el.iterdescendants():
-        if not(isinstance(d,lxml.etree._Comment)):
+        # if not(isinstance(d,lxml.etree._Comment)):
+        if not(d.tag == ctag):
             if return_tails:
                 precedingtails.append([])
                 while endsat[-1][1]==d:
@@ -1111,7 +1112,7 @@ import random
 def get_unique_id2(svg, prefix):
     ids = get_ids2(svg) 
     new_id = None
-    size = math.ceil(math.log10(len(ids))) + 1
+    size = math.ceil(math.log10(len(ids))) + 1 
     _from = 10 ** size - 1
     _to = 10 ** size
     while new_id is None or new_id in ids:
@@ -2331,6 +2332,7 @@ def Run_SI_Extension(effext,name):
                 for fn in fns:
                     lp.add_function(fn)
                 lp.add_function(ipx.__wrapped__)
+                lp.add_function(TextParser.Character_Table.normalize_style.__wrapped__)
                    
                 lp(run_and_cleanup)()
                 stdouttrap = io.StringIO()

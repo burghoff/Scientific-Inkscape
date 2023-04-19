@@ -131,10 +131,10 @@ class Vector2da(V2d):
     def __init__(self,x,y):
         self._x = float(x);
         self._y = float(y);
-def line_move_arc_end_point(self, first, prev):
-    return Vector2da(self.x, self.y)
 def horz_end_point(self, first, prev):
     return Vector2da(self.x, prev.y)
+def line_move_arc_end_point(self, first, prev):
+    return Vector2da(self.x, self.y)
 def vert_end_point(self, first, prev):
     return Vector2da(prev.x, self.y)
 def curve_smooth_end_point(self, first, prev):
@@ -170,10 +170,8 @@ inkex.paths.Path.end_points = property(fast_end_points)
 # About 50% faster
 ipcspth, ipln = inkex.paths.CubicSuperPath, inkex.paths.Line
 ipPC = inkex.paths.PathCommand
-PCsubs = set(); # precache all types that are instances of PathCommand
-for _, obj in inspect.getmembers(inkex.paths):
-    if inspect.isclass(obj) and issubclass(obj, ipPC):
-        PCsubs.add(obj)
+letter_to_class = ipPC._letter_to_class
+PCsubs = set(letter_to_class.values()); # precache all types that are instances of PathCommand
 def process_items(items):
     for item in items:
         # if isinstance(item, ipPC):
@@ -225,7 +223,6 @@ except:
     NUMBER_REX = re.compile(
         rf"(?:{SIGN_REX_PART}?{FLOATING_POINT_CONSTANT_REX_PART}|{SIGN_REX_PART}?{INTEGER_CONSTANT_REX_PART})"
     )
-letter_to_class = ipPC._letter_to_class
 nargs_cache = {cmd: cmd.nargs for cmd in letter_to_class.values()}
 next_command_cache = {cmd: cmd.next_command for cmd in letter_to_class.values()}
 # inkex.utils.debug(next_command_cache)
@@ -339,4 +336,59 @@ def IV2d_init(self, *args, fallback=None):
         self._x, self._y = float(x), float(y)
 inkex.transforms.ImmutableVector2d.__init__ = IV2d_init
 
+
+''' _utils.py '''
+
+# Cache the namespace function results
+try:
+    from inkex.elements._utils import NSS, SSN
+except:
+    from inkex.utils import NSS, SSN            # old versions
+from functools import lru_cache
+@lru_cache(maxsize=None)
+def cached_addNS(tag, ns=None):  # pylint: disable=invalid-name
+    """Add a known namespace to a name for use with lxml"""
+    if tag.startswith("{") and ns:
+        _, tag = cached_removeNS(tag)
+    if not tag.startswith("{"):
+        tag = tag.replace("__", ":")
+        if ":" in tag:
+            (ns, tag) = tag.rsplit(":", 1)
+        ns = NSS.get(ns, None) or ns
+        if ns is not None:
+            return f"{{{ns}}}{tag}"
+    return tag
+@lru_cache(maxsize=None)
+def cached_removeNS(name):  # pylint: disable=invalid-name
+    """The reverse of addNS, finds any namespace and returns tuple (ns, tag)"""
+    if name[0] == "{":
+        (url, tag) = name[1:].split("}", 1)
+        return SSN.get(url, "svg"), tag
+    if ":" in name:
+        return name.rsplit(":", 1)
+    return "svg", name
+@lru_cache(maxsize=None)
+def cached_splitNS(name):  # pylint: disable=invalid-name
+    """Like removeNS, but returns a url instead of a prefix"""
+    (prefix, tag) = cached_removeNS(name)
+    return (NSS[prefix], tag)
+
+inkex.addNS = inkex.elements._base.addNS = inkex.elements._groups.addNS = cached_addNS
+inkex.elements._filters.addNS = inkex.elements._polygons.addNS = cached_addNS
+try:
+    inkex.elements._utils.addNS = cached_addNS
+    inkex.elements._utils.removeNS = cached_removeNS
+    inkex.elements._utils.splitNS = cached_splitNS
+except:
+    inkex.utils.addNS = cached_addNS                    # old versions
+    inkex.utils.removeNS = cached_removeNS 
+    inkex.utils.splitNS = cached_splitNS
+    
+inkex.elements._base.removeNS = cached_removeNS 
+inkex.elements._base.splitNS = cached_splitNS 
+
+try:
+    inkex.elements._parser.splitNS = cached_splitNS     # new versions only
+except: 
+    pass
 
