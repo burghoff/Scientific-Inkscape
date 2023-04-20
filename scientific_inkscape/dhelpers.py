@@ -862,10 +862,20 @@ def intersect_paths(ptha, pthb):
 import numpy as np
 
 
+# def uniquetol(A, tol):
+#     Aa = np.array(A)
+#     ret = Aa[~(np.triu(np.abs(Aa[:, None] - Aa) <= tol, 1)).any(0)]
+#     return type(A)(ret)
+
 def uniquetol(A, tol):
-    Aa = np.array(A)
-    ret = Aa[~(np.triu(np.abs(Aa[:, None] - Aa) <= tol, 1)).any(0)]
-    return type(A)(ret)
+    if not A:  # Check if the input list is empty
+        return []
+    A_sorted = sorted(A)
+    ret = [A_sorted[0]]
+    for i in range(1, len(A_sorted)):
+        if abs(A_sorted[i] - ret[-1]) > tol:
+            ret.append(A_sorted[i])
+    return ret
 
 # Determines if an element is rectangle-like
 # If it is one, also return Path
@@ -1826,8 +1836,8 @@ class bbox:
         else:
             return bbox(bb2.sbb)
     
-    def __deepcopy__(self, memo):
-        return bbox([self.x1, self.y1, self.w, self.h])
+    # def __deepcopy__(self, memo):
+    #     return bbox([self.x1, self.y1, self.w, self.h])
     
     def __mul__(self, scl):
         return bbox([self.x1*scl, self.y1*scl, self.w*scl, self.h*scl])

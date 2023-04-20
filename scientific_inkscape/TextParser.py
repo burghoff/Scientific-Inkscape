@@ -67,7 +67,7 @@ from dhelpers import bbox
 from pango_renderer import PangoRenderer
 pr = PangoRenderer();
 
-from copy import copy, deepcopy
+from copy import copy
 import inkex
 from inkex import TextElement, Tspan, Transform
 
@@ -97,38 +97,23 @@ inkex.SvgDocumentElement.make_char_table = make_char_table_fcn
 inkex.SvgDocumentElement.char_table = property(get_char_table)
 
 
+
 # A text element that has been parsed into a list of lines
 class ParsedText:
     def __init__(self, el, ctable, debug=False):
         self.ctable = ctable
         self.textel = el
 
-        # self.lns = self.Parse_Lines(el,debug=debug);
-        # self.Finish_Lines();
-
         self.lns = self.Parse_Lines()
         self.Finish_Lines()
 
+        # Compute the bb/pts_ut/pts_t after parsing, prior to any mods
         for ln in self.lns:
             for w in ln.ws:
-                w.parsed_bb = deepcopy(w.bb)
+                w.parsed_bb = copy(w.bb)
                 for c in w.cs:
                     c.parsed_pts_ut = c.pts_ut
                     c.parsed_pts_t = c.pts_t
-
-        # dh.idebug('\n')
-        # for ln in self.lns:
-        #     dh.idebug(ln.txt())
-        #     # for c in ln.cs:
-        #     #     dh.idebug([c.c,c.lsp])
-        #     dh.idebug(ln.continuex)
-        #     dh.idebug(ln.sprl)
-        #     dh.idebug(ln.x)
-        #     dh.idebug(ln.xsrc.get_id())
-        #     for c in ln.cs:
-        #         dh.idebug((c.c,c.cw))
-        #     # dh.debug(ln.sprl)
-        #     # dh.debug(ln.tlvlno)
 
         tlvllns = [ln for ln in self.lns if ln.tlvlno is not None and ln.tlvlno > 0]
         # top-level lines after 1st
@@ -153,65 +138,27 @@ class ParsedText:
         # svg2 flows
 
     def duplicate(self):
-        # Duplicates a PT and its text
+        # Duplicates a PT and its text without reparsing
         ret = copy(self)
         ret.textel = self.textel.duplicate2()
-        # d1 = dh.descendants2(self.textel);
-        d1 = self.tree.ds
-        # d2 = dh.descendants2(ret.textel)
         ret.tree = None
-        d2 = ret.tree.ds
-        # ret.textds = d2
-        ret.ctable = self.ctable
+        cmemo = {d1v : d2v for d1v,d2v in zip(self.tree.ds,ret.tree.ds)}
+
+        ret.dxs, ret.dys = ret.dxs[:], ret.dys[:]
         ret.lns = []
         for ln in self.lns:
-            # eli = d1.index(ln.el);
-            xsi = d1.index(ln.xsrc)
-            ysi = d1.index(ln.ysrc)
-            ret.lns.append(
-                tline(
-                    ret,
-                    copy(ln.x),
-                    copy(ln.y),
-                    d2[xsi],
-                    d2[ysi],
-                    ln.sprl,
-                    ln.sprlabove,
-                    ln.anchor,
-                    ln.transform,
-                    ln.angle,
-                    ln.tlvlno,
-                    ln.style,
-                    ln.continuex,
-                    ln.continuey,
-                )
-            )
-            # ret.lns[-1].anchor = ln.anchor;
-            ret.lns[-1].cs = []
-            for c in ln.cs:
-                myi = d1.index(c.loc.el)
-                newloc = cloc(d2[myi], c.loc.tt, c.loc.ind)
-                prop = c.prop
-                # prop.charw = c.cw
-                ret.lns[-1].addc(tchar(c.c, c.fs, c.sf, prop, c.sty, c.nsty, newloc))
-        ret.Finish_Lines()
-        # generates the new words
-        for ii in range(len(self.lns)):
-            for jj in range(len(self.lns[ii].ws)):
-                ret.lns[ii].ws[jj].parsed_bb = self.lns[ii].ws[jj].parsed_bb
-            for jj in range(len(self.lns[ii].cs)):
-                ret.lns[ii].cs[jj].parsed_pts_ut = self.lns[ii].cs[jj].parsed_pts_ut
-                ret.lns[ii].cs[jj].parsed_pts_t = self.lns[ii].cs[jj].parsed_pts_t
-
-        ret.isinkscape = self.isinkscape
-        ret.dxs = copy(self.dxs)
-        ret.dys = copy(self.dys)
-        ret.flatdelta = self.flatdelta
-
-        ret._dxchange = self._dxchange
-        ret._hasdx = self._hasdx
-        ret._dychange = self._dychange
-        ret._hasdy = self._hasdy
+            if len(ln.cs) == 0:
+                continue
+            ret_ln = ln.copy(cmemo)
+            ret_ln.pt = ret
+            ret.lns.append(ret_ln)
+        
+        # nextw et al. could be from any line, update after copying
+        for ret_ln in ret.lns:
+            for ret_w in ret_ln.ws:
+                ret_w.nextw = cmemo.get(ret_w.nextw)
+                ret_w.prevw = cmemo.get(ret_w.prevw)
+                ret_w.prevsametspan = cmemo.get(ret_w.prevsametspan)
         return ret
 
     def txt(self):
@@ -228,8 +175,6 @@ class ParsedText:
         ds, pts, pd = self.tree.ds, self.tree.ptails, self.tree.pdict
         
         Nd = len(ds)
-        # self.textds = ds
-        # self.textpts = pts;
         ks = list(el)
         text = [d.text for d in ds]
         ptail = [[tel.tail for tel in pt] for pt in pts]  # preceding tails
@@ -476,9 +421,7 @@ class ParsedText:
                         # prop = self.ctable.get_prop(c, nsty) * fs
                         prop = self.ctable.get_prop_mult(c, nsty, fs)
                         ttv = 'tail' if tt==0 else 'text'
-                        lns[-1].addc(
-                            tchar(c, fs, sf, prop, sty, nsty, cloc(tel, ttv, jj))
-                        )
+                        tchar(c, fs, sf, prop, sty, nsty, cloc(tel, ttv, jj),lns[-1])
 
                         if jj == 0:
                             lsp0 = lns[-1].cs[-1].lsp
@@ -1026,7 +969,7 @@ def get_anchorfrac(anch):
 class tline:
     def __init__(
         self,
-        ll,
+        pt,
         x,
         y,
         xsrc,
@@ -1070,7 +1013,29 @@ class tline:
         # when enabled, x of a line is the endpoint of the previous line
         self.continuey = continuey
         # when enabled, y of a line is the endpoint of the previous line
-        self.pt = ll
+        self.pt = pt
+        
+    def copy(self,memo):
+        ret = tline.__new__(tline)
+        memo[self]=ret
+        
+        ret._x = self._x[:]
+        ret._y = self._y[:]
+        ret.sprl = self.sprl
+        ret.sprlabove = [memo[sa] for sa in self.sprlabove]
+        ret.anchor = self.anchor
+        ret.cs = [c.copy(memo) for c in self.cs]
+        ret.ws = [w.copy(memo) for w in self.ws]
+        ret.transform = self.transform
+        ret.angle = self.angle
+        ret.xsrc = memo[self.xsrc]   
+        ret.ysrc = memo[self.ysrc]    
+        ret.tlvlno = self.tlvlno
+        ret.style = self.style
+        ret.continuex = self.continuex
+        ret.continuey = self.continuey
+        ret.pt = self.pt
+        return ret
 
     # x property
     def get_x(self):
@@ -1113,9 +1078,9 @@ class tline:
     y = property(get_y, set_y)
     anchorfrac = property(lambda self: get_anchorfrac(self.anchor))
 
-    def addc(self, c):
-        self.cs.append(c)
-        c.ln = self
+    # def addc(self, c):
+    #     self.cs.append(c)
+    #     c.ln = self
 
     def insertc(self, c, ec):  # insert below
         self.cs = self.cs[0:ec] + [c] + self.cs[ec:]
@@ -1238,7 +1203,8 @@ class tline:
                     ln.disablesodipodi()  # Disable sprl when lines share an xsrc
 
             # if all([v is None for v in newx[1:]]) and len(newx) > 0:
-            if newx and not any(newx[1:]):
+            # not any(newx[1:]) does not work b.c. of 0s
+            if newx and all(x is None for x in newx[1:]):
                 newx = [newx[0]]
             oldx = self._x if not self.continuex else self.x
             self._x = newx
@@ -1256,7 +1222,7 @@ class tline:
                     ln.disablesodipodi()  # Disable sprl when lines share a ysrc
 
             # if all([v is None for v in newy[1:]]) and len(newy) > 0:
-            if newy and not any(newy[1:]):
+            if newy and all(y is None for y in newy[1:]):
                 newy = [newy[0]]
             oldy = self._y if not self.continuey else self.y
             self._y = newy
@@ -1284,22 +1250,52 @@ class tword:
         self.ln = ln
         self.transform = ln.transform
         c.w = self
-        # self.unrenderedspace = False;
-        self.nextw = self.prevw = self.sametspan = None
+        self.nextw = self.prevw = self.prevsametspan = None
         self._pts_ut = self._pts_t = self._bb = None
-        # invalidate
         self._lsp = self._bshft = self._dxeff = self._charpos = None
         self._cpts_ut = None
         self._cpts_t = None
-        self._ntransform = None
-        # self.orig_pts_t = None; self.orig_pts_ut = None; self.orig_bb = None; # for merging later
-
+        self.parsed_bb = None
+        self._txt = c.c
+        
+    def copy(self,memo):
+        ret = tword.__new__(tword)
+        memo[self] = ret
+        
+        ret.Ncs = self.Ncs
+        ret._x = self._x
+        ret._y = self._y
+        ret.sf = self.sf
+        ret.transform = self.transform
+        ret.nextw = self.nextw
+        ret.prevw = self.prevw
+        ret.prevsametspan = self.prevsametspan
+        ret._pts_ut = self._pts_ut
+        ret._pts_t = self._pts_t
+        ret._bb = self._bb
+        ret._lsp = self._lsp
+        ret._bshft = self._bshft
+        ret._dxeff = self._dxeff
+        ret._charpos = self._charpos
+        ret._cpts_ut = self._cpts_ut
+        ret._cpts_t = self._cpts_t
+        ret.parsed_bb = self.parsed_bb
+        ret._txt = self._txt
+        
+        ret.cs = list(map(memo.get, self.cs, self.cs)) # faster than [memo.get(c) for c in self.cs]
+        for ret_c in ret.cs:
+            ret_c.w = ret
+        ret.iis = self.iis[:]
+        ret.ln = memo[self.ln]
+        return ret
+    
     def addc(self, ii):  # adds an existing char to a word
         c = self.ln.cs[ii]
         self.cs.append(c)
         self.cchange()
         self.iis.append(ii)
         self.Ncs = len(self.iis)
+        self._txt += c.c
         c.w = self
 
     def removec(self, ii):  # removes a char from a word
@@ -1308,6 +1304,7 @@ class tword:
         self.cchange()
         self.iis = del2(self.iis, ii)
         self.Ncs = len(self.iis)
+        self.txt = del2(self._txt, ii)
         if len(self.cs) == 0:  # word now empty
             self.delw()
         # myc.w = None
@@ -1345,13 +1342,6 @@ class tword:
         else:
             return 0
 
-
-    @property
-    def ntransform(self):
-        if self._ntransform is None:
-            self._ntransform = -self.transform
-        return self._ntransform
-
     # Deletes me from everywhere
     def delw(self):
         for c in reversed(self.cs):
@@ -1361,7 +1351,9 @@ class tword:
 
     # Gets all text
     def txt(self):
-        return "".join([c.c for c in self.cs])
+        if self._txt is None:
+            self._txt = "".join([c.c for c in self.cs])
+        return self._txt
 
     # Generate a new character and add it to the end of the word
     def appendc(self, ncv, ncprop, ndx, ndy, totail=None):
@@ -1833,7 +1825,7 @@ class tword:
 
 # A single character and its style
 class tchar:
-    def __init__(self, c, fs, sf, prop, sty, nsty, loc):
+    def __init__(self, c, fs, sf, prop, sty, nsty, loc,ln):
         self.c = c
         self.fs = fs
         # nominal font size
@@ -1853,7 +1845,8 @@ class tchar:
         # self.dr = dr;     # descender (length of p/q descender))
         self.sw = prop.spacew
         # space width for style
-        self.ln = None
+        self.ln = ln
+        ln.cs.append(self)
         # my line (to be assigned)
         self.w = None
         # my word (to be assigned)
@@ -1874,13 +1867,35 @@ class tchar:
         # for merging later
         self._lsp = self._bshft = None
         # letter spacing
-
-    # def __copy__(self):
-    #     ret = tchar(self.c,self.fs,self.sf,self.prop,self.sty,self.nsty,self.loc)
-    #     for a,v in self.__dict__.items():
-    #         ret.__dict__[a]=v
-    #     ret.loc = copy(self.loc)
-    #     return ret
+        
+    def copy(self,memo=dict()):
+        ret = tchar.__new__(tchar)
+        memo[self] = ret
+        
+        ret.c = self.c
+        ret.fs = self.fs
+        ret.sf = self.sf
+        ret.prop = self.prop
+        ret.cw = self.cw
+        ret._sty = self._sty
+        ret.nsty = self.nsty
+        ret.ch = self.ch
+        ret.sw = self.sw
+        ret.w = self.w
+        ret.type = self.type
+        ret.ofs = self.ofs
+        ret._dx = self._dx
+        ret._dy = self._dy
+        ret.deltanum = self.deltanum
+        ret.dkerns = self.dkerns
+        ret.parsed_pts_t = self.parsed_pts_t
+        ret.parsed_pts_ut = self.parsed_pts_ut
+        ret._lsp = self._lsp
+        ret._bshft = self._bshft
+        
+        ret.loc = cloc(memo.get(self.loc.el,self.loc.el), self.loc.tt, self.loc.ind)
+        ret.ln = memo.get(self.ln,self.ln)
+        return ret
 
     @property
     def dx(self):
