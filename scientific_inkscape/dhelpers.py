@@ -2351,9 +2351,20 @@ def Run_SI_Extension(effext,name):
     
                 ppath = os.path.abspath(os.path.join(profiledir, "lprofile.csv"))
                 result = stdouttrap.getvalue()
-                f = open(ppath, "w", encoding="utf-8")
-                f.write(result)
-                f.close()
+                with open(ppath, "w", encoding="utf-8") as f:
+                    f.write(result)
+                
+                # Copy lprofile.csv to the profiles subdirectory
+                profiles_dir = os.path.join(os.path.dirname(ppath), 'profiles')
+                if not os.path.exists(profiles_dir):
+                    os.makedirs(profiles_dir)
+                from datetime import datetime
+                import shutil
+                timestamp = datetime.now().strftime('%Y-%m-%dT%H-%M-%S')
+                new_filename = f'lprofile_{timestamp}.csv'
+                dst_path = os.path.join(profiles_dir, new_filename)
+                shutil.copy2(ppath, dst_path)
+                
                 alreadyran = True
             except ImportError:
                 pass

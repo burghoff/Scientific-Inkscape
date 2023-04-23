@@ -416,10 +416,9 @@ class ParsedText:
                         sprl_inherits = lns[-1]
 
                 if txt is not None:
-                    for jj in range(len(txt)):
-                        c = txt[jj]
+                    for jj, c in enumerate(txt):
                         # prop = self.ctable.get_prop(c, nsty) * fs
-                        prop = self.ctable.get_prop_mult(c, nsty, fs)
+                        prop = self.ctable.get_prop_mult(c, nsty, fs/sf)
                         ttv = 'tail' if tt==0 else 'text'
                         tchar(c, fs, sf, prop, sty, nsty, cloc(tel, ttv, jj),lns[-1])
 
@@ -508,7 +507,8 @@ class ParsedText:
             ndxs = [c.dx for ln in self.lns for c in ln.cs]
             ndys = [c.dy for ln in self.lns for c in ln.cs]
             for ii,c in enumerate(cs):
-                if c.ln.cs.index(c)>0:
+                # if c.ln.cs.index(c)>0:
+                if c.lnindex>0:
                     if abs(odxs[ii]-ndxs[ii])>0.001 or abs(odys[ii]-ndys[ii])>0.001:
                         c.dx = odxs[ii]
                         c.dy = odys[ii]
@@ -610,7 +610,7 @@ class ParsedText:
                 self.textel.set("dx", dxset)
                 self.textel.set("dy", dyset)
                 for w in [w for ln in self.lns for w in ln.ws]:
-                    w.dxeff = None
+                    # w.dxeff = None
                     w.charpos = None
             self.dxs = dxs
             self.dys = dys
@@ -718,7 +718,8 @@ class ParsedText:
 
         il = self.lns.index(cs[0].ln)
         # chars' line index
-        ciis = [c.ln.cs.index(c) for c in cs]  # indexs of charsin line
+        # ciis = [c.ln.cs.index(c) for c in cs]  # indexs of charsin line
+        ciis = [c.lnindex for c in cs]  # indexs of charsin line
 
         # Record position
         dxl = [c.dx for c in cs]
@@ -1078,14 +1079,13 @@ class tline:
     y = property(get_y, set_y)
     anchorfrac = property(lambda self: get_anchorfrac(self.anchor))
 
-    # def addc(self, c):
-    #     self.cs.append(c)
-    #     c.ln = self
-
-    def insertc(self, c, ec):  # insert below
+    def insertc(self, c, ec):  # insert below ec
+        for c2 in self.cs[ec:]:
+            c2.lnindex += 1
+        c.lnindex = ec
         self.cs = self.cs[0:ec] + [c] + self.cs[ec:]
         c.ln = self
-
+        
     def addw(self, w):  # Add a complete word
         self.ws.append(w)
 
@@ -1109,13 +1109,6 @@ class tline:
                 # add to existing word
         if w is not None:
             self.addw(w)
-
-        # if len(self.x)>1:
-        #     xn = [self.x[ii] for ii in range(len(self.x)) if self.x[ii] is not None]; # non-None
-        #     sws = [x for _, x in sorted(zip(xn, self.ws), key=lambda pair: pair[0])] # words sorted in ascending x
-        #     for ii in range(len(sws)-1):
-        #         sws[ii].nextw = sws[ii+1]
-        # dh.debug([self.x,len(self.ws)])
 
     def dell(self):  # deletes the whole line
         self.change_pos(self.x[:1])
@@ -1147,14 +1140,15 @@ class tline:
                 maxx = max([w.pts_ut[ii].x for ii in range(4)])
 
                 if w.unrenderedspace and self.cs[-1] in w.cs:
-                    maxx -= w.cs[-1].cw / w.cs[-1].sf
+                    maxx -= w.cs[-1].cw
 
                 xf = get_anchorfrac(newanch)
                 newx = (1 - xf) * minx + xf * maxx
 
                 if len(w.cs) > 0:
                     newxv = self.x
-                    newxv[self.cs.index(w.cs[0])] = newx
+                    # newxv[self.cs.index(w.cs[0])] = newx
+                    newxv[w.cs[0].lnindex] = newx
 
                     # dh.idebug([w.txt(),newx,newxv])
                     self.change_pos(newxv)
@@ -1183,9 +1177,6 @@ class tline:
                     newsrc = self.cs[0].loc.el.getparent()
                 newsrc.set("sodipodi:role", None)
                 
-                # for cel in self.sprlabove:
-                #     cel.set("sodipodi:role", None)
-                
                 self.sprlabove = []
                 self.xsrc = newsrc
                 self.ysrc = newsrc
@@ -1203,9 +1194,9 @@ class tline:
                     ln.disablesodipodi()  # Disable sprl when lines share an xsrc
 
             # if all([v is None for v in newx[1:]]) and len(newx) > 0:
-            # not any(newx[1:]) does not work b.c. of 0s
-            if newx and all(x is None for x in newx[1:]):
-                newx = [newx[0]]
+            #     newx = [newx[0]]
+            while len(newx) > 1 and newx[-1] is None:
+                newx.pop()
             oldx = self._x if not self.continuex else self.x
             self._x = newx
             xyset(self.xsrc,"x", newx)
@@ -1222,8 +1213,9 @@ class tline:
                     ln.disablesodipodi()  # Disable sprl when lines share a ysrc
 
             # if all([v is None for v in newy[1:]]) and len(newy) > 0:
-            if newy and all(y is None for y in newy[1:]):
-                newy = [newy[0]]
+            #     newy = [newy[0]]
+            while len(newy) > 1 and newy[-1] is None:
+                newx.pop()
             oldy = self._y if not self.continuey else self.y
             self._y = newy
             xyset(self.ysrc,"y", newy)
@@ -1237,9 +1229,15 @@ class tline:
 
 # A word (a group of characters with the same assigned anchor)
 class tword:
+    __slots__ = ('cs', 'windex', 'iis', 'Ncs', '_x', '_y', 'sf', 'ln', 'transform',
+                 'nextw', 'prevw', 'prevsametspan', '_pts_ut', '_pts_t', '_bb',
+                 '_dxeff', '_charpos', '_cpts_ut', '_cpts_t', 'parsed_bb', 'txt',
+                 'lsp', 'dxeff', 'cw', 'dy', 'ch', 'bshft',
+                 'mw','merges','mergetypes','merged','wtypes','bb_big')
     def __init__(self, ii, x, y, ln):
         c = ln.cs[ii]
         self.cs = [c]
+        c.windex = 0
         self.iis = [ii]
         # character index in word
         self.Ncs = len(self.iis)
@@ -1252,11 +1250,22 @@ class tword:
         c.w = self
         self.nextw = self.prevw = self.prevsametspan = None
         self._pts_ut = self._pts_t = self._bb = None
-        self._lsp = self._bshft = self._dxeff = self._charpos = None
+        self._dxeff = self._charpos = None
         self._cpts_ut = None
         self._cpts_t = None
         self.parsed_bb = None
-        self._txt = c.c
+        
+        # Character attribute lists
+        self.txt = c.c
+        self.lsp = [c.lsp]
+        self.dxeff = [c.dx, c.lsp]
+        # letter-spacing applies to next character
+        # dxeff[ii] = cs[ii].dx + w.cs[ii-1].lsp (0 at edges)
+        self.cw = [c.cw]
+        self.dy = [c.dy]
+        self.ch = [c.ch]
+        self.bshft = [c.bshft]
+    
         
     def copy(self,memo):
         ret = tword.__new__(tword)
@@ -1273,14 +1282,18 @@ class tword:
         ret._pts_ut = self._pts_ut
         ret._pts_t = self._pts_t
         ret._bb = self._bb
-        ret._lsp = self._lsp
-        ret._bshft = self._bshft
         ret._dxeff = self._dxeff
         ret._charpos = self._charpos
         ret._cpts_ut = self._cpts_ut
         ret._cpts_t = self._cpts_t
         ret.parsed_bb = self.parsed_bb
-        ret._txt = self._txt
+        ret.txt = self.txt
+        ret.lsp = self.lsp[:]
+        ret.dxeff = self.dxeff[:]
+        ret.cw = self.cw[:]
+        ret.dy = self.dy[:]
+        ret.ch = self.ch[:]
+        ret.bshft = self.bshft[:]
         
         ret.cs = list(map(memo.get, self.cs, self.cs)) # faster than [memo.get(c) for c in self.cs]
         for ret_c in ret.cs:
@@ -1289,31 +1302,53 @@ class tword:
         ret.ln = memo[self.ln]
         return ret
     
-    def addc(self, ii):  # adds an existing char to a word
+    def addc(self, ii):  # adds an existing char to a word based on line index
         c = self.ln.cs[ii]
+        c.w = None # avoid problems in character properties
         self.cs.append(c)
         self.cchange()
         self.iis.append(ii)
         self.Ncs = len(self.iis)
-        self._txt += c.c
+        c.windex = self.Ncs - 1 
+        
+        self.txt += c.c
+        self.lsp.append(c.lsp)
+        self.dxeff[-1] += c.dx
+        self.dxeff.append(c.lsp)
+        self.cw.append(c.cw)
+        self.dy.append(c.dy)
+        self.ch.append(c.ch)
+        self.bshft.append(c.bshft)
         c.w = self
 
-    def removec(self, ii):  # removes a char from a word
-        # myc = self.cs[ii]
-        self.cs = del2(self.cs, ii)
-        self.cchange()
-        self.iis = del2(self.iis, ii)
+    def removec(self, c):  # removes a char from a word based on word index
+        ii = c.windex
+        for c2 in self.cs[ii+1:]:
+            c2.windex -= 1
+        c.windex = None
+        c.w = None
+        self.cs= del2(self.cs, ii)
+        self.iis.pop(ii)
         self.Ncs = len(self.iis)
-        self.txt = del2(self._txt, ii)
+        self.cchange()
+        
+        self.txt = del2(self.txt, ii)
+        self.lsp.pop(ii)
+        self.dxeff.pop(ii)
+        self.dxeff[ii] = (self.cs[ii].dx if ii<self.Ncs else 0) + (self.cs[ii-1].lsp if ii>0 else 0)
+        self.cw.pop(ii)
+        self.dy.pop(ii)
+        self.ch.pop(ii)
+        self.bshft.pop(ii)
+        
         if len(self.cs) == 0:  # word now empty
             self.delw()
-        # myc.w = None
 
     # Callback for character addition/deletion. Used to invalidate cached properties
     def cchange(self):
-        self.lsp = None
-        self.bshft = None
-        self.dxeff = None
+        # self.lsp = None
+        # self.bshft = None
+        # self.dxeff = None
         self.charpos = None
 
         if self.ln.pt._hasdx:
@@ -1349,11 +1384,6 @@ class tword:
         if self in self.ln.ws:
             self.ln.ws.remove(self)
 
-    # Gets all text
-    def txt(self):
-        if self._txt is None:
-            self._txt = "".join([c.c for c in self.cs])
-        return self._txt
 
     # Generate a new character and add it to the end of the word
     def appendc(self, ncv, ncprop, ndx, ndy, totail=None):
@@ -1376,14 +1406,10 @@ class tword:
         # Make new character as a copy of the last one of the current word
         c = copy(lc)
         c.c = ncv
-        # c.cw = ncw
         c.prop = ncprop
         c.cw = ncprop.charw
-        
         c.dx = ndx
         c.dy = ndy
-        # c.pending_style = None;
-        # c.lsp = nlsp
 
         if totail is None:
             c.loc = cloc(c.loc.el, c.loc.tt, c.loc.ind + 1)  # updated location
@@ -1392,7 +1418,8 @@ class tword:
         c.sty = c.loc.pel.cspecified_style
 
         # Add to line
-        myi = self.ln.cs.index(lc) + 1  # insert after last character
+        # myi = self.ln.cs.index(lc) + 1  # insert after last character
+        myi = lc.lnindex + 1  # insert after last character
         if len(self.ln.x) > 0:
             newx = self.ln.x[0:myi] + [None] + self.ln.x[myi:]
             newx = newx[0 : len(self.ln.cs) + 1]
@@ -1406,17 +1433,19 @@ class tword:
             if ca.loc.tt == c.loc.tt and ca.loc.el == c.loc.el:
                 ca.loc.ind += 1
             if ca.w is not None:
-                i2 = ca.w.cs.index(ca)
-                ca.w.iis[i2] += 1
+                # i2 = ca.w.cs.index(ca)
+                # ca.w.iis[i2] += 1
+                ca.w.iis[ca.windex] += 1
         # Add to word, recalculate properties
         self.addc(myi)
 
         # Adding a character causes the word to move if it's center- or right-justified
         # Need to fix this by adjusting position
-        deltax = -self.anchorfrac * self.ln.cs[myi].cw / self.sf
+        deltax = -self.anchorfrac * self.ln.cs[myi].cw
         if deltax != 0:
             newx = self.ln.x
-            newx[self.ln.cs.index(self.cs[0])] -= deltax
+            # newx[self.ln.cs.index(self.cs[0])] -= deltax
+            newx[self.cs[0].lnindex] -= deltax
             self.ln.change_pos(newx)
         self.ln.pt.Update_Delta()
 
@@ -1429,7 +1458,7 @@ class tword:
             tr1, br1, tl2, bl2 = self.get_ut_pts(nw)
             lc = self.cs[-1]
             # last character
-            numsp = (bl2.x - br1.x) / (lc.sw / self.sf)
+            numsp = (bl2.x - br1.x) / (lc.sw)
             numsp = max(0, round(numsp))
             if maxspaces is not None:
                 numsp = min(numsp, maxspaces)
@@ -1482,7 +1511,7 @@ class tword:
                         newsty["baseline-shift"] = "super" if ntype == "super" else "sub"
                         newsty["font-size"] = "65%"
                         # Leave size unchanged
-                        # sz = round(c.sw/newc.sw*100)
+                        # sz = round((c.sw*c.sf)/(newc.sw*newc.sf)*100)
                         # newsty['font-size'] = str(sz)+'%';
     
                         # Leave baseline unchanged (works, but do I want it?)
@@ -1490,7 +1519,7 @@ class tword:
                         # newsty['baseline-shift']= str(shft)+'%';
                     elif c.sf != newc.sf:
                         # Prevent accidental font size changes when differently transformed
-                        sz = round(c.sw/newc.sw*100)
+                        sz = round((c.sw*c.sf)/(newc.sw*newc.sf)*100)
                         newsty['font-size'] = str(sz)+'%';
 
                 if newsty is not None:
@@ -1553,49 +1582,47 @@ class tword:
             # dh.debug(deltaanch)
             if deltaanch != 0:
                 newx = self.ln.x
-                newx[self.ln.cs.index(self.cs[0])] -= deltaanch
+                # newx[self.ln.cs.index(self.cs[0])] -= deltaanch
+                newx[self.cs[0].lnindex] -= deltaanch
                 self.ln.change_pos(newx)
-                # self.x -= deltaanch
             self.ln.pt.Update_Delta()
 
-    @property
-    def lsp(self):
-        if self._lsp is None:
-            self._lsp = [c.lsp for c in self.cs]
-        return self._lsp
-
-    @lsp.setter
-    def lsp(self, li):
-        if li is None:
-            self._lsp = None
-            self.dxeff = None
-
     # @property
-    # def bshft(self):
-    #     if self._bshft is None:
-    #         self._bshft = [c.bshft for c in self.cs];
-    #     return self._bshft
-    # @bshft.setter
-    # def bshft(self,li):
+    # def lsp(self):
+    #     # Word letter-spacing
+    #     if self._lsp is None:
+    #         self._lsp = [c.lsp for c in self.cs]
+    #     return self._lsp
+
+    # @lsp.setter
+    # def lsp(self, li):
+    #     # Word letter-spacing
     #     if li is None:
-    #         self._bshft = None
+    #         self._lsp = None
+    #         self.dxeff = None
 
     # Effective dx (with letter-spacing). Note that letter-spacing adds space
     # after the char, so dxl ends up being longer than the number of chars by 1
     # @property
-    @property
-    def dxeff(self):
-        if self._dxeff is None:
-            dxlsp = [0] + self.lsp
-            # letter-spacing applies to next character
-            self._dxeff = [c.dx + d for c, d in zip(self.cs, dxlsp)] + [dxlsp[-1]]
-        return self._dxeff
+    # @property
+    # def dxeff(self):
+    #     if self._dxeff is None:
+    #         dxlsp = [0] + self.lsp
+    #         # letter-spacing applies to next character
+    #         self._dxeff = [c.dx + d for c, d in zip(self.cs, dxlsp)] + [dxlsp[-1]]
+            
+    #         if not self._dxeff == self.dxeff2:
+    #             dh.idebug('1: '+str(self._dxeff))
+    #             dh.idebug('2: '+str(self.dxeff2))
+    #             dh.idebug('1: '+str(len(self._dxeff)))
+    #             dh.idebug('2: '+str(len(self.dxeff2)))
+    #     return self._dxeff
 
-    @dxeff.setter
-    def dxeff(self, di):
-        if di is None:
-            self._dxeff = None
-            self.charpos = None
+    # @dxeff.setter
+    # def dxeff(self, di):
+    #     if di is None:
+    #         self._dxeff = None
+    #         self.charpos = None
 
     # Word properties
     def get_fs(self):
@@ -1608,10 +1635,10 @@ class tword:
 
     sw = property(get_sw)
 
-    def get_ch(self):
-        return maxnone([c.ch for c in self.cs])
+    def get_mch(self):
+        return maxnone(self.ch)
 
-    ch = property(get_ch)
+    mch = property(get_mch)
 
     def get_ang(self):
         return self.ln.angle
@@ -1633,42 +1660,36 @@ class tword:
     def charpos(self):
         # Where characters in a word are relative to the left side of the word, in x units
         if self._charpos is None:
-            if self.Ncs > 0:
-                dxl = self.dxeff
-                wadj = [0]*self.Ncs
-                if KERN_TABLE:
-                    for ii in range(1, self.Ncs):
-                        dk = self.cs[ii].dkerns.get((self.cs[ii - 1].c, self.cs[ii].c),0)
-                        # default to 0 for chars of different style
-                        wadj[ii] = dk
-                tmp = [self.cs[ii].cw + dxl[ii] * self.sf + wadj[ii] for ii in range(self.Ncs)]
-                cstop = list(itertools.accumulate(tmp))
-                # cumulative width up to and including the iith char
-                cstrt = [cstop[ii] - self.cs[ii].cw for ii in range(self.Ncs)]
-            else:
-                cstop = []
-                cstrt = []
-
+            wadj = [0]*self.Ncs
+            if KERN_TABLE:
+                for ii in range(1, self.Ncs):
+                    dk = self.cs[ii].dkerns.get((self.cs[ii - 1].c, self.cs[ii].c),0)
+                    # default to 0 for chars of different style
+                    wadj[ii] = dk
+                    
+            ws = [self.cw[ii] + self.dxeff[ii] + wadj[ii] for ii in range(self.Ncs)]
+            cstop = list(itertools.accumulate(ws))
+            # cumulative width up to and including the iith char
+            cstrt = [cstop[ii] - self.cw[ii] for ii in range(self.Ncs)]
+            
             cstrt = np.array(cstrt,dtype=float)
             cstop = np.array(cstop,dtype=float)
-            
-            # dh.idebug((cstrt,cstop))
 
             ww = cstop[-1]
-            offx = -self.anchorfrac * (
-                ww - self.unrenderedspace * self.cs[-1].cw
-            )  # offset of the left side of the word from the anchor
+            offx = -self.anchorfrac * (ww - self.unrenderedspace * self.cs[-1].cw)
+            # offset of the left side of the word from the anchor
             wx = self.x
             wy = self.y
-
-            lx = (wx + (cstrt + offx) / self.sf)[:, np.newaxis]
-            rx = (wx + (cstop + offx) / self.sf)[:, np.newaxis]
             
-            dyl, chs, bss = zip(*[(c.dy, c.ch, c.bshft) for c in self.cs])
-            adyl = list(itertools.accumulate(dyl))
-            by = np.array([wy + dy - bs for dy, bs in zip(adyl, bss)],dtype=float)[:, np.newaxis]
-            ty = np.array([wy + dy - ch / self.sf - bs for dy, ch, bs in zip(adyl, chs, bss)],dtype=float)[:, np.newaxis]
-
+            lx = (wx + cstrt + offx)[:, np.newaxis]
+            rx = (wx + cstop + offx)[:, np.newaxis]
+            
+            # dyl, chs, bss = zip(*[(c.dy, c.ch, c.bshft) for c in self.cs])
+            adyl = list(itertools.accumulate(self.dy))
+            by = np.array([wy + dy - bs for dy, bs in 
+                           zip(adyl, self.bshft)],dtype=float)[:, np.newaxis]
+            ty = np.array([wy + dy - bs - ch for dy, ch, bs 
+                           in zip(adyl, self.ch, self.bshft)],dtype=float)[:, np.newaxis]
 
             self._charpos = (cstrt, cstop, lx, rx, by, ty)
 
@@ -1695,15 +1716,15 @@ class tword:
             wx = self.x
             wy = self.y
             if len(self.cs) > 0:
-                ymin = min([wy + c.dy - c.ch / self.sf for c in self.cs])
+                ymin = min([wy + c.dy - c.ch  for c in self.cs])
                 ymax = max([wy + c.dy for c in self.cs])
             else:
                 ymin = ymax = wy
             self._pts_ut = [
-                v2d(wx + offx / self.sf, ymax),
-                v2d(wx + offx / self.sf, ymin),
-                v2d(wx + (ww + offx) / self.sf, ymin),
-                v2d(wx + (ww + offx) / self.sf, ymax),
+                v2d(wx + offx, ymax),
+                v2d(wx + offx, ymin),
+                v2d(wx + (ww + offx), ymin),
+                v2d(wx + (ww + offx), ymax),
             ]
         return self._pts_ut
 
@@ -1733,14 +1754,22 @@ class tword:
     def bb(self):
         if self._bb is None:
             ptt = self.pts_t
-            self._bb = bbox(
-                [
-                    min([p.x for p in ptt]),
-                    min([p.y for p in ptt]),
-                    max([p.x for p in ptt]) - min([p.x for p in ptt]),
-                    max([p.y for p in ptt]) - min([p.y for p in ptt]),
-                ]
-            )
+            
+            min_x, min_y = float('inf'), float('inf')
+            max_x, max_y = float('-inf'), float('-inf')
+            for p in ptt:
+                min_x, min_y = min(min_x, p.x), min(min_y, p.y)
+                max_x, max_y = max(max_x, p.x), max(max_y, p.y)
+            self._bb = bbox([min_x, min_y, max_x - min_x, max_y - min_y])
+            
+            # self._bb = bbox(
+            #     [
+            #         min([p.x for p in ptt]),
+            #         min([p.y for p in ptt]),
+            #         max([p.x for p in ptt]) - min([p.x for p in ptt]),
+            #         max([p.y for p in ptt]) - min([p.y for p in ptt]),
+            #     ]
+            # )
         return self._bb
 
     @bb.setter
@@ -1755,12 +1784,6 @@ class tword:
             (cstrt, cstop, lx, rx, by, ty) = self.charpos
 
             # self._cpts_ut = [
-            #     np.column_stack((lx, by)),
-            #     np.column_stack((lx, ty)),
-            #     np.column_stack((rx, ty)),
-            #     np.column_stack((rx, by)),
-            # ] 
-            # self._cpts_ut = [
             #     np.hstack((lx, by)),
             #     np.hstack((lx, ty)),
             #     np.hstack((rx, ty)),
@@ -1771,12 +1794,7 @@ class tword:
                 tuple((coord[i][0], v[i][0]) for i in range(n_rows)) for coord, v in zip((lx, lx, rx, rx), (by, ty, ty, by))
             ]
 
-
-
-
-
         return self._cpts_ut
-
     @cpts_ut.setter
     def cpts_ut(self, ci):
         if ci is None:
@@ -1787,9 +1805,7 @@ class tword:
         if self._cpts_t is None:
             """  Get the characters' pts"""
             (cstrt, cstop, lx, rx, by, ty) = self.charpos
-
             Nc = len(lx)
-
             # ps = np.hstack(
             #     (
             #         np.vstack((lx, lx, rx, rx)),
@@ -1797,7 +1813,6 @@ class tword:
             #         np.ones([4 * Nc, 1],dtype=float),
             #     )
             # )
-            
             ps = np.array([
                 (coord[i][0], v[i][0], 1)
                 for coord, v in zip((lx, lx, rx, rx), (by, ty, ty, by))
@@ -1816,12 +1831,35 @@ class tword:
             ]
 
         return self._cpts_t
-
     @cpts_t.setter
     def cpts_t(self, ci):
         if ci is None:
             self._cpts_t = None
 
+# Some properties that need to be calculated from the style
+def style_derived(styv,pel,textel):
+    if "letter-spacing" in styv:
+        lspv = styv.get("letter-spacing")
+        if "em" in lspv:  # em is basically the font size
+            fs2 = styv.get("font-size")
+            if fs2 is None:
+                fs2 = "12px"
+            lspv = float(lspv.strip("em")) * dh.ipx(fs2)
+        else:
+            lspv = dh.ipx(lspv) or 0
+    else:
+        lspv = 0
+        
+    if "baseline-shift" in styv:
+        cel = pel
+        bshft = 0
+        while cel != textel:  # sum all ancestor baseline-shifts
+            if "baseline-shift" in cel.cstyle:
+                bshft += tchar.get_baseline(cel.cstyle, cel.getparent())
+            cel = cel.getparent()
+    else:
+        bshft = 0
+    return ()
 
 # A single character and its style
 class tchar:
@@ -1847,9 +1885,11 @@ class tchar:
         # space width for style
         self.ln = ln
         ln.cs.append(self)
-        # my line (to be assigned)
+        self.lnindex = len(ln.cs)-1
+        # my line
         self.w = None
         # my word (to be assigned)
+        self.windex = None # index in word
         self.type = None
         # 'normal','super', or 'sub' (to be assigned)
         self.ofs = fs
@@ -1865,7 +1905,8 @@ class tchar:
         self.parsed_pts_t = None
         self.parsed_pts_ut = None
         # for merging later
-        self._lsp = self._bshft = None
+        self._lsp = tchar.lspfunc(self.sty)
+        self._bshft = tchar.bshftfunc(self.sty,self.loc.pel,self.ln.pt.textel)
         # letter spacing
         
     def copy(self,memo=dict()):
@@ -1881,7 +1922,9 @@ class tchar:
         ret.nsty = self.nsty
         ret.ch = self.ch
         ret.sw = self.sw
+        ret.lnindex = self.lnindex
         ret.w = self.w
+        ret.windex = self.windex
         ret.type = self.type
         ret.ofs = self.ofs
         ret._dx = self._dx
@@ -1894,6 +1937,7 @@ class tchar:
         ret._bshft = self._bshft
         
         ret.loc = cloc(memo.get(self.loc.el,self.loc.el), self.loc.tt, self.loc.ind)
+        # ret.loc = self.loc.copy(memo)
         ret.ln = memo.get(self.ln,self.ln)
         return ret
 
@@ -1906,8 +1950,9 @@ class tchar:
         if self._dx != di:
             self._dx = di
             if self.w is not None:
-                self.w.dxeff = None
-                # invalidate
+                self.w.charpos = None  # invalidate
+                ii=self.windex; w = self.w
+                w.dxeff[ii] = (w.cs[ii].dx if ii<w.Ncs else 0) + (w.cs[ii-1].lsp if ii>0 else 0)
             self.ln.pt._dxchange = True
 
     @property
@@ -1922,76 +1967,74 @@ class tchar:
 
     @property
     def sty(self):
+        # Character style
         return self._sty
 
     @sty.setter
     def sty(self, si):
+        # Character style
         self._sty = si
-        self.lsp = None
-        self.bshft = None
+        self.lsp = tchar.lspfunc(self._sty)
+        self.bshft = tchar.bshftfunc(self._sty,self.loc.pel,self.ln.pt.textel)
 
     anchorfrac = property(lambda self: get_anchorfrac(self.ln.anchor))
 
+    @staticmethod
+    def lspfunc(styv):
+        if "letter-spacing" in styv:
+            lspv = styv.get("letter-spacing")
+            if "em" in lspv:  # em is basically the font size
+                fs2 = styv.get("font-size")
+                if fs2 is None:
+                    fs2 = "12px"
+                lspv = float(lspv.strip("em")) * dh.ipx(fs2)
+            else:
+                lspv = dh.ipx(lspv) or 0
+        else:
+            lspv = 0
+        return lspv
+
     @property
     def lsp(self):
-        if self._lsp is None:
-            styv = self.sty
-            if "letter-spacing" in styv:
-                lspv = styv.get("letter-spacing")
-                if "em" in lspv:  # em is basically the font size
-                    fs2 = styv.get("font-size")
-                    if fs2 is None:
-                        fs2 = "12px"
-                    lspv = float(lspv.strip("em")) * dh.ipx(fs2)
-                else:
-                    lspv = dh.ipx(lspv) or 0
-            else:
-                lspv = 0
-            self._lsp = lspv
+        # Character letter spacing
         return self._lsp
 
     @lsp.setter
-    def lsp(self, si):
-        if si != self._lsp:
-            self._lsp = si
+    def lsp(self, sv):
+        # Character letter spacing
+        if sv != self._lsp:
+            self._lsp = sv
             if self.w is not None:
-                self.w.lsp = None
+                self.w.charpos = None
+                ii=self.windex; w = self.w
+                w.lsp[ii] = sv
+                w.dxeff[ii+1] = (w.cs[ii+1].dx if ii<w.Ncs-1 else 0) + (w.cs[ii].lsp if ii<w.Ncs else 0)
 
+    @staticmethod
+    def bshftfunc(styv,strtel,stopel):
+        if "baseline-shift" in styv:
+            cel = strtel
+            bshft = 0
+            while cel != stopel:  # sum all ancestor baseline-shifts
+                if "baseline-shift" in cel.cstyle:
+                    bshft += tchar.get_baseline(cel.cstyle, cel.getparent())
+                cel = cel.getparent()
+        else:
+            bshft = 0
+        return bshft
+
+    # Character baseline shift
     @property
     def bshft(self):
-        if self._bshft is None:
-            styv = self.sty
-            if "baseline-shift" in styv:
-                cel = self.loc.pel
-                bshft = 0
-                while cel != self.ln.pt.textel:  # sum all ancestor baseline-shifts
-                    if "baseline-shift" in cel.cstyle:
-                        bshft += tchar.get_baseline(cel.cstyle, cel.getparent())
-                    cel = cel.getparent()
-            else:
-                bshft = 0
-            self._bshft = bshft
         return self._bshft
 
     @bshft.setter
-    def bshft(self, si):
-        if si != self._bshft:
-            self._bshft = si
-            # if self.w is not None:
-            #     self.w.bshft = None
-
-    # @property
-    # def actual_font(self):
-    #     myfont = self.sty.get('font-family')
-    #     if myfont is not None:
-    #         myfont = ",".join([v.strip().strip("'") for v in myfont.split(",")])
-    #     if myfont is None or myfont=='' or myfont=='sans-serif':
-    #         ret = 'sans-serif'
-    #     else:
-    #         # dh.idebug(self.ln.pt.ctable.docfonts)
-    #         # dh.idebug(myfont)
-    #         ret = self.ln.pt.ctable.docfonts[myfont]
-    #     return ret
+    def bshft(self, sv):
+        if sv != self._bshft:
+            self._bshft = sv
+            if self.w is not None:
+                self.w.charpos = None
+                self.w.bshft[self.windex] = sv
             
 
     @staticmethod
@@ -2012,7 +2055,8 @@ class tchar:
         # Deletes character from document (and from my word/line)
         # Deleting a character causes the word to move if it's center- or right-justified. Adjust position to fix
         lncs = self.ln.cs
-        myi = lncs.index(self)  # index in line
+        # myi = lncs.index(self)  # index in line
+        myi = self.lnindex # index in line
         
         # Differential kerning affect on character width
         dko1 = dko2 = dkn = 0
@@ -2024,7 +2068,7 @@ class tchar:
             dko1 = self.dkerns.get((lncs[myi-1].c,lncs[myi].c),0.0) # old from left
         dk = dko1+dko2-dkn
         
-        cwo = self.cw + dk + self._dx + self.lsp * (self.w.cs[0] != self)
+        cwo = self.cw + dk + self._dx + self.lsp*(self.windex != 0)
         if self.w.unrenderedspace and self.w.cs[-1] == self:
             if len(self.w.cs) > 1 and self.w.cs[-2].c != " ":
                 cwo = dk
@@ -2032,9 +2076,9 @@ class tchar:
                 # weirdly dkerning from unrendered spaces still counts
 
         if self == self.w.cs[0]:  # from beginning of line
-            deltax = (self.anchorfrac - 1) * cwo / self.sf
+            deltax = (self.anchorfrac - 1) * cwo 
         else:  # assume end of line
-            deltax = self.anchorfrac * cwo / self.sf
+            deltax = self.anchorfrac * cwo
         
         lnx = [v for v in self.ln.x]
         changedx = False
@@ -2073,16 +2117,23 @@ class tchar:
             if ca.loc.tt == self.loc.tt and ca.loc.el == self.loc.el:
                 ca.loc.ind -= 1
             if ca.w is not None:
-                i2 = ca.w.cs.index(ca)
-                ca.w.iis[i2] -= 1
+                # i2 = ca.w.cs.index(ca)
+                # ca.w.iis[i2] -= 1
+                ca.w.iis[ca.windex] -= 1
+                
+        for c in self.ln.cs[myi+1:]:
+            c.lnindex -= 1
+        lncs[myi].lnindex = None
         self.ln.cs = lncs[:myi] + lncs[myi + 1:]
+        
         if len(self.ln.cs) == 0:  # line now empty, can delete
             self.ln.dell()
         # self.ln = None
 
         # Remove from word
-        myi = self.w.cs.index(self)
-        self.w.removec(myi)
+        # myi = self.w.cs.index(self)
+        # self.w.removec(myi)
+        self.w.removec(self)
 
         # Update the dx/dy value in the ParsedText
         self.ln.pt.Update_Delta()
@@ -2107,20 +2158,16 @@ class tchar:
             prt.tail = tbefore
             gp = prt.getparent()
             # parent is a Tspan, so insert it into the grandparent
-            pi = list(gp).index(prt)
+            pi = gp.index(prt)
             gp.insert(pi + 1, t)
             # after the parent
 
             t.tail = tafter
-
-        # dh.idebug([v.get_id() for v in dh.descendants2(self.ln.pt.textel)])
-        # dh.idebug([v.get_id() for v in self.ln.pt.tree.ds])
-        # textd = self.ln.pt.textds
-        # update the descendants list
-        # textd.insert(textd.index(prt) + 1, t)
+            
         self.ln.pt.tree = None # invalidate
 
-        myi = self.ln.cs.index(self)
+        # myi = self.ln.cs.index(self)
+        myi = self.lnindex
         for ii in range(
             myi + 1, len(self.ln.cs)
         ):  # for characters after, update location
@@ -2138,10 +2185,7 @@ class tchar:
                 # dh.idebug([t.get_id2(),a,sty])
 
         t.cstyle = sty
-
         self.sty = sty
-        self.lsp = None
-        self.bshft = None
 
     def makesubsuper(self, sz=65):
         if self.type == "super":
@@ -2174,8 +2218,9 @@ class tchar:
 
     @property
     def pts_ut(self):
-        """  Interpolate the pts of a word to get a specific character's pts"""
-        myi = self.w.cs.index(self)
+        # A specific character's untransformed pts
+        # myi = self.w.cs.index(self)
+        myi = self.windex
         cput = self.w.cpts_ut
         ret_pts_ut = [
             v2d(cput[0][myi][0], cput[0][myi][1]),
@@ -2187,7 +2232,9 @@ class tchar:
 
     @property
     def pts_t(self):
-        myi = self.w.cs.index(self)
+        # A specific character's transformed pts
+        # myi = self.w.cs.index(self)
+        myi = self.windex
         cpt = self.w.cpts_t
         ret_pts_t = [
             v2d(cpt[0][myi][0], cpt[0][myi][1]),
@@ -2201,10 +2248,10 @@ class tchar:
     @property
     def pts_ut_ink(self):
         put = self.pts_ut;
-        nw = self.prop.inkbb[2]/self.sf;
-        nh = self.prop.inkbb[3]/self.sf;
-        nx = put[0].x+self.prop.inkbb[0]/self.sf;
-        ny = put[0].y+self.prop.inkbb[1]/self.sf+nh;
+        nw = self.prop.inkbb[2];
+        nh = self.prop.inkbb[3];
+        nx = put[0].x+self.prop.inkbb[0];
+        ny = put[0].y+self.prop.inkbb[1]+nh;
         return [v2d(nx,ny),v2d(nx,ny-nh),v2d(nx+nw,ny-nh),v2d(nx+nw,ny)]
 
     # @property
@@ -2261,6 +2308,7 @@ def sortnone(x):  # sorts an x with Nones (skip Nones)
 # A class representing the properties of a single character
 # It is meant to be immutable...do not modify attributes
 class cprop:
+    # __slots__ = ("char", "charw", "spacew", "caph", "descrh", "dkerns", "inkbb")
     def __init__(self, char, cw, sw, ch, dr, dkerns,inkbb):
         self.char = char
         self.charw = cw
@@ -2293,6 +2341,7 @@ class cprop:
 
 # A class indicating a single character's location in the SVG
 class cloc:
+    __slots__ = ("el", "tt", "ind", "pel")
     def __init__(self, el, tt, ind):
         self.el = el
         # the element it belongs to
@@ -2300,14 +2349,29 @@ class cloc:
         # 'text' or 'tail'
         self.ind = ind
         # its index
+        self.pel = el if tt == "text" else el.getparent()
 
-        if self.tt == "text":
-            self.pel = self.el  # parent element (different for tails)
-        else:
-            self.pel = self.el.getparent()
+        # if self.tt == "text":
+        #     self.pel = self.el  # parent element (different for tails)
+        # else:
+        #     self.pel = self.el.getparent()
+            
+            
+    def copy(self,memo):
+        ret = cloc.__new__(cloc)
+        memo[self]=ret
+        
+        ret.el = memo[self.el]
+        ret.tt = self.tt
+        ret.ind = self.ind
+        ret.pel = memo[self.pel]
+        return ret
 
     def __eq__(self, other):
         return self.el == other.el and self.tt == other.tt and self.ind == other.ind
+    
+    def __hash__(self):
+        return hash((self.el, self.tt, self.ind))
 
 
 # A class representing the properties of a collection of characters
