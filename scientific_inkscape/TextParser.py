@@ -730,7 +730,7 @@ class ParsedText:
         fusex = self.lns[il].continuex or ciis[0] > 0 or dxl[0] != 0
         fusey = self.lns[il].continuey or ciis[0] > 0 or dyl[0] != 0
         if fusex:
-            xf = self.lns[il].anchorfrac
+            xf = self.lns[il].anchfrac
             oldx = cs[0].pts_ut[0].x * (1 - xf) + cs[-1].pts_ut[3].x * xf
         if fusey:
             oldy = cs[0].w.y + dyl[0]
@@ -992,6 +992,7 @@ class tline:
         self.sprlabove = sprlabove
         # nominal value of spr (sprl may actually be disabled)
         self.anchor = anch
+        self.anchfrac = get_anchorfrac(anch)
         self.cs = []
         self.ws = []
         if xform is None:
@@ -1025,6 +1026,7 @@ class tline:
         ret.sprl = self.sprl
         ret.sprlabove = [memo[sa] for sa in self.sprlabove]
         ret.anchor = self.anchor
+        ret.anchfrac = self.anchfrac
         ret.cs = [c.copy(memo) for c in self.cs]
         ret.ws = [w.copy(memo) for w in self.ws]
         ret.transform = self.transform
@@ -1046,7 +1048,7 @@ class tline:
             return [0]
         ii = self.pt.lns.index(self)
         if ii > 0 and len(self.pt.lns[ii - 1].ws) > 0:
-            xf = self.anchorfrac
+            xf = self.anchfrac
             xanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[3].x - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0].x
             return [xanch]
         else:
@@ -1066,7 +1068,7 @@ class tline:
             return [0]
         ii = self.pt.lns.index(self)
         if ii > 0 and len(self.pt.lns[ii - 1].ws) > 0:
-            xf = self.anchorfrac
+            xf = self.anchfrac
             yanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[3].y - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0].y
             return [yanch]
         else:
@@ -1077,7 +1079,7 @@ class tline:
         self._y = yi
 
     y = property(get_y, set_y)
-    anchorfrac = property(lambda self: get_anchorfrac(self.anchor))
+    # anchorfrac = property(lambda self: get_anchorfrac(self.anchor))
 
     def insertc(self, c, ec):  # insert below ec
         for c2 in self.cs[ec:]:
@@ -1159,6 +1161,7 @@ class tline:
                     w.cs[0].loc.el.cstyle["text-align"]=alignd[newanch]
 
                 self.anchor = newanch
+                self.anchfrac = xf
                 for w in self.ws:
                     w.pts_ut = None  # invalidate word positions
 
@@ -1441,7 +1444,7 @@ class tword:
 
         # Adding a character causes the word to move if it's center- or right-justified
         # Need to fix this by adjusting position
-        deltax = -self.anchorfrac * self.ln.cs[myi].cw
+        deltax = -self.ln.anchfrac * self.ln.cs[myi].cw
         if deltax != 0:
             newx = self.ln.x
             # newx[self.ln.cs.index(self.cs[0])] -= deltax
@@ -1574,7 +1577,7 @@ class tword:
             nmaxx = max([p[3].x for p in newptsut])
             nminx = min([p[0].x for p in newptsut])
 
-            xf = self.anchorfrac
+            xf = self.ln.anchfrac
             deltaanch = (nminx * (1 - xf) + nmaxx * xf) - (
                 ominx * (1 - xf) + omaxx * xf
             )
@@ -1644,7 +1647,7 @@ class tword:
         return self.ln.angle
 
     angle = property(get_ang)
-    anchorfrac = property(lambda self: get_anchorfrac(self.ln.anchor))
+    # anchorfrac = property(lambda self: get_anchorfrac(self.ln.anchor))
 
     @property
     def unrenderedspace(
@@ -1676,7 +1679,7 @@ class tword:
             cstop = np.array(cstop,dtype=float)
 
             ww = cstop[-1]
-            offx = -self.anchorfrac * (ww - self.unrenderedspace * self.cs[-1].cw)
+            offx = -self.ln.anchfrac * (ww - self.unrenderedspace * self.cs[-1].cw)
             # offset of the left side of the word from the anchor
             wx = self.x
             wy = self.y
@@ -1709,7 +1712,7 @@ class tword:
         if self._pts_ut is None:
             (cstrt, cstop, lx, rx, by, ty) = self.charpos
             ww = cstop[-1]
-            offx = -self.anchorfrac * (
+            offx = -self.ln.anchfrac * (
                 ww - self.unrenderedspace * self.cs[-1].cw
             )  # offset of the left side of the word from the anchor
 
@@ -1977,7 +1980,7 @@ class tchar:
         self.lsp = tchar.lspfunc(self._sty)
         self.bshft = tchar.bshftfunc(self._sty,self.loc.pel,self.ln.pt.textel)
 
-    anchorfrac = property(lambda self: get_anchorfrac(self.ln.anchor))
+    # anchorfrac = property(lambda self: get_anchorfrac(self.ln.anchor))
 
     @staticmethod
     def lspfunc(styv):
@@ -2076,9 +2079,9 @@ class tchar:
                 # weirdly dkerning from unrendered spaces still counts
 
         if self == self.w.cs[0]:  # from beginning of line
-            deltax = (self.anchorfrac - 1) * cwo 
+            deltax = (self.ln.anchfrac - 1) * cwo 
         else:  # assume end of line
-            deltax = self.anchorfrac * cwo
+            deltax = self.ln.anchfrac * cwo
         
         lnx = [v for v in self.ln.x]
         changedx = False
