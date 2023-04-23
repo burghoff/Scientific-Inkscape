@@ -420,9 +420,9 @@ def External_Merges(els, mergenearby, mergesupersub):
         neitherempty = len(wstrip(w.txt)) > 0 and len(wstrip(w2.txt)) > 0
         if xpenmatch and neitherempty and not (twospaces(w, w2)):
             type = None
-            # dh.idebug([w.fs,w2.fs])
+            # dh.idebug([w.tfs,w2.tfs])
             # dh.idebug([br1.y+ytol>=bl2.y>=tr1.y-ytol,mergesupersub])
-            if abs(bl2.y - br1.y) < ytol and abs(w.fs - w2.fs) < 0.001 and mergenearby:
+            if abs(bl2.y - br1.y) < ytol and abs(w.tfs - w2.tfs) < 0.001 and mergenearby:
                 if isnumeric(w.ln.txt()) and isnumeric(w2.ln.txt(), True):
                     numsp = (bl2.x-br1.x)/(w.sw);
                     if abs(numsp)<0.25:
@@ -437,10 +437,10 @@ def External_Merges(els, mergenearby, mergesupersub):
                 aboveline = (
                     br1.y * (1 - SUBSUPER_YTHR) + tr1.y * SUBSUPER_YTHR + ytol >= bl2.y
                 )
-                if w2.fs < w.fs * SUBSUPER_THR:  # new smaller, expect super
+                if w2.tfs < w.tfs * SUBSUPER_THR:  # new smaller, expect super
                     if aboveline:
                         type = "super"
-                elif w.fs < w2.fs * SUBSUPER_THR:  # old smaller, expect reutrn
+                elif w.tfs < w2.tfs * SUBSUPER_THR:  # old smaller, expect reutrn
                     type = "subreturn"
                 elif SUBSUPER_THR==1:
                     if aboveline:
@@ -455,10 +455,10 @@ def External_Merges(els, mergenearby, mergesupersub):
                 belowline = (
                     tl2.y >= br1.y * SUBSUPER_YTHR + tr1.y * (1 - SUBSUPER_YTHR) - ytol
                 )
-                if w2.fs < w.fs * SUBSUPER_THR:  # new smaller, expect sub
+                if w2.tfs < w.tfs * SUBSUPER_THR:  # new smaller, expect sub
                     if belowline:
                         type = "sub"
-                elif w.fs < w2.fs * SUBSUPER_THR:  # old smaller, expect superreturn
+                elif w.tfs < w2.tfs * SUBSUPER_THR:  # old smaller, expect superreturn
                     type = "superreturn"
                 elif SUBSUPER_THR==1:
                     if belowline:
@@ -483,8 +483,8 @@ def External_Merges(els, mergenearby, mergesupersub):
                 if type is None:
                     if not (abs(bl2.y - br1.y) < ytol):
                         dh.idebug("Aborted, y pen too far: " + str([bl2.y, br1.y]))
-                    elif not (abs(w.fs - w2.fs) < 0.001):
-                        dh.idebug("Aborted, fonts too different: " + str([w.fs, w2.fs]))
+                    elif not (abs(w.tfs - w2.tfs) < 0.001):
+                        dh.idebug("Aborted, fonts too different: " + str([w.tfs, w2.tfs]))
                     elif not (
                         not (isnumeric(w.ln.txt())) or not (isnumeric(w2.ln.txt()))
                     ):

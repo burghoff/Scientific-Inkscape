@@ -2296,6 +2296,35 @@ masktag = inkex.addNS('mask','svg')
 def isMask(el):
     return el.tag == masktag
 
+# cprofile tic and toc
+def ctic():
+    import cProfile
+    global pr
+    pr = cProfile.Profile()
+    pr.enable()
+def ctoc():
+    import io, pstats
+    global pr
+    pr.disable()
+    s = io.StringIO()
+    sortby = pstats.SortKey.CUMULATIVE
+    profiledir = os.path.dirname(os.path.abspath(__file__))
+    pr.dump_stats(os.path.abspath(os.path.join(profiledir, "cprofile.prof")))
+    ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+    ps.print_stats()
+    ppath = os.path.abspath(os.path.join(profiledir, "cprofile.csv"))
+
+    result = s.getvalue()
+    prefix = result.split("ncalls")[0]
+    # chop the string into a csv-like buffer
+    result = "ncalls" + result.split("ncalls")[-1]
+    result = "\n".join(
+        [",".join(line.rstrip().split(None, 5)) for line in result.split("\n")]
+    )
+    result = prefix + "\n" + result
+    with open(ppath, "w") as f:
+        f.write(result)
+
 def Run_SI_Extension(effext,name):
     Version_Check(name)
     
@@ -2307,19 +2336,12 @@ def Run_SI_Extension(effext,name):
     cprofile = False
     lprofile = os.getenv("LINEPROFILE") == "True"
     if cprofile or lprofile:
-        import io
         profiledir = get_script_path()
-
         if cprofile:
-            import cProfile, pstats
-            from pstats import SortKey
-    
-            pr = cProfile.Profile()
-            pr.enable()
+            ctic()
         if lprofile:
             try:
                 from line_profiler import LineProfiler
-    
                 lp = LineProfiler()
                 import TextParser, RemoveKerning, flatten_plots
                 from inspect import getmembers, isfunction, isclass, getmodule
@@ -2345,6 +2367,7 @@ def Run_SI_Extension(effext,name):
                 lp.add_function(TextParser.Character_Table.normalize_style.__wrapped__)
                    
                 lp(run_and_cleanup)()
+                import io
                 stdouttrap = io.StringIO()
                 lp.dump_stats(os.path.abspath(os.path.join(profiledir, "lprofile.prof")))
                 lp.print_stats(stdouttrap)
@@ -2397,28 +2420,8 @@ def Run_SI_Extension(effext,name):
                 inkex.utils.errormsg(
                     "Error reading file! Extensions can only run on SVG files.\n\nIf this is a file imported from another format, try saving as an SVG and restarting Inkscape. Alternatively, try pasting the contents into a new document."
                 )
-
     if cprofile:
-        pr.disable()
-        s = io.StringIO()
-        sortby = SortKey.CUMULATIVE
-        pr.dump_stats(os.path.abspath(os.path.join(profiledir, "cprofile.prof")))
-        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        ps.print_stats()
-        ppath = os.path.abspath(os.path.join(profiledir, "cprofile.csv"))
-
-        result = s.getvalue()
-        prefix = result.split("ncalls")[0]
-        # chop the string into a csv-like buffer
-        result = "ncalls" + result.split("ncalls")[-1]
-        result = "\n".join(
-            [",".join(line.rstrip().split(None, 5)) for line in result.split("\n")]
-        )
-        result = prefix + "\n" + result
-        f = open(ppath, "w")
-        f.write(result)
-        f.close()
-    
+        ctoc()
     write_debug()   
     
     # Display accumulated caller info if any

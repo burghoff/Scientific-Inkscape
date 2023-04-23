@@ -105,7 +105,6 @@ class FlattenPlots(inkex.EffectExtension):
     def duplicate_layer1(self):
         # For testing, duplicate selection and flatten its elements
         import random
-
         random.seed(1)
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
         # should work with both v1.0 and v1.1
@@ -125,44 +124,42 @@ class FlattenPlots(inkex.EffectExtension):
         return sel
 
     def effect(self):
-        # lprofile = os.getenv("LINEPROFILE") == "True"
-
         if self.options.testmode:
-            self.options.deepungroup = True
-            self.options.fixtext = True
-            self.options.removerectw = True
-            self.options.splitdistant = True
-            self.options.mergenearby = True
-            self.options.fixshattering = True
-            self.options.mergesubsuper = True
-            self.options.setreplacement = True
-            self.options.replacement = "sans-serif"
-            self.options.justification = 1
-            
-        import random
-        random.seed(1)
+            import random
+            if not hasattr(self.options,'enabled_profile'):
+                self.options.enabled_profile = True
+                self.options.lyr1 = self.duplicate_layer1()
+                self.options.rngstate = random.getstate()
+                dh.ctic()
+                self.effect()
+                dh.ctoc()
+                return
+            else:
+                sel = self.options.lyr1
+                random.setstate(self.options.rngstate)
+                self.options.deepungroup = True
+                self.options.fixtext = True
+                self.options.removerectw = True
+                self.options.splitdistant = True
+                self.options.mergenearby = True
+                self.options.fixshattering = True
+                self.options.mergesubsuper = True
+                self.options.setreplacement = True
+                self.options.replacement = "sans-serif"
+                self.options.justification = 1
+        else:
+            sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
         
-        deepungroup = self.options.deepungroup
-        removerectw = self.options.removerectw
         splitdistant = self.options.splitdistant and self.options.fixtext
         fixshattering = self.options.fixshattering and self.options.fixtext
         mergesubsuper = self.options.mergesubsuper and self.options.fixtext
         mergenearby = self.options.mergenearby and self.options.fixtext
         setreplacement = self.options.setreplacement and self.options.fixtext
-        replacement = self.options.replacement
-
-        sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
-        # should work with both v1.0 and v1.1
-
-        # self.svg.selection = [self.svg.getElementById('layer1')]
-        # self.options.testmode = True
-        if self.options.testmode:
-            sel = self.duplicate_layer1()
 
         seld = [v for el in sel for v in dh.descendants2(el)]
 
         # Move selected defs/clips/mask into global defs
-        if deepungroup:
+        if self.options.deepungroup:
             seldefs = [el for el in seld if isinstance(el, Defs)]
             for el in seldefs:
                 self.svg.defs2.append(el)
@@ -191,7 +188,7 @@ class FlattenPlots(inkex.EffectExtension):
             inkex.utils.errormsg("No objects selected!")
             return
 
-        if deepungroup:
+        if self.options.deepungroup:
             # Unlink all clones
             nels = []; oels = [] 
             for el in seld:
@@ -239,6 +236,7 @@ class FlattenPlots(inkex.EffectExtension):
 
         if self.options.fixtext:
             if setreplacement:
+                repl = self.options.replacement
                 for el in ngs:
                     if (
                         isinstance(el, (TextElement, Tspan))
@@ -249,13 +247,13 @@ class FlattenPlots(inkex.EffectExtension):
                         el.cstyle["-inkscape-font-specification"]= None
                         if ff == None or ff == "none" or ff == "":
                             # dh.Set_Style_Comp(el, "font-family", replacement)
-                            el.cstyle["font-family"]=replacement
-                        elif ff == replacement:
+                            el.cstyle["font-family"]=repl
+                        elif ff == repl:
                             pass
                         else:
                             ff = [x.strip("'").strip() for x in ff.split(",")]
-                            if not (ff[-1].lower() == replacement.lower()):
-                                ff.append(replacement)
+                            if not (ff[-1].lower() == repl.lower()):
+                                ff.append(repl)
                             # dh.Set_Style_Comp(el, "font-family", ",".join(ff))
                             el.cstyle["font-family"]=",".join(ff)
 
@@ -271,7 +269,7 @@ class FlattenPlots(inkex.EffectExtension):
                     justification,
                 )
 
-        if removerectw:
+        if self.options.removerectw:
             prltag = dh.tags((PathElement, Rectangle, Line))
             fltag  = dh.tags((FlowPara, FlowRegion, FlowRoot))
             rtag = Rectangle.tag2

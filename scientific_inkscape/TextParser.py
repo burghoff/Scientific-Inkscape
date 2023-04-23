@@ -418,7 +418,8 @@ class ParsedText:
                 if txt is not None:
                     for jj, c in enumerate(txt):
                         # prop = self.ctable.get_prop(c, nsty) * fs
-                        prop = self.ctable.get_prop_mult(c, nsty, fs/sf)
+                        # prop = self.ctable.get_prop_mult(c, nsty, fs/sf)
+                        prop = self.ctable.get_prop(c, nsty)
                         ttv = 'tail' if tt==0 else 'text'
                         tchar(c, fs, sf, prop, sty, nsty, cloc(tel, ttv, jj),lns[-1])
 
@@ -968,6 +969,10 @@ def get_anchorfrac(anch):
 # A single line, which represents a list of characters. Typically a top-level Tspan or TextElement.
 # This is further subdivided into a list of words
 class tline:
+    __slots__ = ('_x', '_y', 'sprl', 'sprlabove', 'anchor', 'anchfrac', 
+                 'cs', 'ws', 'transform', 'angle', 'xsrc', 'ysrc', 'tlvlno', 
+                 'style', 'continuex', 'continuey', 'pt',
+                 'splits','sws')
     def __init__(
         self,
         pt,
@@ -1349,9 +1354,6 @@ class tword:
 
     # Callback for character addition/deletion. Used to invalidate cached properties
     def cchange(self):
-        # self.lsp = None
-        # self.bshft = None
-        # self.dxeff = None
         self.charpos = None
 
         if self.ln.pt._hasdx:
@@ -1410,7 +1412,7 @@ class tword:
         c = copy(lc)
         c.c = ncv
         c.prop = ncprop
-        c.cw = ncprop.charw
+        c.cw = ncprop.charw*c.utfs
         c.dx = ndx
         c.dy = ndy
 
@@ -1469,8 +1471,8 @@ class tword:
             # dh.idebug([self.txt(),nw.txt(),(bl2.x-br1.x)/(lc.sw/self.sf)])
             # dh.idebug([self.txt(),nw.txt(),lc.sw,lc.cw])
             for ii in range(numsp):
-                self.appendc(" ", lc.ln.pt.ctable.get_prop_mult(' ',lc.nsty,lc.fs), -lc.lsp, 0)
-                # self.appendc(" ", lc.ln.pt.ctable.get_prop(' ',lc.nsty)*lc.fs, -lc.lsp, 0)
+                self.appendc(" ", lc.ln.pt.ctable.get_prop(' ',lc.nsty), -lc.lsp, 0)
+                # self.appendc(" ", lc.ln.pt.ctable.get_prop(' ',lc.nsty)*lc.tfs, -lc.lsp, 0)
 
             fc = nw.cs[0]
             prevc = self.cs[-1]
@@ -1518,7 +1520,7 @@ class tword:
                         # newsty['font-size'] = str(sz)+'%';
     
                         # Leave baseline unchanged (works, but do I want it?)
-                        # shft = round(-(bl2.y-br1.y)/self.fs*100*self.sf);
+                        # shft = round(-(bl2.y-br1.y)/self.tfs*100*self.sf);
                         # newsty['baseline-shift']= str(shft)+'%';
                     elif c.sf != newc.sf:
                         # Prevent accidental font size changes when differently transformed
@@ -1629,9 +1631,9 @@ class tword:
 
     # Word properties
     def get_fs(self):
-        return maxnone([c.fs for c in self.cs])
+        return maxnone([c.tfs for c in self.cs])
 
-    fs = property(get_fs)
+    tfs = property(get_fs)
 
     def get_sw(self):
         return maxnone([c.sw for c in self.cs])
@@ -1666,9 +1668,8 @@ class tword:
             wadj = [0]*self.Ncs
             if KERN_TABLE:
                 for ii in range(1, self.Ncs):
-                    dk = self.cs[ii].dkerns.get((self.cs[ii - 1].c, self.cs[ii].c),0)
+                    wadj[ii] = self.cs[ii].dkerns(self.cs[ii - 1].c, self.cs[ii].c)
                     # default to 0 for chars of different style
-                    wadj[ii] = dk
                     
             ws = [self.cw[ii] + self.dxeff[ii] + wadj[ii] for ii in range(self.Ncs)]
             cstop = list(itertools.accumulate(ws))
@@ -1866,25 +1867,30 @@ def style_derived(styv,pel,textel):
 
 # A single character and its style
 class tchar:
-    def __init__(self, c, fs, sf, prop, sty, nsty, loc,ln):
+    __slots__ = ('c', 'tfs', 'utfs', 'sf', 'prop', 'cw', '_sty', 'nsty', 'loc', 'ch', 'sw', 'ln', 'lnindex', 'w', 'windex', 'type', '_dx', '_dy', 'deltanum', 'dkerns', 'parsed_pts_t', 'parsed_pts_ut', '_lsp', '_bshft')
+    def __init__(self, c, tfs, sf, prop, sty, nsty, loc,ln):
         self.c = c
-        self.fs = fs
-        # nominal font size
+        self.tfs = tfs
+        # transformed font size (uu)
+        utfs = tfs/sf
+        self.utfs = utfs
+        # untransformed font size
         self.sf = sf
-        # how much it is scaled to get to the actual width
+        # transform scale
         self.prop = prop
-        self.cw = prop.charw
-        # actual character width in user units
+        # properties of a 1 uu character
+        self.cw = prop.charw * utfs
+        # ut character width 
         self._sty = sty
         # actual style
         self.nsty = nsty
         # normalized style
         self.loc = loc
         # true location: [parent, 'text' or 'tail', index]
-        self.ch = prop.caph
+        self.ch = prop.caph * utfs
         # cap height (height of flat capitals like T)
         # self.dr = dr;     # descender (length of p/q descender))
-        self.sw = prop.spacew
+        self.sw = prop.spacew * utfs
         # space width for style
         self.ln = ln
         ln.cs.append(self)
@@ -1895,16 +1901,13 @@ class tchar:
         self.windex = None # index in word
         self.type = None
         # 'normal','super', or 'sub' (to be assigned)
-        self.ofs = fs
-        # original character width (never changed, even if character is updated later)
         self._dx = 0
         # get later
         self._dy = 0
         # get later
         self.deltanum = None
         # get later
-        self.dkerns = prop.dkerns
-        # self.pending_style = None; # assign later (maybe)
+        self.dkerns = lambda cL,cR : prop.dkerns.get((cL,cR),0)*utfs
         self.parsed_pts_t = None
         self.parsed_pts_ut = None
         # for merging later
@@ -1917,8 +1920,9 @@ class tchar:
         memo[self] = ret
         
         ret.c = self.c
-        ret.fs = self.fs
+        ret.tfs = self.tfs
         ret.sf = self.sf
+        ret.utfs = self.utfs
         ret.prop = self.prop
         ret.cw = self.cw
         ret._sty = self._sty
@@ -1929,7 +1933,6 @@ class tchar:
         ret.w = self.w
         ret.windex = self.windex
         ret.type = self.type
-        ret.ofs = self.ofs
         ret._dx = self._dx
         ret._dy = self._dy
         ret.deltanum = self.deltanum
@@ -1940,7 +1943,6 @@ class tchar:
         ret._bshft = self._bshft
         
         ret.loc = cloc(memo.get(self.loc.el,self.loc.el), self.loc.tt, self.loc.ind)
-        # ret.loc = self.loc.copy(memo)
         ret.ln = memo.get(self.ln,self.ln)
         return ret
 
@@ -2064,11 +2066,11 @@ class tchar:
         # Differential kerning affect on character width
         dko1 = dko2 = dkn = 0
         if myi<len(lncs)-1:
-            dko2 = self.dkerns.get((lncs[myi].c,lncs[myi+1].c),0.0) # old from right
+            dko2 = self.dkerns(lncs[myi].c,lncs[myi+1].c) # old from right
             if myi > 0:
-                dkn = self.dkerns.get((lncs[myi-1].c,lncs[myi+1].c),0.0) # new
+                dkn = self.dkerns(lncs[myi-1].c,lncs[myi+1].c) # new
         if myi>0:
-            dko1 = self.dkerns.get((lncs[myi-1].c,lncs[myi].c),0.0) # old from left
+            dko1 = self.dkerns(lncs[myi-1].c,lncs[myi].c) # old from left
         dk = dko1+dko2-dkn
         
         cwo = self.cw + dk + self._dx + self.lsp*(self.windex != 0)
@@ -2197,28 +2199,6 @@ class tchar:
             sty = "font-size:" + str(sz) + "%;baseline-shift:sub"
         self.add_style(sty)
 
-
-    # def applypending(self):
-    #     self.add_style(self.pending_style);
-    #     self.pending_style = None
-
-    # def interp_pts(self):
-    #     """  Interpolate the pts of a word to get a specific character's pts"""
-    #     myi = self.w.cs.index(self)
-    #     cput = self.w.cpts_ut;
-    #     ret_pts_ut = [v2d(cput[0][myi][0],cput[0][myi][1]),\
-    #                   v2d(cput[1][myi][0],cput[1][myi][1]),\
-    #                   v2d(cput[2][myi][0],cput[2][myi][1]),\
-    #                   v2d(cput[3][myi][0],cput[3][myi][1])]
-
-    #     cpt = self.w.cpts_t;
-    #     ret_pts_t = [v2d(cpt[0][myi][0],cpt[0][myi][1]),\
-    #                  v2d(cpt[1][myi][0],cpt[1][myi][1]),\
-    #                  v2d(cpt[2][myi][0],cpt[2][myi][1]),\
-    #                  v2d(cpt[3][myi][0],cpt[3][myi][1])]
-
-    #     return ret_pts_ut, ret_pts_t
-
     @property
     def pts_ut(self):
         # A specific character's untransformed pts
@@ -2251,34 +2231,11 @@ class tchar:
     @property
     def pts_ut_ink(self):
         put = self.pts_ut;
-        nw = self.prop.inkbb[2];
-        nh = self.prop.inkbb[3];
-        nx = put[0].x+self.prop.inkbb[0];
-        ny = put[0].y+self.prop.inkbb[1]+nh;
+        nw = self.prop.inkbb[2]*self.utfs;
+        nh = self.prop.inkbb[3]*self.utfs;
+        nx = put[0].x+self.prop.inkbb[0]*self.utfs;
+        ny = put[0].y+self.prop.inkbb[1]*self.utfs+nh;
         return [v2d(nx,ny),v2d(nx,ny-nh),v2d(nx+nw,ny-nh),v2d(nx+nw,ny)]
-
-    # @property
-    # def parsed_pts_ut(self):
-    #     if self._parsed_pts_ut is None:
-    #         self._parsed_pts_ut = self.pts_ut
-    #     return self._parsed_pts_ut
-    # @parsed_pts_ut.setter
-    # def parsed_pts_ut(self,pi):
-    #     self._parsed_pts_ut = pi;
-    # @property
-    # def parsed_pts_t(self):
-    #     if self._parsed_pts_t is None:
-    #         self._parsed_pts_t = self.pts_t
-    #     return self._parsed_pts_t
-    # @parsed_pts_t.setter
-    # def parsed_pts_t(self,pi):
-    #     self._parsed_pts_t = pi;
-
-    # def changex(self,newx):
-    #     self.ln.x[self.ln.cs.index(self)] = newx
-    #     if self.ln.x==[]: self.ln.xsrc.set('x',None)
-    #     else:             self.ln.xsrc.set('x',' '.join([str(v) for v in self.ln.x]))
-
 
 def del2(x, ind):  # deletes an index from a list
     return x[:ind] + x[ind + 1 :]
@@ -2311,7 +2268,7 @@ def sortnone(x):  # sorts an x with Nones (skip Nones)
 # A class representing the properties of a single character
 # It is meant to be immutable...do not modify attributes
 class cprop:
-    # __slots__ = ("char", "charw", "spacew", "caph", "descrh", "dkerns", "inkbb")
+    __slots__ = ("char", "charw", "spacew", "caph", "descrh", "dkerns", "inkbb")
     def __init__(self, char, cw, sw, ch, dr, dkerns,inkbb):
         self.char = char
         self.charw = cw
@@ -2353,12 +2310,7 @@ class cloc:
         self.ind = ind
         # its index
         self.pel = el if tt == "text" else el.getparent()
-
-        # if self.tt == "text":
-        #     self.pel = self.el  # parent element (different for tails)
-        # else:
-        #     self.pel = self.el.getparent()
-            
+        # where style comes from
             
     def copy(self,memo):
         ret = cloc.__new__(cloc)
@@ -2694,19 +2646,7 @@ class Character_Table:
     # For generating test characters, we want to normalize the style so that we don't waste time
     # generating a bunch of identical characters whose font-sizes are different. A style is generated
     # with a single font-size, and only with presentation attributes that affect character shape.
-    textshapeatt = [
-        "font-family",
-        "font-size-adjust",
-        "font-stretch",
-        "font-style",
-        "font-variant",
-        "font-weight",
-        "text-decoration",
-        "text-rendering",
-        "font-size",
-    ]
-    
-    textshapeatt = [v for v in textshapeatt if v in ['font-family','font-weight','font-style','font-variant','font-stretch','font-size']]
+    textshapeatt = ['font-family','font-weight','font-style','font-variant','font-stretch','font-size']
     
     # 'stroke','stroke-width' do not affect kerning at all
     @staticmethod
