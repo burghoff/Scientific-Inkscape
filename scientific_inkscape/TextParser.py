@@ -97,6 +97,164 @@ inkex.SvgDocumentElement.make_char_table = make_char_table_fcn
 inkex.SvgDocumentElement.char_table = property(get_char_table)
 
 
+class ParsedTextList():
+    def __init__(self,pts):
+        self.pts = pts
+        
+    def precalcs(self):
+        # Calculate parsed_bb, parsed_pts_ut, parsed_pts_t for all words simultaneously
+        tws = [w for pt in self.pts for ln in pt.lns for w in ln.ws]
+        N = sum(tw.Ncs for tw in tws)
+
+        # Preallocate arrays
+        wadj, cw, dxeff, dy, bshft, ch, us, af = np.zeros((8, N),dtype=float)
+        fidx, lidx, widx = np.zeros((3, N)).astype(int)
+        
+        us = np.array([tw.unrenderedspace for tw in tws],dtype=float)
+        af = np.array([tw.ln.anchfrac for tw in tws],dtype=float)
+        wx = np.array([tw.x for tw in tws],dtype=float)
+        wy = np.array([tw.y for tw in tws],dtype=float)
+        M00,M01,M02,M10,M11,M12 = (np.array([tw.transform.matrix[i][j] 
+                                             for tw in tws],dtype=float)
+                                             for i in (0,1) for j in (0,1,2))
+        lx2, rx2, by2, ty2 = np.zeros((4, len(tws))).astype(float)
+
+        # Collect values for wadj, cw, dxeff, dy, bshft, and ch
+        idx = 0
+        for jj,tw in enumerate(tws):
+            if KERN_TABLE:
+                for ii in range(1, tw.Ncs):
+                    wadj[idx+ii] = tw.cs[ii].dkerns(tw.cs[ii - 1].c, tw.cs[ii].c)
+    
+            for ii in range(tw.Ncs):
+                cw[idx+ii] = tw.cw[ii]
+                dxeff[idx+ii] = tw.dxeff[ii]
+                dy[idx+ii] = tw.dy[ii]
+                bshft[idx+ii] = tw.bshft[ii]
+                ch[idx+ii] = tw.ch[ii]
+            fidx[idx:idx+tw.Ncs] = idx
+            lidx[idx:idx+tw.Ncs] = idx+tw.Ncs-1
+            widx[idx:idx+tw.Ncs] = jj
+            idx += tw.Ncs
+    
+        # Calculate ws, cstop, and cstrt
+        ws = cw + dxeff + wadj
+        cstop = np.array(list(itertools.accumulate(ws)),dtype=float)
+        cstop += ws[fidx] - cstop[fidx]
+        cstrt = cstop - cw 
+        
+        # # Calculate adyl
+        adyl = np.array(list(itertools.accumulate(dy)),dtype=float)
+        adyl += dy[fidx] - adyl[fidx]
+    
+        # Calculate ww, offx, lx, and rx
+        offx = -af[widx] * (cstop[lidx] - us[widx] * cw[lidx])
+        lx = wx[widx] + cstrt + offx
+        rx = wx[widx] + cstop + offx
+        by = wy[widx] + adyl - bshft
+        ty = by - ch
+        
+        # idx_Ncs = np.cumsum([0] + [tw.Ncs for tw in tws])
+        # for i, tw in enumerate(tws):
+        #     lx2[i] = min(lx[idx_Ncs[i]:idx_Ncs[i+1]]-dxeff[idx_Ncs[i]])
+        #     rx2[i] = lx2[i] + cstop[idx_Ncs[i+1]-1]
+        #     by2[i] = max(by[idx_Ncs[i]:idx_Ncs[i+1]])
+        #     ty2[i] = min(ty[idx_Ncs[i]:idx_Ncs[i+1]])
+            
+        idx_Ncs = np.cumsum([0] + [tw.Ncs for tw in tws])
+        starts = idx_Ncs[:-1]
+        subtract_ufunc = np.frompyfunc(lambda a,b: a-b, 2, 1)
+        lx_minus_dxeff = subtract_ufunc(lx, dxeff)
+        lx2 = np.minimum.reduceat(lx_minus_dxeff, starts)
+        rx2 = lx2 + cstop[idx_Ncs[1:] - 1]
+        by2 = np.maximum.reduceat(by, starts)
+        ty2 = np.minimum.reduceat(ty, starts)
+            
+        cpts_ut = [
+            np.hstack((lx[:,np.newaxis], by[:,np.newaxis])),
+            np.hstack((lx[:,np.newaxis], ty[:,np.newaxis])),
+            np.hstack((rx[:,np.newaxis], ty[:,np.newaxis])),
+            np.hstack((rx[:,np.newaxis], by[:,np.newaxis])),
+        ]
+        M = ((M00[widx], M01[widx], M02[widx]), (M10[widx], M11[widx], M12[widx]))
+        cpts_t = [
+            np.vstack(vmult(M, lx, by)).T,
+            np.vstack(vmult(M, lx, ty)).T,
+            np.vstack(vmult(M, rx, ty)).T,
+            np.vstack(vmult(M, rx, by)).T,
+        ]
+        pts_ut = [
+            np.vstack((lx2, by2)),
+            np.vstack((lx2, ty2)),
+            np.vstack((rx2, ty2)),
+            np.vstack((rx2, by2)),
+        ]
+        M = ((M00, M01, M02), (M10, M11, M12))
+        pts_t = [
+            np.vstack(vmult(M, lx2, by2)),
+            np.vstack(vmult(M, lx2, ty2)),
+            np.vstack(vmult(M, rx2, ty2)),
+            np.vstack(vmult(M, rx2, by2)),
+        ]
+        
+        # Split outputs into lists of column vectors
+        # maxerr = float('-inf')
+        for i, tw in enumerate(tws):
+            # Extract the slices of the relevant arrays for this tword
+            lxw = lx[idx_Ncs[i]:idx_Ncs[i+1], np.newaxis]
+            rxw = rx[idx_Ncs[i]:idx_Ncs[i+1], np.newaxis]
+            byw = by[idx_Ncs[i]:idx_Ncs[i+1], np.newaxis]
+            tyw = ty[idx_Ncs[i]:idx_Ncs[i+1], np.newaxis]
+            
+            # (lxc, rxc, byc, tyc, lx2c, rx2c, by2c, ty2c) = tw.charpos
+            # # (lxc, rxc, byc, tyc, lx2c, rx2c, by2c, ty2c) = tw.pts_ut
+            
+            # maxerr = max(maxerr,abs(max(lxw-lxc)))
+            # maxerr = max(maxerr,abs(max(rxw-rxc)))
+            # maxerr = max(maxerr,abs(max(byw-byc)))
+            # maxerr = max(maxerr,abs(max(tyw-tyc)))
+            # maxerr = max(maxerr,abs((lx2[i]-lx2c)))
+            # maxerr = max(maxerr,abs((rx2[i]-rx2c)))
+            # maxerr = max(maxerr,abs((by2[i]-by2c)))
+            # maxerr = max(maxerr,abs((ty2[i]-ty2c)))
+            
+            tw._charpos = (lxw, rxw, byw, tyw, lx2[i], rx2[i], by2[i], ty2[i])
+            tw._cpts_ut = [cpv[idx_Ncs[i]:idx_Ncs[i+1],:] for cpv in cpts_ut]
+            tw._cpts_t  = [cpv[idx_Ncs[i]:idx_Ncs[i+1],:] for cpv in cpts_t ]
+            tw._pts_ut  = [(float(pts_ut[0][0][i]), float(pts_ut[0][1][i])),
+                           (float(pts_ut[1][0][i]), float(pts_ut[1][1][i])),
+                           (float(pts_ut[2][0][i]), float(pts_ut[2][1][i])),
+                           (float(pts_ut[3][0][i]), float(pts_ut[3][1][i]))]
+            tw._pts_t   = [(float(pts_t[0][0][i]),  float(pts_t[0][1][i])),
+                           (float(pts_t[1][0][i]),  float(pts_t[1][1][i])),
+                           (float(pts_t[2][0][i]),  float(pts_t[2][1][i])),
+                           (float(pts_t[3][0][i]),  float(pts_t[3][1][i]))]
+
+            tw.parsed_bb = tw.bb.copy()
+            for jj,c in enumerate(tw.cs):
+                c.parsed_pts_ut = [
+                    (float(tw._cpts_ut[0][jj][0]), float(tw._cpts_ut[0][jj][1])),
+                    (float(tw._cpts_ut[1][jj][0]), float(tw._cpts_ut[1][jj][1])),
+                    (float(tw._cpts_ut[2][jj][0]), float(tw._cpts_ut[2][jj][1])),
+                    (float(tw._cpts_ut[3][jj][0]), float(tw._cpts_ut[3][jj][1])),
+                ]
+                c.parsed_pts_t = [
+                    (float(tw._cpts_t[0][jj][0]), float(tw._cpts_t[0][jj][1])),
+                    (float(tw._cpts_t[1][jj][0]), float(tw._cpts_t[1][jj][1])),
+                    (float(tw._cpts_t[2][jj][0]), float(tw._cpts_t[2][jj][1])),
+                    (float(tw._cpts_t[3][jj][0]), float(tw._cpts_t[3][jj][1])),
+                ]
+
+# Multiplies M times (x;y) in a way compatible with vectorization
+def vmult(M,x,y):
+    return (M[0][0]*x + M[0][1]*y + M[0][2] , M[1][0]*x + M[1][1]*y + M[1][2])
+
+def vmultI(M,x,y):
+    det = M[0][0] * M[1][1] - M[0][1] * M[1][0]
+    inv_det = 1 / det
+    sx = x - M[0][2]
+    sy = y - M[1][2]
+    return (M[1][1] * sx - M[0][1] *sy) * inv_det, (M[0][0] * sy - M[1][0] * sx) * inv_det
 
 # A text element that has been parsed into a list of lines
 class ParsedText:
@@ -108,12 +266,12 @@ class ParsedText:
         self.Finish_Lines()
 
         # Compute the bb/pts_ut/pts_t after parsing, prior to any mods
-        for ln in self.lns:
-            for w in ln.ws:
-                w.parsed_bb = copy(w.bb)
-                for c in w.cs:
-                    c.parsed_pts_ut = c.pts_ut
-                    c.parsed_pts_t = c.pts_t
+        # for ln in self.lns:
+        #     for w in ln.ws:
+        #         w.parsed_bb = copy(w.bb)
+        #         for c in w.cs:
+        #             c.parsed_pts_ut = c.pts_ut
+        #             c.parsed_pts_t = c.pts_t
 
         tlvllns = [ln for ln in self.lns if ln.tlvlno is not None and ln.tlvlno > 0]
         # top-level lines after 1st
@@ -296,18 +454,6 @@ class ParsedText:
         # Finally, walk the text tree generating lines
         lns = []
         sprl_inherits = None
-        # for di, tt in ttgenerator(Nd):
-        #     if tt == 0:
-        #         txts = ptail[di]
-        #         tels = pts[di]
-        #     else:
-        #         txts = [text[di]]
-        #         tels = [ds[di]]
-
-        #     for ii in range(len(tels)):
-        #         tel = tels[ii]
-        #         txt = txts[ii]
-                
         for di, tt, tel, txt in self.tree.dgenerator():
             newsprl = tt == 1 and types[di] == "tlvlsprl"
             if (txt is not None and len(txt) > 0) or newsprl:
@@ -479,8 +625,8 @@ class ParsedText:
     def Strip_Sodipodirole_Line(self):
         if any([d.get('sodipodi:role')=='line' for d in self.tree.ds]):
             # Store old positions
-            oxs = [c.pts_ut[0].x for ln in self.lns for c in ln.cs]
-            oys = [c.pts_ut[0].y for ln in self.lns for c in ln.cs]
+            oxs = [c.pts_ut[0][0] for ln in self.lns for c in ln.cs]
+            oys = [c.pts_ut[0][1] for ln in self.lns for c in ln.cs]
             odxs = [c.dx for ln in self.lns for c in ln.cs]
             odys = [c.dy for ln in self.lns for c in ln.cs]
             [d.set('sodipodi:role',None) for d in self.tree.ds]
@@ -490,8 +636,8 @@ class ParsedText:
             cs = [c for ln in self.lns for c in ln.cs]
             for ii, ln in enumerate(self.lns):
                 myi = cs.index(ln.cs[0])
-                dx = oxs[myi]-cs[myi].pts_ut[0].x;
-                dy = oys[myi]-cs[myi].pts_ut[0].y;
+                dx = oxs[myi]-cs[myi].pts_ut[0][0];
+                dy = oys[myi]-cs[myi].pts_ut[0][1];
                 if abs(dx)>0.001 or abs(dy)>0.001:
                     newxv = [v+dx for v in ln.x]
                     newyv = [v+dy for v in ln.y]
@@ -732,7 +878,7 @@ class ParsedText:
         fusey = self.lns[il].continuey or ciis[0] > 0 or dyl[0] != 0
         if fusex:
             xf = self.lns[il].anchfrac
-            oldx = cs[0].pts_ut[0].x * (1 - xf) + cs[-1].pts_ut[3].x * xf
+            oldx = cs[0].pts_ut[0][0] * (1 - xf) + cs[-1].pts_ut[3][0] * xf
         if fusey:
             oldy = cs[0].w.y + dyl[0]
 
@@ -833,7 +979,7 @@ class ParsedText:
                         for c in w.cs:
                             p1 = c.pts_ut_ink[0]
                             p2 = c.pts_ut_ink[2]
-                            exts.append(dh.bbox(((p1.x,p1.y),(p2.x,p2.y))))
+                            exts.append(dh.bbox((p1,p2)))
         return exts
     
     def get_full_inkbbox(self):
@@ -846,7 +992,7 @@ class ParsedText:
                         for c in w.cs:
                             p1 = c.pts_ut_ink[0]
                             p2 = c.pts_ut_ink[2]
-                            ext = ext.union(dh.bbox(((p1.x,p1.y),(p2.x,p2.y))))
+                            ext = ext.union(dh.bbox((p1,p2)))
         return ext
     
     # Extent functions
@@ -860,7 +1006,7 @@ class ParsedText:
                         for c in w.cs:
                             p1 = c.pts_ut[0]
                             p2 = c.pts_ut[2]
-                            exts.append(dh.bbox(((p1.x,p1.y),(p2.x,p2.y))))
+                            exts.append(dh.bbox((p1,p2)))
         return exts
     def get_word_extents(self):
         # Get the untranformed extent of each word
@@ -871,7 +1017,7 @@ class ParsedText:
                     for w in ln.ws:
                         p1 = w.pts_ut[0]
                         p2 = w.pts_ut[2]
-                        exts.append(dh.bbox(((p1.x,p1.y),(p2.x,p2.y))))
+                        exts.append(dh.bbox((p1,p2)))
         return exts
     def get_line_extents(self):
         # Get the untranformed extent of each line
@@ -883,7 +1029,7 @@ class ParsedText:
                     for w in ln.ws:
                         p1 = w.pts_ut[0]
                         p2 = w.pts_ut[2]
-                        extln = extln.union(dh.bbox(((p1.x,p1.y),(p2.x,p2.y))))
+                        extln = extln.union(dh.bbox((p1,p2)))
                     if not(extln.isnull):
                         exts.append(extln)
         return exts
@@ -897,7 +1043,7 @@ class ParsedText:
                         for c in w.cs:
                             p1 = c.pts_ut[0]
                             p2 = c.pts_ut[2]
-                            ext = ext.union(dh.bbox(((p1.x,p1.y),(p2.x,p2.y))))
+                            ext = ext.union(dh.bbox((p1,p2)))
         return ext
                     
     @property
@@ -1054,7 +1200,7 @@ class tline:
         ii = self.pt.lns.index(self)
         if ii > 0 and len(self.pt.lns[ii - 1].ws) > 0:
             xf = self.anchfrac
-            xanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[3].x - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0].x
+            xanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[3][0] - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0][0]
             return [xanch]
         else:
             return [0]
@@ -1074,7 +1220,7 @@ class tline:
         ii = self.pt.lns.index(self)
         if ii > 0 and len(self.pt.lns[ii - 1].ws) > 0:
             xf = self.anchfrac
-            yanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[3].y - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0].y
+            yanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[3][1] - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0][1]
             return [yanch]
         else:
             return [0]
@@ -1143,8 +1289,8 @@ class tline:
                 # Note that it's impossible to change one line without affecting the others
 
             for w in self.ws:
-                minx = min([w.pts_ut[ii].x for ii in range(4)])
-                maxx = max([w.pts_ut[ii].x for ii in range(4)])
+                minx = min([w.pts_ut[ii][0] for ii in range(4)])
+                maxx = max([w.pts_ut[ii][0] for ii in range(4)])
 
                 if w.unrenderedspace and self.cs[-1] in w.cs:
                     maxx -= w.cs[-1].cw
@@ -1463,7 +1609,7 @@ class tword:
             tr1, br1, tl2, bl2 = self.get_ut_pts(nw)
             lc = self.cs[-1]
             # last character
-            numsp = (bl2.x - br1.x) / (lc.sw)
+            numsp = (bl2[0] - br1[0]) / (lc.sw)
             numsp = max(0, round(numsp))
             if maxspaces is not None:
                 numsp = min(numsp, maxspaces)
@@ -1502,7 +1648,7 @@ class tword:
                 newc = self.cs[-1]
 
                 newc.parsed_pts_ut = [
-                    (self.transform).applyI_to_point(p) for p in c.parsed_pts_t
+                    vmultI(self.transform.matrix,p[0],p[1]) for p in c.parsed_pts_t
                 ]
                 newc.parsed_pts_t = c.parsed_pts_t
 
@@ -1549,19 +1695,19 @@ class tword:
         ci = None
         for ii in range(len(w2.cs)):
             if c2uts[ii] is not None:
-                if c2uts[ii][0].x < mv:
-                    mv = c2uts[ii][0].x
+                if c2uts[ii][0][0] < mv:
+                    mv = c2uts[ii][0][0]
                     ci = ii
 
-        bl2 = (self.transform).applyI_to_point(c2ts[ci][0])
-        tl2 = (self.transform).applyI_to_point(c2ts[ci][1])
+        bl2 = vmultI(self.transform.matrix,c2ts[ci][0][0],c2ts[ci][0][1])
+        tl2 = vmultI(self.transform.matrix,c2ts[ci][1][0],c2ts[ci][1][1])
 
         mv = float("-inf")
         ci = None
         for ii in range(len(self.cs)):
             if c1uts[ii] is not None:
-                if c1uts[ii][3].x > mv:
-                    mv = c1uts[ii][3].x
+                if c1uts[ii][3][0] > mv:
+                    mv = c1uts[ii][3][0]
                     ci = ii
 
         tr1 = c1uts[ci][2]
@@ -1573,11 +1719,11 @@ class tword:
     def fix_merged_position(self):
         gcs = [c for c in self.cs if c.c != " "]
         if len(gcs) > 0:
-            omaxx = max([c.parsed_pts_ut[3].x for c in gcs])
-            ominx = min([c.parsed_pts_ut[0].x for c in gcs])
+            omaxx = max([c.parsed_pts_ut[3][0] for c in gcs])
+            ominx = min([c.parsed_pts_ut[0][0] for c in gcs])
             newptsut = [c.pts_ut for c in gcs]
-            nmaxx = max([p[3].x for p in newptsut])
-            nminx = min([p[0].x for p in newptsut])
+            nmaxx = max([p[3][0] for p in newptsut])
+            nminx = min([p[0][0] for p in newptsut])
 
             xf = self.ln.anchfrac
             deltaanch = (nminx * (1 - xf) + nmaxx * xf) - (
@@ -1694,8 +1840,13 @@ class tword:
                            zip(adyl, self.bshft)],dtype=float)[:, np.newaxis]
             ty = np.array([wy + dy - bs - ch for dy, ch, bs 
                            in zip(adyl, self.ch, self.bshft)],dtype=float)[:, np.newaxis]
+            
+            lx2 = float(min(lx - self.dxeff[0]))
+            rx2 = float(lx2 + ww)
+            by2 = float(max(by))
+            ty2 = float(min(ty))
 
-            self._charpos = (cstrt, cstop, lx, rx, by, ty)
+            self._charpos = (lx, rx, by, ty,lx2, rx2, by2, ty2)
 
         return self._charpos
 
@@ -1711,25 +1862,28 @@ class tword:
     @property
     def pts_ut(self):
         if self._pts_ut is None:
-            (cstrt, cstop, lx, rx, by, ty) = self.charpos
-            ww = cstop[-1]
-            offx = -self.ln.anchfrac * (
-                ww - self.unrenderedspace * self.cs[-1].cw
-            )  # offset of the left side of the word from the anchor
-
-            wx = self.x
-            wy = self.y
-            if len(self.cs) > 0:
-                ymin = min([wy + c.dy - c.ch  for c in self.cs])
-                ymax = max([wy + c.dy for c in self.cs])
-            else:
-                ymin = ymax = wy
+            # (cstrt, cstop, lx, rx, by, ty) = self.charpos
+            # ww = cstop[-1]
+            # offx = -self.ln.anchfrac * (
+            #     ww - self.unrenderedspace * self.cs[-1].cw
+            # )  # offset of the left side of the word from the anchor
+            # wx = self.x
+            # wy = self.y
+            # ymin, ymax = (min(ty), max(by)) if len(self.cs)>0 else (wy, wy)    
+            # self._pts_ut = [
+            #     v2d(max(rx)-ww, ymax),
+            #     v2d(max(rx)-ww, ymin),
+            #     v2d(max(rx), ymin),
+            #     v2d(max(rx), ymax),
+            # ]
+            
+            (lx, rx, by, ty, lx2, rx2, by2, ty2) = self.charpos
             self._pts_ut = [
-                v2d(wx + offx, ymax),
-                v2d(wx + offx, ymin),
-                v2d(wx + (ww + offx), ymin),
-                v2d(wx + (ww + offx), ymax),
-            ]
+                (lx2, by2),
+                (lx2, ty2),
+                (rx2, ty2),
+                (rx2, by2),
+            ] 
         return self._pts_ut
 
     @pts_ut.setter
@@ -1742,9 +1896,7 @@ class tword:
     @property
     def pts_t(self):
         if self._pts_t is None:
-            self._pts_t = [
-                self.transform.apply_to_point(p, simple=True) for p in self.pts_ut
-            ]
+            self._pts_t = [vmult(self.transform.matrix,p[0],p[1]) for p in self.pts_ut]
         return self._pts_t
 
     @pts_t.setter
@@ -1758,22 +1910,11 @@ class tword:
     def bb(self):
         if self._bb is None:
             ptt = self.pts_t
-            
-            min_x, min_y = float('inf'), float('inf')
-            max_x, max_y = float('-inf'), float('-inf')
-            for p in ptt:
-                min_x, min_y = min(min_x, p.x), min(min_y, p.y)
-                max_x, max_y = max(max_x, p.x), max(max_y, p.y)
+            min_x = min(ptt[0][0], ptt[1][0], ptt[2][0], ptt[3][0])
+            min_y = min(ptt[0][1], ptt[1][1], ptt[2][1], ptt[3][1])
+            max_x = max(ptt[0][0], ptt[1][0], ptt[2][0], ptt[3][0])
+            max_y = max(ptt[0][1], ptt[1][1], ptt[2][1], ptt[3][1])
             self._bb = bbox([min_x, min_y, max_x - min_x, max_y - min_y])
-            
-            # self._bb = bbox(
-            #     [
-            #         min([p.x for p in ptt]),
-            #         min([p.y for p in ptt]),
-            #         max([p.x for p in ptt]) - min([p.x for p in ptt]),
-            #         max([p.y for p in ptt]) - min([p.y for p in ptt]),
-            #     ]
-            # )
         return self._bb
 
     @bb.setter
@@ -1785,7 +1926,7 @@ class tword:
     def cpts_ut(self):
         if self._cpts_ut is None:
             """  Get the characters' pts"""
-            (cstrt, cstop, lx, rx, by, ty) = self.charpos
+            (lx, rx, by, ty,lx2, rx2, by2, ty2) = self.charpos
 
             # self._cpts_ut = [
             #     np.hstack((lx, by)),
@@ -1808,7 +1949,7 @@ class tword:
     def cpts_t(self):
         if self._cpts_t is None:
             """  Get the characters' pts"""
-            (cstrt, cstop, lx, rx, by, ty) = self.charpos
+            (lx, rx, by, ty,lx2, rx2, by2, ty2) = self.charpos
             Nc = len(lx)
             # ps = np.hstack(
             #     (
@@ -2206,10 +2347,10 @@ class tchar:
         myi = self.windex
         cput = self.w.cpts_ut
         ret_pts_ut = [
-            v2d(cput[0][myi][0], cput[0][myi][1]),
-            v2d(cput[1][myi][0], cput[1][myi][1]),
-            v2d(cput[2][myi][0], cput[2][myi][1]),
-            v2d(cput[3][myi][0], cput[3][myi][1]),
+            (cput[0][myi][0], cput[0][myi][1]),
+            (cput[1][myi][0], cput[1][myi][1]),
+            (cput[2][myi][0], cput[2][myi][1]),
+            (cput[3][myi][0], cput[3][myi][1]),
         ]
         return ret_pts_ut
 
@@ -2220,10 +2361,10 @@ class tchar:
         myi = self.windex
         cpt = self.w.cpts_t
         ret_pts_t = [
-            v2d(cpt[0][myi][0], cpt[0][myi][1]),
-            v2d(cpt[1][myi][0], cpt[1][myi][1]),
-            v2d(cpt[2][myi][0], cpt[2][myi][1]),
-            v2d(cpt[3][myi][0], cpt[3][myi][1]),
+            (cpt[0][myi][0], cpt[0][myi][1]),
+            (cpt[1][myi][0], cpt[1][myi][1]),
+            (cpt[2][myi][0], cpt[2][myi][1]),
+            (cpt[3][myi][0], cpt[3][myi][1]),
         ]
         return ret_pts_t
 
@@ -2233,9 +2374,9 @@ class tchar:
         put = self.pts_ut;
         nw = self.prop.inkbb[2]*self.utfs;
         nh = self.prop.inkbb[3]*self.utfs;
-        nx = put[0].x+self.prop.inkbb[0]*self.utfs;
-        ny = put[0].y+self.prop.inkbb[1]*self.utfs+nh;
-        return [v2d(nx,ny),v2d(nx,ny-nh),v2d(nx+nw,ny-nh),v2d(nx+nw,ny)]
+        nx = put[0][0]+self.prop.inkbb[0]*self.utfs;
+        ny = put[0][1]+self.prop.inkbb[1]*self.utfs+nh;
+        return [(nx,ny),(nx,ny-nh),(nx+nw,ny-nh),(nx+nw,ny)]
 
 def del2(x, ind):  # deletes an index from a list
     return x[:ind] + x[ind + 1 :]
@@ -2686,26 +2827,26 @@ class Character_Table:
 
 # Recursively delete empty elements
 # Tspans are deleted if they're totally empty, TextElements are deleted if they contain only whitespace
+TEtag = TextElement.tag2
+def wstrip(txt):  # strip whitespaces
+    return txt.translate({ord(c): None for c in " \n\t\r"})
 def deleteempty(el):
     anydeleted = False
     for k in list(el):
         d = deleteempty(k)
-        anydeleted = anydeleted or d
+        anydeleted |= d
     txt = el.text
     tail = el.tail
     if (
-        (txt is None or len((txt)) == 0)
-        and (tail is None or len((tail)) == 0)
-        and len(list(el)) == 0
+        (txt is None or len(txt) == 0)
+        and (tail is None or len(tail) == 0)
+        and len(el) == 0
     ):
         el.delete2()
         anydeleted = True
         # delete anything empty
         # dh.debug(el.get_id())
-    elif isinstance(el, (TextElement)):
-
-        def wstrip(txt):  # strip whitespaces
-            return txt.translate({ord(c): None for c in " \n\t\r"})
+    elif el.tag == TEtag:
 
         if all(
             [

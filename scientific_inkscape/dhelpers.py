@@ -759,12 +759,14 @@ def get_duplicate2(el):
     # need to generate now to prevent problems in duplicate_fixed (el.addnext(elem) line, no idea why)
 
     d = duplicate_fixed(el);
+    d.croot = svg          # set now for speed
     dupe_cssdict_entry(el.get_id2(), d.get_id2(), el.croot)
     add_to_iddict(d)
 
     for k in descendants2(d)[1:]:
         if not (isinstance(k, lxml.etree._Comment)):
             oldid = k.get_id2()
+            k.croot = svg  # set now for speed
             set_random_id2(k)
             dupe_cssdict_entry(oldid, k.get_id2(), k.croot)
             add_to_iddict(k)
@@ -772,7 +774,6 @@ def get_duplicate2(el):
     if isinstance(d, (inkex.ClipPath)) or isMask(d):
         # Clip duplications can cause weird issues if they are not appended to the end of Defs
         d.croot.defs2.append(d)
-        # idebug(d.get_id2())
     return d
 
 
@@ -1033,6 +1034,7 @@ def getiddict(svg):
                 svg._iddict[EBget(el,'id')] = el
             else:
                 toassign.append(el)
+            el.croot = svg  # do now to speed up later
         for el in toassign:
             set_random_id2(el, el.TAG)
             svg._iddict[EBget(el,'id')] = el
@@ -1593,16 +1595,19 @@ def toc():
         
 
 # A cached root property
+svgtag = SvgDocumentElement.tag2
 def get_croot(el):
-    if not (hasattr(el, "_croot")):
+    try:
+        return el._croot
+    except:
         myn = el
         while myn.getparent() is not None:
             myn = myn.getparent()
-        if isinstance(myn, SvgDocumentElement):
+        if myn.tag == svgtag:
             el._croot = myn
         else:
             el._croot = None
-    return el._croot
+        return el._croot
 def set_croot(el, ri):
     el._croot = ri
 BaseElement.croot = property(get_croot, set_croot)
@@ -1774,6 +1779,7 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
 
 # A modified bounding box class
 class bbox:
+    __slots__ = ('isnull', 'x1', 'x2', 'y1', 'y2', 'xc', 'yc', 'w', 'h', 'sbb')
     def __init__(self, bb):
         self.isnull = bb is None
         if not(self.isnull):
@@ -1789,6 +1795,21 @@ class bbox:
             self.w = bb[2]
             self.h = bb[3]
             self.sbb = [self.x1, self.y1, self.w, self.h]  # standard bbox
+            
+    def copy(self):
+        ret = bbox.__new__(bbox)
+        ret.isnull = self.isnull
+        if not self.isnull:
+            ret.x1 = self.x1
+            ret.x2 = self.x2
+            ret.y1 = self.y1
+            ret.y2 = self.y2
+            ret.xc = self.xc
+            ret.yc = self.yc
+            ret.w = self.w
+            ret.h = self.h
+            ret.sbb = self.sbb[:]
+        return ret
 
     def transform(self, xform):
         if not(self.isnull):
@@ -2333,8 +2354,8 @@ def Run_SI_Extension(effext,name):
         flush_stylesheet_entries(effext.svg)
     
     alreadyran = False
-    cprofile = False
     lprofile = os.getenv("LINEPROFILE") == "True"
+    cprofile = False if not lprofile else False
     if cprofile or lprofile:
         profiledir = get_script_path()
         if cprofile:

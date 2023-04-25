@@ -66,6 +66,8 @@ def remove_kerning(
             el.parsed_text.Make_Highlights('char')
     else:
         # Do merges first (deciding based on original position)
+        lls = [TextParser.get_parsed_text(el) for el in tels]
+        TextParser.ParsedTextList(lls).precalcs()
         if removemanual:
             tels = Remove_Manual_Kerning(tels, mergesupersub)
         if mergenearby or mergesupersub:
@@ -191,9 +193,9 @@ def Split_Distant_Words(els):
                     # bl2 = w2.pts_ut[0];
                     # br1 = w.pts_ut[3];
 
-                    if bl2.x > br1.x + dx + xtol:
+                    if bl2[0] > br1[0] + dx + xtol:
                         splits.append(ii)
-                        # dh.idebug([w.txt(),w2.txt(),br1.x+dx,bl2.x,xtol])
+                        # dh.idebug([w.txt(),w2.txt(),br1[0]+dx,bl2[0],xtol])
                 ln.splits = splits
                 ln.sws = sws
 
@@ -253,7 +255,7 @@ def Split_Distant_Intraword(els):
                                     and c.loc.el == c2.loc.el
                                 )
 
-                                if bl2.x > br1.x + dx + xtol or numbersplit:
+                                if bl2[0] > br1[0] + dx + xtol or numbersplit:
                                     splitiis.append(ii)
                                     prevsplit = ii
                             if w.cs[ii].c not in [" ", "\u00A0"]:
@@ -285,7 +287,7 @@ def Split_Distant_Intraword(els):
 def Remove_Manual_Kerning(els, mergesupersub):
     # Generate list of merges
     ws = []
-    lls = [TextParser.get_parsed_text(el) for el in els];
+    lls = [el.parsed_text for el in els]
     for ll in lls:
         if ll.lns is not None:
             ws += [w for ln in ll.lns for w in ln.ws]
@@ -305,14 +307,14 @@ def Remove_Manual_Kerning(els, mergesupersub):
                 dx = w.sw * 0 
 
             previoussp = w.txt == " " and w.prevw is not None
-            validmerge = br1.x - xtoln <= bl2.x <= br1.x + dx + xtolp
+            validmerge = br1[0] - xtoln <= bl2[0] <= br1[0] + dx + xtolp
 
             if previoussp and not (
                 validmerge
             ):  # reconsider in case previous space was weirdly-kerned
                 tr1p, br1p, tl2p, bl2p = w.prevw.get_ut_pts(w2)
                 dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs + 1) 
-                validmerge = br1p.x - xtoln <= bl2p.x <= br1p.x + dx + xtolp
+                validmerge = br1p[0] - xtoln <= bl2p[0] <= br1p[0] + dx + xtolp
 
             if validmerge:
                 mw.append([w2, "same", br1, bl2])
@@ -416,15 +418,15 @@ def External_Merges(els, mergenearby, mergesupersub):
 
         # calculate 2's coords in 1's system
         tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
-        xpenmatch = br1.x - xtol <= bl2.x <= br1.x + dx + xtol
+        xpenmatch = br1[0] - xtol <= bl2[0] <= br1[0] + dx + xtol
         neitherempty = len(wstrip(w.txt)) > 0 and len(wstrip(w2.txt)) > 0
         if xpenmatch and neitherempty and not (twospaces(w, w2)):
             type = None
             # dh.idebug([w.tfs,w2.tfs])
             # dh.idebug([br1.y+ytol>=bl2.y>=tr1.y-ytol,mergesupersub])
-            if abs(bl2.y - br1.y) < ytol and abs(w.tfs - w2.tfs) < 0.001 and mergenearby:
+            if abs(bl2[1] - br1[1]) < ytol and abs(w.tfs - w2.tfs) < 0.001 and mergenearby:
                 if isnumeric(w.ln.txt()) and isnumeric(w2.ln.txt(), True):
-                    numsp = (bl2.x-br1.x)/(w.sw);
+                    numsp = (bl2[0]-br1[0])/(w.sw);
                     if abs(numsp)<0.25:
                         # only merge numbers if very close (could be x ticks)
                         type='same'
@@ -432,10 +434,10 @@ def External_Merges(els, mergenearby, mergesupersub):
                     type = "same"
                 # dh.debug(w.txt+' '+w2.txt)
             elif (
-                br1.y + ytol >= bl2.y >= tr1.y - ytol and mergesupersub
+                br1[1] + ytol >= bl2[1] >= tr1[1] - ytol and mergesupersub
             ):  # above baseline
                 aboveline = (
-                    br1.y * (1 - SUBSUPER_YTHR) + tr1.y * SUBSUPER_YTHR + ytol >= bl2.y
+                    br1[1] * (1 - SUBSUPER_YTHR) + tr1[1] * SUBSUPER_YTHR + ytol >= bl2[1]
                 )
                 if w2.tfs < w.tfs * SUBSUPER_THR:  # new smaller, expect super
                     if aboveline:
@@ -451,9 +453,9 @@ def External_Merges(els, mergenearby, mergesupersub):
                             # could be either, decide later
                     else:
                         type = "subreturn"
-            elif br1.y + ytol >= tl2.y >= tr1.y - ytol and mergesupersub:
+            elif br1[1] + ytol >= tl2[1] >= tr1[1] - ytol and mergesupersub:
                 belowline = (
-                    tl2.y >= br1.y * SUBSUPER_YTHR + tr1.y * (1 - SUBSUPER_YTHR) - ytol
+                    tl2[1] >= br1[1] * SUBSUPER_YTHR + tr1[1] * (1 - SUBSUPER_YTHR) - ytol
                 )
                 if w2.tfs < w.tfs * SUBSUPER_THR:  # new smaller, expect sub
                     if belowline:
@@ -476,13 +478,13 @@ def External_Merges(els, mergenearby, mergesupersub):
         if DEBUG_MERGE:
             dh.idebug('\nMerging "' + w.txt + '" and "' + w2.txt + '"')
             if not (xpenmatch):
-                dh.idebug("Aborted, x pen too far: " + str([br1.x, bl2.x, dx]))
+                dh.idebug("Aborted, x pen too far: " + str([br1[0], bl2[0], dx]))
             elif not (neitherempty):
                 dh.idebug("Aborted, one empty")
             else:
                 if type is None:
-                    if not (abs(bl2.y - br1.y) < ytol):
-                        dh.idebug("Aborted, y pen too far: " + str([bl2.y, br1.y]))
+                    if not (abs(bl2[1] - br1[1]) < ytol):
+                        dh.idebug("Aborted, y pen too far: " + str([bl2[1], br1[1]]))
                     elif not (abs(w.tfs - w2.tfs) < 0.001):
                         dh.idebug("Aborted, fonts too different: " + str([w.tfs, w2.tfs]))
                     elif not (
@@ -505,8 +507,8 @@ def Perform_Merges(ws, mk=False):
             type = mw[ii][1]
             br1 = mw[ii][2]
             bl2 = mw[ii][3]
-            if abs(bl2.x - br1.x) < minx:
-                minx = abs(bl2.x - br1.x)
+            if abs(bl2[0] - br1[0]) < minx:
+                minx = abs(bl2[0] - br1[0])
                 # starting pen best matches the stop of the previous one
                 mi = ii
             # if bl2.x < minx:
@@ -649,21 +651,31 @@ def Perform_Merges(ws, mk=False):
 ncs = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "e", "E", "-", "−", ","]
 
 
+# def isnumeric(s, countminus=False):
+#     s = wstrip(
+#         s.replace("−", "-").replace(",", "")
+#     )  # replace minus signs with -, remove commas
+#     allnum = all([sv in ncs for sv in s])
+#     isnum = False
+#     if allnum:
+#         try:
+#             float(s)
+#             isnum = True
+#         except:
+#             isnum = False
+#     if not (isnum) and countminus and s == "-":
+#         isnum = True  # count a minus sign as a number
+#     return isnum
+
 def isnumeric(s, countminus=False):
-    s = wstrip(
-        s.replace("−", "-").replace(",", "")
-    )  # replace minus signs with -, remove commas
-    allnum = all([sv in ncs for sv in s])
-    isnum = False
-    if allnum:
-        try:
-            float(s)
-            isnum = True
-        except:
-            isnum = False
-    if not (isnum) and countminus and s == "-":
-        isnum = True  # count a minus sign as a number
-    return isnum
+    s = s.strip().replace("−", "-").replace(",", "")  # strip whitespaces, replace minus signs with -, remove commas
+    if countminus and s == "-":  # count a minus sign as a number
+        return True
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
 
 
 # Strip whitespaces

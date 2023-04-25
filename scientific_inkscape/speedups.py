@@ -250,7 +250,7 @@ inkex.paths.Path.parse_string = fast_parse_string
 
 """ transforms.py """
 # Faster apply_to_point that gets rid of property calls
-def apply_to_point_mod(obj, pt, simple=False):
+def apply_to_point_mod(obj, pt):
     ptx, pty = pt if isinstance(pt, (tuple, list)) else (pt.x, pt.y)
     x = obj.matrix[0][0] * ptx + obj.matrix[0][1] * pty + obj.matrix[0][2]
     y = obj.matrix[1][0] * ptx + obj.matrix[1][1] * pty + obj.matrix[1][2]
@@ -336,6 +336,138 @@ def IV2d_init(self, *args, fallback=None):
         self._x, self._y = float(x), float(y)
 inkex.transforms.ImmutableVector2d.__init__ = IV2d_init
 
+import math    
+def matrix_multiply(a, b):
+    return ((
+              a[0][0] * b[0][0] + a[0][1] * b[1][0],
+              a[0][0] * b[0][1] + a[0][1] * b[1][1],
+              a[0][0] * b[0][2] + a[0][1] * b[1][2] + a[0][2]
+            ),
+            (
+              a[1][0] * b[0][0] + a[1][1] * b[1][0],
+              a[1][0] * b[0][1] + a[1][1] * b[1][1],
+              a[1][0] * b[0][2] + a[1][1] * b[1][2] + a[1][2]
+            ))
+# Converts a transform string into a standard matrix
+trpattern = re.compile(r'\b(scale|translate|rotate|skewX|skewY|matrix)\(([^\)]*)\)')
+split_pattern = re.compile(r'[\s,]+')
+def transform_to_matrix(transform):
+    # Initialize result matrix
+    null = ((1, 0, 0), (0, 1, 0))
+    matrix = ((1, 0, 0), (0, 1, 0))
+    if 'none' not in transform:
+        matches = list(trpattern.finditer(transform))
+        if not matches:
+            return null
+        else:
+            for match in matches:
+                transform_type = match.group(1)
+                transform_args = [float(arg) for arg in split_pattern.split(match.group(2))]
+
+            if transform_type == 'scale':
+                # Scale transform
+                if len(transform_args) == 1:
+                    sx = sy = transform_args[0]
+                elif len(transform_args) == 2:
+                    sx, sy = transform_args
+                else:
+                    return null
+                # matrix = matrix_multiply(matrix, [[sx, 0, 0], [0, sy, 0], [0, 0, 1]])
+                matrix = ((matrix[0][0] * sx, matrix[0][1] * sy, matrix[0][2]),(matrix[1][0] * sx, matrix[1][1] * sy, matrix[1][2]))
+            elif transform_type == 'translate':
+                # Translation transform
+                if len(transform_args) == 1:
+                    tx = transform_args[0]; ty = 0;
+                elif len(transform_args) == 2:
+                    tx, ty = transform_args
+                else:
+                    return null
+                # matrix = matrix_multiply(matrix, [[1, 0, tx], [0, 1, ty], [0, 0, 1]])
+                matrix = ((matrix[0][0], matrix[0][1], matrix[0][0] * tx + matrix[0][1] * ty + matrix[0][2]),(matrix[1][0], matrix[1][1], matrix[1][0] * tx + matrix[1][1] * ty + matrix[1][2]))
+            elif transform_type == 'rotate':
+                # Rotation transform
+                if len(transform_args) == 1:
+                    angle = transform_args[0]
+                    cx = cy = 0
+                elif len(transform_args) == 3:
+                    angle, cx, cy = transform_args
+                else:
+                    return null
+                angle = angle * math.pi / 180  # Convert angle to radians
+                matrix = matrix_multiply(matrix, ((1, 0, cx), (0, 1, cy)))
+                matrix = matrix_multiply(matrix, ((math.cos(angle), -math.sin(angle), 0), (math.sin(angle), math.cos(angle), 0)))
+                matrix = matrix_multiply(matrix, ((1, 0, -cx), (0, 1, -cy)))
+            elif transform_type == 'skewX':
+                # SkewX transform
+                if len(transform_args) == 1:
+                    angle = transform_args[0]
+                else:
+                    return null
+                angle = angle * math.pi / 180  # Convert angle to radians
+                matrix = matrix_multiply(matrix, ((1, math.tan(angle), 0), (0, 1, 0)))
+            elif transform_type == 'skewY':
+                # SkewY transform
+                if len(transform_args) == 1:
+                    angle = transform_args[0]
+                else:
+                    return null
+                angle = angle * math.pi / 180  # Convert angle to radians
+                matrix = matrix_multiply(matrix, ((1, 0, 0), (math.tan(angle), 1, 0)))
+            elif transform_type == 'matrix':
+                # Matrix transform
+                if len(transform_args) == 6:
+                    a, b, c, d, e, f = transform_args
+                else:
+                    return null
+                # matrix = matrix_multiply(matrix, [[a, c, e], [b, d, f], [0, 0, 1]])
+                matrix = ((matrix[0][0] * a + matrix[0][1] * b,matrix[0][0] * c + matrix[0][1] * d,matrix[0][0] * e + matrix[0][1] * f + matrix[0][2]),(matrix[1][0] * a + matrix[1][1] * b,matrix[1][0] * c + matrix[1][1] * d,matrix[1][0] * e + matrix[1][1] * f + matrix[1][2]))
+    # Return the final matrix
+    return matrix
+
+from typing import cast, Tuple, Union, List
+def fast_set_matrix(self, matrix):
+    """Parse a given string as an svg transformation instruction.
+
+    .. version added:: 1.1"""
+    if isinstance(matrix, str):
+        self.matrix = transform_to_matrix(matrix)
+        # matrix2 =  transform_to_matrix(matrix)
+        
+        # from inkex.utils import strargs, KeyDict
+        # for func, values in self.TRM.findall(matrix.strip()):
+        #     getattr(self, "add_" + func.lower())(*strargs(values))
+        # inkex.utils.debug(matrix)
+        # inkex.utils.debug(self.matrix)
+        # inkex.utils.debug(matrix2)
+    elif isinstance(matrix, (list, tuple)) and len(matrix) == 6:
+        # tmatrix = cast(
+        #     Union[List[float], Tuple[float, float, float, float, float, float]],
+        #     matrix,
+        # )
+        self.matrix = ((float(matrix[0]), float(matrix[2]), float(matrix[4])),(float(matrix[1]), float(matrix[3]), float(matrix[5])))
+    elif isinstance(matrix, Transform):
+        self.matrix = matrix.matrix
+    elif isinstance(matrix, (tuple, list)) and len(matrix) == 2:
+        row1 = matrix[0]
+        row2 = matrix[1]
+        if isinstance(row1, (tuple, list)) and isinstance(row2, (tuple, list)):
+            if len(row1) == 3 and len(row2) == 3:
+                row1 = cast(Tuple[float, float, float], tuple(map(float, row1)))
+                row2 = cast(Tuple[float, float, float], tuple(map(float, row2)))
+                self.matrix = row1, row2
+            else:
+                raise ValueError(
+                    f"Matrix '{matrix}' is not a valid transformation matrix"
+                )
+        else:
+            raise ValueError(
+                f"Matrix '{matrix}' is not a valid transformation matrix"
+            )
+    elif not isinstance(matrix, (list, tuple)):
+        raise ValueError(f"Invalid transform type: {type(matrix).__name__}")
+    else:
+        raise ValueError(f"Matrix '{matrix}' is not a valid transformation matrix")
+inkex.transforms.Transform._set_matrix = fast_set_matrix
 
 ''' _utils.py '''
 
