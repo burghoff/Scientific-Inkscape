@@ -284,8 +284,8 @@ BaseElement.cspecified_style = property(
 )
 
 # A cached cascaded style property
-svgpres = ['alignment-baseline', 'baseline-shift', 'clip', 'clip-path', 'clip-rule', 'color', 'color-interpolation', 'color-interpolation-filters', 'color-profile', 'color-rendering', 'cursor', 'direction', 'display', 'dominant-baseline', 'enable-background', 'fill', 'fill-opacity', 'fill-rule', 'filter', 'flood-color', 'flood-opacity', 'font-family', 'font-size', 'font-size-adjust', 'font-stretch', 'font-style', 'font-variant', 'font-weight', 'glyph-orientation-horizontal', 'glyph-orientation-vertical', 'image-rendering', 'kerning', 'letter-spacing', 'lighting-color', 'marker-end', 'marker-mid', 'marker-start', 'mask', 'opacity', 'overflow', 'pointer-events', 'shape-rendering', 'stop-color', 'stop-opacity', 'stroke', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-opacity', 'stroke-width', 'text-anchor', 'text-decoration', 'text-rendering', 'transform', 'transform-origin', 'unicode-bidi', 'vector-effect', 'visibility', 'word-spacing', 'writing-mode']
-excludes = ["clip", "clip-path", "mask", "transform", "transform-origin"]
+svgpres = {'alignment-baseline', 'baseline-shift', 'clip', 'clip-path', 'clip-rule', 'color', 'color-interpolation', 'color-interpolation-filters', 'color-profile', 'color-rendering', 'cursor', 'direction', 'display', 'dominant-baseline', 'enable-background', 'fill', 'fill-opacity', 'fill-rule', 'filter', 'flood-color', 'flood-opacity', 'font-family', 'font-size', 'font-size-adjust', 'font-stretch', 'font-style', 'font-variant', 'font-weight', 'glyph-orientation-horizontal', 'glyph-orientation-vertical', 'image-rendering', 'kerning', 'letter-spacing', 'lighting-color', 'marker-end', 'marker-mid', 'marker-start', 'mask', 'opacity', 'overflow', 'pointer-events', 'shape-rendering', 'stop-color', 'stop-opacity', 'stroke', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-opacity', 'stroke-width', 'text-anchor', 'text-decoration', 'text-rendering', 'transform', 'transform-origin', 'unicode-bidi', 'vector-effect', 'visibility', 'word-spacing', 'writing-mode'}
+excludes = {"clip", "clip-path", "mask", "transform", "transform-origin"}
 bstyle = Style0("");
 def get_cascaded_style(el):
     # Object's style including any CSS
@@ -301,9 +301,10 @@ def get_cascaded_style(el):
         locsty = el.cstyle
 
         # Add any presentation attributes to local style
-        attr = list(el.keys())
-        attsty = bstyle.copy();
-        for a in attr:
+        # attr = list(el.keys())
+        # attsty = bstyle.copy();
+        attsty = Style0.__new__(Style0)
+        for a in el.attrib:
             if (
                 a in svgpres
                 and not (a in excludes)
@@ -1027,7 +1028,7 @@ def add_to_iddict(el, todel=None):
 # a low-level get is faster for getting ids
 def getiddict(svg):
     if not (hasattr(svg, "_iddict")):
-        svg._iddict = dict()
+        svg._iddict = inkex.OrderedDict()
         toassign = []
         for el in svg.descendants2():
             if "id" in el.attrib:
@@ -2355,7 +2356,8 @@ def Run_SI_Extension(effext,name):
     
     alreadyran = False
     lprofile = os.getenv("LINEPROFILE") == "True"
-    cprofile = False if not lprofile else False
+    batexists = os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)),'cprofile open.bat'))
+    cprofile = batexists if not lprofile else False
     if cprofile or lprofile:
         profiledir = get_script_path()
         if cprofile:
@@ -2386,6 +2388,7 @@ def Run_SI_Extension(effext,name):
                     lp.add_function(fn)
                 lp.add_function(ipx.__wrapped__)
                 lp.add_function(TextParser.Character_Table.normalize_style.__wrapped__)
+                lp.add_function(speedups.transform_to_matrix.__wrapped__)
                    
                 lp(run_and_cleanup)()
                 import io

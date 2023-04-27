@@ -336,6 +336,7 @@ def IV2d_init(self, *args, fallback=None):
         self._x, self._y = float(x), float(y)
 inkex.transforms.ImmutableVector2d.__init__ = IV2d_init
 
+
 import math    
 def matrix_multiply(a, b):
     return ((
@@ -348,11 +349,13 @@ def matrix_multiply(a, b):
               a[1][0] * b[0][1] + a[1][1] * b[1][1],
               a[1][0] * b[0][2] + a[1][1] * b[1][2] + a[1][2]
             ))
-# Converts a transform string into a standard matrix
 trpattern = re.compile(r'\b(scale|translate|rotate|skewX|skewY|matrix)\(([^\)]*)\)')
 split_pattern = re.compile(r'[\s,]+')
+
+# Converts a transform string into a standard matrix
+from functools import lru_cache
+@lru_cache(maxsize=None)
 def transform_to_matrix(transform):
-    # Initialize result matrix
     null = ((1, 0, 0), (0, 1, 0))
     matrix = ((1, 0, 0), (0, 1, 0))
     if 'none' not in transform:
@@ -364,63 +367,63 @@ def transform_to_matrix(transform):
                 transform_type = match.group(1)
                 transform_args = [float(arg) for arg in split_pattern.split(match.group(2))]
 
-            if transform_type == 'scale':
-                # Scale transform
-                if len(transform_args) == 1:
-                    sx = sy = transform_args[0]
-                elif len(transform_args) == 2:
-                    sx, sy = transform_args
-                else:
-                    return null
-                # matrix = matrix_multiply(matrix, [[sx, 0, 0], [0, sy, 0], [0, 0, 1]])
-                matrix = ((matrix[0][0] * sx, matrix[0][1] * sy, matrix[0][2]),(matrix[1][0] * sx, matrix[1][1] * sy, matrix[1][2]))
-            elif transform_type == 'translate':
-                # Translation transform
-                if len(transform_args) == 1:
-                    tx = transform_args[0]; ty = 0;
-                elif len(transform_args) == 2:
-                    tx, ty = transform_args
-                else:
-                    return null
-                # matrix = matrix_multiply(matrix, [[1, 0, tx], [0, 1, ty], [0, 0, 1]])
-                matrix = ((matrix[0][0], matrix[0][1], matrix[0][0] * tx + matrix[0][1] * ty + matrix[0][2]),(matrix[1][0], matrix[1][1], matrix[1][0] * tx + matrix[1][1] * ty + matrix[1][2]))
-            elif transform_type == 'rotate':
-                # Rotation transform
-                if len(transform_args) == 1:
-                    angle = transform_args[0]
-                    cx = cy = 0
-                elif len(transform_args) == 3:
-                    angle, cx, cy = transform_args
-                else:
-                    return null
-                angle = angle * math.pi / 180  # Convert angle to radians
-                matrix = matrix_multiply(matrix, ((1, 0, cx), (0, 1, cy)))
-                matrix = matrix_multiply(matrix, ((math.cos(angle), -math.sin(angle), 0), (math.sin(angle), math.cos(angle), 0)))
-                matrix = matrix_multiply(matrix, ((1, 0, -cx), (0, 1, -cy)))
-            elif transform_type == 'skewX':
-                # SkewX transform
-                if len(transform_args) == 1:
-                    angle = transform_args[0]
-                else:
-                    return null
-                angle = angle * math.pi / 180  # Convert angle to radians
-                matrix = matrix_multiply(matrix, ((1, math.tan(angle), 0), (0, 1, 0)))
-            elif transform_type == 'skewY':
-                # SkewY transform
-                if len(transform_args) == 1:
-                    angle = transform_args[0]
-                else:
-                    return null
-                angle = angle * math.pi / 180  # Convert angle to radians
-                matrix = matrix_multiply(matrix, ((1, 0, 0), (math.tan(angle), 1, 0)))
-            elif transform_type == 'matrix':
-                # Matrix transform
-                if len(transform_args) == 6:
-                    a, b, c, d, e, f = transform_args
-                else:
-                    return null
-                # matrix = matrix_multiply(matrix, [[a, c, e], [b, d, f], [0, 0, 1]])
-                matrix = ((matrix[0][0] * a + matrix[0][1] * b,matrix[0][0] * c + matrix[0][1] * d,matrix[0][0] * e + matrix[0][1] * f + matrix[0][2]),(matrix[1][0] * a + matrix[1][1] * b,matrix[1][0] * c + matrix[1][1] * d,matrix[1][0] * e + matrix[1][1] * f + matrix[1][2]))
+                if transform_type == 'scale':
+                    # Scale transform
+                    if len(transform_args) == 1:
+                        sx = sy = transform_args[0]
+                    elif len(transform_args) == 2:
+                        sx, sy = transform_args
+                    else:
+                        return null
+                    # matrix = matrix_multiply(matrix, [[sx, 0, 0], [0, sy, 0], [0, 0, 1]])
+                    matrix = ((matrix[0][0] * sx, matrix[0][1] * sy, matrix[0][2]),(matrix[1][0] * sx, matrix[1][1] * sy, matrix[1][2]))
+                elif transform_type == 'translate':
+                    # Translation transform
+                    if len(transform_args) == 1:
+                        tx = transform_args[0]; ty = 0;
+                    elif len(transform_args) == 2:
+                        tx, ty = transform_args
+                    else:
+                        return null
+                    # matrix = matrix_multiply(matrix, [[1, 0, tx], [0, 1, ty], [0, 0, 1]])
+                    matrix = ((matrix[0][0], matrix[0][1], matrix[0][0] * tx + matrix[0][1] * ty + matrix[0][2]),(matrix[1][0], matrix[1][1], matrix[1][0] * tx + matrix[1][1] * ty + matrix[1][2]))
+                elif transform_type == 'rotate':
+                    # Rotation transform
+                    if len(transform_args) == 1:
+                        angle = transform_args[0]
+                        cx = cy = 0
+                    elif len(transform_args) == 3:
+                        angle, cx, cy = transform_args
+                    else:
+                        return null
+                    angle = angle * math.pi / 180  # Convert angle to radians
+                    matrix = matrix_multiply(matrix, ((1, 0, cx), (0, 1, cy)))
+                    matrix = matrix_multiply(matrix, ((math.cos(angle), -math.sin(angle), 0), (math.sin(angle), math.cos(angle), 0)))
+                    matrix = matrix_multiply(matrix, ((1, 0, -cx), (0, 1, -cy)))
+                elif transform_type == 'skewX':
+                    # SkewX transform
+                    if len(transform_args) == 1:
+                        angle = transform_args[0]
+                    else:
+                        return null
+                    angle = angle * math.pi / 180  # Convert angle to radians
+                    matrix = matrix_multiply(matrix, ((1, math.tan(angle), 0), (0, 1, 0)))
+                elif transform_type == 'skewY':
+                    # SkewY transform
+                    if len(transform_args) == 1:
+                        angle = transform_args[0]
+                    else:
+                        return null
+                    angle = angle * math.pi / 180  # Convert angle to radians
+                    matrix = matrix_multiply(matrix, ((1, 0, 0), (math.tan(angle), 1, 0)))
+                elif transform_type == 'matrix':
+                    # Matrix transform
+                    if len(transform_args) == 6:
+                        a, b, c, d, e, f = transform_args
+                    else:
+                        return null
+                    # matrix = matrix_multiply(matrix, [[a, c, e], [b, d, f], [0, 0, 1]])
+                    matrix = ((matrix[0][0] * a + matrix[0][1] * b,matrix[0][0] * c + matrix[0][1] * d,matrix[0][0] * e + matrix[0][1] * f + matrix[0][2]),(matrix[1][0] * a + matrix[1][1] * b,matrix[1][0] * c + matrix[1][1] * d,matrix[1][0] * e + matrix[1][1] * f + matrix[1][2]))
     # Return the final matrix
     return matrix
 
@@ -476,7 +479,6 @@ try:
     from inkex.elements._utils import NSS, SSN
 except:
     from inkex.utils import NSS, SSN            # old versions
-from functools import lru_cache
 @lru_cache(maxsize=None)
 def cached_addNS(tag, ns=None):  # pylint: disable=invalid-name
     """Add a known namespace to a name for use with lxml"""
@@ -524,3 +526,31 @@ try:
 except: 
     pass
 
+
+'''_parser.py'''
+try:
+    lup1 = inkex.elements._parser.NodeBasedLookup.lookup_table
+    lup2 = dict()
+    for k,v in lup1.items():
+        lup2[cached_addNS(k[1],k[0])]  = list(reversed(lup1[cached_splitNS(cached_addNS(k[1],k[0]))])) 
+    def fast_lookup(self, doc, element):
+        try:
+            for kls in lup2[element.tag]:
+                if kls.is_class_element(element):  # pylint: disable=protected-access
+                    return kls
+        except KeyError:
+            try:
+                lup2[element.tag] = list(reversed(lup1[cached_splitNS(element.tag)]))
+                for kls in lup2[element.tag]:
+                    if kls.is_class_element(element):  # pylint: disable=protected-access
+                        return kls
+            except TypeError:
+                lup2[element.tag] = None  # handle comments
+                return None
+        except TypeError:
+            # Handle non-element proxies case "<!--Comment-->"
+            return None
+        return inkex.elements._parser.NodeBasedLookup.default
+    inkex.elements._parser.NodeBasedLookup.lookup = fast_lookup     # new versions only
+except: 
+    pass

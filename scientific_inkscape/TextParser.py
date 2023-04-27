@@ -64,8 +64,9 @@ from speedups import Vector2da as v2d
 import speedups as su
 from dhelpers import bbox
 
-from pango_renderer import PangoRenderer
+from pango_renderer import PangoRenderer, FontConfig
 pr = PangoRenderer();
+fc = FontConfig()
 
 from copy import copy
 import inkex
@@ -2472,9 +2473,9 @@ class cloc:
 
 # A class representing the properties of a collection of characters
 class Character_Table:
-    def __init__(self, els):
+    def __init__(self, els,forcecommand=False):
         self.fonttestchars = 'pIaA10mMvo' # don't need that many, just to figure out which fonts we have
-        self.ctable  = self.meas_char_ws(els)
+        self.ctable  = self.meas_char_ws(els,forcecommand)
         self.mults = dict()
 
     def get_prop(self, char, sty):
@@ -2494,8 +2495,8 @@ class Character_Table:
             return self.mults[(char,sty,scl)]
 
     def generate_character_table(self, els):
-        ctable = dict()
-        pctable = dict()         # a dictionary of preceding characters in the same style
+        ctable = inkex.OrderedDict()
+        pctable = inkex.OrderedDict()         # a dictionary of preceding characters in the same style
         
         atxt = [];
         asty = [];
@@ -2516,7 +2517,7 @@ class Character_Table:
             sty = asty[ii]; txt = atxt[ii];
             ctable[sty] = list(set(ctable.get(sty, []) + list(txt)))
             if sty not in pctable:
-                pctable[sty] = dict()
+                pctable[sty] = inkex.OrderedDict()
             for jj in range(1, len(txt)):
                 pctable[sty][txt[jj]] = list(
                     set(pctable[sty].get(txt[jj], []) + [txt[jj - 1]])
@@ -2573,7 +2574,7 @@ class Character_Table:
         # (= and similar characters don't seem to ever have them), then I for capital height
         
         blnk = prefix+suffix
-        pI = "pI"
+        pI = prefix+"pI"+suffix
         # We add pI as test characters because p gives the font's descender (how much the tail descends)
         # and I gives its cap height (how tall capital letters are).
 
@@ -2600,7 +2601,7 @@ class Character_Table:
             f.write(svgstart.encode("utf8"))
             from xml.sax.saxutils import escape
         else:
-            nbb = dict()
+            nbb = inkex.OrderedDict()
             # dh.idebug(ct)
         
 
@@ -2628,15 +2629,15 @@ class Character_Table:
         def effc(c):
             return badchars.get(c,c)
         
-        ct2 = dict(); bareids = [];
+        ct2 = inkex.OrderedDict(); bareids = [];
         for s in ct:
-            ct2[s] = dict()
+            ct2[s] = inkex.OrderedDict()
             for ii in range(len(ct[s])):
                 myc = ct[s][ii]
                 t  = Make_Character(prefix + effc(myc) + suffix, s)
                 tb = Make_Character(         effc(myc)         , s);
                 bareids.append(tb)
-                dkern = dict()
+                dkern = inkex.OrderedDict()
                 if KERN_TABLE:
                     for jj in range(len(ct[s])):
                         pc = ct[s][jj]
@@ -2646,8 +2647,8 @@ class Character_Table:
                             dkern[pc] = t2
                 ct2[s][myc] = StringInfo(myc, t, dkern,tb)
 
-            ct2[s][pI]   = StringInfo(pI,   Make_Character(pI,   s), dict())
-            ct2[s][blnk] = StringInfo(blnk, Make_Character(blnk, s), dict())
+            ct2[s][pI]   = StringInfo(pI,   Make_Character(pI,   s), inkex.OrderedDict())
+            ct2[s][blnk] = StringInfo(blnk, Make_Character(blnk, s), inkex.OrderedDict())
 
         ct = ct2
         if not(usepango):
@@ -2735,19 +2736,19 @@ class Character_Table:
                     finished = True
             
 
-        dkern = dict()
+        dkern = inkex.OrderedDict()
         for s in ct:
             for ii in ct[s]:
                 ct[s][ii].bb = bbox(nbb[ct[s][ii].strid])
                 if KERN_TABLE:
-                    precwidth = dict()
+                    precwidth = inkex.OrderedDict()
                     for jj in ct[s][ii].dkern:
                         precwidth[jj] = bbox(nbb[ct[s][ii].dkern[jj]]).w
                         # width including the preceding character and extra kerning
                     ct[s][ii].precwidth = precwidth
 
             if KERN_TABLE:
-                dkern[s] = dict()
+                dkern[s] = inkex.OrderedDict()
                 for ii in ct[s]:
                     mcw = ct[s][ii].bb.w  - ct[s][blnk].bb.w # my character width
                     for jj in ct[s][ii].precwidth:
@@ -2761,7 +2762,7 @@ class Character_Table:
             ch = ct[s][blnk].bb.h          # cap height
             dr =  ct[s][pI].bb.y2          # descender
             
-            dkernscl = dict()
+            dkernscl = inkex.OrderedDict()
             if KERN_TABLE:
                 for k in dkern[s]:
                     dkernscl[k] = dkern[s][k]/TEXTSIZE
@@ -2814,7 +2815,7 @@ class Character_Table:
         fstr = sty.get('font-stretch',dh.default_style_atts['font-stretch']);
         fwgt = sty.get('font-weight',dh.default_style_atts['font-weight']);
         
-        sty2['font-family']=pr.get_true_font((ffam,fstr,fwgt,fsty));
+        sty2['font-family']=fc.get_true_font((ffam,fstr,fwgt,fsty))['font-family'];
         
         sty2 = inkex.OrderedDict(sorted(sty2.items())) # sort alphabetically by keys
         for a in Character_Table.textshapeatt:

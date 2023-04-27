@@ -93,7 +93,8 @@ class Style0(inkex.OrderedDict):
         return sep.join([f"{key}:{value}" for key, value in self.items()]) # about 40% faster
     
     def __hash__(self):
-        return hash(self.to_str())
+        return hash(tuple(self.items()))
+        # return hash(self.to_str())
 
     def __add__(self, other):
         """Add two styles together to get a third, composing them"""
