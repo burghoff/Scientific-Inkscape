@@ -28,7 +28,7 @@ import inkex
 import dhelpers as dh
 import os, warnings, sys, re
 
-# The fontconfig library is used to select a font given itss CSS specs
+# The fontconfig library is used to select a font given its CSS specs
 # This library should work starting with v1.0
 import fontconfig as fc
 from fontconfig import FC
@@ -121,6 +121,10 @@ class FontConfig():
                         'font-weight':self.nearest_val(self.FCWGT_to_CSSWGT,found.get(fc.PROP.WEIGHT,0)[0]),
                         'font-style':self.FCSLN_to_CSSSTY[found.get(fc.PROP.SLANT,0)[0]],
                         'font-stretch':self.nearest_val(self.FCWDT_to_CSSSTR,found.get(fc.PROP.WIDTH,0)[0])}
+            
+            # For CSS, enclose font family in single quotes
+            # Needed for fonts like Modern No. 20 with periods in the family
+            truefont['font-family'] = "'" + truefont['font-family'].strip("'") + "'"
             
             self.truefonts[nominalfont] = truefont
             self.fontcharsets[found.get(fc.PROP.FAMILY,0)[0]] = found.get(fc.PROP.CHARSET,0)[0]
@@ -258,16 +262,16 @@ class PangoRenderer():
             self.pangolayout = Pango.Layout(self.ctx)
             
             # Conversions from CSS to Pango
-            CSSVAR_to_PVAR = {
+            self.CSSVAR_to_PVAR = {
                 'normal': Pango.Variant.NORMAL,
                 'small-caps': Pango.Variant.SMALL_CAPS,
             }
-            CSSSTY_to_PSTY = {
+            self.CSSSTY_to_PSTY = {
                 'normal': Pango.Style.NORMAL,
                 'italic': Pango.Style.ITALIC,
                 'oblique': Pango.Style.OBLIQUE,
             }
-            CSSWGT_to_PWGT = {
+            self.CSSWGT_to_PWGT = {
                 'thin':   Pango.Weight.THIN,   'ultralight': Pango.Weight.ULTRALIGHT,
                 'light':  Pango.Weight.LIGHT,  'semilight':  Pango.Weight.SEMILIGHT,
                 'book':   Pango.Weight.BOOK,   'normal':     Pango.Weight.NORMAL,
@@ -281,7 +285,7 @@ class PangoRenderer():
                 '700':    Pango.Weight.BOLD,   '800':        Pango.Weight.ULTRABOLD,
                 '900':    Pango.Weight.HEAVY,  '1000':       Pango.Weight.ULTRAHEAVY
             }
-            CSSSTR_to_PSTR = {
+            self.CSSSTR_to_PSTR = {
                 'ultra-condensed': Pango.Stretch.ULTRA_CONDENSED,
                 'extra-condensed': Pango.Stretch.EXTRA_CONDENSED,
                 'condensed':       Pango.Stretch.CONDENSED,
@@ -295,18 +299,18 @@ class PangoRenderer():
             def css_to_pango_func(sty,key):
                 val = sty.get(key).lower();
                 if key=='font-weight':
-                    return CSSWGT_to_PWGT.get(val,Pango.Weight.NORMAL)
+                    return self.CSSWGT_to_PWGT.get(val,Pango.Weight.NORMAL)
                 elif key=='font-style':
-                    return CSSSTY_to_PSTY.get(val,Pango.Style.NORMAL)
+                    return self.CSSSTY_to_PSTY.get(val,Pango.Style.NORMAL)
                 elif key=='font-stretch':
-                    return CSSSTR_to_PSTR.get(val,Pango.Stretch.NORMAL)
+                    return self.CSSSTR_to_PSTR.get(val,Pango.Stretch.NORMAL)
                 elif key=='font-variant':
-                    return CSSVAR_to_PVAR.get(val,Pango.Variant.NORMAL)
+                    return self.CSSVAR_to_PVAR.get(val,Pango.Variant.NORMAL)
                 return None
             self.css_to_pango = css_to_pango_func;
             
             # Conversions from Pango to fontconfig
-            PWGT_to_FCWGT = {Pango.Weight.THIN:FC.WEIGHT_THIN,
+            self.PWGT_to_FCWGT = {Pango.Weight.THIN:FC.WEIGHT_THIN,
                               Pango.Weight.ULTRALIGHT:FC.WEIGHT_ULTRALIGHT,
                               Pango.Weight.ULTRALIGHT:FC.WEIGHT_EXTRALIGHT,
                               Pango.Weight.LIGHT:FC.WEIGHT_LIGHT,
@@ -326,11 +330,11 @@ class PangoRenderer():
                               Pango.Weight.ULTRAHEAVY:FC.WEIGHT_EXTRABLACK,
                               Pango.Weight.ULTRAHEAVY:FC.WEIGHT_ULTRABLACK}
             
-            PSTY_to_FCSLN = {Pango.Style.NORMAL:FC.SLANT_ROMAN,
+            self.PSTY_to_FCSLN = {Pango.Style.NORMAL:FC.SLANT_ROMAN,
                               Pango.Style.ITALIC:FC.SLANT_ITALIC,
                               Pango.Style.OBLIQUE:FC.SLANT_OBLIQUE}
 
-            PSTR_to_FCWDT = {Pango.Stretch.ULTRA_CONDENSED:FC.WIDTH_ULTRACONDENSED,
+            self.PSTR_to_FCWDT = {Pango.Stretch.ULTRA_CONDENSED:FC.WIDTH_ULTRACONDENSED,
                               Pango.Stretch.EXTRA_CONDENSED:FC.WIDTH_EXTRACONDENSED,
                               Pango.Stretch.CONDENSED:FC.WIDTH_CONDENSED,
                               Pango.Stretch.SEMI_CONDENSED:FC.WIDTH_SEMICONDENSED,
@@ -342,9 +346,9 @@ class PangoRenderer():
             
             
             def pango_to_fc_func(pstretch,pweight,pstyle):
-                fcwidth = PSTR_to_FCWDT[pstretch];
-                fcweight = PWGT_to_FCWGT[pweight];
-                fcslant = PSTY_to_FCSLN[pstyle];
+                fcwidth = self.PSTR_to_FCWDT[pstretch];
+                fcweight = self.PWGT_to_FCWGT[pweight];
+                fcslant = self.PSTY_to_FCSLN[pstyle];
                 return fcwidth,fcweight,fcslant
             self.pango_to_fc = pango_to_fc_func;
 
@@ -435,7 +439,7 @@ class PangoRenderer():
         
         from gi.repository import Pango
             
-        fd = Pango.FontDescription(sty2['font-family']+',');
+        fd = Pango.FontDescription(sty2['font-family'].strip("'")+',');
         # The comma above is very important for font-families like Rockwell Condensed.
         # Without it, Pango will interpret it as the Condensed font-stretch of the Rockwell font-family,
         # rather than the Rockwell Condensed font-family.
@@ -689,8 +693,8 @@ class PangoRenderer():
     def Font_Test_Doc(self):
         selected_families = ['Arial','Rockwell','Rockwell Condensed','Rockwell Extra-Bold',
                              'Bahnschrift','Avenir','Avenir Next','Tahoma',
-                             'Cambria Math','Whitney','Helvetica','Whitney Book']
-        selected_families = None
+                             'Cambria Math','Whitney','Helvetica','Whitney Book','Modern No. 20']
+        # selected_families = None
         def isnumeric(s):
             try:
                 float(s)
