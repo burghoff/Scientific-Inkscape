@@ -61,16 +61,20 @@ LIBNAME = \
             },
     }[sys.platform]
 
-
-try:
-    fc = ct.cdll.LoadLibrary(LIBNAME["fontconfig"])
-except FileNotFoundError:
-    import dhelpers as dh
-    import os 
-    blocdir = os.path.dirname(dh.Get_Binary_Loc())
-    fpath = os.path.abspath(os.path.join(blocdir,LIBNAME["fontconfig"]))
+import os
+if "SI_FC_DIR" in os.environ:   
+    fpath = os.path.abspath(os.path.join(os.environ["SI_FC_DIR"],LIBNAME["fontconfig"]))
     fc = ct.cdll.LoadLibrary(fpath)
-# libc = ct.cdll.LoadLibrary("libc.so.6")
+else:
+    try:
+        fc = ct.cdll.LoadLibrary(LIBNAME["fontconfig"])
+    except FileNotFoundError:
+        import os
+        import dhelpers as dh
+        blocdir = os.path.dirname(dh.Get_Binary_Loc())
+        fpath = os.path.abspath(os.path.join(blocdir,LIBNAME["fontconfig"]))
+        fc = ct.cdll.LoadLibrary(fpath)
+    # libc = ct.cdll.LoadLibrary("libc.so.6")
 
 class FC :
     "useful definitions from fontconfig/*.h. You will need to use the constants," \

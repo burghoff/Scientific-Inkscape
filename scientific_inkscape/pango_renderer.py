@@ -32,6 +32,7 @@ import os, warnings, sys, re
 # This library should work starting with v1.0
 import fontconfig as fc
 from fontconfig import FC
+from collections import OrderedDict
 class FontConfig():
     def __init__(self):
         self.truefonts = dict();
@@ -112,79 +113,68 @@ class FontConfig():
         
     # Use fontconfig to get the true font that most text will be rendered as
     def get_true_font(self,nominalfont):
-        if nominalfont not in self.truefonts:
-            (ffam,fstr,fwgt,fsty) = nominalfont
-            styd = {'font-family':ffam,'font-style':fsty,'font-stretch':fstr,'font-weight':fwgt};
-            found = self.fc_match_css(styd)
+        nftuple = tuple(nominalfont.items()) # for hashing
+        if nftuple not in self.truefonts:
+            pat = self.css_to_fc_pattern(nominalfont)
+            conf = fc.Config.get_current()
+            conf.substitute(pat, FC.MatchPattern)
+            pat.default_substitute()
+            found,status = conf.font_match(pat)
+            truefont = self.fcfound_to_css(found)
             
-            truefont = {'font-family':found.get(fc.PROP.FAMILY,0)[0],
-                        'font-weight':self.nearest_val(self.FCWGT_to_CSSWGT,found.get(fc.PROP.WEIGHT,0)[0]),
-                        'font-style':self.FCSLN_to_CSSSTY[found.get(fc.PROP.SLANT,0)[0]],
-                        'font-stretch':self.nearest_val(self.FCWDT_to_CSSSTR,found.get(fc.PROP.WIDTH,0)[0])}
-            
-            # For CSS, enclose font family in single quotes
-            # Needed for fonts like Modern No. 20 with periods in the family
-            truefont['font-family'] = "'" + truefont['font-family'].strip("'") + "'"
-            
-            self.truefonts[nominalfont] = truefont
-            self.fontcharsets[found.get(fc.PROP.FAMILY,0)[0]] = found.get(fc.PROP.CHARSET,0)[0]
-        return self.truefonts[nominalfont]
+            self.truefonts[nftuple] = truefont
+            self.fontcharsets[tuple(truefont.items())] = found.get(fc.PROP.CHARSET,0)[0]
+        return self.truefonts[nftuple]
     
     
-    # Get the true font by character (in case characters are missing)
+    # Sometimes, a font will not have every character and a different one is
+    # substituted. (For example, many fonts do not have the ⎣ character.)
+    # Gets the true font by character
     def get_true_font_by_char(self,nominalfont,chars):
-        if nominalfont in self.truefonts:
-            fam = self.truefonts[nominalfont]['font-family']
-            d = {k:fam for k in chars if ord(k) in self.fontcharsets[fam]}
+        nftuple = tuple(nominalfont.items())
+        if nftuple in self.truefonts:
+            truefont = self.truefonts[nftuple]
+            d = {k:truefont for k in chars if ord(k) in self.fontcharsets[tuple(truefont.items())]}
         else:
             d = {};
         
         if len(d)<len(chars):
-            pat = fc.Pattern.name_parse(nominalfont)
+            pat = self.css_to_fc_pattern(nominalfont)
             conf = fc.Config.get_current()
             conf.substitute(pat, FC.MatchPattern)
             pat.default_substitute()
         
             found, total_coverage, status = conf.font_sort(pat, trim = True, want_coverage = False)
-            
             for f in found:
-                fam = f.get(fc.PROP.FAMILY,0)[0];
+                truefont = self.fcfound_to_css(f)
                 cs = f.get(fc.PROP.CHARSET,0)[0];
-                self.fontcharsets[fam] = cs;
-                d2 = {k:fam for k in chars if ord(k) in cs and k not in d}
+                self.fontcharsets[tuple(truefont.items())] = cs;
+                d2 = {k:truefont for k in chars if ord(k) in cs and k not in d}
                 d.update(d2);
                 if len(d)==len(chars):
                     break;
-            # self.enable_lcctype();
         return d
     
     
-    # Look up a fontconfig font by its CSS properties
-    def fc_match_css(self,sty):
-        pat = fc.Pattern.name_parse(re.escape(sty['font-family'].replace("'",'').replace('"','')));
-        pat.add(fc.PROP.WIDTH,  self.css_to_fc(sty,'font-stretch'));
-        pat.add(fc.PROP.WEIGHT, self.css_to_fc(sty,'font-weight'));
-        pat.add(fc.PROP.SLANT,  self.css_to_fc(sty,'font-style'));
-
-        conf = fc.Config.get_current()
-        conf.substitute(pat, FC.MatchPattern)
-        pat.default_substitute()
-        found,status = conf.font_match(pat)
-        # how to use found:
-        # fcname = found.get(fc.PROP.FULLNAME,0)[0]; 
-        # fcfm   = found.get(fc.PROP.FAMILY,0)[0];
-        return found
+    # Convert a style dictionary to an fc search pattern
+    def css_to_fc_pattern(self, sty):
+        pat = fc.Pattern.name_parse(re.escape(sty['font-family'].replace("'", '').replace('"', '')))
+        pat.add(fc.PROP.WIDTH,  self.CSSSTR_to_FCWDT.get(sty.get('font-stretch'), FC.WIDTH_NORMAL))
+        pat.add(fc.PROP.WEIGHT, self.CSSWGT_to_FCWGT.get(sty.get('font-weight'),  FC.WEIGHT_NORMAL))
+        pat.add(fc.PROP.SLANT,  self.CSSSTY_to_FCSLN.get(sty.get('font-style'),   FC.SLANT_ROMAN))
+        return pat
     
-    
-    def css_to_fc(self,sty,key):
-        val = sty.get(key).lower();
-        if key=='font-weight':
-            return self.CSSWGT_to_FCWGT.get(val,FC.WEIGHT_NORMAL)
-        elif key=='font-style':
-            return self.CSSSTY_to_FCSLN.get(val,FC.SLANT_ROMAN)
-        elif key=='font-stretch':
-            return self.CSSSTR_to_FCWDT.get(val,FC.WIDTH_NORMAL)
-        return None
+    # Convert a found fc object to a style dictionary
+    def fcfound_to_css(self,f):
+        # For CSS, enclose font family in single quotes
+        # Needed for fonts like Modern No. 20 with periods in the family
+        fam = "'" + f.get(fc.PROP.FAMILY,0)[0].strip("'") + "'"
+        return OrderedDict([
+                ('font-family',fam),
+                ('font-weight',self.nearest_val(self.FCWGT_to_CSSWGT,f.get(fc.PROP.WEIGHT,0)[0])),
+                ('font-style',self.FCSLN_to_CSSSTY[f.get(fc.PROP.SLANT,0)[0]]),
+                ('font-stretch',self.nearest_val(self.FCWDT_to_CSSSTR,f.get(fc.PROP.WIDTH,0)[0]))])
+        
 
 # The Pango library is only available starting with v1.1 (when Inkscape added
 # the Python bindings for the gtk library).

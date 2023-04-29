@@ -48,7 +48,9 @@ import os
 if 'TESTMAINVERSION' in os.environ:
     version = os.environ['TESTMAINVERSION']
 if version=='1.0':
-    flattenerargs += ("--v=1.0",)
+    # flattenerargs += ("--v=1.0",)
+    os.environ["SI_FC_DIR"] = [d for d in vpaths['1.1'] if os.path.split(d)[-1]=='bin'][0]
+    # Font selection changed after 1.0, use 1.1's fc for consistency
 
 import sys; sys.path += vpaths[version]
 os.environ['LINEPROFILE'] = str(lprofile)
@@ -62,6 +64,7 @@ from combine_by_color import CombineByColor
 from favorite_markers import FavoriteMarkers
 from homogenizer import Homogenizer
 from autoexporter import AutoExporter
+import inkex.tester
 from inkex.tester import ComparisonMixin, TestCase
 from inkex.tester.filters import CompareWithoutIds
 from inkex.tester.filters import Compare 
@@ -72,58 +75,7 @@ def get_files(dirin):
     for f in os.scandir(dirin):
         if f.name[-4:]=='.svg':
             fs.append(os.path.join(os.path.abspath(dirin),f.name))
-    return fs
-# class CompareNeg0(Compare):
-#     """Convert negative 0s into regular 0s"""
-#     @staticmethod
-#     def filter(contents):
-        # c2 = re.sub(rb'-0 ', b"0 ", contents)
-        # c3 = c2.replace(b'-0)',b'0)')
-        # c4 = re.sub(rb'-0,', b"0,", c3)
-        # return c4
-        # return contents
-# class CompareDx0(Compare):
-#     """Remove empty dx/dy values"""
-#     @staticmethod
-#     def filter(contents):
-#         c2 = re.sub(rb'dx="0"', b"", contents)
-#         c3 = re.sub(rb'dy="0"', b"", c2)
-#         return c3
-    
-# class CompareTransforms(Compare):
-#     """Standardize commas in transforms"""
-#     @staticmethod
-#     def filter(contents):
-        # mmat = [];
-        # for tr in [rb'matrix',rb'scale',rb'translate']:
-        #     mmat += [m.span()[1] for m in re.compile(tr+rb'\(').finditer(contents)]
-        # pmat = [m.span()[0] for m in re.compile(rb'\)').finditer(contents)]
-        # repl = [];
-        # for m in reversed(mmat):
-        #     myp = min([pl for pl in pmat if pl>=m])
-        #     newmat = re.sub(rb', ', rb" ", contents[m:myp])
-        #     newmat = re.sub(rb',' , rb" ", newmat)
-        #     repl.append((m,myp,newmat))
-            
-        # def Make_Replacements(x,rs):
-        #     rs = sorted(rs, key=lambda r: r[0])   
-        #     if len(rs)>0:
-        #         lst = 0; pieces=[]
-        #         for r in rs:
-        #             pieces.append(x[lst:r[0]])
-        #             pieces.append(r[2])
-        #             lst = r[1]
-        #         pieces.append(x[lst:])
-        #         ret = b''.join(pieces)
-        #     else:
-        #         ret = x
-        #     return ret
-        # ret = Make_Replacements(contents,repl)
-        # ret = re.sub(rb"scale\(0 0\)", rb"scale(0)", ret)
-        # ret = re.sub(rb'transform="translate\(0 0\)"', rb"", ret)
-        # return ret
-        # return contents
-    
+    return fs    
 
 # Replace all ids contained in urls in the order they appear in the document
 class CompareURLs(Compare):
@@ -272,7 +224,7 @@ def Replace_Spans(string,spans,repls):
 class CompareNumericFuzzy2(Compare):
     @staticmethod
     def filter(contents):
-        prec_xy   = 0;
+        prec_xy   = 1;
         prec_trfm = 3;
         
         # Standardize transforms to matrix()
@@ -303,6 +255,8 @@ class CompareNumericFuzzy2(Compare):
                 fmt = b"%." + f"{prec_xy}".encode('utf-8') + b"f";
                 repl = fmt % (float(m.group(0))+0) # Adding 0 changes -0 to 0
                 spans.append((s,e))
+                # if contents2[s-3:s] in (b'x="',b'y="'):
+                #     print((contents2[s-3:e+1],repl))
                 repls.append(repl)
         contents3 = Replace_Spans(contents2,spans,repls)
         contents = contents3
@@ -326,6 +280,24 @@ class CompareImages(Compare):
         contents = re.sub(rb'image\/svg\+xml',rb'',contents) # header for different versions
         contents = re.sub(b'sodipodi:docname="[^"]*"', b'sodipodi:docname=""', contents)
         return contents
+    
+
+# For x values, due to kerning measurement differences we allow for up to 1 pixel
+from inkex.tester.xmldiff import xmldiff
+def mod_xmldiff(data_a,data_b):
+    diff_xml, delta = xmldiff(data_a, data_b)
+    toremove = []
+    for x, (value_a, value_b) in enumerate(delta):
+        if value_a[0]=='x' and value_b[0]=='x':
+            try:
+                if abs(float(value_a[1])-float(value_b[1]))<=1:
+                    toremove.append((value_a, value_b))
+            except:
+                pass
+    for r in toremove:
+        delta.remove(r)
+    return diff_xml, delta
+inkex.tester.xmldiff = mod_xmldiff
         
     
 
@@ -477,8 +449,6 @@ if testaemp:
                            CompareImages()]
         compare_file = ['svg/'+aepages]
         comparisons = [aeargs+("--testpage=2",)]  
-
-
 
 
 if __name__ == "__main__":

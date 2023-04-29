@@ -63,6 +63,7 @@ import dhelpers as dh
 from speedups import Vector2da as v2d
 import speedups as su
 from dhelpers import bbox
+from Style0 import Style0
 
 from pango_renderer import PangoRenderer, FontConfig
 pr = PangoRenderer();
@@ -943,7 +944,66 @@ class ParsedText:
         if self._hasdx or self._hasdy:
             self.Update_Delta(forceupdate=True)
             # force an update, could have deleted sodipodi lines
-
+            
+    # For exporting, one usually wants to replace fonts with the actual font
+    # that each character is rendered as
+    def Fuse_Fonts(self):
+        # Collect all the fonts and how they are rendered
+        ft = self.ctable.font_table
+        newfams = []
+        for ln in self.lns:
+            for c in ln.cs:
+                if c.c in ft[c.nsty] and c.sty['font-family']!=ft[c.nsty][c.c]:
+                    newfams.append((ft[c.nsty][c.c],c,c.loc.pel))
+                else:
+                    newfams.append((c.sty['font-family'],c,c.loc.pel))
+                    # c.add_style({'font-family':ft[c.nsty][c.c],'baseline-shift':'0%'},setdefault=False)
+               
+        
+        # Make a dictionary whose keys are the elements whose styles we 
+        # want to modify and whose values are (the new family, a list of characters)
+        # In descending order of the number of characters
+        torepl = {}
+        for tup in newfams:
+            key = tup[2]
+            value = (tup[0], tup[1])
+            if key in torepl:
+                torepl[key].append(value)
+            else:
+                torepl[key] = [value]
+        for key, value in torepl.items():
+            count_dict = {}
+            for tup in value:
+                if tup[0] in count_dict:
+                    count_dict[tup[0]].append(tup[1])
+                else:
+                    count_dict[tup[0]] = [tup[1]]
+            new_value = []
+            for k, v in count_dict.items():
+                new_tup = (k, v)
+                new_value.append(new_tup)
+            new_value.sort(key=lambda x: len(x[1]), reverse=True)
+            torepl[key] = new_value
+    
+        # Replace fonts
+        for el,rlst in torepl.items():
+            # For the most common family, set the element style itself
+            if not el.ccascaded_style.get('font-family')==rlst[0][0]:
+                el.cstyle = el.ccascaded_style
+                el.cstyle['font-family'] = rlst[0][0]
+                el.cstyle['-inkscape-font-specification'] = None
+                for c in rlst[0][1]:
+                    c.sty = el.cstyle
+                    c.nsty = Character_Table.normalize_style(el.cstyle)
+            # For less common, need to wrap in a new Tspan
+            for r in rlst[1:]:
+                for c in r[1]:
+                    c.add_style({'font-family':r[0],
+                                 'baseline-shift':'0%'},setdefault=False)
+                    # dh.idebug((c.c,c.nsty))
+                    
+    
+    
     # For debugging: make a rectange at all of the line's words' nominal extents
     HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
     def Make_Highlights(self,htype):
@@ -2325,14 +2385,16 @@ class tchar:
 
         # When the specified style has something new span doesn't, are inheriting and
         # need to explicitly assign the default value
+        styset = Style0(sty)
         newspfd = t.cspecified_style
         for a in newspfd:
-            if a not in sty and setdefault:
-                sty[a] = dh.default_style_atts[a]
+            if a not in styset and setdefault:
+                styset[a] = dh.default_style_atts[a]
                 # dh.idebug([t.get_id2(),a,sty])
 
-        t.cstyle = sty
-        self.sty = sty
+        t.cstyle = styset
+        self.sty = styset
+        self.nsty = Character_Table.normalize_style(styset)
 
     def makesubsuper(self, sz=65):
         if self.type == "super":
@@ -2479,13 +2541,20 @@ class Character_Table:
         self.mults = dict()
 
     def get_prop(self, char, sty):
-        if sty in self.ctable:
+        try:
             return self.ctable[sty][char]
-        else:
-            dh.debug("No style matches!")
-            dh.debug("Character: " + char)
-            dh.debug("Style: " + sty)
-            dh.debug("Existing styles: " + str(list(self.ctable.keys())))
+        except:
+            if sty not in self.ctable:
+                dh.idebug("No style matches!")
+                dh.idebug("Character: " + char)
+                dh.idebug("Style: " + sty)
+                dh.idebug("Existing styles: " + str(list(self.ctable.keys())))
+            else:
+                dh.idebug("No character matches!")
+                dh.idebug("Character: " + char)
+                dh.idebug("Style: " + sty)
+                dh.idebug("Existing chars: " + str(list(self.ctable[sty].keys())))
+            quit()
             
     def get_prop_mult(self,char,sty,scl):
         try:
@@ -2610,7 +2679,7 @@ class Character_Table:
             cnt += 1
             if not(usepango):
                 nonlocal svgtexts
-                svgtexts += txt1 + sty + txt2 + str(cnt) + txt3 + escape(c) + txt4
+                svgtexts += txt1 + sty +';font-size:'+str(TEXTSIZE)+"px" + txt2 + str(cnt) + txt3 + escape(c) + txt4
                 if cnt % 1000 == 0:
                     f.write(svgtexts.encode("utf8"))
                     svgtexts = ""
@@ -2676,7 +2745,7 @@ class Character_Table:
                         mystrs = [v[0] for k,v in nbb.items() if v[1]==sty]
                         myids  = [k    for k,v in nbb.items() if v[1]==sty]
                         
-                        success,fm = pr.Set_Text_Style(sty)
+                        success,fm = pr.Set_Text_Style(sty+';font-size:'+str(TEXTSIZE)+"px")
                         if not(success):
                             pangolocked = False
                             return self.meas_char_ws(els, forcecommand=True)
@@ -2783,48 +2852,88 @@ class Character_Table:
                     dr/TEXTSIZE,
                     dkernscl, [v/TEXTSIZE for v in inkbb]
                 )
+                
         return ct
 
     # For generating test characters, we want to normalize the style so that we don't waste time
     # generating a bunch of identical characters whose font-sizes are different. A style is generated
     # with a single font-size, and only with presentation attributes that affect character shape.
-    textshapeatt = ['font-family','font-weight','font-style','font-variant','font-stretch','font-size']
+    # textshapeatt = ['font-family','font-weight','font-style','font-variant','font-stretch','font-size']
+    fontatt = ['font-family','font-weight','font-style','font-stretch']
+    dfltatt = [(k,dh.default_style_atts[k]) for k in fontatt]
     
     # 'stroke','stroke-width' do not affect kerning at all
     @staticmethod
     @lru_cache(maxsize=None)
     def normalize_style(sty):
-        nones = [None, "none", "None"]
-        sty2 = inkex.OrderedDict()
-        # we don't need a full Style since we only want the string (for speed)
-        for a in Character_Table.textshapeatt:
-            if a in sorted(sty):
-                styv = sty.get(a)
-                # if styv is not None and styv.lower()=='none':
-                #     styv=None # actually don't do this because 'none' might be overriding inherited styles
-                if styv is not None:
-                    if a == "font-family" and styv not in nones:
-                        # dh.idebug([styv,",".join([v.strip().strip("'") for v in styv.split(",")])])
-                        styv = ",".join([v.strip().strip("'") for v in styv.split(",")])
-                    sty2[a] = styv
-        sty2["font-size"] = str(TEXTSIZE)+"px"
+        # nones = [None, "none", "None"]
+        # sty2 = inkex.OrderedDict()
+        # # we don't need a full Style since we only want the string (for speed)
+        # for a in Character_Table.textshapeatt:
+        #     if a in sorted(sty):
+        #         styv = sty.get(a)
+        #         # if styv is not None and styv.lower()=='none':
+        #         #     styv=None # actually don't do this because 'none' might be overriding inherited styles
+        #         if styv is not None:
+        #             if a == "font-family" and styv not in nones:
+        #                 # dh.idebug([styv,",".join([v.strip().strip("'") for v in styv.split(",")])])
+        #                 styv = ",".join([v.strip().strip("'") for v in styv.split(",")])
+        #             sty2[a] = styv
+        # sty2["font-size"] = str(TEXTSIZE)+"px"
         
-        # Replace nominal font with true rendered font
-        ffam = sty.get('font-family','');
-        fsty = sty.get('font-style',dh.default_style_atts['font-style']);
-        fstr = sty.get('font-stretch',dh.default_style_atts['font-stretch']);
-        fwgt = sty.get('font-weight',dh.default_style_atts['font-weight']);
+        # # Replace nominal font with true rendered font
+        # ffam = sty.get('font-family','');
+        # fsty = sty.get('font-style',dh.default_style_atts['font-style']);
+        # fstr = sty.get('font-stretch',dh.default_style_atts['font-stretch']);
+        # fwgt = sty.get('font-weight',dh.default_style_atts['font-weight']);
         
-        sty2['font-family']=fc.get_true_font((ffam,fstr,fwgt,fsty))['font-family'];
+        # sty2['font-family']=fc.get_true_font((ffam,fstr,fwgt,fsty))['font-family'];
         
-        sty2 = inkex.OrderedDict(sorted(sty2.items())) # sort alphabetically by keys
-        for a in Character_Table.textshapeatt:
-            if sty2.get(a)==dh.default_style_atts[a]:
-                del sty2[a]
+        # sty2 = inkex.OrderedDict(sorted(sty2.items())) # sort alphabetically by keys
+        # for a in Character_Table.textshapeatt:
+        #     if sty2.get(a)==dh.default_style_atts[a]:
+        #         del sty2[a]
+        
+
+        
+        sty2 = inkex.OrderedDict(Character_Table.dfltatt)
+        sty2.update({k:v for k,v in sty.items() if k in Character_Table.fontatt})
+        sty2['font-family']=fc.get_true_font(sty2)['font-family'];
+        # sty2["font-size"] = str(TEXTSIZE)+"px"
         
         sty2 = ";".join([f"{key}:{value}" for key, value in sty2.items()])
         return sty2
 
+    # Make a table of the effective font-family for each character in nsty,
+    # for when a family does not have a character and a default is used
+    @property
+    def font_table(self):
+        if not hasattr(self,'_ftable'):
+            ctable2 = dict()
+            self._ftable = inkex.OrderedDict();
+            for s in self.ctable:
+                fontsty = inkex.OrderedDict(Character_Table.dfltatt)
+                fontsty.update({k:v for k,v in Style0(s).items() if k in Character_Table.fontatt})
+                allcs = set(''.join(self.ctable[s].keys()))
+                tfbc = fc.get_true_font_by_char(fontsty,allcs)
+                self._ftable[s] = {k:v['font-family'] for k,v in tfbc.items()}
+                
+                for k,v in tfbc.items():
+                    v2 = ";".join([f"{key}:{value}" for key, value in v.items()])
+                    if v2 not in ctable2:
+                        ctable2[v2] = dict()
+                    if k in self.ctable[s]:
+                        ctable2[v2][k] = self.ctable[s][k]
+                        
+            # Add the character-specific normalized styles to ctable
+            for s in ctable2:
+                for k in ctable2[s]:
+                    if s not in self.ctable:
+                        self.ctable[s] = inkex.OrderedDict()
+                    self.ctable[s][k] = ctable2[s][k]
+        return self._ftable
+            
+                
 
 # Recursively delete empty elements
 # Tspans are deleted if they're totally empty, TextElements are deleted if they contain only whitespace
