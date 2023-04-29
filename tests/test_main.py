@@ -224,7 +224,7 @@ def Replace_Spans(string,spans,repls):
 class CompareNumericFuzzy2(Compare):
     @staticmethod
     def filter(contents):
-        prec_xy   = 1;
+        prec_else   = 1;
         prec_trfm = 3;
         
         # Standardize transforms to matrix()
@@ -235,7 +235,7 @@ class CompareNumericFuzzy2(Compare):
             spans.append(m.span())
             tcnts = m.group(1) # contents of transform tag
             newstr= matrix_to_transform(transform_to_matrix(tcnts),
-                       precision_abcd=prec_trfm, precision_ef=prec_xy)
+                       precision_abcd=prec_trfm, precision_ef=prec_else)
             repls.append(b'transform="' + newstr + b'"')
         contents2 = Replace_Spans(contents,spans,repls)
         
@@ -252,7 +252,7 @@ class CompareNumericFuzzy2(Compare):
             intfm = ti<len(tfms) and s>tfms[ti][0] and e<tfms[ti][1]  # in next tfm
             # print((m.group(0),intfm))
             if not(intfm):
-                fmt = b"%." + f"{prec_xy}".encode('utf-8') + b"f";
+                fmt = b"%." + f"{prec_else}".encode('utf-8') + b"f";
                 repl = fmt % (float(m.group(0))+0) # Adding 0 changes -0 to 0
                 spans.append((s,e))
                 # if contents2[s-3:s] in (b'x="',b'y="'):
