@@ -601,7 +601,9 @@ class AutoExporter(inkex.EffectExtension):
                 vds = dh.visible_descendants(svg)
                 for d in vds:
                     if isinstance(d,(TextElement)) and d.get_id2() not in input_options.excludetxtids:
-                        self.Scale_Text(d)
+                        scaleto = 100 if not input_options.testmode else 10
+                        # Make 10 px in test mode so that errors are not unnecessarily large
+                        self.Scale_Text(d,scaleto)
                     elif isinstance(d,(inkex.Image)):
                         if ih.hasPIL:
                             self.Merge_Mask(d)
@@ -1213,7 +1215,7 @@ class AutoExporter(inkex.EffectExtension):
                 d.cstyle = mys
                     
             
-    def Scale_Text(self,el):
+    def Scale_Text(self,el,scaleto):
         # Sets all font-sizes to 100 px by moving size into transform
         # Office rounds every fonts to the nearest px and then transforms it,
         # so this makes text sizes more accurate
@@ -1231,7 +1233,7 @@ class AutoExporter(inkex.EffectExtension):
         else:
             maxsz = max(szs)
             
-        s=1/maxsz*100
+        s=1/maxsz*scaleto
         
         # Make a dummy group so we can properly compose the transform
         g = dh.group([el],moveTCM=True)
