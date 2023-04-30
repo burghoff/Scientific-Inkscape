@@ -441,12 +441,11 @@ try:
         def get_image_slidenums(self,dirin):
             import os
             import xml.etree.ElementTree as ET
-            relsdir = os.path.join(dirin,'ppt/slides/_rels')
+            relsdir = os.path.join(dirin,'ppt','slides','_rels')
             numslides = len(os.listdir(relsdir))
             slide_filenames = [];
             for slide_num in range(1,numslides+1):
-                rels_file = f"ppt/slides/_rels/slide{slide_num}.xml.rels"
-                tree = ET.parse(os.path.join(dirin,rels_file))
+                tree = ET.parse(os.path.join(dirin, "ppt", "slides", "_rels", f"slide{slide_num}.xml.rels"))
                 root = tree.getroot()
                 image_filenames = []
                 for elem in root.iter("{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"):
@@ -487,34 +486,40 @@ try:
             
             if os.path.isfile(self.fof):
                 # Unzip the ppt file to the temp directory
+                ftype = 'ppt' if self.fof.endswith('.pptx') else 'word'
                 with zipfile.ZipFile(self.fof, 'r') as zip_ref:
                     zip_ref.extractall(contents)
-                ppt_media_dir = os.path.join(contents, 'ppt', 'media')
+                ppt_media_dir = os.path.join(contents, ftype, 'media')
                 self.files = get_svgs(ppt_media_dir);
-                self.slidenums = self.get_image_slidenums(contents)
+                if ftype=='ppt':
+                    self.slidenums = self.get_image_slidenums(contents)
                 
-                # Add linked images to self.files
-                linked = [str(file_uri_to_path(k)) for k in self.slidenums.keys() if 'file:' in k];
-                self.files += linked;
-                self.slidenums = {os.path.join(contents,'ppt','media',os.path.basename(k)) \
-                                  if 'file:' not in k else str(file_uri_to_path(k)) : v \
-                                      for k,v in self.slidenums.items()}
-                
-                # Sort the files by slide number and make slidenums a corresponding list
-                # Duplicates filenames if on multiple slides
-                new_files = []
-                new_slidenums = []
-                for file in self.files:
-                    slides = self.slidenums.get(file, [float('inf')])
-                    for slide in slides:
-                        new_files.append(file)
-                        new_slidenums.append(slide)
-                new_files_and_slidenums = sorted(zip(new_files, new_slidenums), key=lambda x: (x[1], x[0]))
-                self.files, self.slidenums = zip(*new_files_and_slidenums)
-                self.files = list(self.files)
-                self.slidenums = list(self.slidenums)
-                self.slidenums = [v if v!=float('inf') else '?' for v in self.slidenums]
-                self.islinked = [f in linked for f in self.files]
+                    # Add linked images to self.files
+                    linked = [str(file_uri_to_path(k)) for k in self.slidenums.keys() if 'file:' in k];
+                    self.files += linked;
+                    self.slidenums = {os.path.join(contents,ftype,'media',os.path.basename(k)) \
+                                      if 'file:' not in k else str(file_uri_to_path(k)) : v \
+                                          for k,v in self.slidenums.items()}
+                    
+                    # Sort the files by slide number and make slidenums a corresponding list
+                    # Duplicates filenames if on multiple slides
+                    new_files = []
+                    new_slidenums = []
+                    for file in self.files:
+                        slides = self.slidenums.get(file, [float('inf')])
+                        for slide in slides:
+                            new_files.append(file)
+                            new_slidenums.append(slide)
+                    new_files_and_slidenums = sorted(zip(new_files, new_slidenums), key=lambda x: (x[1], x[0]))
+                    self.files, self.slidenums = zip(*new_files_and_slidenums)
+                    self.files = list(self.files)
+                    self.slidenums = list(self.slidenums)
+                    self.slidenums = [v if v!=float('inf') else '?' for v in self.slidenums]
+                    self.islinked = [f in linked for f in self.files]
+                else:
+                    self.slidenums = None
+                    self.islinked = None
+                    self.embeds = None
 
                 # print(self.slidenums)
                 # print(self.slidenums)
@@ -737,13 +742,13 @@ try:
                 self.containing_box.set_margin_top(20)
                 self.containing_box.set_margin_bottom(20)
         
-                self.file_button = Gtk.Button(label="Add Powerpoint file")
+                self.file_button = Gtk.Button(label="Add Powerpoint or Word file")
                 self.file_button.connect("clicked", self.on_file_button_clicked)
                 self.folder_button = Gtk.Button(label="Add folder")
                 self.folder_button.connect("clicked", self.on_folder_button_clicked)
                 self.clear_button = Gtk.Button(label="Clear selections")
                 self.clear_button.connect("clicked", self.clear_clicked)
-                self.gallery_button = Gtk.Button(label="Open gallery")
+                self.gallery_button = Gtk.Button(label="Display gallery")
                 self.gallery_button.connect("clicked", self.gallery_button_clicked)
                 self.exit_button = Gtk.Button(label="Exit")
                 self.exit_button.connect("clicked", self.on_button_clicked)
@@ -794,8 +799,8 @@ try:
             def on_file_button_clicked(self, widget):
                 native = Gtk.FileChooserNative.new("Please choose a file", self, Gtk.FileChooserAction.OPEN, None, None)
                 filter_ppt = Gtk.FileFilter()
-                filter_ppt.set_name("Powerpoint files")
-                filter_ppt.add_pattern("*.ppt")
+                filter_ppt.set_name("Powerpoint or Word files")
+                filter_ppt.add_pattern("*.docx")
                 filter_ppt.add_pattern("*.pptx")
                 native.add_filter(filter_ppt)
                 response = native.run()
