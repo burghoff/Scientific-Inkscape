@@ -32,7 +32,8 @@ import os, warnings, sys, re
 # This library should work starting with v1.0
 import fontconfig as fc
 from fontconfig import FC
-from collections import OrderedDict
+# from collections import OrderedDict
+from Style0 import Style0
 class FontConfig():
     def __init__(self):
         self.truefonts = dict();
@@ -77,20 +78,33 @@ class FontConfig():
                               'ultra-expanded': FC.WIDTH_ULTRAEXPANDED}
         
         # Fontconfig to CSS
-        self.FCWGT_to_CSSWGT = {
-            FC.WEIGHT_THIN: 'thin',
-            FC.WEIGHT_EXTRALIGHT: 'ultralight',
-            FC.WEIGHT_LIGHT: 'light',
-            FC.WEIGHT_SEMILIGHT: 'semilight',
-            FC.WEIGHT_BOOK: 'book',
-            FC.WEIGHT_NORMAL: 'normal',
-            FC.WEIGHT_MEDIUM: 'medium',
-            FC.WEIGHT_SEMIBOLD: 'semibold',
-            FC.WEIGHT_BOLD: 'bold',
-            FC.WEIGHT_ULTRABOLD: 'ultrabold',
-            FC.WEIGHT_HEAVY: 'heavy',
-            FC.WEIGHT_ULTRABLACK: 'ultraheavy'
-        }
+        # self.FCWGT_to_CSSWGT = {
+        #     FC.WEIGHT_THIN: 'thin',
+        #     FC.WEIGHT_EXTRALIGHT: 'ultralight',
+        #     FC.WEIGHT_LIGHT: 'light',
+        #     FC.WEIGHT_SEMILIGHT: 'semilight',
+        #     FC.WEIGHT_BOOK: 'book',
+        #     FC.WEIGHT_NORMAL: 'normal',
+        #     FC.WEIGHT_MEDIUM: 'medium',
+        #     FC.WEIGHT_SEMIBOLD: 'semibold',
+        #     FC.WEIGHT_BOLD: 'bold',
+        #     FC.WEIGHT_ULTRABOLD: 'ultrabold',
+        #     FC.WEIGHT_HEAVY: 'heavy',
+        #     FC.WEIGHT_ULTRABLACK: 'ultraheavy'
+        # }
+        self.FCWGT_to_CSSWGT = {FC.WEIGHT_THIN: '100',
+                        FC.WEIGHT_EXTRALIGHT: '200',
+                        FC.WEIGHT_LIGHT: '300',
+                        FC.WEIGHT_SEMILIGHT: '350',
+                        FC.WEIGHT_BOOK: '380',
+                        FC.WEIGHT_NORMAL: '400',
+                        FC.WEIGHT_MEDIUM: '500',
+                        FC.WEIGHT_SEMIBOLD: '600',
+                        FC.WEIGHT_BOLD: '700',
+                        FC.WEIGHT_ULTRABOLD: '800',
+                        FC.WEIGHT_HEAVY: '900',
+                        FC.WEIGHT_ULTRABLACK: '1000'}
+        
         self.FCSLN_to_CSSSTY = {
             FC.SLANT_ROMAN: 'normal',
             FC.SLANT_ITALIC: 'italic',
@@ -112,10 +126,10 @@ class FontConfig():
         self.nearest_val = nearest_val_func
         
     # Use fontconfig to get the true font that most text will be rendered as
-    def get_true_font(self,nominalfont):
-        nftuple = tuple(nominalfont.items()) # for hashing
+    def get_true_font(self,reducedsty):
+        nftuple = tuple(reducedsty.items()) # for hashing
         if nftuple not in self.truefonts:
-            pat = self.css_to_fc_pattern(nominalfont)
+            pat = self.css_to_fc_pattern(reducedsty)
             conf = fc.Config.get_current()
             conf.substitute(pat, FC.MatchPattern)
             pat.default_substitute()
@@ -130,8 +144,8 @@ class FontConfig():
     # Sometimes, a font will not have every character and a different one is
     # substituted. (For example, many fonts do not have the ⎣ character.)
     # Gets the true font by character
-    def get_true_font_by_char(self,nominalfont,chars):
-        nftuple = tuple(nominalfont.items())
+    def get_true_font_by_char(self,reducedsty,chars):
+        nftuple = tuple(reducedsty.items())
         if nftuple in self.truefonts:
             truefont = self.truefonts[nftuple]
             d = {k:truefont for k in chars if ord(k) in self.fontcharsets[tuple(truefont.items())]}
@@ -139,7 +153,7 @@ class FontConfig():
             d = {};
         
         if len(d)<len(chars):
-            pat = self.css_to_fc_pattern(nominalfont)
+            pat = self.css_to_fc_pattern(reducedsty)
             conf = fc.Config.get_current()
             conf.substitute(pat, FC.MatchPattern)
             pat.default_substitute()
@@ -169,7 +183,7 @@ class FontConfig():
         # For CSS, enclose font family in single quotes
         # Needed for fonts like Modern No. 20 with periods in the family
         fam = "'" + f.get(fc.PROP.FAMILY,0)[0].strip("'") + "'"
-        return OrderedDict([
+        return Style0([
                 ('font-family',fam),
                 ('font-weight',self.nearest_val(self.FCWGT_to_CSSWGT,f.get(fc.PROP.WEIGHT,0)[0])),
                 ('font-style',self.FCSLN_to_CSSSTY[f.get(fc.PROP.SLANT,0)[0]]),

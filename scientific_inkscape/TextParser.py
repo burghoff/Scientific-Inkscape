@@ -469,7 +469,7 @@ class ParsedText:
 
                 if newsprl:
                     lh = dh.Get_Composed_LineHeight(sel)
-                nsty = Character_Table.normalize_style(sty)
+                tsty = Character_Table.true_style(sty)
 
                 # Make a new line if we're sprl or if we have a new x or y
                 if len(lns) == 0 or (
@@ -565,11 +565,11 @@ class ParsedText:
 
                 if txt is not None:
                     for jj, c in enumerate(txt):
-                        # prop = self.ctable.get_prop(c, nsty) * fs
-                        # prop = self.ctable.get_prop_mult(c, nsty, fs/sf)
-                        prop = self.ctable.get_prop(c, nsty)
+                        # prop = self.ctable.get_prop(c, tsty) * fs
+                        # prop = self.ctable.get_prop_mult(c, tsty, fs/sf)
+                        prop = self.ctable.get_prop(c, tsty)
                         ttv = 'tail' if tt==0 else 'text'
-                        tchar(c, fs, sf, prop, sty, nsty, cloc(tel, ttv, jj),lns[-1])
+                        tchar(c, fs, sf, prop, sty, tsty, cloc(tel, ttv, jj),lns[-1])
 
                         if jj == 0:
                             lsp0 = lns[-1].cs[-1].lsp
@@ -953,11 +953,11 @@ class ParsedText:
         newfams = []
         for ln in self.lns:
             for c in ln.cs:
-                if c.c in ft[c.nsty] and c.sty['font-family']!=ft[c.nsty][c.c]:
-                    newfams.append((ft[c.nsty][c.c],c,c.loc.pel))
-                else:
-                    newfams.append((c.sty['font-family'],c,c.loc.pel))
-                    # c.add_style({'font-family':ft[c.nsty][c.c],'baseline-shift':'0%'},setdefault=False)
+                newfam = (c.sty.get('font-family'),c,c.loc.pel)
+                if c.c in ft[c.rsty] and newfam[0]!=ft[c.rsty][c.c]:
+                    newfam = (ft[c.rsty][c.c],c,c.loc.pel)
+                    
+                newfams.append(newfam)
                
         
         # Make a dictionary whose keys are the elements whose styles we 
@@ -994,13 +994,14 @@ class ParsedText:
                 el.cstyle['-inkscape-font-specification'] = None
                 for c in rlst[0][1]:
                     c.sty = el.cstyle
-                    c.nsty = Character_Table.normalize_style(el.cstyle)
+                    c.tsty = Character_Table.true_style(el.cstyle)
+                    c.rsty = Character_Table.reduced_style(el.cstyle)
             # For less common, need to wrap in a new Tspan
             for r in rlst[1:]:
                 for c in r[1]:
                     c.add_style({'font-family':r[0],
                                  'baseline-shift':'0%'},setdefault=False)
-                    # dh.idebug((c.c,c.nsty))
+                    # dh.idebug((c.c,c.tsty))
                     
     
     
@@ -1678,8 +1679,8 @@ class tword:
             # dh.idebug([self.txt(),nw.txt(),(bl2.x-br1.x)/(lc.sw/self.sf)])
             # dh.idebug([self.txt(),nw.txt(),lc.sw,lc.cw])
             for ii in range(numsp):
-                self.appendc(" ", lc.ln.pt.ctable.get_prop(' ',lc.nsty), -lc.lsp, 0)
-                # self.appendc(" ", lc.ln.pt.ctable.get_prop(' ',lc.nsty)*lc.tfs, -lc.lsp, 0)
+                self.appendc(" ", lc.ln.pt.ctable.get_prop(' ',lc.tsty), -lc.lsp, 0)
+                # self.appendc(" ", lc.ln.pt.ctable.get_prop(' ',lc.tsty)*lc.tfs, -lc.lsp, 0)
 
             fc = nw.cs[0]
             prevc = self.cs[-1]
@@ -2069,8 +2070,8 @@ def style_derived(styv,pel,textel):
 
 # A single character and its style
 class tchar:
-    __slots__ = ('c', 'tfs', 'utfs', 'sf', 'prop', 'cw', '_sty', 'nsty', 'loc', 'ch', 'sw', 'ln', 'lnindex', 'w', 'windex', 'type', '_dx', '_dy', 'deltanum', 'dkerns', 'parsed_pts_t', 'parsed_pts_ut', '_lsp', '_bshft')
-    def __init__(self, c, tfs, sf, prop, sty, nsty, loc,ln):
+    __slots__ = ('c', 'tfs', 'utfs', 'sf', 'prop', 'cw', '_sty', 'tsty', 'rsty','loc', 'ch', 'sw', 'ln', 'lnindex', 'w', 'windex', 'type', '_dx', '_dy', 'deltanum', 'dkerns', 'parsed_pts_t', 'parsed_pts_ut', '_lsp', '_bshft')
+    def __init__(self, c, tfs, sf, prop, sty, tsty, loc,ln):
         self.c = c
         self.tfs = tfs
         # transformed font size (uu)
@@ -2085,8 +2086,10 @@ class tchar:
         # ut character width 
         self._sty = sty
         # actual style
-        self.nsty = nsty
-        # normalized style
+        self.tsty = tsty
+        # true style
+        self.rsty = Character_Table.reduced_style(sty)
+        # true style
         self.loc = loc
         # true location: [parent, 'text' or 'tail', index]
         self.ch = prop.caph * utfs
@@ -2128,7 +2131,8 @@ class tchar:
         ret.prop = self.prop
         ret.cw = self.cw
         ret._sty = self._sty
-        ret.nsty = self.nsty
+        ret.tsty = self.tsty
+        ret.rsty = self.rsty
         ret.ch = self.ch
         ret.sw = self.sw
         ret.lnindex = self.lnindex
@@ -2394,7 +2398,8 @@ class tchar:
 
         t.cstyle = styset
         self.sty = styset
-        self.nsty = Character_Table.normalize_style(styset)
+        self.tsty = Character_Table.true_style(styset)
+        self.rsty = Character_Table.reduced_style(styset)
 
     def makesubsuper(self, sz=65):
         if self.type == "super":
@@ -2566,6 +2571,7 @@ class Character_Table:
     def generate_character_table(self, els):
         ctable = inkex.OrderedDict()
         pctable = inkex.OrderedDict()         # a dictionary of preceding characters in the same style
+        rtable = inkex.OrderedDict()
         
         atxt = [];
         asty = [];
@@ -2579,12 +2585,13 @@ class Character_Table:
                             # tails get their sty from the parent of the element the tail belongs to
                         sty = sel.cspecified_style
                         
-                        asty.append(Character_Table.normalize_style(sty))
+                        asty.append((Character_Table.true_style(sty),Character_Table.reduced_style(sty)))
                         atxt.append(txt)
                         
         for ii in range(len(atxt)):
-            sty = asty[ii]; txt = atxt[ii];
+            sty = asty[ii][0]; txt = atxt[ii];
             ctable[sty] = list(set(ctable.get(sty, []) + list(txt)))
+            rtable[asty[ii][1]] = list(set(rtable.get(asty[ii][1], []) + list(txt)))
             if sty not in pctable:
                 pctable[sty] = inkex.OrderedDict()
             for jj in range(1, len(txt)):
@@ -2595,34 +2602,11 @@ class Character_Table:
             ctable[sty] = dh.unique(ctable[sty] + [" "])
             for pc in pctable[sty]:
                 pctable[sty][pc] = dh.unique(pctable[sty][pc] + [" "])
-            # dh.idebug(' ' in ctable[sty])
-        
-        # Make a dictionary of all font specs in the document, along with the backup fonts in those specs
-        # e.g. {'': ['sans-serif'], 'Calibri,Arial': ['Calibri', 'Arial', 'sans-serif']}
-        # Add these to the table so we can check which fonts the system has
-        # docfonts = dict()
-        # for sty in ctable:
-        #     if 'font-family' in sty:
-        #         sspl = sty.split(';');
-        #         ffii = [ii for ii in range(len(sspl)) if 'font-family' in sspl[ii]][0]
-        #         allffs = sspl[ffii].split(':')[1]
-        #         ffs = [x.strip("'").strip() for x in allffs.split(",")]
-        #     else:
-        #         ffs = []
-        #         allffs = ''
-        #     if 'sans-serif' not in ffs:
-        #         ffs.append('sans-serif')
-        #     docfonts[allffs]=ffs
-        # bfs = list(set([v for lst in list(docfonts.values()) for v in lst]))
-        # for bf in list(set(bfs+list(docfonts.keys()))):
-        #     if bf!='':
-        #         sty = 'font-family:'+bf
-        #         ctable[sty] = list(set(ctable.get(sty, [' ']) + list(self.fonttestchars)))
-        #         if sty not in pctable:
-        #             pctable[sty] = dict()
+        for sty in rtable:  # make sure they have spaces
+            rtable[sty] = dh.unique(rtable[sty] + [" "])
             
         
-        return ctable, pctable
+        return ctable, pctable, rtable
     
 
 
@@ -2635,7 +2619,7 @@ class Character_Table:
         if forcecommand and len(els)>0:
             # Examine the whole document if using command
             ctels = [d for d in els[0].croot.cdescendants if isinstance(d,TextElement)];
-        ct, pct = self.generate_character_table(ctels)
+        ct, pct, self.rtable = self.generate_character_table(ctels)
 
         prefix = 'I='
         suffix = '=I'
@@ -2679,7 +2663,7 @@ class Character_Table:
             cnt += 1
             if not(usepango):
                 nonlocal svgtexts
-                svgtexts += txt1 + sty +';font-size:'+str(TEXTSIZE)+"px" + txt2 + str(cnt) + txt3 + escape(c) + txt4
+                svgtexts += txt1 + str(sty) +';font-size:'+str(TEXTSIZE)+"px" + txt2 + str(cnt) + txt3 + escape(c) + txt4
                 if cnt % 1000 == 0:
                     f.write(svgtexts.encode("utf8"))
                     svgtexts = ""
@@ -2718,6 +2702,8 @@ class Character_Table:
 
             ct2[s][pI]   = StringInfo(pI,   Make_Character(pI,   s), inkex.OrderedDict())
             ct2[s][blnk] = StringInfo(blnk, Make_Character(blnk, s), inkex.OrderedDict())
+            
+        # for k in nbb:
 
         ct = ct2
         if not(usepango):
@@ -2742,10 +2728,11 @@ class Character_Table:
                     # dh.idebug(ct.keys())
                     for sty in ct:
                         joinch = ' ';
-                        mystrs = [v[0] for k,v in nbb.items() if v[1]==sty]
-                        myids  = [k    for k,v in nbb.items() if v[1]==sty]
+                        # dh.idebug(any([type(v[1])==float for k,v in nbb.items()]))
+                        mystrs = [v[0] for k,v in nbb.items() if type(v[1])==Style0 and v[1]==sty]
+                        myids  = [k    for k,v in nbb.items() if type(v[1])==Style0 and v[1]==sty]
                         
-                        success,fm = pr.Set_Text_Style(sty+';font-size:'+str(TEXTSIZE)+"px")
+                        success,fm = pr.Set_Text_Style(str(sty)+';font-size:'+str(TEXTSIZE)+"px")
                         if not(success):
                             pangolocked = False
                             return self.meas_char_ws(els, forcecommand=True)
@@ -2858,72 +2845,77 @@ class Character_Table:
     # For generating test characters, we want to normalize the style so that we don't waste time
     # generating a bunch of identical characters whose font-sizes are different. A style is generated
     # with a single font-size, and only with presentation attributes that affect character shape.
-    # textshapeatt = ['font-family','font-weight','font-style','font-variant','font-stretch','font-size']
-    fontatt = ['font-family','font-weight','font-style','font-stretch']
-    dfltatt = [(k,dh.default_style_atts[k]) for k in fontatt]
-    
-    # 'stroke','stroke-width' do not affect kerning at all
     @staticmethod
     @lru_cache(maxsize=None)
-    def normalize_style(sty):
-        # nones = [None, "none", "None"]
-        # sty2 = inkex.OrderedDict()
-        # # we don't need a full Style since we only want the string (for speed)
-        # for a in Character_Table.textshapeatt:
-        #     if a in sorted(sty):
-        #         styv = sty.get(a)
-        #         # if styv is not None and styv.lower()=='none':
-        #         #     styv=None # actually don't do this because 'none' might be overriding inherited styles
-        #         if styv is not None:
-        #             if a == "font-family" and styv not in nones:
-        #                 # dh.idebug([styv,",".join([v.strip().strip("'") for v in styv.split(",")])])
-        #                 styv = ",".join([v.strip().strip("'") for v in styv.split(",")])
-        #             sty2[a] = styv
+    def true_style(sty):
+        # Actual rendered font, determined using fontconfig
+        sty2 = Character_Table.reduced_style(sty)
+        tf = fc.get_true_font(sty2)
+        # sty2['font-family']=tf['font-family'];
+        # sty2['font-weight']=tf['font-weight'];
         # sty2["font-size"] = str(TEXTSIZE)+"px"
         
-        # # Replace nominal font with true rendered font
-        # ffam = sty.get('font-family','');
-        # fsty = sty.get('font-style',dh.default_style_atts['font-style']);
-        # fstr = sty.get('font-stretch',dh.default_style_atts['font-stretch']);
-        # fwgt = sty.get('font-weight',dh.default_style_atts['font-weight']);
-        
-        # sty2['font-family']=fc.get_true_font((ffam,fstr,fwgt,fsty))['font-family'];
-        
-        # sty2 = inkex.OrderedDict(sorted(sty2.items())) # sort alphabetically by keys
-        # for a in Character_Table.textshapeatt:
-        #     if sty2.get(a)==dh.default_style_atts[a]:
-        #         del sty2[a]
-        
-
-        
-        sty2 = inkex.OrderedDict(Character_Table.dfltatt)
+        # dh.idebug(sty2)
+        # sty2 = ";".join([f"{key}:{value}" for key, value in tf.items()])
+        # return sty2
+        return tf
+    
+    fontatt = ['font-family','font-weight','font-style','font-stretch']
+    dfltatt = [(k,dh.default_style_atts[k]) for k in fontatt]
+    @staticmethod
+    @lru_cache(maxsize=None)
+    def reduced_style(sty):
+        # Standardize font to kerning-related attributes only
+        sty2 = Style0(Character_Table.dfltatt)
         sty2.update({k:v for k,v in sty.items() if k in Character_Table.fontatt})
-        sty2['font-family']=fc.get_true_font(sty2)['font-family'];
-        # sty2["font-size"] = str(TEXTSIZE)+"px"
-        
-        sty2 = ";".join([f"{key}:{value}" for key, value in sty2.items()])
+        sty2['font-family'] = ','.join(["'"+v.strip('"').strip("'")+"'" for v in sty2['font-family'].split(',')])
         return sty2
 
-    # Make a table of the effective font-family for each character in nsty,
+    # Make a table of the effective font-family for each character in tsty,
     # for when a family does not have a character and a default is used
     @property
     def font_table(self):
+        # if not hasattr(self,'_ftable'):
+        #     ctable2 = dict()
+        #     self._ftable = inkex.OrderedDict();
+        #     for s in self.ctable:
+        #         fontsty = inkex.OrderedDict(Character_Table.dfltatt)
+        #         fontsty.update({k:v for k,v in Style0(s).items() if k in Character_Table.fontatt})
+        #         allcs = set(''.join(self.ctable[s].keys()))
+        #         tfbc = fc.get_true_font_by_char(fontsty,allcs)
+        #         # dh.idebug((s,allcs,tfbc))
+        #         self._ftable[s] = {k:v['font-family'] for k,v in tfbc.items()}
+                
+        #         for k,v in tfbc.items():
+        #             v2 = ";".join([f"{key}:{value}" for key, value in v.items()])
+        #             if v2 not in ctable2:
+        #                 ctable2[v2] = dict()
+        #             if k in self.ctable[s]:
+        #                 ctable2[v2][k] = self.ctable[s][k]
+                        
+        #     # Add the character-specific normalized styles to ctable
+        #     for s in ctable2:
+        #         for k in ctable2[s]:
+        #             if s not in self.ctable:
+        #                 self.ctable[s] = inkex.OrderedDict()
+        #             self.ctable[s][k] = ctable2[s][k]
+        # return self._ftable
         if not hasattr(self,'_ftable'):
             ctable2 = dict()
             self._ftable = inkex.OrderedDict();
-            for s in self.ctable:
-                fontsty = inkex.OrderedDict(Character_Table.dfltatt)
-                fontsty.update({k:v for k,v in Style0(s).items() if k in Character_Table.fontatt})
-                allcs = set(''.join(self.ctable[s].keys()))
-                tfbc = fc.get_true_font_by_char(fontsty,allcs)
+            for s in self.rtable:
+                tsty = Character_Table.true_style(s);
+                allcs = set(''.join(self.rtable[s]))
+                tfbc = fc.get_true_font_by_char(s,allcs)
+                # dh.idebug((s,allcs,tfbc))
                 self._ftable[s] = {k:v['font-family'] for k,v in tfbc.items()}
                 
                 for k,v in tfbc.items():
                     v2 = ";".join([f"{key}:{value}" for key, value in v.items()])
                     if v2 not in ctable2:
                         ctable2[v2] = dict()
-                    if k in self.ctable[s]:
-                        ctable2[v2][k] = self.ctable[s][k]
+                    if k in self.ctable[tsty]:
+                        ctable2[v2][k] = self.ctable[tsty][k]
                         
             # Add the character-specific normalized styles to ctable
             for s in ctable2:
@@ -2931,6 +2923,8 @@ class Character_Table:
                     if s not in self.ctable:
                         self.ctable[s] = inkex.OrderedDict()
                     self.ctable[s][k] = ctable2[s][k]
+                    
+            # dh.idebug(self._ftable)
         return self._ftable
             
                 
@@ -2986,3 +2980,147 @@ def xyset(el,xy,v):
         el.attrib.pop(xy, None)  # pylint: disable=no-member
     else:
         fset(el,xy, str(v)[1:-1].replace(',',''))
+
+
+
+def nonascii(c):
+    return ord(c) >= 128
+def nonletter(c):
+    return not ((ord(c) >= 65 and ord(c) <= 90) or (ord(c) >= 97 and ord(c) <= 122))
+
+fixwith = {'Avenir':(nonletter,"'Avenir Next', 'Arial'"),
+           'Whitney':(nonascii,"'Avenir Next', 'Arial'"),
+           'Whitney Book':(nonascii,"'Avenir Next', 'Arial'")}
+fw2 = {k.lower():v for k,v in fixwith.items()}
+def shouldfixfont(ffam):
+    shouldfix = ffam is not None and ffam.split(',')[0].strip("'").strip('"').lower() in fw2.keys()
+    fixw = None if not shouldfix else fw2[ffam.split(',')[0].strip("'").strip('"').lower()]
+    return shouldfix, fixw
+
+# When non-ascii characters are detected, replace all non-letter characters with the specified font
+# Mainly for fonts like Avenir
+def Character_Fixer(els):
+    for el in els:
+        shouldfix, fixw = shouldfixfont(el.cstyle.get('font-family'))
+        if shouldfix and isinstance(el, (TextElement, inkex.FlowRoot)):
+            Replace_Non_Ascii_Font(el, fixw[1])
+
+def Character_Fixer2(els):
+    for el in els:
+        tree = txttree(el)
+        for di, tt, tel, txt in tree.dgenerator():
+                if txt is not None and len(txt) > 0:
+                    sel = tel
+                    if tt == 0:
+                        sel = tree.pdict[tel]
+                        # tails get their sty from the parent of the element the tail belongs to
+                    sty = sel.cspecified_style
+                    shouldfix, fixw = shouldfixfont(sty.get('font-family'))
+                    if shouldfix:
+                        # Replace_Non_Ascii_Font(sel, fixw)
+                        fixcondition, fixw = fixw
+                        prev_nonascii = False
+                        for jj, c in enumerate(reversed(txt)):
+                            ii = len(txt) - 1 - jj
+                            if fixcondition(c):
+                                if not prev_nonascii:
+                                    t = dh.new_element(Tspan, tel)
+                                    t.text = c
+                                    if tt==1:
+                                        tbefore = tel.text[0 : ii]
+                                        tafter = tel.text[ii + 1 :]
+                                        tel.text = tbefore
+                                        tel.insert(0, t)
+                                        t.tail = tafter
+                                    else:
+                                        tbefore = tel.tail[0 : ii]
+                                        tafter = tel.tail[ii + 1 :]
+                                        tel.tail = tbefore
+                                        gp = tel.getparent()
+                                        # parent is a Tspan, so insert it into the grandparent
+                                        pi = gp.index(tel)
+                                        gp.insert(pi + 1, t)
+                                        # after the parent
+                                        t.tail = tafter
+                                    t.cstyle = Style0('font-family:'+fixw+';baseline-shift:0%')
+                                else:
+                                    t.text = c+t.text
+                                    if tt==1:
+                                        tel.text = tel.text[0 : ii]
+                                    else:
+                                        tel.tail = tel.tail[0 : ii]
+                                if tel.text is not None and tel.text=='':
+                                    tel.text = None
+                                if tel.tail is not None and tel.tail=='':
+                                    tel.tail = None
+                            prev_nonascii = nonascii(c)
+
+def Replace_Non_Ascii_Font(el, newfont, *args):
+    def alltext(el):
+        astr = el.text
+        if astr is None:
+            astr = ""
+        for k in list(el):
+            if isinstance(k, (Tspan, inkex.FlowPara, inkex.FlowSpan)):
+                astr += alltext(k)
+                tl = k.tail
+                if tl is None:
+                    tl = ""
+                astr += tl
+        return astr
+
+    forcereplace = len(args) > 0 and args[0]
+    if forcereplace or any([nonascii(c) for c in alltext(el)]):
+        alltxt = [el.text]
+        el.text = ""
+        for k in list(el):
+            if isinstance(k, (Tspan, inkex.FlowPara, inkex.FlowSpan)):
+                dupe = k.duplicate2();
+                alltxt.append(dupe)
+                alltxt.append(k.tail)
+                k.tail = ""
+                k.delete2()
+        lstspan = None
+        for t in alltxt:
+            if t is None:
+                pass
+            elif isinstance(t, str):
+                ws = []
+                si = 0
+                for ii in range(
+                    1, len(t)
+                ):  # split into words based on whether unicode or not
+                    if nonletter(t[ii - 1]) != nonletter(t[ii]):
+                        ws.append(t[si:ii])
+                        si = ii
+                ws.append(t[si:])
+                sty = "baseline-shift:0%;"
+                for w in ws:
+                    if any([nonletter(c) for c in w]):
+                        w = w.replace(" ", "\u00A0")
+                        # spaces can disappear, replace with NBSP
+                        if el.croot is not None:
+                            ts = dh.new_element(Tspan,el);
+                            el.append(ts)
+                            ts.text = w; ts.cstyle=Style0(sty+'font-family:'+newfont)
+                            ts.cspecified_style = None; ts.ccomposed_transform = None;
+                            lstspan = ts
+                    else:
+                        if lstspan is None:
+                            el.text = w
+                        else:
+                            lstspan.tail = w
+            elif isinstance(t, (Tspan, inkex.FlowPara, inkex.FlowSpan)):
+                Replace_Non_Ascii_Font(t, newfont, True)
+                el.append(t)
+                t.cspecified_style = None; t.ccomposed_transform = None;
+                lstspan = t
+                
+    # Inkscape automatically prunes empty text/tails
+    # Do the same so future parsing is not affected
+    if isinstance(el,inkex.TextElement):
+        for d in el.descendants2():
+            if d.text is not None and d.text=='':
+                d.text = None
+            if d.tail is not None and d.tail=='':
+                d.tail = None

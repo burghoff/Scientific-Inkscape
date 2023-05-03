@@ -758,8 +758,11 @@ class AutoExporter(inkex.EffectExtension):
                     jpgs.append(elid)
             if isinstance(el, (inkex.Image)):
                 image_ids.append(elid);
-                
-            
+             
+        # Fix Avenir/Whitney
+        tels = [el for el in vds if isinstance(el, inkex.TextElement)]
+        from TextParser import Character_Fixer2
+        Character_Fixer2(tels)
                 
         if not(input_options.reduce_images):
             input_options.dpi_im = input_options.dpi
@@ -770,7 +773,6 @@ class AutoExporter(inkex.EffectExtension):
         input_options.duplicatelabels = dict()
         if input_options.usepsvg:  
             import TextParser # noqa
-            tels = [el for el in vds if isinstance(el, inkex.TextElement)]
             if len(tels)>0:
                 svg.make_char_table()
                 input_options.ctable = svg.char_table; # store for later

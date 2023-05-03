@@ -238,11 +238,9 @@ class Homogenizer(inkex.EffectExtension):
                 el.cstyle["font-family"] = fontfamily
                 # dh.Set_Style_Comp(el, "-inkscape-font-specification", None)
                 el.cstyle["-inkscape-font-specification"]= None
-                if fontfamily.lower() in ["avenir", "whitney", "whitney book"] and isinstance(
-                    el, (TextElement, FlowRoot)
-                ):
-                    dh.Replace_Non_Ascii_Font(el, "Avenir Next, Arial")
-
+                
+            from TextParser import Character_Fixer
+            Character_Fixer(sel)
         
         if setfontfamily or setfontsize or fixtextdistortion:
             bbs2 = dh.BB2(self,tels,True)

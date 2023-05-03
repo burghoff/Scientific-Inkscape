@@ -286,10 +286,11 @@ class CompareImages(Compare):
 from inkex.tester.xmldiff import xmldiff
 def mod_xmldiff(data_a,data_b):
     diff_xml, delta = xmldiff(data_a, data_b)
-    print(diff_xml)
+    # print(diff_xml)
     toremove = []
     for x, (value_a, value_b) in enumerate(delta):
-        if (value_a[0]=='x' and value_b[0]=='x') or (value_a[0]=='y' and value_b[0]=='y'):
+        if value_a is not None and value_b is not None and \
+           ((value_a[0]=='x' and value_b[0]=='x') or (value_a[0]=='y' and value_b[0]=='y')):
             try:
                 if abs(float(value_a[1])-float(value_b[1]))<=1:
                     toremove.append((value_a, value_b))

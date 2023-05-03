@@ -1700,83 +1700,6 @@ def clean_up_document(svg):
                         if did in xlinks:
                             del xlinks[did]         
 
-# When non-ascii characters are detected, replace all non-letter characters with the specified font
-# Mainly for fonts like Avenir
-def Replace_Non_Ascii_Font(el, newfont, *args):
-    def nonletter(c):
-        return not ((ord(c) >= 65 and ord(c) <= 90) or (ord(c) >= 97 and ord(c) <= 122))
-
-    def nonascii(c):
-        return ord(c) >= 128
-
-    def alltext(el):
-        astr = el.text
-        if astr is None:
-            astr = ""
-        for k in list(el):
-            if isinstance(k, (Tspan, FlowPara, FlowSpan)):
-                astr += alltext(k)
-                tl = k.tail
-                if tl is None:
-                    tl = ""
-                astr += tl
-        return astr
-
-    forcereplace = len(args) > 0 and args[0]
-    if forcereplace or any([nonascii(c) for c in alltext(el)]):
-        alltxt = [el.text]
-        el.text = ""
-        for k in list(el):
-            if isinstance(k, (Tspan, FlowPara, FlowSpan)):
-                dupe = k.duplicate2();
-                alltxt.append(dupe)
-                alltxt.append(k.tail)
-                k.tail = ""
-                k.delete2()
-        lstspan = None
-        for t in alltxt:
-            if t is None:
-                pass
-            elif isinstance(t, str):
-                ws = []
-                si = 0
-                for ii in range(
-                    1, len(t)
-                ):  # split into words based on whether unicode or not
-                    if nonletter(t[ii - 1]) != nonletter(t[ii]):
-                        ws.append(t[si:ii])
-                        si = ii
-                ws.append(t[si:])
-                sty = "baseline-shift:0%;"
-                for w in ws:
-                    if any([nonletter(c) for c in w]):
-                        w = w.replace(" ", "\u00A0")
-                        # spaces can disappear, replace with NBSP
-                        ts = new_element(Tspan,el);
-                        el.append(ts)
-                        ts.text = w; ts.cstyle=Style0(sty+'font-family:'+newfont)
-                        ts.cspecified_style = None; ts.ccomposed_transform = None;
-                        lstspan = ts
-                    else:
-                        if lstspan is None:
-                            el.text = w
-                        else:
-                            lstspan.tail = w
-            elif isinstance(t, (Tspan, FlowPara, FlowSpan)):
-                Replace_Non_Ascii_Font(t, newfont, True)
-                el.append(t)
-                t.cspecified_style = None; t.ccomposed_transform = None;
-                lstspan = t
-                
-    # Inkscape automatically prunes empty text/tails
-    # Do the same so future parsing is not affected
-    if isinstance(el,inkex.TextElement):
-        for d in el.descendants2():
-            if d.text is not None and d.text=='':
-                d.text = None
-            if d.tail is not None and d.tail=='':
-                d.tail = None
-
 
 # A modified bounding box class
 class bbox:
@@ -2387,7 +2310,7 @@ def Run_SI_Extension(effext,name):
                 for fn in fns:
                     lp.add_function(fn)
                 lp.add_function(ipx.__wrapped__)
-                lp.add_function(TextParser.Character_Table.normalize_style.__wrapped__)
+                lp.add_function(TextParser.Character_Table.true_style.__wrapped__)
                 lp.add_function(speedups.transform_to_matrix.__wrapped__)
                    
                 lp(run_and_cleanup)()
