@@ -883,29 +883,81 @@ class AutoExporter(inkex.EffectExtension):
         if len(allacts)>0:
             # Windows cannot handle arguments that are too long. If this happens,
             # split the actions in half and run on each
-            def Split_Acts(fn, inkbin, acts):
-                # dh.idebug(acts)
+            
+            def Split_Select(fn,inkbin,acts,selii,reserved):
+                import math, shutil
+                act = acts[selii]
+                
+                m1 = re.search(r'export-filename:(.+?); export-background-opacity:', act)
+                m2 = re.search(r'export-filename:(.+?); export-do;', act)
+                if m1:
+                    actfn = m1.group(1)
+                elif m2:
+                    actfn = m2.group(1)
+                else:
+                    actfn = None
+                
+                match = re.search(r'select:(.*?); object-stroke-to-path', act)
+                selects = match.group(1).split(',')
+                after = re.search(r'; object-stroke-to-path(.*)', act).group(1)
+                mp = math.ceil(len(selects)/2);
+                
+                reserved.update({fn,actfn})
+                isreserved = True
+                cnt = 0
+                while isreserved:
+                    actfna = actfn.strip('.svg')+str(cnt)+'.svg'
+                    isreserved = actfna in reserved
+                    cnt += 1
+                reserved.update({actfna}) 
+                
+                if len(selects)==1:
+                    # cannot split, fact that we failed means there is a STP crash 
+                    # dh.idebug('failed: '+str(selects))
+                    shutil.copy(fn, actfn)
+                    return Split_Acts(fn=fn, inkbin=inkbin, acts=acts[:selii] + acts[selii+1:], reserved=reserved);
+                else:
+                    act1 = 'select:'+','.join(selects[:mp])+'; object-stroke-to-path'+after
+                    act1 = act1.replace(actfn,actfna)
+                    act2 = 'select:'+','.join(selects[mp:])+'; object-stroke-to-path'+after
+                    
+                    acts1 = acts[:selii]+[act1]   if len(selects[:mp])>0 else acts[:selii]
+                    acts2 = [act2]+acts[selii+1:] if len(selects[mp:])>0 else acts[selii+1:]
+                    
+                    bbs = Split_Acts(fn=fn, inkbin=inkbin,     acts=acts1,  reserved=reserved);
+                    bbs = Split_Acts(fn=actfna, inkbin=inkbin, acts=acts2,  reserved=reserved);
+                    return bbs
+            
+            def Split_Acts(fn, inkbin, acts, reserved=set()):
+                import math
                 try:
                     eargs = ["--actions",''.join(acts)]
                     bbs = dh.Get_Bounding_Boxes(filename=fn, inkscape_binary=inkbin, extra_args = eargs)
+                    for ii, act in enumerate(acts):
+                        if 'export-filename' and 'export-do' in act:
+                            m1 = re.search(r'export-filename:(.+?); export-background-opacity:', act)
+                            m2 = re.search(r'export-filename:(.+?); export-do;', act)
+                            if m1:
+                                actfn = m1.group(1)
+                            elif m2:
+                                actfn = m2.group(1)
+                            else:
+                                actfn = None
+                            if actfn is not None and not os.path.exists(actfn):
+                                if 'select' in act and 'object-stroke-to-path' in act:
+                                    return Split_Select(fn,inkbin,acts,ii,reserved=reserved)
                 except FileNotFoundError:
-                    import math
                     if len(acts)==1:
                         if 'select' in acts[0] and 'object-stroke-to-path' in acts[0]:
-                            match = re.search(r'select:(.*?); object-stroke-to-path', acts[0])
-                            selects = match.group(1).split(',')
-                            after = re.search(r'; object-stroke-to-path(.*)', acts[0]).group(1)
-                            mp = math.ceil(len(selects)/2);
-                            acts1 = ['select:'+','.join(selects[:mp])+'; object-stroke-to-path'+after]
-                            acts2 = ['select:'+','.join(selects[mp:])+'; object-stroke-to-path'+after]
+                            return Split_Select(fn,inkbin,acts,0,reserved=reserved)
                         else:
                             inkex.utils.errormsg('Argument too long and cannot split')
                             quit()
                     else:
                         acts1 = acts[:math.ceil(len(acts)/2)]
                         acts2 = acts[math.ceil(len(acts)/2):]
-                    bbs = Split_Acts(fn=fn, inkbin=inkbin, acts=acts1);
-                    bbs = Split_Acts(fn=fn, inkbin=inkbin, acts=acts2);
+                    bbs = Split_Acts(fn=fn, inkbin=inkbin, acts=acts1,reserved=reserved);
+                    bbs = Split_Acts(fn=fn, inkbin=inkbin, acts=acts2,reserved=reserved);
                 return bbs;
                         
             oldwd = os.getcwd();
@@ -1460,11 +1512,18 @@ class AutoExporter(inkex.EffectExtension):
     # 2. Densely-spaced nodes can be converted incorrectly, so scale paths up
     #    by a large amount to account for this.
     # 3. Starting markers can be flipped.
+    # 4. Markers on groups cause crashes
         grouped = [];
         if len(els)>0:
             svg = els[0].croot
         for el in els:
-            if isinstance(el,dh.otp_support):
+            if isinstance(el,inkex.Group):
+                sty = el.cstyle
+                for m in ['marker-start','marker-mid','marker-end']:
+                    mv = sty.get_link(m,svg);
+                    if mv is not None:
+                        dh.ungroup(el)
+            elif isinstance(el,dh.otp_support):
                 sty = el.cspecified_style
                 if 'stroke' in sty and sty['stroke']!='none':
                     sw = sty.get('stroke-width')
