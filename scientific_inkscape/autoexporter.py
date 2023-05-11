@@ -438,238 +438,7 @@ class AutoExporter(inkex.EffectExtension):
             dh.idebug(tempdir)
         return failed_to_delete
 
-    # Use the Inkscape binary to export the file
-    def export_file(self, bfn, fin, fout, fformat, ppoutput, input_options,tempbase):
-        import os, time, copy
-    
-        original_file = fin;
-        myoutput = fout[0:-4] + "." + fformat
-        if input_options.prints:
-            fname = os.path.split(input_options.input_file)[1];
-            try:
-                offset = round(os.get_terminal_size().columns/2);
-            except:
-                offset = 40;  
-            fname = fname + ' '*max(0,offset-len(fname))
-            input_options.prints(fname+": Converting to " + fformat, flush=True)
-        timestart = time.time()
-
-        if ppoutput is not None:
-            fin = ppoutput
-        # else:
-        #     tmpoutputs = []
-            # tempdir = None
-
-        # try:
-        ispsvg = (fformat == "psvg")
-        notpng = not (fformat == "png")
-
-        if input_options.thinline and notpng:
-            svg = get_svg(fin)
-            if fformat in ['pdf','eps','psvg']:
-                self.Thinline_Dehancement(svg, 'bezier')
-            else:
-                self.Thinline_Dehancement(svg, 'split')
-            tmp = tempbase+ "_tld" + fformat[0] + ".svg"
-            dh.overwrite_svg(svg, tmp)
-            fin = copy.copy(tmp)
-            # tmpoutputs.append(tmp)
-
-        if fformat == "psvg":
-            myoutput = myoutput.replace(".psvg", "_plain.svg")
-            
-        
-        def overwrite_output(filein,fileout):  
-            if os.path.exists(fileout):
-                os.remove(fileout)
-            args = [
-                bfn,
-                "--export-background",
-                "#ffffff",
-                "--export-background-opacity",
-                "1.0",
-                "--export-dpi",
-                str(input_options.dpi),
-                "--export-filename",
-                fileout,
-                filein,
-            ]
-            if fileout.endswith('.pdf') and input_options.latexpdf:
-                if os.path.exists(fileout+'_tex'):
-                    os.remove(fileout+'_tex')
-                args = args[0:5]+["--export-latex"]+args[5:]
-            if fileout.endswith('.svg'):
-                args = [args[0]] + ["--vacuum-defs"] + args[1:5]+["--export-plain-svg"]+args[5:]
-            subprocess_check(args,input_options)
-        
-        
-        def make_output(filein,fileout):
-            if fileout.endswith('.svg'):
-                if not(input_options.testmode):
-                    overwrite_output(filein,fileout);
-                else:
-                    import shutil
-                    shutil.copy(filein, fileout) # skip conversion
-                input_options.made_outputs = [fileout];
-                
-                osvg = get_svg(filein);   # original has pages
-                if hasattr(input_options,'ctable'):
-                    osvg._char_table = input_options.ctable
-                
-                pgs = osvg.cdocsize.pgs
-                haspgs = osvg.cdocsize.inkscapehaspgs 
-                if (haspgs or input_options.testmode) and len(pgs)>0:
-                    bbs = dh.BB2(type('DummyClass', (), {'svg': osvg}));  
-                    dl = input_options.duplicatelabels
-                    
-                    outputs = [];
-                    pgiis = range(len(pgs)) if not(input_options.testmode) else [input_options.testpage-1]
-                    for ii in pgiis:
-                        # match the viewbox to each page and delete them
-                        psvg = get_svg(fileout);  # plain SVG has no pages
-                        pgs2 = psvg.cdocsize.pgs
-                                                
-                        self.Change_Viewbox_To_Page(psvg, pgs[ii])
-                        # Only need to delete other Pages in testmode since plain SVGs have none
-                        if input_options.testmode:
-                            for jj in reversed(range(len(pgs2))):
-                                pgs2[jj].delete2();    
-                        
-                        # Delete content not on current page
-                        pgbb = dh.bbox(psvg.cdocsize.effvb)
-                        for k,v in bbs.items():
-                            removeme = not(dh.bbox(v).intersect(pgbb))
-                            if k in dl:
-                                if dl[k] in bbs: # remove duplicate label if removing original
-                                    removeme = not(dh.bbox(bbs[dl[k]]).intersect(pgbb))
-                                else:
-                                    removeme = True
-                            if removeme:
-                                el = psvg.getElementById2(k);
-                                if el is not None:
-                                    el.delete2();
-                          
-                        pnum = str(ii+1);  
-                        addendum = '_page_'+pnum if not(input_options.testmode or len(pgs)==1) else ''
-                        outparts = fileout.split('.')
-                        pgout = '.'.join(outparts[:-1])+addendum+'.'+outparts[-1]
-                        dh.overwrite_svg(psvg,pgout)
-                        outputs.append(pgout)
-                    input_options.made_outputs = outputs;
-            else:
-                svg = get_svg(filein);
-                pgs = svg.cdocsize.pgs
-
-                haspgs = svg.cdocsize.inkscapehaspgs
-                if (haspgs or input_options.testmode) and len(pgs)>1:
-                    outputs = [];
-                    pgiis = range(len(pgs)) if not(input_options.testmode) else [input_options.testpage-1]
-                    for ii in pgiis:
-                        # match the viewbox to each page and delete them
-                        svgpg = get_svg(filein);
-                        pgs2 = svgpg.cdocsize.pgs
-                                                
-                        self.Change_Viewbox_To_Page(svgpg, pgs[ii])
-                        for jj in reversed(range(len(pgs2))):
-                            pgs2[jj].delete2();    
-                          
-                        pnum = str(ii+1);  
-                        addendum = '_page_'+pnum if not(input_options.testmode) else ''
-                        svgpgfn = tempbase+addendum+'.svg';
-                        dh.overwrite_svg(svgpg,svgpgfn)
-                        
-                        outparts = fileout.split('.')
-                        pgout = '.'.join(outparts[:-1])+addendum+'.'+outparts[-1]
-                        overwrite_output(svgpgfn,pgout);
-                        outputs.append(pgout)
-                    input_options.made_outputs = outputs;
-                else:
-                    overwrite_output(filein,fileout);
-                    input_options.made_outputs = [fileout];
-                                
-
-        if not (ispsvg):
-            make_output(fin,myoutput)
-        else:
-            tmp = tempbase+"_tmp_small.svg"
-            make_output(fin,tmp)
-                
-            moutputs = input_options.made_outputs;
-            for ii, mout in enumerate(moutputs):
-                # Post PDFication cleanup for Office products
-                svg = get_svg(mout)
-                vds = dh.visible_descendants(svg)
-                for d in vds:
-                    if isinstance(d,(TextElement)) and d.get_id2() not in input_options.excludetxtids:
-                        scaleto = 100 if not input_options.testmode else 10
-                        # Make 10 px in test mode so that errors are not unnecessarily large
-                        self.Scale_Text(d,scaleto)
-                    elif isinstance(d,(inkex.Image)):
-                        if ih.hasPIL:
-                            self.Merge_Mask(d)
-                        while d.getparent()!=d.croot and d.getparent() is not None and d.croot is not None: # causes problems and doesn't help
-                            dh.ungroup(d.getparent());
-                    elif isinstance(d,(inkex.Group)):
-                        if len(d)==0:
-                            dh.deleteup(d)
-                
-                if input_options.thinline:
-                    for d in vds:
-                        self.Bezier_to_Split(d)   
-                        
-                if len(moutputs)==1:
-                    finalname = myoutput
-                else:
-                    pnum = mout.split('_page_')[-1].strip('.svg');
-                    finalname = myoutput.replace('_plain.svg','_page_'+pnum+'_plain.svg')
-                # print(finalname)
-                
-                # dh.idebug(input_options.svgtopdf_vbs)
-                # embed_original = False
-                # if embed_original:
-                #     def main_contents(svg):
-                #         ret = list(svg)
-                #         for k in reversed(ret):
-                #             if k.tag in [inkex.addNS('metadata','svg'),
-                #                           inkex.addNS('namedview','sodipodi')]:
-                #                 ret.remove(k);
-                #         return ret
-                    
-                    
-                #     g  = dh.group(main_contents(svg))
-                #     svgo = get_svg(original_file)
-                #     go = dh.group(main_contents(svgo))
-                #     svg.append(go)
-                #     go.set('style','display:none');
-                #     go.set('inkscape:label','SI original');
-                #     go.set('inkscape:groupmode','layer');
-                    
-                #     # Conversion to PDF changes the viewbox to pixels. Convert back to the
-                #     # original viewbox by applying a transform
-                #     ds = input_options.svgtopdf_dss[ii]
-                #     tfmt = 'matrix({0},{1},{2},{3},{4},{5})';
-                #     T =inkex.Transform(tfmt.format(ds.uuw,0,0,ds.uuh,
-                #                                       -ds.effvb[0]*ds.uuw,
-                #                                       -ds.effvb[1]*ds.uuh))
-                #     g.set('transform',str(-T))
-                #     svg.set_viewbox(ds.effvb)
-                
-                te = None
-                for el in list(svg):
-                    if isinstance(el, (inkex.TextElement,)) and el.text is not None and orig_key in el.text:
-                        te = el;
-                if te is None:
-                    te = dh.new_element(inkex.TextElement, svg)
-                te.text = orig_key + ': {0}'.format(input_options.original_file)
-                te.set('style','display:none')
-                dh.clean_up_document(svg) # Clean up
-                dh.overwrite_svg(svg, finalname)
-
-        if input_options.prints:
-            toc = time.time() - timestart;
-            input_options.prints(fname+": Conversion to "+fformat+" done (" + str(round(1000 * toc) / 1000) + " s)")
-        return True, myoutput
-
+    # Modifications that are done prior to conversion to any vector output
     def preprocessing(self, bfn, fin, fout, input_options,tempbase):
         import os, time, copy
         import image_helpers as ih
@@ -690,6 +459,11 @@ class AutoExporter(inkex.EffectExtension):
         # SVG modifications that should be done prior to any binary calls
         cfile = fin
         svg = get_svg(cfile)
+        
+        # Prune hidden items
+        for el in dh.visible_descendants(svg):
+            if el.cspecified_style.get('display')=='none':
+                el.delete2()
         
         # Embed linked images into the SVG. This should be done prior to clone unlinking
         # since some images may be cloned
@@ -1033,6 +807,239 @@ class AutoExporter(inkex.EffectExtension):
             )
         return cfile
 
+
+    # Use the Inkscape binary to export the file
+    def export_file(self, bfn, fin, fout, fformat, ppoutput, input_options,tempbase):
+        import os, time, copy
+    
+        original_file = fin;
+        myoutput = fout[0:-4] + "." + fformat
+        if input_options.prints:
+            fname = os.path.split(input_options.input_file)[1];
+            try:
+                offset = round(os.get_terminal_size().columns/2);
+            except:
+                offset = 40;  
+            fname = fname + ' '*max(0,offset-len(fname))
+            input_options.prints(fname+": Converting to " + fformat, flush=True)
+        timestart = time.time()
+
+        if ppoutput is not None:
+            fin = ppoutput
+        # else:
+        #     tmpoutputs = []
+            # tempdir = None
+
+        # try:
+        ispsvg = (fformat == "psvg")
+        notpng = not (fformat == "png")
+
+        if input_options.thinline and notpng:
+            svg = get_svg(fin)
+            if fformat in ['pdf','eps','psvg']:
+                self.Thinline_Dehancement(svg, 'bezier')
+            else:
+                self.Thinline_Dehancement(svg, 'split')
+            tmp = tempbase+ "_tld" + fformat[0] + ".svg"
+            dh.overwrite_svg(svg, tmp)
+            fin = copy.copy(tmp)
+            # tmpoutputs.append(tmp)
+
+        if fformat == "psvg":
+            myoutput = myoutput.replace(".psvg", "_plain.svg")
+            
+        
+        def overwrite_output(filein,fileout):  
+            if os.path.exists(fileout):
+                os.remove(fileout)
+            args = [
+                bfn,
+                "--export-background",
+                "#ffffff",
+                "--export-background-opacity",
+                "1.0",
+                "--export-dpi",
+                str(input_options.dpi),
+                "--export-filename",
+                fileout,
+                filein,
+            ]
+            if fileout.endswith('.pdf') and input_options.latexpdf:
+                if os.path.exists(fileout+'_tex'):
+                    os.remove(fileout+'_tex')
+                args = args[0:5]+["--export-latex"]+args[5:]
+            if fileout.endswith('.svg'):
+                args = [args[0]] + ["--vacuum-defs"] + args[1:5]+["--export-plain-svg"]+args[5:]
+            subprocess_check(args,input_options)
+        
+        
+        def make_output(filein,fileout):
+            if fileout.endswith('.svg'):
+                if not(input_options.testmode):
+                    overwrite_output(filein,fileout);
+                else:
+                    import shutil
+                    shutil.copy(filein, fileout) # skip conversion
+                input_options.made_outputs = [fileout];
+                
+                osvg = get_svg(filein);   # original has pages
+                if hasattr(input_options,'ctable'):
+                    osvg._char_table = input_options.ctable
+                
+                pgs = osvg.cdocsize.pgs
+                haspgs = osvg.cdocsize.inkscapehaspgs 
+                if (haspgs or input_options.testmode) and len(pgs)>0:
+                    bbs = dh.BB2(type('DummyClass', (), {'svg': osvg}));  
+                    dl = input_options.duplicatelabels
+                    
+                    outputs = [];
+                    pgiis = range(len(pgs)) if not(input_options.testmode) else [input_options.testpage-1]
+                    for ii in pgiis:
+                        # match the viewbox to each page and delete them
+                        psvg = get_svg(fileout);  # plain SVG has no pages
+                        pgs2 = psvg.cdocsize.pgs
+                                                
+                        self.Change_Viewbox_To_Page(psvg, pgs[ii])
+                        # Only need to delete other Pages in testmode since plain SVGs have none
+                        if input_options.testmode:
+                            for jj in reversed(range(len(pgs2))):
+                                pgs2[jj].delete2();    
+                        
+                        # Delete content not on current page
+                        pgbb = dh.bbox(psvg.cdocsize.effvb)
+                        for k,v in bbs.items():
+                            removeme = not(dh.bbox(v).intersect(pgbb))
+                            if k in dl:
+                                if dl[k] in bbs: # remove duplicate label if removing original
+                                    removeme = not(dh.bbox(bbs[dl[k]]).intersect(pgbb))
+                                else:
+                                    removeme = True
+                            if removeme:
+                                el = psvg.getElementById2(k);
+                                if el is not None:
+                                    el.delete2();
+                          
+                        pnum = str(ii+1);  
+                        addendum = '_page_'+pnum if not(input_options.testmode or len(pgs)==1) else ''
+                        outparts = fileout.split('.')
+                        pgout = '.'.join(outparts[:-1])+addendum+'.'+outparts[-1]
+                        dh.overwrite_svg(psvg,pgout)
+                        outputs.append(pgout)
+                    input_options.made_outputs = outputs;
+            else:
+                svg = get_svg(filein);
+                pgs = svg.cdocsize.pgs
+
+                haspgs = svg.cdocsize.inkscapehaspgs
+                if (haspgs or input_options.testmode) and len(pgs)>1:
+                    outputs = [];
+                    pgiis = range(len(pgs)) if not(input_options.testmode) else [input_options.testpage-1]
+                    for ii in pgiis:
+                        # match the viewbox to each page and delete them
+                        svgpg = get_svg(filein);
+                        pgs2 = svgpg.cdocsize.pgs
+                                                
+                        self.Change_Viewbox_To_Page(svgpg, pgs[ii])
+                        for jj in reversed(range(len(pgs2))):
+                            pgs2[jj].delete2();    
+                          
+                        pnum = str(ii+1);  
+                        addendum = '_page_'+pnum if not(input_options.testmode) else ''
+                        svgpgfn = tempbase+addendum+'.svg';
+                        dh.overwrite_svg(svgpg,svgpgfn)
+                        
+                        outparts = fileout.split('.')
+                        pgout = '.'.join(outparts[:-1])+addendum+'.'+outparts[-1]
+                        overwrite_output(svgpgfn,pgout);
+                        outputs.append(pgout)
+                    input_options.made_outputs = outputs;
+                else:
+                    overwrite_output(filein,fileout);
+                    input_options.made_outputs = [fileout];
+                                
+
+        if not (ispsvg):
+            make_output(fin,myoutput)
+        else:
+            tmp = tempbase+"_tmp_small.svg"
+            make_output(fin,tmp)
+                
+            moutputs = input_options.made_outputs;
+            for ii, mout in enumerate(moutputs):  
+                svg = get_svg(mout)
+                self.postprocessing(svg,input_options)
+                finalname = myoutput
+                if len(moutputs)>1:
+                    pnum = mout.split('_page_')[-1].strip('.svg');
+                    finalname = myoutput.replace('_plain.svg','_page_'+pnum+'_plain.svg')
+                dh.overwrite_svg(svg, finalname)
+
+        if input_options.prints:
+            toc = time.time() - timestart;
+            input_options.prints(fname+": Conversion to "+fformat+" done (" + str(round(1000 * toc) / 1000) + " s)")
+        return True, myoutput
+    
+    def postprocessing(self,svg,input_options):
+        # Postprocessing of SVGs, mainly for overcoming bugs in Office products
+        vds = dh.visible_descendants(svg)
+        for d in vds:
+            if isinstance(d,(TextElement)) and d.get_id2() not in input_options.excludetxtids:
+                scaleto = 100 if not input_options.testmode else 10
+                # Make 10 px in test mode so that errors are not unnecessarily large
+                self.Scale_Text(d,scaleto)
+            elif isinstance(d,(inkex.Image)):
+                if ih.hasPIL:
+                    self.Merge_Mask(d)
+                # while d.getparent()!=d.croot and d.getparent() is not None and d.croot is not None:
+                #     # iteratively remove groups containing images
+                #     # I don't think it's necessary?
+                #     dh.ungroup(d.getparent());
+            elif isinstance(d,(inkex.Group)):
+                if len(d)==0:
+                    dh.deleteup(d)
+        
+        if input_options.thinline:
+            for d in vds:
+                self.Bezier_to_Split(d)   
+        # dh.idebug(input_options.svgtopdf_vbs)
+        # embed_original = False
+        # if embed_original:
+        #     def main_contents(svg):
+        #         ret = list(svg)
+        #         for k in reversed(ret):
+        #             if k.tag in [inkex.addNS('metadata','svg'),
+        #                           inkex.addNS('namedview','sodipodi')]:
+        #                 ret.remove(k);
+        #         return ret
+            
+            
+        #     g  = dh.group(main_contents(svg))
+        #     svgo = get_svg(original_file)
+        #     go = dh.group(main_contents(svgo))
+        #     svg.append(go)
+        #     go.set('style','display:none');
+        #     go.set('inkscape:label','SI original');
+        #     go.set('inkscape:groupmode','layer');
+            
+        #     # Conversion to PDF changes the viewbox to pixels. Convert back to the
+        #     # original viewbox by applying a transform
+        #     ds = input_options.svgtopdf_dss[ii]
+        #     tfmt = 'matrix({0},{1},{2},{3},{4},{5})';
+        #     T =inkex.Transform(tfmt.format(ds.uuw,0,0,ds.uuh,
+        #                                       -ds.effvb[0]*ds.uuw,
+        #                                       -ds.effvb[1]*ds.uuh))
+        #     g.set('transform',str(-T))
+        #     svg.set_viewbox(ds.effvb)
+        
+        te = None
+        for el in list(svg):
+            if isinstance(el, (inkex.TextElement,)) and el.text is not None and orig_key in el.text:
+                te = el;
+        if te is None:
+            te = dh.new_element(inkex.TextElement, svg)
+        te.text = orig_key + ': {0}'.format(input_options.original_file)
+        te.set('style','display:none')
+        dh.clean_up_document(svg) # Clean up
 
     def Thinline_Dehancement(self, svg, mode='split'):
         # Prevents thin-line enhancement in certain bad PDF renderers
