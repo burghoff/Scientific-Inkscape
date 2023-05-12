@@ -2506,6 +2506,17 @@ class cprop:
             self.descrh * scl,
             dkern2, inkbb2
         )
+    
+    @property
+    def __dict__(self):
+        return {
+            "char": self.char,
+            "charw": self.charw,
+            "spacew": self.spacew,
+            "caph": self.caph,
+            "descrh": self.descrh,
+            "inkbb": self.inkbb,
+        }
 
 
 # A class indicating a single character's location in the SVG
@@ -2544,6 +2555,15 @@ class Character_Table:
         self.fonttestchars = 'pIaA10mMvo' # don't need that many, just to figure out which fonts we have
         self.ctable  = self.meas_char_ws(els,forcecommand)
         self.mults = dict()
+        
+    def __str__(self):
+        ret = ''
+        for s in self.ctable:
+            ret += str(s)+'\n'
+            for c,v in self.ctable[s].items():
+                ret += '    ' + c + ' : ' + str(vars(v)) +'\n'
+            ret += '    ' + str(v.dkerns)
+        return ret
 
     def get_prop(self, char, sty):
         try:
@@ -2590,14 +2610,12 @@ class Character_Table:
                         
         for ii in range(len(atxt)):
             sty = asty[ii][0]; txt = atxt[ii];
-            ctable[sty] = list(set(ctable.get(sty, []) + list(txt)))
-            rtable[asty[ii][1]] = list(set(rtable.get(asty[ii][1], []) + list(txt)))
+            ctable[sty] = dh.unique(ctable.get(sty, []) + list(txt))
+            rtable[asty[ii][1]] = dh.unique(rtable.get(asty[ii][1], []) + list(txt))
             if sty not in pctable:
                 pctable[sty] = inkex.OrderedDict()
             for jj in range(1, len(txt)):
-                pctable[sty][txt[jj]] = list(
-                    set(pctable[sty].get(txt[jj], []) + [txt[jj - 1]])
-                )
+                pctable[sty][txt[jj]] = dh.unique(pctable[sty].get(txt[jj], []) + [txt[jj - 1]])
         for sty in ctable:  # make sure they have spaces
             ctable[sty] = dh.unique(ctable[sty] + [" "])
             for pc in pctable[sty]:
@@ -2761,6 +2779,8 @@ class Character_Table:
                                 altw = exts[cnt+len(mystr)-1][0][0] + exts[cnt+len(mystr)-1][0][2]- exts[cnt][0][0]
                             else:
                                 altw = exts[cnt+len(mystr)+1][0][0] - exts[cnt][0][0] -sw
+                            if altw < 0:
+                                altw += 4*(2048-pr.PANGOSIZE) # account for occasional x resets
                             w = altw
 
                             if abs(altw-w)>1e-12:

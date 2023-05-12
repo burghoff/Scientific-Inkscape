@@ -64,6 +64,7 @@ def remove_kerning(
     if DEBUG_PARSER:
         for el in tels:
             el.parsed_text.Make_Highlights('char')
+        dh.debug(tels[0].croot.char_table)
     else:
         # Do merges first (deciding based on original position)
         lls = [TextParser.get_parsed_text(el) for el in tels]

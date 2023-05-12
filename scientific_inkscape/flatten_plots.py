@@ -156,6 +156,7 @@ class FlattenPlots(inkex.EffectExtension):
         mergenearby = self.options.mergenearby and self.options.fixtext
         setreplacement = self.options.setreplacement and self.options.fixtext
 
+        sel = [el for el in dh.descendants2(self.svg) if el in sel] # doc order
         seld = [v for el in sel for v in dh.descendants2(el)]
 
         # Move selected defs/clips/mask into global defs
