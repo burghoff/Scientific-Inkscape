@@ -640,19 +640,6 @@ class PangoRenderer():
         lr = [self.putd(v)/self.PANGOSIZE for v in [lr.x,lr.y,lr.width,lr.height]];
         ir = ext.ink_rect;
         ir = [self.putd(v)/self.PANGOSIZE for v in [ir.x,ir.y,ir.width,ir.height]];
-        
-        # import math
-        # fp = lambda x:x
-        # dh.idebug(lr)
-        # dh.idebug([ext.logical_rect.x/self.scale/self.PANGOSIZE,ext.logical_rect.y/self.scale/self.PANGOSIZE,ext.logical_rect.width/self.scale/self.PANGOSIZE,ext.logical_rect.height/self.scale/self.PANGOSIZE])
-        # dh.idebug([fp(ext.logical_rect.x/1024/self.scale),fp(ext.logical_rect.y/1024/self.scale),
-        #             fp(ext.logical_rect.width/1024/self.scale),fp(ext.logical_rect.height/1024/)])
-        # dh.idebug([fp(ext.ink_rect.x/1024),fp(ext.ink_rect.y/1024),
-        #            fp(ext.ink_rect.width/1024),fp(ext.ink_rect.height/1024)])
-        # # dh.idebug([ext.logical_rect.x/1000,ext.logical_rect.y/1000,ext.logical_rect.width/1000,ext.logical_rect.height/1000])
-        # # dh.idebug([ext.ink_rect.x,ext.ink_rect.y,ext.ink_rect.width,ext.ink_rect.height])
-        # # dh.idebug(self.pufd(1))
-        
         ir_rel = [ir[0] - lr[0], ir[1] - lr[1] - ascent, ir[2], ir[3]]
         return lr, ir, ir_rel
               
@@ -664,19 +651,20 @@ class PangoRenderer():
         # will be thinner due to the 'o' that follows.
         # Units: relative to font size
         loi = self.pangolayout.get_iter();
-        ws=[];
-        ce = loi.get_cluster_extents();
-        ii = 0;
-        if needexts[ii]=='1':
-            ws.append(self.process_extents(ce,ascent));
-        else:
-            ws.append(None)
-        moved = loi.next_char();
+        ws=[];        
+        ii = -1; lastpos=True; unwrapper=0;
+        moved = True
         while moved:
             ce = loi.get_cluster_extents();
             ii+=1
             if needexts[ii]=='1':
-                ws.append(self.process_extents(ce,ascent));
+                ext = self.process_extents(ce,ascent)
+                if ext[0][0]<0 and lastpos:
+                    unwrapper += 2**32/(self.scale*self.PANGOSIZE)
+                lastpos = ext[0][0]>=0
+                ext[0][0] += unwrapper # account for 32-bit overflow
+                ext[1][0] += unwrapper
+                ws.append(ext);
             else:
                 ws.append(None)
             moved = loi.next_char();

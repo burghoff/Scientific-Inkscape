@@ -2779,8 +2779,6 @@ class Character_Table:
                                 altw = exts[cnt+len(mystr)-1][0][0] + exts[cnt+len(mystr)-1][0][2]- exts[cnt][0][0]
                             else:
                                 altw = exts[cnt+len(mystr)+1][0][0] - exts[cnt][0][0] -sw
-                            if altw < 0:
-                                altw += 4*(2048-pr.PANGOSIZE) # account for occasional x resets
                             w = altw
 
                             if abs(altw-w)>1e-12:
