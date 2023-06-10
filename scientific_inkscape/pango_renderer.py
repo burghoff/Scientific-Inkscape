@@ -78,20 +78,6 @@ class FontConfig():
                               'ultra-expanded': FC.WIDTH_ULTRAEXPANDED}
         
         # Fontconfig to CSS
-        # self.FCWGT_to_CSSWGT = {
-        #     FC.WEIGHT_THIN: 'thin',
-        #     FC.WEIGHT_EXTRALIGHT: 'ultralight',
-        #     FC.WEIGHT_LIGHT: 'light',
-        #     FC.WEIGHT_SEMILIGHT: 'semilight',
-        #     FC.WEIGHT_BOOK: 'book',
-        #     FC.WEIGHT_NORMAL: 'normal',
-        #     FC.WEIGHT_MEDIUM: 'medium',
-        #     FC.WEIGHT_SEMIBOLD: 'semibold',
-        #     FC.WEIGHT_BOLD: 'bold',
-        #     FC.WEIGHT_ULTRABOLD: 'ultrabold',
-        #     FC.WEIGHT_HEAVY: 'heavy',
-        #     FC.WEIGHT_ULTRABLACK: 'ultraheavy'
-        # }
         self.FCWGT_to_CSSWGT = {FC.WEIGHT_THIN: '100',
                         FC.WEIGHT_EXTRALIGHT: '200',
                         FC.WEIGHT_LIGHT: '300',
@@ -182,13 +168,85 @@ class FontConfig():
     def fcfound_to_css(self,f):
         # For CSS, enclose font family in single quotes
         # Needed for fonts like Modern No. 20 with periods in the family
-        fam = "'" + f.get(fc.PROP.FAMILY,0)[0].strip("'") + "'"
-        return Style0([
-                ('font-family',fam),
-                ('font-weight',self.nearest_val(self.FCWGT_to_CSSWGT,f.get(fc.PROP.WEIGHT,0)[0])),
-                ('font-style',self.FCSLN_to_CSSSTY[f.get(fc.PROP.SLANT,0)[0]]),
-                ('font-stretch',self.nearest_val(self.FCWDT_to_CSSSTR,f.get(fc.PROP.WIDTH,0)[0]))])
+        fcfam = f.get(fc.PROP.FAMILY,0)[0]
+        fcwgt = f.get(fc.PROP.WEIGHT,0)[0]
+        fcsln = f.get(fc.PROP.SLANT, 0)[0]
+        fcwdt = f.get(fc.PROP.WIDTH, 0)[0]
+        if any([isinstance(v,tuple) for v in [fcfam,fcwgt,fcsln,fcwdt]]):
+            return None
+        else:
+            return Style0([
+                    ('font-family',"'" + fcfam.strip("'") + "'"),
+                    ('font-weight',self.nearest_val(self.FCWGT_to_CSSWGT,fcwgt)),
+                    ('font-style',self.FCSLN_to_CSSSTY[fcsln]),
+                    ('font-stretch',self.nearest_val(self.FCWDT_to_CSSSTR,fcwdt))])
         
+    # For testing purposes    
+    def Flow_Test_Doc(self):
+        dh.tic()
+        SIZE = 10;
+        # selected_families = ['Arial']
+        selected_families = None
+
+        conf = fc.Config.get_current()
+        pat = fc.Pattern.create( vals = () )
+        conf.substitute(pat, FC.MatchPattern)
+        pat.default_substitute()
+        found = conf.font_sort(pat, trim = False, want_coverage = False)[0]
+        fnts = [self.fcfound_to_css(f) for f in found]
+        fnts = [f for f in fnts if f is not None]
+        fnts = sorted(fnts, key=lambda d: d['font-family'])
+
+        ffcs = [];
+        for f in fnts:
+            fm   = f['font-family']
+            if selected_families is None or fm in selected_families:
+                mysty = "shape-inside:url(#rect1); line-height:1;" + str(f)
+                ffcs.append((mysty,f))
+
+        docw=SIZE*10; doch=SIZE*10;
+        svgstart = '<svg width="{0}mm" height="{1}mm" viewBox="0 0 {0} {1}" id="svg60386" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"> <defs id="defs60383" />'
+        svgstart += '<rect style="fill:none;stroke:none;" id="rect1" width="{0}" height="{1}" x="0" y="0" />'
+        svgstart = svgstart.format(docw,doch)
+        svgstop = "</svg>"
+        txt1 = '<text xml:space="preserve" style="'
+        txt2 = '" id="text'
+        txt5 = '">'
+        txt6 = "</text>"
+        svgtexts = ""
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(mode="wb",delete=False,suffix='.svg') as f:
+            tmpname = os.path.abspath(f.name);
+            f.write(svgstart.encode("utf8"))
+            from xml.sax.saxutils import escape
+    
+            cnt = 0;
+            for ii in range(len(ffcs)):
+                cnt+=1;
+                c='I'
+                sty = 'font-size:'+str(SIZE)+"px; "+ffcs[ii][0]
+                svgtexts += txt1 + sty + txt2 + str(cnt) + txt5 + escape(c) + txt6
+                if cnt % 1000 == 0:
+                    f.write(svgtexts.encode("utf8"))
+                    svgtexts = ""
+    
+            f.write((svgtexts + svgstop).encode("utf8"))
+        bbs = dh.Get_Bounding_Boxes(tmpname)
+        # dh.idebug(tmpname)
+        # dh.idebug(bbs)
+        
+        from TextParser import Character_Table
+        firsty = dict()
+        for ii,ffc in enumerate(ffcs):
+            bb = bbs['text'+str(ii+1)]
+            rs = Character_Table.reduced_style(Style0(ffc[1]))
+            tf = self.get_true_font(rs)
+            firsty[tf] = (bb[1]+bb[3])/SIZE
+            # dh.idebug((tf,(bb[1]+bb[3])/SIZE))
+            # dh.idebug(tf)
+        # dh.idebug(len(ffcs))
+        # dh.toc()
+        return firsty
 
 # The Pango library is only available starting with v1.1 (when Inkscape added
 # the Python bindings for the gtk library).
@@ -355,6 +413,28 @@ class PangoRenderer():
                 fcslant = self.PSTY_to_FCSLN[pstyle];
                 return fcwidth,fcweight,fcslant
             self.pango_to_fc = pango_to_fc_func;
+
+            def pango_to_css_func(pfamily,pstretch,pweight,pstyle):
+                def isnumeric(s):
+                    try:
+                        float(s)
+                        isnum = True
+                    except:
+                        isnum = False
+                    return isnum
+                cs  = [k for k,v in self.CSSSTR_to_PSTR.items() if v==pstretch]
+                cw  = [k for k,v in self.CSSWGT_to_PWGT.items() if v==pweight and isnumeric(k)]
+                csty= [k for k,v in self.CSSSTY_to_PSTY.items() if v==pstyle]
+                
+                s = (('font-family',pfamily),)
+                if len(cs)>0:
+                    s += (('font-stretch',cs[0]),)
+                if len(cw)>0:
+                    s += (('font-weight',cw[0]),)
+                if len(csty)>0:
+                    s += (('font-style',csty[0]),)
+                return Style0(s)
+            self.pango_to_css = pango_to_css_func;
 
             
             self.pufd = Pango.units_from_double;
@@ -633,8 +713,8 @@ class PangoRenderer():
 
         
         
-    # Scale extents and return extents as standard bboxes (0:logical, 1:ink,
-    # 2: ink relative to anchor/baseline)
+    # Scale extents and return extents as standard bboxes
+    # (0:logical, 1:ink, 2: ink relative to anchor/baseline)
     def process_extents(self,ext,ascent):
         lr = ext.logical_rect;
         lr = [self.putd(v)/self.PANGOSIZE for v in [lr.x,lr.y,lr.width,lr.height]];
@@ -754,6 +834,7 @@ class PangoRenderer():
         f.write((svgtexts + svgstop).encode("utf8"))
         f.close()
         dh.idebug(tmpname)
+        
     
 # For testing purposes    
 def Unicode_Test_Doc():
@@ -883,3 +964,67 @@ def Pango_Test():
     families = pc_ctx.get_font_map().list_families()
     fmdict = {f.get_name(): [fc.get_face_name() for fc in f.list_faces()] for f in families}
     
+# Directly probes libpango to find when line breaks are allowed in text
+# Should work in all versions, even ones without gtk
+# Not currently used by anything, but a good reference...
+# Example: pango_line_breaks('test asdf-measurement')
+def pango_line_breaks(txt):
+    import sys
+    LIBNAME = {
+        "linux": "libpango-1.0.so.0",
+        "openbsd6": "libpango-1.0.so.0",
+        "darwin": "libpango-1.0.dylib",
+        "win32": "libpango-1.0-0.dll",
+    }[sys.platform]
+    import ctypes as ct
+    try:
+        pango = ct.CDLL(LIBNAME)
+    except FileNotFoundError:
+        blocdir = os.path.dirname(dh.Get_Binary_Loc())
+        fpath = os.path.abspath(os.path.join(blocdir,LIBNAME))
+        pango = ct.CDLL(fpath) # Update this as per your system
+    
+    # We can't directly access the PangoLogAttr struct from Python, 
+    # but we can create a similar struct using ctypes.
+    class PangoLogAttr(ct.Structure):
+        _fields_ = [("value", ct.c_uint32)]  # Treat the whole struct as a single uint32
+    
+    def unpack_log_attr(log_attr):
+        return {
+            "is_line_break": (log_attr.value >> 0) & 1,
+            "is_mandatory_break": (log_attr.value >> 1) & 1,
+            "is_char_break": (log_attr.value >> 2) & 1,
+            "is_white": (log_attr.value >> 3) & 1,
+            "is_cursor_position": (log_attr.value >> 4) & 1,
+            "is_word_start": (log_attr.value >> 5) & 1,
+            "is_word_end": (log_attr.value >> 6) & 1,
+            "is_sentence_boundary": (log_attr.value >> 7) & 1,
+            "is_sentence_start": (log_attr.value >> 8) & 1,
+            "is_sentence_end": (log_attr.value >> 9) & 1,
+            "backspace_deletes_character": (log_attr.value >> 10) & 1,
+            "is_expandable_space": (log_attr.value >> 11) & 1,
+            "is_word_boundary": (log_attr.value >> 12) & 1,
+            "break_inserts_hyphen": (log_attr.value >> 13) & 1,
+            "break_removes_preceding": (log_attr.value >> 14) & 1,
+            "reserved": (log_attr.value >> 15) & ((1 << 17) - 1),
+        }
+
+    
+    # Get default language - again, note this is a simplification
+    pango.pango_language_get_default.restype = ct.c_void_p
+    default_language = pango.pango_language_get_default()
+    
+    # Get log attrs function
+    pango.pango_get_log_attrs.restype = None
+    pango.pango_get_log_attrs.argtypes = [ct.c_char_p, ct.c_int, ct.c_int,
+                                          ct.c_void_p, ct.POINTER(PangoLogAttr), ct.c_int]
+    
+    txt = txt.encode('utf-8')
+    attrs = (PangoLogAttr * (len(txt) + 1))()
+    pango.pango_get_log_attrs(txt, len(txt), -1, default_language, attrs, len(attrs))
+    
+    line_breaks = [bool(unpack_log_attr(attr)['is_line_break']) for attr in attrs]
+    # dh.idebug([c for ii,c in enumerate(txt) if line_breaks[ii+1]]x)
+    
+    for ii,c in enumerate(txt):
+        dh.idebug((chr(txt[ii]),line_breaks[ii]))

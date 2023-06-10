@@ -72,6 +72,7 @@ fc = FontConfig()
 from copy import copy
 import inkex
 from inkex import TextElement, Tspan, Transform
+from inkex import FlowRoot, FlowRegion, FlowPara, FlowSpan
 
 
 # Add parsed_text property to TextElements
@@ -80,16 +81,17 @@ def get_parsed_text(el):
         el._parsed_text = ParsedText(el, el.croot.char_table);
     return el._parsed_text
 inkex.TextElement.parsed_text = property(get_parsed_text)
+inkex.FlowRoot.parsed_text    = property(get_parsed_text)
 
 # Add character table property and function to SVG
-tetag = TextElement.tag2
+ttags = {TextElement.tag2,FlowRoot.tag2}
 def make_char_table_fcn(svg,els=None):
     # Can be called with els argument to examine list of elements only 
     # (otherwise use entire SVG)
     if els is None: 
-        tels = [d for d in svg.cdescendants if d.tag==tetag];
+        tels = [d for d in svg.cdescendants if d.tag in ttags];
     else:           
-        tels = [d for d in els              if d.tag==tetag]
+        tels = [d for d in els              if d.tag in ttags]
     svg._char_table = Character_Table(tels)
 def get_char_table(svg):
     if not (hasattr(svg, "_char_table")):
@@ -208,18 +210,6 @@ class ParsedTextList():
             byw = by[idx_Ncs[i]:idx_Ncs[i+1], np.newaxis]
             tyw = ty[idx_Ncs[i]:idx_Ncs[i+1], np.newaxis]
             
-            # (lxc, rxc, byc, tyc, lx2c, rx2c, by2c, ty2c) = tw.charpos
-            # # (lxc, rxc, byc, tyc, lx2c, rx2c, by2c, ty2c) = tw.pts_ut
-            
-            # maxerr = max(maxerr,abs(max(lxw-lxc)))
-            # maxerr = max(maxerr,abs(max(rxw-rxc)))
-            # maxerr = max(maxerr,abs(max(byw-byc)))
-            # maxerr = max(maxerr,abs(max(tyw-tyc)))
-            # maxerr = max(maxerr,abs((lx2[i]-lx2c)))
-            # maxerr = max(maxerr,abs((rx2[i]-rx2c)))
-            # maxerr = max(maxerr,abs((by2[i]-by2c)))
-            # maxerr = max(maxerr,abs((ty2[i]-ty2c)))
-            
             tw._charpos = (lxw, rxw, byw, tyw, lx2[i], rx2[i], by2[i], ty2[i])
             tw._cpts_ut = [cpv[idx_Ncs[i]:idx_Ncs[i+1],:] for cpv in cpts_ut]
             tw._cpts_t  = [cpv[idx_Ncs[i]:idx_Ncs[i+1],:] for cpv in cpts_t ]
@@ -263,17 +253,14 @@ class ParsedText:
     def __init__(self, el, ctable, debug=False):
         self.ctable = ctable
         self.textel = el
-
-        self.lns = self.Parse_Lines()
+        
+        sty = el.cspecified_style
+        self.isflow = isinstance(el,FlowRoot) or sty.get_link('shape-inside',el.croot) is not None or sty.get('inline-size') is not None
+        if self.isflow:
+            self.lns = self.Parse_Lines_Flow()
+        else:
+            self.lns = self.Parse_Lines()
         self.Finish_Lines()
-
-        # Compute the bb/pts_ut/pts_t after parsing, prior to any mods
-        # for ln in self.lns:
-        #     for w in ln.ws:
-        #         w.parsed_bb = copy(w.bb)
-        #         for c in w.cs:
-        #             c.parsed_pts_ut = c.pts_ut
-        #             c.parsed_pts_t = c.pts_t
 
         tlvllns = [ln for ln in self.lns if ln.tlvlno is not None and ln.tlvlno > 0]
         # top-level lines after 1st
@@ -290,12 +277,6 @@ class ParsedText:
         # probably made in Inkscape
         self.ismlinkscape = self.isinkscape and len(self.lns) > 1
         # multi-line Inkscape
-
-        sty = el.cspecified_style
-        self.issvg2 = (
-            sty.get("inline-size") is not None or sty.get("shape-inside") is not None
-        )
-        # svg2 flows
 
     def duplicate(self):
         # Duplicates a PT and its text without reparsing
@@ -457,10 +438,10 @@ class ParsedText:
         lns = []
         sprl_inherits = None
         for di, tt, tel, txt in self.tree.dgenerator():
-            newsprl = tt == 1 and types[di] == "tlvlsprl"
+            newsprl = tt==TT_TEXT and types[di] == "tlvlsprl"
             if (txt is not None and len(txt) > 0) or newsprl:
                 sel = tel
-                if tt == 0:
+                if tt==TT_TAIL:
                     sel = pd[tel]
                     # tails get their sty from the parent of the element the tail belongs to
                 sty = sel.cspecified_style
@@ -473,7 +454,7 @@ class ParsedText:
 
                 # Make a new line if we're sprl or if we have a new x or y
                 if len(lns) == 0 or (
-                    tt == 1
+                    tt==TT_TEXT
                     and (
                         newsprl
                         or (
@@ -483,7 +464,7 @@ class ParsedText:
                     )
                 ):
                     edi = di
-                    if tt == 0:
+                    if tt==TT_TAIL:
                         edi = ds.index(sel)
                     xv = ixs[edi]
                     xsrc = xsrcs[edi]
@@ -568,7 +549,7 @@ class ParsedText:
                         # prop = self.ctable.get_prop(c, tsty) * fs
                         # prop = self.ctable.get_prop_mult(c, tsty, fs/sf)
                         prop = self.ctable.get_prop(c, tsty)
-                        ttv = 'tail' if tt==0 else 'text'
+                        ttv = TT_TAIL if tt==TT_TAIL else TT_TEXT
                         tchar(c, fs, sf, prop, sty, tsty, cloc(tel, ttv, jj),lns[-1])
 
                         if jj == 0:
@@ -620,7 +601,7 @@ class ParsedText:
                     sws[ii - 1].nextw = sws[ii]
                     sws[ii].prevw = sws[ii - 1]
                     sws[ii].prevsametspan = (
-                        sws[ii - 1].cs[-1].loc.pel == sws[ii].cs[0].loc.pel
+                        sws[ii - 1].cs[-1].loc.sel == sws[ii].cs[0].loc.sel
                     )
     
     # Strip every sodipodi:role line from an element without changing positions
@@ -644,7 +625,7 @@ class ParsedText:
                     newxv = [v+dx for v in ln.x]
                     newyv = [v+dy for v in ln.y]
                     if ln.continuex or ln.continuey:
-                        if ln.cs[0].loc.tt=='tail': # wrap in a trivial Tspan so we can set x and y
+                        if ln.cs[0].loc.tt==TT_TAIL: # wrap in a trivial Tspan so we can set x and y
                             ln.cs[0].add_style({'baseline-shift':'0%'},setdefault=False)
                         ln.xsrc = ln.cs[0].loc.el
                         ln.ysrc = ln.cs[0].loc.el
@@ -681,9 +662,9 @@ class ParsedText:
         allcs = [c for ln in self.lns for c in ln.cs]
         topcnt=0
         for di, tt, d, txt in self.tree.dgenerator():
-            ttv = 'tail' if tt==0 else 'text'
+            ttv = TT_TAIL if tt==TT_TAIL else TT_TEXT
             if (
-                tt==0
+                tt==TT_TAIL
                 and d.get("sodipodi:role") == "line"
                 and isinstance(d, Tspan)
                 and isinstance(self.tree.pdict[d],TextElement)
@@ -703,9 +684,9 @@ class ParsedText:
                 allcs = [c for ln in self.lns for c in ln.cs]
                 cnt = 0;
                 for di, tt, d, txt in self.tree.dgenerator(subel=do):
-                    ttv = 'tail' if tt==0 else 'text'
+                    ttv = TT_TAIL if tt==TT_TAIL else TT_TEXT
                     if (
-                        tt==0
+                        tt==TT_TAIL
                         and d.get("sodipodi:role") == "line"
                         and isinstance(d, Tspan)
                         and isinstance(self.tree.pdict[d],TextElement)
@@ -832,11 +813,11 @@ class ParsedText:
         # If line was continuing, fuse the coordinates
         if nll.lns[il].continuex:
             nll.lns[il].continuex = False
-            nll.lns[il].xsrc = nll.lns[il].cs[0].loc.pel
+            nll.lns[il].xsrc = nll.lns[il].cs[0].loc.sel
             nll.lns[il].change_pos(newx=nll.lns[il].x)
         if nll.lns[il].continuey:
             nll.lns[il].continuey = False
-            nll.lns[il].ysrc = nll.lns[il].cs[0].loc.pel
+            nll.lns[il].ysrc = nll.lns[il].cs[0].loc.sel
             nll.lns[il].change_pos(newy=nll.lns[il].y)
 
         # Delete the other lines/words in the copy
@@ -953,9 +934,9 @@ class ParsedText:
         newfams = []
         for ln in self.lns:
             for c in ln.cs:
-                newfam = (c.sty.get('font-family'),c,c.loc.pel)
+                newfam = (c.sty.get('font-family'),c,c.loc.sel)
                 if c.c in ft[c.rsty] and newfam[0]!=ft[c.rsty][c.c]:
-                    newfam = (ft[c.rsty][c.c],c,c.loc.pel)
+                    newfam = (ft[c.rsty][c.c],c,c.loc.sel)
                     
                 newfams.append(newfam)
                
@@ -1118,6 +1099,330 @@ class ParsedText:
         if val is None and hasattr(self,'_tree'):
             delattr(self,'_tree')
     
+    # Parse_Lines for flowed text
+    def Parse_Lines_Flow(self):
+        sty = self.textel.cspecified_style
+        isflowroot = isinstance(self.textel,FlowRoot)
+        isshapeins = isinstance(self.textel,TextElement) and sty.get_link('shape-inside',self.textel.croot) is not None
+        isinlinesz = isinstance(self.textel,TextElement) and sty.get('inline-size')  is not None
+        
+        # Determine the flow region 
+        if isshapeins:
+            fr = sty.get_link('shape-inside',self.textel.croot)
+            dfr = fr.duplicate2()
+            from applytransform_mod import fuseTransform
+            fuseTransform(dfr)
+            # shape transform fused on path (not composed transform though)
+            self.textel.append(dfr)
+            region = dfr
+        # Find the bbox of the FlowRegion
+        elif isflowroot:
+            for d in self.textel.descendants2():
+                if isinstance(d, FlowRegion):
+                    pths = [p for p in d.descendants2() if isinstance(p,dh.otp_support)]
+                    if len(pths)>0:
+                        region = pths[0]
+        elif isinlinesz:
+            r = dh.new_element(inkex.Rectangle,self.textel)
+            xsrc,ysrc = self.Parse_Lines(srcsonly=True)
+            iszx = self.textel.get('x')
+            iszy = self.textel.get('y',ysrc.get('y'))
+            r.set('x','0')
+            r.set('y','0')
+            r.set('height',dh.ipx(sty.get('inline-size')))
+            r.set('width', dh.ipx(sty.get('inline-size')))
+            self.textel.croot.append(r)
+            region = r
+                        
+        
+        padding = dh.ipx(self.textel.cspecified_style.get('shape-padding','0'))
+        isrect, rpth = dh.isrectangle(region,includingtransform=False)
+        
+        usesvt = not isrect and isinstance(region, dh.otp_support) and padding==0
+        if not isrect and not usesvt:
+            # Flow region we cannot yet handle, parse as normal text
+            # This works as long as the SVG1.1 fallback is being used
+            self.isflow = False
+            return self.Parse_Lines()
+        if usesvt:
+            dh.object_to_path(region)
+            current_script_directory = os.path.dirname(os.path.abspath(__file__))
+            sys.path += [os.path.join(current_script_directory,'packages')]
+            import svgpathtools as spt
+            sptregion = spt.parse_path(region.get('d'))
+            if not sptregion.isclosed():
+                end = sptregion[-1].end
+                start = sptregion[0].start
+                sptregion.append(spt.Line(end, start))
+                sptregion.closed = True
+                       
+        bb = dh.bounding_box2(region,dotransform=False,includestroke=False).sbb
+        if not padding==0:
+            bb = [bb[0]+padding,bb[1]+padding,bb[2]-2*padding,bb[3]-2*padding]
+        
+        # Delete duplicate
+        if isshapeins:
+            dfr.delete2()
+        elif isinlinesz:
+            r.delete2()
+            
+        
+        def Height_AboveBelow_Baseline(el):
+            lh = dh.Get_Composed_LineHeight(el)
+            lsty = Character_Table.true_style(el.cspecified_style)
+            fs, sf, ct, ang = dh.Get_Composed_Width(el, "font-size", 4)
+            absp = (0.5000*(lh/fs-1)  +self.ctable.flowy(lsty))*(fs/sf) # spacing above baseline
+            bbsp = (0.5000*(lh/fs-1)+1-self.ctable.flowy(lsty))*(fs/sf) # spacing below baseline
+            rawfs = fs/sf
+            return absp,bbsp,rawfs
+        
+        # Get the properties of the FlowRoot
+        rabsp,rbbsp,rfs = Height_AboveBelow_Baseline(self.textel)
+        rpct = 'line-height' in self.textel.cspecified_style and '%' in self.textel.cspecified_style['line-height']
+        if rpct:
+            pctage = float(self.textel.cspecified_style['line-height'].strip('%'))
+                
+        # Group characters into lines
+        lns = [];
+        fparas = [k for k in list(self.textel) if isinstance(k, FlowPara)] # top-level FlowParas
+        for di, tt, tel, txt in self.tree.dgenerator():
+            if txt is not None and len(txt) > 0:
+                if isflowroot:
+                    lnno = [ii for ii,fpv in enumerate(fparas) if fpv in tel.ancestors2(includeme=True)]
+                    if len(lnno)==0:
+                        lnno = 0
+                    else:
+                        lnno = lnno[0]
+                    # tails of a FlowPara belong to the next line
+                    if tel==fparas[lnno] and tt==TT_TAIL:
+                        lnno += 1
+                else:
+                    # Note: Tspans don't do anything in SVG2 flows
+                    lnno = 0
+                    
+                # Determine above- and below-baseline lineheight
+                sel = tel if tt==TT_TEXT else tel.getparent()
+                sty = sel.cspecified_style
+                tsty = Character_Table.true_style(sty)
+                ct = sel.ccomposed_transform
+                fs, sf, ct, ang = dh.Get_Composed_Width(sel, "font-size", 4)
+                absp, bbsp, mrfs = Height_AboveBelow_Baseline(sel)
+                lsty = Character_Table.true_style(sel.cspecified_style)
+                fabsp = max(rabsp,absp)
+                fbbsp = max(rbbsp,bbsp)
+                
+                # Inkscape has a bug when the FlowRoot has a line-height specified as a percentage
+                # and the FlowPara doesn't have one specified. Account for this
+                anc = sel.ancestors2(includeme=True,stopbefore=self.textel)
+                if rpct and all(['line-height' not in a.cstyle for a in anc]):
+                    if rbbsp>bbsp:
+                        fbbsp += (self.ctable.flowy(lsty)-0.5)*(rfs - mrfs)
+                    if absp>rabsp:
+                        fabsp -= (0.5*(pctage/100)                              )*(mrfs - rfs)
+                        fbbsp -= (0.5*(pctage/100)-(self.ctable.flowy(lsty)-0.5))*(mrfs - rfs)
+                
+                if lnno >= len(lns):
+                    algn = sty.get("text-align","start")
+                    anch = sty.get("text-anchor","start")
+                    if not algn=='start' and anch=='start':
+                        anch = {'start':'start','center':'middle','end':'end'}[algn]
+                    # dh.idebug(anch)
+                    cln = tline(self,[0],[0],self.textel,self.textel,False,None,
+                                anch,ct,ang,None,sty,False,False)
+                    lns.append(cln)
+                    cln.broken = False
+                    cln.effabsp = fabsp
+                    cln.effbbsp = fbbsp
+                else:
+                    cln = lns[lnno]
+                
+                for jj, c in enumerate(txt):
+                    prop = self.ctable.get_prop(c, tsty)
+                    ttv = TT_TAIL if tt==TT_TAIL else TT_TEXT
+                    tc = tchar(c, fs, sf, prop, sty, tsty, cloc(tel, ttv, jj),cln)
+                    tc.lhs = (fabsp,fbbsp)
+                    if jj == 0:
+                        lsp0 = tc.lsp
+                        bshft0 = tc.bshft
+                    else:
+                        tc.lsp = lsp0
+                        tc.bshft = bshft0
+        self.lns = lns
+        self.Finish_Lines()
+        self.fparaafter = False
+
+
+        # Figure out where to break lines
+        # Currently only works for rectangular flows
+        ii = 0
+        breakcs = ' -—!}|/?'
+        lncs = [ln.cs for ln in lns]
+        blns = [];  lc=None
+        y = 0
+        while ii<len(lncs):
+            if len(lncs[ii])>0:
+                fc = lncs[ii][0]
+                
+                lh = None
+                getxintervals = True
+                while getxintervals:
+                    getxintervals = False
+                    if lh is None:
+                        lh = fc.ln.effabsp + fc.ln.effbbsp
+                
+                    # Determine x intervals where we can draw text
+                    if not usesvt:
+                        # For rectangles this is just the bounding box
+                        xlims = [(bb[0],bb[2])]
+                    else:
+                        # For other flows this is approximately where the 10% and 90% points of the 
+                        # baseline intersect with the flow region
+                        ln10 = spt.Line(bb[0]+(bb[1]+y+lh*0.1)*1j,bb[0]+bb[2]+(bb[1]+y+lh*0.1)*1j)
+                        ln90 = spt.Line(bb[0]+(bb[1]+y+lh*0.9)*1j,bb[0]+bb[2]+(bb[1]+y+lh*0.9)*1j)
+                        isc10 = sptregion.intersect(ln10)
+                        isc90 = sptregion.intersect(ln90)
+                        pts10 = sorted([sptregion.point(T1).real for (T1, seg1, t1), (T2, seg2, t2) in isc10])
+                        pts90 = sorted([sptregion.point(T1).real for (T1, seg1, t1), (T2, seg2, t2) in isc90])
+                        
+                        intervals = []
+                        for jj in range(int(len(pts10)/2)):
+                            int10 = (pts10[2*jj],pts10[2*jj+1])
+                            for kk in range(int(len(pts90)/2)):
+                                int90 = (pts90[2*kk],pts90[2*kk+1])
+                                intrsc = (max(int10[0],int90[0]),min(int10[1],int90[1]))
+                                if intrsc[1] > intrsc[0]:
+                                    intervals.append(intrsc)
+                        xlims = [(intv[0],intv[1]-intv[0]) for intv in intervals]
+                        
+                        # Intersection diagnostics
+                        # for p in pts10:
+                        #     c = dh.new_element(inkex.Circle, self.textel)
+                        #     c.set('cx',str(p))
+                        #     c.set('cy',str(bb[1]+y+lh*0.1))
+                        #     c.set('r',str(fc.utfs/10))
+                        #     c.set('style','fill:#000000;stroke:none')
+                        #     self.textel.croot.append(c)
+                        #     c.ctransform = self.textel.ccomposed_transform
+                        # for p in pts90:
+                        #     c = dh.new_element(inkex.Circle, self.textel)
+                        #     c.set('cx',str(p))
+                        #     c.set('cy',str(bb[1]+y+lh*0.9))
+                        #     c.set('r',str(fc.utfs/10))
+                        #     c.set('style','fill:#000000;stroke:none')
+                        #     self.textel.croot.append(c)
+                        #     c.ctransform = self.textel.ccomposed_transform
+                    
+                    # For every interval, find what text we can insert and where
+                    # we should make breaks
+                    breaks = []
+                    for xlim in xlims:
+                        breakaft = None; hardbreak = False
+                        strt = 0 if len(breaks)==0 else breaks[-1]+1
+                        csleft = lncs[ii][strt:]
+                        for jj,c in enumerate(csleft):
+                            if jj==0:
+                                fcrun = c
+                            if not isflowroot and c.c=='\n':
+                                breakaft = jj
+                                hardbreak = True
+                                break
+                            elif c.pts_ut[3][0] - fcrun.pts_ut[0][0] > xlim[1]:
+                                spcs = [cv for cv in csleft[:jj] if cv.c in breakcs]
+                                if c.c==' ':
+                                    breakaft = jj
+                                elif len(spcs)>0:
+                                    breakaft = [kk for kk,cv in enumerate(csleft) if spcs[-1]==cv][0]
+                                elif xlim[1] > 4*(c.ln.effabsp+c.ln.effbbsp) and jj>0:
+                                    # When the flowregion width is > 4*line height, allow intraword break
+                                    # https://gitlab.com/inkscape/inkscape/-/blob/master/src/libnrtype/Layout-TNG-Compute.cpp#L1989
+                                    breakaft = jj-1
+                                else:
+                                    # Break whole line and hope that the next line is wider
+                                    breakaft = -1
+                                break
+                        if breakaft is not None:
+                            c.ln.broken = True
+                            breaks.append(breakaft+strt)
+                            if hardbreak:
+                                break
+                        else:
+                            break
+                    if len(xlims)==0:
+                        breaks = [-1]
+                    
+                    # Use break points to split the line, pushing text after the
+                    # last break to the next line
+                    if not breaks:
+                        splitcs = [lncs[ii]]
+                    else:
+                        splitcs = []
+                        prev_index = -1
+                        for index in breaks:
+                            splitcs.append(lncs[ii][prev_index+1:index+1])
+                            prev_index = index
+                        splitcs.append(lncs[ii][prev_index+1:])
+                    nextcs = None
+                    if len(splitcs)>1:
+                        nextcs = splitcs.pop(-1) # push to next line
+                        mycs = [item for sublist in splitcs[:-1] for item in sublist]
+                    
+                    allcs = [c for s in splitcs for c in s]
+                    maxabsp = max([c.lhs[0] for c in allcs]) if len(allcs)>0 else fc.ln.effabsp
+                    maxbbsp = max([c.lhs[1] for c in allcs]) if len(allcs)>0 else fc.ln.effbbsp
+                    if not lh == maxabsp+maxbbsp:
+                        lh = maxabsp+maxbbsp
+                        getxintervals = True
+                        
+                    
+                    
+                if nextcs is not None:
+                    lncs = lncs[0:ii] + [mycs,nextcs] + lncs[ii+1:]
+                y+=maxabsp
+                for jj, cs in enumerate(splitcs):
+                    ln = fc.ln
+                    cln = tline(self,[0],[0],self.textel,self.textel,False,None,
+                                ln.anchor,ln.transform,ln.angle,None,ln.style,False,False)
+                    cln.broken = ln.broken
+                    cln.effabsp = maxabsp
+                    cln.effbbsp = maxbbsp
+                    blns.append(cln)
+                    for c in cs:
+                        lc = tchar(c.c, c.tfs, c.sf, c.prop, c._sty, c.tsty,c.loc,cln) 
+
+                    if len(cs)>0:
+                        af = cln.anchfrac
+                        x = xlims[jj][0]*(1-af) + (xlims[jj][0]+xlims[jj][1])*af
+                        if ii==0 and isinlinesz and iszy is not None:
+                            y += dh.ipx(iszy) - cln.effabsp
+                        if isinlinesz and iszx is not None:
+                            x += dh.ipx(iszx)
+                        cln.x = [x]
+                        cln.y = [bb[1]+y]
+                y+=maxbbsp
+                                    
+                if y-0.1*(maxabsp+maxbbsp)>bb[3] and not isinlinesz:
+                    # When we reached the end of the flow region, add the remaining
+                    # characters to a line that is given a NaN y position
+                    cln.cs = [c for lnc in lncs[ii:] for c in lnc]
+                    for c in cln.cs:
+                        c.ln = cln
+                    cln.y = [float('nan')]
+                    break
+                    
+            
+            ii+=1  
+            if ii>1000:
+                # dh.idebug('Infinite loop')
+                break
+            
+        # # Determine if any FlowParas follow the last character
+        # # (Needed for unrenderedspace determination)
+        if lc is not None:
+            ds = self.textel.descendants2()
+            m = ds.index(lc.loc.el)
+            if m<len(ds)-1:
+                self.fparaafter = any([isinstance(d,FlowPara) for d in ds[m+1:]])
+        return blns
     
 # Descendant tree class
 class txttree():
@@ -1142,27 +1447,29 @@ class txttree():
             stopi = [ii for ii,pt in enumerate(self.ptails) if subel in pt][0]
             
         for di, tt in ttgenerator(len(self.ds),starti,stopi):
-            ds = self.ptails[di] if tt == 0 else [self.ds[di]]
+            ds = self.ptails[di] if tt==TT_TAIL else [self.ds[di]]
             for d in ds:
-                if tt==0 and d==subel: # finish at my own tail (do not yield it)
+                if tt==TT_TAIL and d==subel: # finish at my own tail (do not yield it)
                     return
-                txt = d.tail if tt==0 else d.text
+                txt = d.tail if tt==TT_TAIL else d.text
                 yield di, tt, d, txt
 
 
 # A generator for crawling through a general text descendant tree
 # Returns the current descendant index and tt (0 for tail, 1 for text)
+TT_TEXT = 1
+TT_TAIL = 0
 def ttgenerator(Nd,starti=0,stopi=None):
     di = starti
     if stopi is None: stopi = Nd
-    tt = 0
+    tt = TT_TAIL
     while True:
-        if tt == 1:
+        if tt == TT_TEXT:
             di += 1
-            tt = 0
+            tt = TT_TAIL
         else:
-            tt = 1
-        if di == stopi and tt == 1:
+            tt = TT_TEXT
+        if di == stopi and tt == TT_TEXT:
             return
         else:
             yield di, tt
@@ -1180,7 +1487,7 @@ class tline:
     __slots__ = ('_x', '_y', 'sprl', 'sprlabove', 'anchor', 'anchfrac', 
                  'cs', 'ws', 'transform', 'angle', 'xsrc', 'ysrc', 'tlvlno', 
                  'style', 'continuex', 'continuey', 'pt',
-                 'splits','sws')
+                 'splits','sws','effabsp','effbbsp','broken')
     def __init__(
         self,
         pt,
@@ -1328,7 +1635,7 @@ class tline:
     def dell(self):  # deletes the whole line
         self.change_pos(self.x[:1])
         for ii, c in enumerate(reversed(self.cs)):
-            if c.loc.tt == "text":
+            if c.loc.tt == TT_TEXT:
                 c.loc.el.text = c.loc.el.text[:c.loc.ind] + c.loc.el.text[c.loc.ind + 1:]
             else:
                 c.loc.el.tail = c.loc.el.tail[:c.loc.ind] + c.loc.el.tail[c.loc.ind + 1:]
@@ -1389,7 +1696,7 @@ class tline:
         if len(self.sprlabove)>0 or force:
             if len(self.cs) > 0:
                 newsrc = self.cs[0].loc.el  # disabling snaps src to first char
-                if self.cs[0].loc.tt == "tail":
+                if self.cs[0].loc.tt == TT_TAIL:
                     newsrc = self.cs[0].loc.el.getparent()
                 newsrc.set("sodipodi:role", None)
                 
@@ -1606,7 +1913,7 @@ class tword:
         if totail is None:
             myi = lc.loc.ind + 1
             # insert after last character
-            if lc.loc.tt == "text":
+            if lc.loc.tt == TT_TEXT:
                 lc.loc.el.text = lc.loc.el.text[0:myi] + ncv + lc.loc.el.text[myi:]
             else:
                 lc.loc.el.tail = lc.loc.el.tail[0:myi] + ncv + lc.loc.el.tail[myi:]
@@ -1627,8 +1934,8 @@ class tword:
         if totail is None:
             c.loc = cloc(c.loc.el, c.loc.tt, c.loc.ind + 1)  # updated location
         else:
-            c.loc = cloc(totail, "tail", 0)
-        c.sty = c.loc.pel.cspecified_style
+            c.loc = cloc(totail, TT_TAIL, 0)
+        c.sty = c.loc.sel.cspecified_style
 
         # Add to line
         # myi = self.ln.cs.index(lc) + 1  # insert after last character
@@ -1697,10 +2004,10 @@ class tword:
 
                 # Nested tspans should be appended to the end of tails
                 totail = None
-                if self.cs[-1].loc.pel != self.cs[0].loc.pel:
-                    cel = self.cs[-1].loc.pel
+                if self.cs[-1].loc.sel != self.cs[0].loc.sel:
+                    cel = self.cs[-1].loc.sel
                     while (
-                        cel is not None and cel.getparent() != self.cs[0].loc.pel
+                        cel is not None and cel.getparent() != self.cs[0].loc.sel
                         and cel.getparent() != self.ln.pt.textel
                     ):
                         cel = cel.getparent()
@@ -1860,19 +2167,26 @@ class tword:
     # anchorfrac = property(lambda self: get_anchorfrac(self.ln.anchor))
 
     @property
-    def unrenderedspace(
-        self,
-    ):  # If last char of a multichar line is a space, is not rendered
-        return (
-            self.Ncs > 1
-            and self.cs[-1] == self.ln.cs[-1]
-            and self.cs[-1].c in [" ", "\u00A0"]
-        )
+    def unrenderedspace(self):
+    # If last char of a multichar line is a space, is not rendered
+        lastspc =  self.Ncs > 1 and self.cs[-1] == self.ln.cs[-1] and self.cs[-1].c in [" ", "\u00A0"]
+        if not self.ln.pt.isflow:
+            return lastspc
+        elif lastspc:
+            # For FlowRoots, is rendered when not the last line and line isn't broken
+            notlastln = not self.ln.pt.lns[-1]==self.ln or self.ln.pt.fparaafter
+            if notlastln and not self.ln.broken:
+                return False
+            else:
+                return True
+        else:
+            return False
 
     @property
     def charpos(self):
         # Where characters in a word are relative to the left side of the word, in x units
         if self._charpos is None:
+            
             wadj = [0]*self.Ncs
             if KERN_TABLE:
                 for ii in range(1, self.Ncs):
@@ -1888,6 +2202,7 @@ class tword:
             cstop = np.array(cstop,dtype=float)
 
             ww = cstop[-1]
+            # dh.idebug(self.unrenderedspace)
             offx = -self.ln.anchfrac * (ww - self.unrenderedspace * self.cs[-1].cw)
             # offset of the left side of the word from the anchor
             wx = self.x
@@ -2070,7 +2385,7 @@ def style_derived(styv,pel,textel):
 
 # A single character and its style
 class tchar:
-    __slots__ = ('c', 'tfs', 'utfs', 'sf', 'prop', 'cw', '_sty', 'tsty', 'rsty','loc', 'ch', 'sw', 'ln', 'lnindex', 'w', 'windex', 'type', '_dx', '_dy', 'deltanum', 'dkerns', 'parsed_pts_t', 'parsed_pts_ut', '_lsp', '_bshft')
+    __slots__ = ('c', 'tfs', 'utfs', 'sf', 'prop', 'cw', '_sty', 'tsty', 'rsty','loc', 'ch', 'sw', 'ln', 'lnindex', 'w', 'windex', 'type', '_dx', '_dy', 'deltanum', 'dkerns', 'parsed_pts_t', 'parsed_pts_ut', '_lsp', '_bshft','lhs')
     def __init__(self, c, tfs, sf, prop, sty, tsty, loc,ln):
         self.c = c
         self.tfs = tfs
@@ -2091,7 +2406,7 @@ class tchar:
         self.rsty = Character_Table.reduced_style(sty)
         # true style
         self.loc = loc
-        # true location: [parent, 'text' or 'tail', index]
+        # true location: [parent, TT_TEXT or TT_TAIL, index]
         self.ch = prop.caph * utfs
         # cap height (height of flat capitals like T)
         # self.dr = dr;     # descender (length of p/q descender))
@@ -2117,7 +2432,7 @@ class tchar:
         self.parsed_pts_ut = None
         # for merging later
         self._lsp = tchar.lspfunc(self.sty)
-        self._bshft = tchar.bshftfunc(self.sty,self.loc.pel,self.ln.pt.textel)
+        self._bshft = tchar.bshftfunc(self.sty,self.loc.sel,self.ln.pt.textel)
         # letter spacing
         
     def copy(self,memo=dict()):
@@ -2186,7 +2501,7 @@ class tchar:
         # Character style
         self._sty = si
         self.lsp = tchar.lspfunc(self._sty)
-        self.bshft = tchar.bshftfunc(self._sty,self.loc.pel,self.ln.pt.textel)
+        self.bshft = tchar.bshftfunc(self._sty,self.loc.sel,self.ln.pt.textel)
 
     # anchorfrac = property(lambda self: get_anchorfrac(self.ln.anchor))
 
@@ -2301,7 +2616,7 @@ class tchar:
             # self.ln.change_pos(newx)
 
         # Delete from document
-        if self.loc.tt == "text":
+        if self.loc.tt == TT_TEXT:
             self.loc.el.text = self.loc.el.text[:self.loc.ind] + self.loc.el.text[self.loc.ind + 1:]
         else:
             self.loc.el.tail = self.loc.el.tail[:self.loc.ind] + self.loc.el.tail[self.loc.ind + 1:]
@@ -2352,11 +2667,12 @@ class tchar:
     def add_style(self, sty, setdefault=True):
         # Adds a style to an existing character by wrapping it in a new Tspan
         # t = Tspan();
-        t = dh.new_element(Tspan, self.loc.el)
+        span = Tspan if isinstance(self.ln.pt.textel,TextElement) else inkex.FlowSpan
+        t = dh.new_element(span, self.loc.el)
         t.text = self.c
 
         prt = self.loc.el
-        if self.loc.tt == "text":
+        if self.loc.tt == TT_TEXT:
             tbefore = prt.text[0 : self.loc.ind]
             tafter = prt.text[self.loc.ind + 1 :]
             prt.text = tbefore
@@ -2384,8 +2700,8 @@ class tchar:
         ):  # for characters after, update location
             ca = self.ln.cs[ii]
             if ca.loc.el == self.loc.el and ca.loc.tt == self.loc.tt:
-                ca.loc = cloc(t, "tail", ii - myi - 1)
-        self.loc = cloc(t, "text", 0)  # update my own location
+                ca.loc = cloc(t, TT_TAIL, ii - myi - 1)
+        self.loc = cloc(t, TT_TEXT, 0)  # update my own location
 
         # When the specified style has something new span doesn't, are inheriting and
         # need to explicitly assign the default value
@@ -2521,15 +2837,15 @@ class cprop:
 
 # A class indicating a single character's location in the SVG
 class cloc:
-    __slots__ = ("el", "tt", "ind", "pel")
+    __slots__ = ("el", "tt", "ind", "sel")
     def __init__(self, el, tt, ind):
         self.el = el
         # the element it belongs to
         self.tt = tt
-        # 'text' or 'tail'
+        # TT_TEXT or TT_TAIL
         self.ind = ind
         # its index
-        self.pel = el if tt == "text" else el.getparent()
+        self.sel = el if tt == TT_TEXT else el.getparent()
         # where style comes from
             
     def copy(self,memo):
@@ -2539,7 +2855,7 @@ class cloc:
         ret.el = memo[self.el]
         ret.tt = self.tt
         ret.ind = self.ind
-        ret.pel = memo[self.pel]
+        ret.sel = memo[self.sel]
         return ret
 
     def __eq__(self, other):
@@ -2564,6 +2880,39 @@ class Character_Table:
                 ret += '    ' + c + ' : ' + str(vars(v)) +'\n'
             ret += '    ' + str(v.dkerns)
         return ret
+    
+    # In flows, the distance between the text baseline and the top of the flow
+    # seems to be determined by something other than Pango metrics (Harfbuzz?).
+    # It is mostly constant in font, unless very tall characters are used.
+    # Therefore we just need to make a test document once per Inkscape version
+    # that contains this distance for each font.
+    def flowy(self,sty):
+        try:
+            return self._flowy[sty]
+        except:
+            import shelve
+            flowdat = os.path.join(os.path.dirname(os.path.realpath(__file__)),'FontData')
+            try:
+                with shelve.open(flowdat) as db:
+                    flowy = dict()
+                    for dbv in db:
+                        if dbv.startswith(dh.inkex_version):
+                            flowy[Style0(dbv.strip(dh.inkex_version+' '))] = db[dbv]
+                    # dh.idebug(flowy)
+                    # for ts in self.ctable:
+                    #     flowy[ts] = db[dh.inkex_version+' '+str(ts)]   
+                    self._flowy  = flowy
+                    return self._flowy[sty]  
+            except:
+                from pango_renderer import FontConfig
+                firsty = FontConfig().Flow_Test_Doc()
+                with shelve.open(flowdat) as db:
+                    flowy = dict()
+                    for ts in firsty:
+                        db[dh.inkex_version+' '+str(ts)] = firsty[ts]
+                        flowy[ts] = db[dh.inkex_version+' '+str(ts)]
+                self._flowy  = flowy
+                return self._flowy[sty]  
 
     def get_prop(self, char, sty):
         try:
@@ -2600,7 +2949,7 @@ class Character_Table:
             for di, tt, tel, txt in tree.dgenerator():
                     if txt is not None and len(txt) > 0:
                         sel = tel
-                        if tt == 0:
+                        if tt==TT_TAIL:
                             sel = tree.pdict[tel]
                             # tails get their sty from the parent of the element the tail belongs to
                         sty = sel.cspecified_style
@@ -2696,7 +3045,7 @@ class Character_Table:
                 self.dkern = dkern;
                 self.bareid = bareid;
 
-        badchars = {'\n':' ','\r':''}
+        badchars = {'\n':' ','\r':' '}
         def effc(c):
             return badchars.get(c,c)
         
@@ -2793,7 +3142,7 @@ class Character_Table:
                             (xb,yb,wb,hb) = tuple(firstch[2]);
                             if myids[ii] not in bareids:
                                 xb = x; wb = w; # use logical width
-                            if mystr==prefix+suffix:
+                            if mystr==blnk:
                                 ycorr = hb+yb
                                 
                             nbb[myids[ii]] = [v*TEXTSIZE for v in [xb,yb,wb,hb]]
@@ -2832,7 +3181,7 @@ class Character_Table:
 
         for s in ct:
             blnkwd = ct[s][blnk].bb.w;
-            sw = ct[s][' '].bb.w - blnkwd      # space width
+            sw = ct[s][' '].bb.w - blnkwd  # space width
             ch = ct[s][blnk].bb.h          # cap height
             dr =  ct[s][pI].bb.y2          # descender
             
@@ -2847,8 +3196,8 @@ class Character_Table:
                     inkbb = nbb[ct[s][ii].bareid]
                 else:
                     inkbb = [ct[s][ii].bb.x1,ct[s][ii].bb.y1,0,0] # whitespace: make zero-width
-                # if ct[s][ii].strval in badchars:
-                #     cw = 0
+                if ct[s][ii].strval in badchars:
+                    cw = 0
                 ct[s][ii] = cprop(
                     ct[s][ii].strval,
                     cw/TEXTSIZE,
@@ -2861,23 +3210,18 @@ class Character_Table:
         return ct
 
     # For generating test characters, we want to normalize the style so that we don't waste time
-    # generating a bunch of identical characters whose font-sizes are different. A style is generated
-    # with a single font-size, and only with presentation attributes that affect character shape.
+    # measuring a bunch of identical characters that will render the same way.
+    # True style: the actual style that font config selects based on the reduced style
     @staticmethod
     @lru_cache(maxsize=None)
     def true_style(sty):
         # Actual rendered font, determined using fontconfig
         sty2 = Character_Table.reduced_style(sty)
         tf = fc.get_true_font(sty2)
-        # sty2['font-family']=tf['font-family'];
-        # sty2['font-weight']=tf['font-weight'];
-        # sty2["font-size"] = str(TEXTSIZE)+"px"
-        
-        # dh.idebug(sty2)
-        # sty2 = ";".join([f"{key}:{value}" for key, value in tf.items()])
-        # return sty2
         return tf
     
+    # Reduced style: the style that has been reduced to the four attributes
+    # that matter for text shaping
     fontatt = ['font-family','font-weight','font-style','font-stretch']
     dfltatt = [(k,dh.default_style_atts[k]) for k in fontatt]
     @staticmethod
@@ -3029,7 +3373,7 @@ def Character_Fixer2(els):
         for di, tt, tel, txt in tree.dgenerator():
                 if txt is not None and len(txt) > 0:
                     sel = tel
-                    if tt == 0:
+                    if tt==TT_TAIL:
                         sel = tree.pdict[tel]
                         # tails get their sty from the parent of the element the tail belongs to
                     sty = sel.cspecified_style
@@ -3044,7 +3388,7 @@ def Character_Fixer2(els):
                                 if not prev_nonascii:
                                     t = dh.new_element(Tspan, tel)
                                     t.text = c
-                                    if tt==1:
+                                    if tt==TT_TEXT:
                                         tbefore = tel.text[0 : ii]
                                         tafter = tel.text[ii + 1 :]
                                         tel.text = tbefore
@@ -3063,7 +3407,7 @@ def Character_Fixer2(els):
                                     t.cstyle = Style0('font-family:'+fixw+';baseline-shift:0%')
                                 else:
                                     t.text = c+t.text
-                                    if tt==1:
+                                    if tt==TT_TEXT:
                                         tel.text = tel.text[0 : ii]
                                     else:
                                         tel.tail = tel.tail[0 : ii]

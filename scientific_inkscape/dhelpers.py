@@ -467,7 +467,11 @@ def Get_Composed_LineHeight(el):
         elif sc.lower() == "normal":
             sc = 1.25
         else:
-            sc = float(sc)
+            try:
+                sc = float(sc)
+            except:
+                fs, sf, ct, ang = Get_Composed_Width(el, "font-size", 4)
+                sc = ipx(sc) / (fs/sf)
     if sc is None:
         sc = 1.25
         # default line-height is 12 uu
@@ -862,30 +866,27 @@ def intersect_paths(ptha, pthb):
 
 # Like uniquetol in Matlab
 import numpy as np
-
-
-# def uniquetol(A, tol):
-#     Aa = np.array(A)
-#     ret = Aa[~(np.triu(np.abs(Aa[:, None] - Aa) <= tol, 1)).any(0)]
-#     return type(A)(ret)
-
 def uniquetol(A, tol):
     if not A:  # Check if the input list is empty
         return []
-    A_sorted = sorted(A)
-    ret = [A_sorted[0]]
+    A_sorted = sorted((x for x in A if x is not None))  # Sort, ignoring None values
+    ret = [A_sorted[0]] if A_sorted else []  # Start with the first value if there are any non-None values
     for i in range(1, len(A_sorted)):
         if abs(A_sorted[i] - ret[-1]) > tol:
             ret.append(A_sorted[i])
+    # If there were any None values in the original list, append None to the result list
+    if None in A:
+        ret.append(None)
     return ret
 
 # Determines if an element is rectangle-like
 # If it is one, also return Path
-def isrectangle(el):
+def isrectangle(el,includingtransform=True):
     isrect = False
     if isinstance(el, (PathElement, Rectangle, Line, Polyline)):
         pth = Path(get_path2(el)).to_absolute()
-        pth = pth.transform(el.ctransform)
+        if includingtransform:
+            pth = pth.transform(el.ctransform)
 
         pts = list(pth.end_points)
         cpts = list(pth.control_points)
@@ -1469,9 +1470,9 @@ def overwrite_svg(svg, fileout):
     inkex.command.write_svg(svg, fileout)
 
 # Version of ancestors that works in v1.0
-def get_ancestors(el,includeme=False):
+def get_ancestors(el,includeme=False,stopbefore=None):
     anc = []; cel = el;
-    while cel.getparent() is not None:
+    while cel.getparent() is not None and cel.getparent() is not stopbefore:
         cel = cel.getparent()
         anc.append(cel)
     if includeme:
@@ -1481,6 +1482,7 @@ def get_ancestors(el,includeme=False):
 BaseElement.ancestors2 = get_ancestors
 
 # Reference a URL (return None if does not exist or invalid)
+# Accepts elements and styles as inputs
 def get_link_fcn(el,typestr,svg=None,llget=False):
     if llget:
         tv = EBget(el,typestr); # fine for 'clip-path' & 'mask'

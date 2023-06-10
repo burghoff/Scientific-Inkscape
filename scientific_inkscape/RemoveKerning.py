@@ -58,15 +58,16 @@ def remove_kerning(
     mergenearby,
     justification=None,
 ):
-    tels = [el for el in els if isinstance(el, inkex.TextElement)]
+    tels = [el for el in els if isinstance(el, (inkex.TextElement,inkex.FlowRoot))]
     if len(tels)>0:
         tels[0].croot.make_char_table(tels)
     if DEBUG_PARSER:
         for el in tels:
             el.parsed_text.Make_Highlights('char')
-        dh.debug(tels[0].croot.char_table)
+        # dh.debug(tels[0].croot.char_table)
     else:
         # Do merges first (deciding based on original position)
+        tels = [el for el in els if isinstance(el, (inkex.TextElement,))]
         lls = [TextParser.get_parsed_text(el) for el in tels]
         TextParser.ParsedTextList(lls).precalcs()
         if removemanual:
@@ -107,7 +108,7 @@ def Fix_Merge_Positions(els):
 
 def Remove_Trailing_Leading_Spaces(els):
     for el in els:
-        if not (el.parsed_text.ismlinkscape) and not (el.parsed_text.issvg2):  # skip Inkscape-generated text
+        if not (el.parsed_text.ismlinkscape) and not (el.parsed_text.isflow):  # skip Inkscape-generated text
             for ln in el.parsed_text.lns:
                 mtxt = ln.txt()
                 ii = len(mtxt) - 1
@@ -134,7 +135,7 @@ def Change_Justification(els, justification):
         for ll in [TextParser.get_parsed_text(el) for el in els]:
             # ll.Position_Check()
             if not (ll.ismlinkscape) and not (
-                ll.issvg2
+                ll.isflow
             ):  # skip Inkscape-generated text
                 for ln in ll.lns:
                     ln.change_alignment(justification)
@@ -157,7 +158,7 @@ def Split_Lines(els,ignoreinkscape=True):
             ll.lns is not None
             and len(ll.lns) > 1
             and (not(ll.ismlinkscape) or not(ignoreinkscape))
-            and not (ll.issvg2)
+            and not (ll.isflow)
         ):
             for il in reversed(range(1, len(ll.lns))):
                 newtxt = ll.Split_Off_Characters(ll.lns[il].cs)
@@ -219,7 +220,7 @@ def Split_Distant_Words(els):
 def Split_Distant_Intraword(els):
     # newlls = []
     for ll in [TextParser.get_parsed_text(el) for el in els]:
-        if ll.lns is not None and not (ll.ismlinkscape) and not (ll.issvg2):
+        if ll.lns is not None and not (ll.ismlinkscape) and not (ll.isflow):
             for ln in ll.lns:
                 for w in ln.ws:
                     if len(w.cs) > 0:

@@ -24,6 +24,7 @@ from inkex import (
     FlowRoot,
     FlowPara,
     FlowRegion,
+    FlowSpan,
     Tspan,
     TextPath,
     Rectangle,
@@ -317,7 +318,7 @@ class FlattenPlots(inkex.EffectExtension):
                 elif dh.isMask(el) and not (el.get_id2() in masks):
                     dh.deleteup(el)
 
-        ttags = dh.tags((Tspan, FlowPara, FlowRegion, TextPath))
+        ttags = dh.tags((Tspan, TextPath, FlowPara, FlowRegion, FlowSpan))
         ttags2 = dh.tags((StyleElement,TextElement,Tspan,TextPath,)+dh.flow_types)
         for el in reversed(ds):
             if not (el.tag in ttags):
