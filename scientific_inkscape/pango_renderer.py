@@ -252,7 +252,7 @@ class FontConfig():
 # the Python bindings for the gtk library).
 class PangoRenderer():
     def __init__(self):
-        self.PANGOSIZE = 1024;  # size of text to render. 1024 is good
+        self.PANGOSIZE = 1024*4;  # size of text to render. 1024 is good
         with warnings.catch_warnings():
             # Ignore ImportWarning for Gtk/Pango
             warnings.simplefilter('ignore') 

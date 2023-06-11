@@ -1319,6 +1319,7 @@ class ParsedText:
                         breakaft = None; hardbreak = False
                         strt = 0 if len(breaks)==0 else breaks[-1]+1
                         csleft = lncs[ii][strt:]
+                        # dh.idebug(''.join([c.c for c in csleft]))
                         for jj,c in enumerate(csleft):
                             if jj==0:
                                 fcrun = c
@@ -1328,17 +1329,22 @@ class ParsedText:
                                 break
                             elif c.pts_ut[3][0] - fcrun.pts_ut[0][0] > xlim[1]:
                                 spcs = [cv for cv in csleft[:jj] if cv.c in breakcs]
+                                # dh.idebug('Break on '+str((c.c,jj)))
                                 if c.c==' ':
                                     breakaft = jj
+                                    # dh.idebug('Break overflow space')
                                 elif len(spcs)>0:
                                     breakaft = [kk for kk,cv in enumerate(csleft) if spcs[-1]==cv][0]
+                                    # dh.idebug('Break word')
                                 elif xlim[1] > 4*(c.ln.effabsp+c.ln.effbbsp) and jj>0:
                                     # When the flowregion width is > 4*line height, allow intraword break
                                     # https://gitlab.com/inkscape/inkscape/-/blob/master/src/libnrtype/Layout-TNG-Compute.cpp#L1989
                                     breakaft = jj-1
+                                    # dh.idebug('Break intraword')
                                 else:
                                     # Break whole line and hope that the next line is wider
                                     breakaft = -1
+                                    # dh.idebug('Break whole line')
                                 break
                         if breakaft is not None:
                             c.ln.broken = True
@@ -2191,6 +2197,7 @@ class tword:
             if KERN_TABLE:
                 for ii in range(1, self.Ncs):
                     wadj[ii] = self.cs[ii].dkerns(self.cs[ii - 1].c, self.cs[ii].c)
+                    # dh.idebug((self.cs[ii - 1].c, self.cs[ii].c,wadj[ii]))
                     # default to 0 for chars of different style
                     
             ws = [self.cw[ii] + self.dxeff[ii] + wadj[ii] for ii in range(self.Ncs)]
