@@ -84,7 +84,8 @@ inkex.TextElement.parsed_text = property(get_parsed_text)
 inkex.FlowRoot.parsed_text    = property(get_parsed_text)
 
 # Add character table property and function to SVG
-ttags = {TextElement.tag2,FlowRoot.tag2}
+tetag, frtag = TextElement.tag2, FlowRoot.tag2
+ttags = {tetag, frtag}
 def make_char_table_fcn(svg,els=None):
     # Can be called with els argument to examine list of elements only 
     # (otherwise use entire SVG)
@@ -255,7 +256,7 @@ class ParsedText:
         self.textel = el
         
         sty = el.cspecified_style
-        self.isflow = isinstance(el,FlowRoot) or sty.get_link('shape-inside',el.croot) is not None or sty.get('inline-size') is not None
+        self.isflow = el.tag==frtag or sty.get_link('shape-inside',el.croot) is not None or sty.get('inline-size') is not None
         if self.isflow:
             self.lns = self.Parse_Lines_Flow()
         else:
@@ -309,7 +310,6 @@ class ParsedText:
     # A line is a collection of text that gets its position from a single source element.
     # This position may be directly set, continued from a previous line, or inherited from a previous line
     def Parse_Lines(self, srcsonly=False):
-        # dh.idebug('hello')
         el = self.textel
         # First we get the tree structure of the text and do all our gets
         # ds, pts, cd, pd = dh.descendants2(el, True)
@@ -319,9 +319,6 @@ class ParsedText:
         ks = list(el)
         text = [d.text for d in ds]
         ptail = [[tel.tail for tel in pt] for pt in pts]  # preceding tails
-        # if len(ptail) > 0 and len(ptail[-1]) > 0:
-        #     ptail[-1][-1] = None
-            # do not count el's tail
 
         # Next we find the top-level sodipodi:role lines
         xs = [ParsedText.GetXY(d, "x") for d in ds]
@@ -984,7 +981,43 @@ class ParsedText:
                                  'baseline-shift':'0%'},setdefault=False)
                     # dh.idebug((c.c,c.tsty))
                     
-    
+    # Convert flowed text into normal text
+    def Flow_to_Text(self):
+        if self.isflow:
+            newtxts=[]
+            for ln in reversed(self.lns):
+                anch = ln.anchor
+                algn = {'start':'start','middle':'center','end':'end'}[anch]
+                
+                origx = None
+                if len(ln.cs)>0:
+                    origx = ln.cs[0].pts_ut[0][0]
+                    
+                newtxt = self.Split_Off_Characters(ln.cs)
+                if isinstance(newtxt,FlowRoot):
+                    for d in newtxt.descendants2():
+                        if isinstance(d,FlowRoot):
+                            d.tag = TextElement.tag2
+                        elif isinstance(d,(FlowPara,FlowSpan)):
+                            d.tag = Tspan.tag2
+                        elif isinstance(d,inkex.FlowRegion):
+                            d.delete2();
+                else:
+                    newtxt.cstyle['shape-inside']=None
+                    newtxt.cstyle['inline-size']=None
+                    for k in list(newtxt):
+                        k.cstyle['text-align']  = algn
+                        k.cstyle['text-anchor'] = anch
+                        
+                deleteempty(newtxt)
+                npt = newtxt.parsed_text
+                if origx is not None and len(npt.lns)>0 and len(npt.lns[0].cs)>0:
+                    npt.__init__(npt.textel, npt.ctable)
+                    newx = [xv+origx-npt.lns[0].cs[0].pts_ut[0][0] for xv in npt.lns[0].x]
+                    npt.lns[0].change_pos(newx)  
+                newtxts.append(newtxt)
+            self.textel.delete2()
+            return newtxts
     
     # For debugging: make a rectange at all of the line's words' nominal extents
     HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
@@ -1166,7 +1199,6 @@ class ParsedText:
         elif isinlinesz:
             r.delete2()
             
-        
         def Height_AboveBelow_Baseline(el):
             lh = dh.Get_Composed_LineHeight(el)
             lsty = Character_Table.true_style(el.cspecified_style)
@@ -1227,7 +1259,7 @@ class ParsedText:
                     if not algn=='start' and anch=='start':
                         anch = {'start':'start','center':'middle','end':'end'}[algn]
                     # dh.idebug(anch)
-                    cln = tline(self,[0],[0],self.textel,self.textel,False,None,
+                    cln = tline(self,[0],[0],self.textel,self.textel,False,[],
                                 anch,ct,ang,None,sty,False,False)
                     lns.append(cln)
                     cln.broken = False
@@ -1275,15 +1307,16 @@ class ParsedText:
                         # For rectangles this is just the bounding box
                         xlims = [(bb[0],bb[2])]
                     else:
-                        # For other flows this is approximately where the 10% and 90% points of the 
-                        # baseline intersect with the flow region
+                        # For other flows this is where at least 90% of the line
+                        # is unobstructed by the path
+                        # Start by finding intervals where the y=10% and 90% points
+                        # of the baseline intersect with the flow region
                         ln10 = spt.Line(bb[0]+(bb[1]+y+lh*0.1)*1j,bb[0]+bb[2]+(bb[1]+y+lh*0.1)*1j)
                         ln90 = spt.Line(bb[0]+(bb[1]+y+lh*0.9)*1j,bb[0]+bb[2]+(bb[1]+y+lh*0.9)*1j)
                         isc10 = sptregion.intersect(ln10)
                         isc90 = sptregion.intersect(ln90)
                         pts10 = sorted([sptregion.point(T1).real for (T1, seg1, t1), (T2, seg2, t2) in isc10])
                         pts90 = sorted([sptregion.point(T1).real for (T1, seg1, t1), (T2, seg2, t2) in isc90])
-                        
                         intervals = []
                         for jj in range(int(len(pts10)/2)):
                             int10 = (pts10[2*jj],pts10[2*jj+1])
@@ -1292,7 +1325,83 @@ class ParsedText:
                                 intrsc = (max(int10[0],int90[0]),min(int10[1],int90[1]))
                                 if intrsc[1] > intrsc[0]:
                                     intervals.append(intrsc)
-                        xlims = [(intv[0],intv[1]-intv[0]) for intv in intervals]
+                        # xlims = [(intv[0],intv[1]-intv[0]) for intv in intervals]
+                        
+                        # Use the tangent line at the 10 and 90% points to find the
+                        # points where the line is at least 90% unobstructed
+                        tol = lh*1e-6
+                        def tangent_line(T):
+                            pt = sptregion.point(T)
+                            dv = sptregion.derivative(T)
+                            if not dv.real==0:
+                                m = dv.imag/dv.real
+                                b = pt.imag-dv.imag/dv.real*pt.real
+                            else:
+                                m = dv.imag/tol
+                                b = pt.imag-dv.imag/tol*pt.real
+                            return m,b
+                        
+                        def intersection_belowabove(T,below=True):
+                            pt = sptregion.point(T)
+                            vl = spt.Line(pt.real+(bb[1])*1j,pt.real+(bb[1]+bb[3])*1j)
+                            iv = sptregion.intersect(vl)
+                            ys = sorted([sptregion.point(T1b).imag for (T1b, seg1b, t1b), (T2b, seg2b, t2b) in iv])
+                            if below:
+                                ys = [yv for yv in ys if yv>pt.imag+tol]
+                                ret = ys[0] if len(ys)>0 else None
+                            else:
+                                ys = [yv for yv in ys if yv<pt.imag-tol]
+                                ret = ys[-1] if len(ys)>0 else None
+                            retT = [T1b for (T1b, seg1b, t1b), (T2b, seg2b, t2b) in iv if sptregion.point(T1b).imag==ret][0] if ret is not None else None
+                            return ret, retT
+                        
+                        def bounding_lines(Ttop,Tbtm):
+                            if len(Ttop)>0:
+                                Ttop = Ttop[0]
+                                (mtop,btop) = tangent_line(Ttop)
+                                ry, rT = intersection_belowabove(Ttop,below=True)
+                                if ry is None or ry>bb[1]+y+lh:
+                                    (mbtm,bbtm) = (0,bb[1]+y+lh) 
+                                else:
+                                    (mbtm,bbtm) = tangent_line(rT)
+                            else:
+                                Tbtm = Tbtm[0]
+                                (mbtm,bbtm) = tangent_line(Tbtm)
+                                ry, rT = intersection_belowabove(Tbtm,below=False)
+                                if ry is None or ry<bb[1]+y:
+                                    (mtop,btop) = (0,bb[1]+y) 
+                                else:
+                                    (mtop,btop) = tangent_line(rT)
+                            return mtop,btop,mbtm,bbtm
+                        
+                        ints2 = []
+                        for a,b in intervals:
+                            T10a = [T1 for (T1, seg1, t1), (T2, seg2, t2) in isc10 if sptregion.point(T1).real==a]
+                            T90a = [T1 for (T1, seg1, t1), (T2, seg2, t2) in isc90 if sptregion.point(T1).real==a]
+                            T10b = [T1 for (T1, seg1, t1), (T2, seg2, t2) in isc10 if sptregion.point(T1).real==b]
+                            T90b = [T1 for (T1, seg1, t1), (T2, seg2, t2) in isc90 if sptregion.point(T1).real==b]
+                            
+                            mtopa,btopa,mbtma,bbtma = bounding_lines(T10a,T90a)
+                            mtopb,btopb,mbtmb,bbtmb = bounding_lines(T10b,T90b)
+                            
+                            dya = (mbtma*a + bbtma) - (mtopa*a+btopa)
+                            if dya < 0.9*lh - tol:
+                                xp9a = (0.9*lh - (bbtma-btopa))/(mbtma-mtopa) if not mbtma==mtopa else None
+                                xp9a = xp9a if xp9a>=a else None
+                            else:
+                                xp9a = a
+                                
+                            dyb = (mbtmb*b + bbtmb) - (mtopb*b+btopb)
+                            if dyb < 0.9*lh - tol:
+                                xp9b = (0.9*lh - (bbtmb-btopb))/(mbtmb-mtopb) if not mbtmb==mtopb else None
+                                xp9b = xp9b if xp9b<=b else None
+                            else:
+                                xp9b = b
+                                
+                            if xp9a is not None and xp9b is not None and xp9b >= xp9a:
+                                ints2.append((xp9a,xp9b))
+                        xlims = [(intv[0],intv[1]-intv[0]) for intv in ints2]
+
                         
                         # Intersection diagnostics
                         # for p in pts10:
@@ -1386,7 +1495,7 @@ class ParsedText:
                 y+=maxabsp
                 for jj, cs in enumerate(splitcs):
                     ln = fc.ln
-                    cln = tline(self,[0],[0],self.textel,self.textel,False,None,
+                    cln = tline(self,[0],[0],self.textel,self.textel,False,[],
                                 ln.anchor,ln.transform,ln.angle,None,ln.style,False,False)
                     cln.broken = ln.broken
                     cln.effabsp = maxabsp
@@ -1410,8 +1519,9 @@ class ParsedText:
                     # When we reached the end of the flow region, add the remaining
                     # characters to a line that is given a NaN y position
                     cln.cs = [c for lnc in lncs[ii:] for c in lnc]
-                    for c in cln.cs:
+                    for jj,c in enumerate(cln.cs):
                         c.ln = cln
+                        c.lnindex = jj
                     cln.y = [float('nan')]
                     break
                     
@@ -2179,12 +2289,9 @@ class tword:
         if not self.ln.pt.isflow:
             return lastspc
         elif lastspc:
-            # For FlowRoots, is rendered when not the last line and line isn't broken
-            notlastln = not self.ln.pt.lns[-1]==self.ln or self.ln.pt.fparaafter
-            if notlastln and not self.ln.broken:
-                return False
-            else:
-                return True
+            # For flows, is rendered when not the last line and line isn't broken
+            lastln = self.ln.pt.lns[-1]==self.ln and not self.ln.pt.fparaafter
+            return lastln or self.ln.broken
         else:
             return False
 
@@ -2209,7 +2316,7 @@ class tword:
             cstop = np.array(cstop,dtype=float)
 
             ww = cstop[-1]
-            # dh.idebug(self.unrenderedspace)
+            # dh.idebug((self.txt,self.unrenderedspace))
             offx = -self.ln.anchfrac * (ww - self.unrenderedspace * self.cs[-1].cw)
             # offset of the left side of the word from the anchor
             wx = self.x
