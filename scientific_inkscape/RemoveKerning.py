@@ -56,12 +56,12 @@ def remove_kerning(
     mergesupersub,
     splitdistant,
     mergenearby,
-    justification=None,
+    justification=None,debugparser=False
 ):
     tels = [el for el in els if isinstance(el, (inkex.TextElement,inkex.FlowRoot))]
     if len(tels)>0:
         tels[0].croot.make_char_table(tels)
-    if DEBUG_PARSER:
+    if DEBUG_PARSER or debugparser:
         for el in tels:
             el.parsed_text.Make_Highlights('char')
         # dh.debug(tels[0].croot.char_table)

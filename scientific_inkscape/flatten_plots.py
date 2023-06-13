@@ -102,6 +102,9 @@ class FlattenPlots(inkex.EffectExtension):
             "--testmode", type=inkex.Boolean, default=False, help="Test mode"
         )
         pars.add_argument("--v", type=str, default="1.2", help="Version for debugging")
+        pars.add_argument(
+            "--debugparser", type=inkex.Boolean, default=False, help="Use parser debugger?"
+        )
 
     def duplicate_layer1(self):
         # For testing, duplicate selection and flatten its elements
@@ -268,7 +271,7 @@ class FlattenPlots(inkex.EffectExtension):
                     mergesubsuper,
                     splitdistant,
                     mergenearby,
-                    justification,
+                    justification,self.options.debugparser
                 )
 
         if self.options.removerectw:

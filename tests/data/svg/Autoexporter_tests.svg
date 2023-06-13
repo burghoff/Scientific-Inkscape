@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
-   sodipodi:docname="Autoexporter_tests.svg"
-   width="5.5290051in"
-   height="5.3349633in"
-   viewBox="0 0 140.43673 135.50807"
-   version="1.1"
-   id="svg26"
-   inkscape:version="1.2.1 (9c6d41e410, 2022-07-14)"
    xml:space="preserve"
+   inkscape:version="1.2.1 (9c6d41e410, 2022-07-14)"
+   id="svg26"
+   version="1.1"
+   viewBox="0 0 140.43673 135.50807"
+   height="5.3349633in"
+   width="5.5290051in"
+   sodipodi:docname="Autoexporter_tests.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -16,7 +16,12 @@
    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
    xmlns:cc="http://creativecommons.org/ns#"
    xmlns:dc="http://purl.org/dc/elements/1.1/"><defs
-     id="defs20"><clipPath
+     id="defs20"><rect
+       x="586"
+       y="206"
+       width="604"
+       height="414"
+       id="rect268397" /><clipPath
        clipPathUnits="userSpaceOnUse"
        id="clipPath2403"><path
          d="M 456.045,253.104 H 518.69 V 206.421 H 456.045 Z"
@@ -975,9 +980,9 @@
      inkscape:document-rotation="0"
      inkscape:current-layer="layer1"
      inkscape:document-units="mm"
-     inkscape:cy="73.000001"
-     inkscape:cx="241.75"
-     inkscape:zoom="4"
+     inkscape:cy="256.07824"
+     inkscape:cx="265.51601"
+     inkscape:zoom="1.589358"
      inkscape:pageshadow="2"
      inkscape:pageopacity="0.0"
      borderopacity="1.0"
@@ -2615,4 +2620,10 @@
          id="tspan271"
          x="180.81731"
          y="371.73615"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Whitney;-inkscape-font-specification:Whitney">testμasdfω</tspan></text></g></svg>
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Whitney;-inkscape-font-specification:Whitney">testμasdfω</tspan></text><text
+       xml:space="preserve"
+       transform="matrix(0.01753759,0,0,0.01753759,63.933928,84.012497)"
+       id="text268395"
+       style="font-size:148.615px;line-height:1.25;font-family:Arial;-inkscape-font-specification:'Arial, Normal';letter-spacing:0px;word-spacing:0px;white-space:pre;shape-inside:url(#rect268397)">Flowed text <tspan
+   style="font-size:186.667px"
+   id="tspan269949">123</tspan></text></g></svg>

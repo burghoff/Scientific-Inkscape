@@ -986,13 +986,16 @@ class ParsedText:
         if self.isflow:
             newtxts=[]
             for ln in reversed(self.lns):
+                import math
+                nany = any([math.isnan(yv) for yv in ln.y])
+                
                 anch = ln.anchor
                 algn = {'start':'start','middle':'center','end':'end'}[anch]
                 
                 origx = None
                 if len(ln.cs)>0:
                     origx = ln.cs[0].pts_ut[0][0]
-                    
+                  
                 newtxt = self.Split_Off_Characters(ln.cs)
                 if isinstance(newtxt,FlowRoot):
                     for d in newtxt.descendants2():
@@ -1008,14 +1011,18 @@ class ParsedText:
                     for k in list(newtxt):
                         k.cstyle['text-align']  = algn
                         k.cstyle['text-anchor'] = anch
-                        
-                deleteempty(newtxt)
-                npt = newtxt.parsed_text
-                if origx is not None and len(npt.lns)>0 and len(npt.lns[0].cs)>0:
-                    npt.__init__(npt.textel, npt.ctable)
-                    newx = [xv+origx-npt.lns[0].cs[0].pts_ut[0][0] for xv in npt.lns[0].x]
-                    npt.lns[0].change_pos(newx)  
-                newtxts.append(newtxt)
+                      
+                if nany:
+                    newtxt.delete2()
+                else:  
+                    deleteempty(newtxt)
+                    npt = newtxt.parsed_text
+                    if origx is not None and len(npt.lns)>0 and len(npt.lns[0].cs)>0:
+                        npt.__init__(npt.textel, npt.ctable)
+                        newx = [xv+origx-npt.lns[0].cs[0].pts_ut[0][0] for xv in npt.lns[0].x]
+                        npt.lns[0].change_pos(newx)  
+                    newtxts.append(newtxt)
+                
             self.textel.delete2()
             return newtxts
     
@@ -1203,6 +1210,7 @@ class ParsedText:
             lh = dh.Get_Composed_LineHeight(el)
             lsty = Character_Table.true_style(el.cspecified_style)
             fs, sf, ct, ang = dh.Get_Composed_Width(el, "font-size", 4)
+            # dh.idebug(self.ctable.flowy(lsty))
             absp = (0.5000*(lh/fs-1)  +self.ctable.flowy(lsty))*(fs/sf) # spacing above baseline
             bbsp = (0.5000*(lh/fs-1)+1-self.ctable.flowy(lsty))*(fs/sf) # spacing below baseline
             rawfs = fs/sf
@@ -3214,6 +3222,8 @@ class Character_Table:
                         myids  = [k    for k,v in nbb.items() if type(v[1])==Style0 and v[1]==sty]
                         
                         success,fm = pr.Set_Text_Style(str(sty)+';font-size:'+str(TEXTSIZE)+"px")
+                        # dh.idebug(sty)
+                        # dh.idebug(fm)
                         if not(success):
                             pangolocked = False
                             return self.meas_char_ws(els, forcecommand=True)

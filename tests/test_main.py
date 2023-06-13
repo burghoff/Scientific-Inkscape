@@ -9,6 +9,7 @@ aepages = 'Multipage_nonuniform.svg'
 MAXPAPERS = 0
 flattentext = 'Text_tests.svg'
 flattenrest = 'Acid_tests.svg';
+flattenflow = 'Flow_tests.svg';
 priority_flatten = ['']
 exclude_flatten = ['Ohtani_SA_2019_Deep_group.svg',flattentext,flattenrest,fname,aename]
 
@@ -19,11 +20,12 @@ version = '1.2'
 usepango = True
 lprofile = False
 
-testflattentext,testflattenrest,testflattenpapers,testscalecorrection,testscalecorrection2,\
-testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp = (False,)*14
+testflattentext,testflattenrest,testflattenflow,testflattenpapers,testscalecorrection,testscalecorrection2,\
+testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp = (False,)*15
 
 testflattentext     = True;
 testflattenrest     = True; 
+testflattenflow     = True; 
 testflattenpapers   = True; 
 testscalecorrection = True;
 testscalecorrection2= True;
@@ -317,6 +319,14 @@ if testflattenrest:
         compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         comparisons = [flattenerargs]
         compare_file = ['svg/'+flattenrest]
+        
+if testflattenflow:
+    class TestFlattenerFlow(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
+        comparisons = [flattenerargs+("--debugparser=True",)]
+        compare_file = ['svg/'+flattenflow]
+
     
 if testflattenpapers:
     class TestFlattenerPapers(ComparisonMixin, TestCase):

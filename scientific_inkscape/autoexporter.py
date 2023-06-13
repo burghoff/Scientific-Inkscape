@@ -534,7 +534,7 @@ class AutoExporter(inkex.EffectExtension):
                 image_ids.append(elid);
              
         # Fix Avenir/Whitney
-        tels = [el for el in vds if isinstance(el, inkex.TextElement)]
+        tels = [el for el in vds if isinstance(el, (inkex.TextElement,inkex.FlowRoot))]
         from TextParser import Character_Fixer2
         Character_Fixer2(tels)
                 
@@ -550,6 +550,14 @@ class AutoExporter(inkex.EffectExtension):
             if len(tels)>0:
                 svg.make_char_table()
                 input_options.ctable = svg.char_table; # store for later
+            
+            nels = []
+            for el in reversed(tels):
+                if el.parsed_text.isflow:
+                    nels += el.parsed_text.Flow_to_Text()
+                    tels.remove(el)
+            tels += nels
+            
             for el in tels:
                 el.parsed_text.Strip_Sodipodirole_Line();
                 el.parsed_text.Fuse_Fonts()
