@@ -24,8 +24,8 @@ testflattentext,testflattenrest,testflattenflow,testflattenpapers,testscalecorre
 testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp = (False,)*15
 
 testflattentext     = True;
-testflattenrest     = True; 
 testflattenflow     = True; 
+testflattenrest     = True; 
 testflattenpapers   = True; 
 testscalecorrection = True;
 testscalecorrection2= True;
@@ -312,13 +312,6 @@ if testflattentext:
         compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         comparisons = [flattenerargs]
         compare_file = ['svg/'+flattentext]
-
-if testflattenrest:
-    class TestFlattenerRest(ComparisonMixin, TestCase):
-        effect_class = FlattenPlots
-        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
-        comparisons = [flattenerargs]
-        compare_file = ['svg/'+flattenrest]
         
 if testflattenflow:
     class TestFlattenerFlow(ComparisonMixin, TestCase):
@@ -326,6 +319,13 @@ if testflattenflow:
         compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         comparisons = [flattenerargs+("--debugparser=True",)]
         compare_file = ['svg/'+flattenflow]
+
+if testflattenrest:
+    class TestFlattenerRest(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
+        comparisons = [flattenerargs]
+        compare_file = ['svg/'+flattenrest]
 
     
 if testflattenpapers:

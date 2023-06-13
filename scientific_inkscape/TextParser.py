@@ -677,7 +677,8 @@ class ParsedText:
         for do in self.tree.ds:
             dxy = ParsedText.GetXY(do, xy)
             # Objects lower in the descendant list override ancestors
-            if len(dxy) > 0 and dxy[0] is not None:
+            # dx and dy don't affect flows
+            if len(dxy) > 0 and dxy[0] is not None and not(self.isflow):
                 allcs = [c for ln in self.lns for c in ln.cs]
                 cnt = 0;
                 for di, tt, d, txt in self.tree.dgenerator(subel=do):
@@ -1041,14 +1042,15 @@ class ParsedText:
             exts = self.get_line_extents();
         else:  # 'all'
             exts = [self.get_full_extent()];
-        for ext in exts:
+        for ii,ext in enumerate(exts):
             r = inkex.Rectangle()
             r.set('x',ext.x1)
             r.set('y',ext.y1)
             r.set('height',ext.h)
             r.set('width', ext.w)
             r.set("transform", self.textel.ccomposed_transform)
-            r.set("style", ParsedText.HIGHLIGHT_STYLE)
+            sty = ParsedText.HIGHLIGHT_STYLE if ii%2==0 else ParsedText.HIGHLIGHT_STYLE.replace('0.4675','0.5675')
+            r.set("style", sty)
             self.textel.croot.append(r)
     
     # Bounding box functions
