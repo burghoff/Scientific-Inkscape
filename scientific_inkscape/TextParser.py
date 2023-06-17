@@ -19,7 +19,7 @@
 
 
 # The TextParser parses text in a document according to the way Inkscape handles it.
-# In short, every TextElement is parsed into a ParsedText.
+# In short, every TextElement or FlowRoot is parsed into a ParsedText.
 # Each ParsedText contains a collection of tlines, representing one line of text.
 # Each tline contains a collection of tchars, representing a single character.
 # Characters are also grouped into twords, which represent groups of characters 
@@ -44,7 +44,6 @@
 # This can occasionally fail: when this happens, a command call is performed instead as a fallback.
 #
 # Known limitations:
-#   Does not support flows, only TextElements
 #   When a font has missing characters, command fallback is invoked.
 #   When Pango cannot find the appropriate font, command fallback is invoked.
 #   Ligatures width not exactly correct
@@ -60,14 +59,13 @@ sys.path.append(
     os.path.dirname(os.path.realpath(sys.argv[0]))
 )  # make sure my directory is on the path
 import dhelpers as dh
-from speedups import Vector2da as v2d
 import speedups as su
 from dhelpers import bbox
 from Style0 import Style0
 
 from pango_renderer import PangoRenderer, FontConfig
 pr = PangoRenderer();
-fc = FontConfig()
+fcfg = FontConfig()
 
 from copy import copy
 import inkex
@@ -1213,6 +1211,7 @@ class ParsedText:
             lsty = Character_Table.true_style(el.cspecified_style)
             fs, sf, ct, ang = dh.Get_Composed_Width(el, "font-size", 4)
             # dh.idebug(self.ctable.flowy(lsty))
+            
             absp = (0.5000*(lh/fs-1)  +self.ctable.flowy(lsty))*(fs/sf) # spacing above baseline
             bbsp = (0.5000*(lh/fs-1)+1-self.ctable.flowy(lsty))*(fs/sf) # spacing below baseline
             rawfs = fs/sf
@@ -2363,21 +2362,6 @@ class tword:
     @property
     def pts_ut(self):
         if self._pts_ut is None:
-            # (cstrt, cstop, lx, rx, by, ty) = self.charpos
-            # ww = cstop[-1]
-            # offx = -self.ln.anchfrac * (
-            #     ww - self.unrenderedspace * self.cs[-1].cw
-            # )  # offset of the left side of the word from the anchor
-            # wx = self.x
-            # wy = self.y
-            # ymin, ymax = (min(ty), max(by)) if len(self.cs)>0 else (wy, wy)    
-            # self._pts_ut = [
-            #     v2d(max(rx)-ww, ymax),
-            #     v2d(max(rx)-ww, ymin),
-            #     v2d(max(rx), ymin),
-            #     v2d(max(rx), ymax),
-            # ]
-            
             (lx, rx, by, ty, lx2, rx2, by2, ty2) = self.charpos
             self._pts_ut = [
                 (lx2, by2),
@@ -2991,9 +2975,13 @@ class cloc:
 
 # A class representing the properties of a collection of characters
 class Character_Table:
-    def __init__(self, els,forcecommand=False):
+    def __init__(self, els):
+        self.root = els[0].croot if len(els)>0 else None
         self.fonttestchars = 'pIaA10mMvo' # don't need that many, just to figure out which fonts we have
-        self.ctable  = self.meas_char_ws(els,forcecommand)
+        ct, pct, self.rtable = self.find_characters(els)
+        
+        # self.ctable  = self.measure_characters(ct, pct, self.rtable)
+        self.ctable = self.extract_characters(ct, pct, self.rtable)
         self.mults = dict()
         
     def __str__(self):
@@ -3004,39 +2992,9 @@ class Character_Table:
                 ret += '    ' + c + ' : ' + str(vars(v)) +'\n'
             ret += '    ' + str(v.dkerns)
         return ret
-    
-    # In flows, the distance between the text baseline and the top of the flow
-    # seems to be determined by something other than Pango metrics (Harfbuzz?).
-    # It is mostly constant in font, unless very tall characters are used.
-    # Therefore we just need to make a test document once per Inkscape version
-    # that contains this distance for each font.
+            
     def flowy(self,sty):
-        try:
-            return self._flowy[sty]
-        except:
-            import shelve
-            flowdat = os.path.join(os.path.dirname(os.path.realpath(__file__)),'FontData')
-            try:
-                with shelve.open(flowdat) as db:
-                    flowy = dict()
-                    for dbv in db:
-                        if dbv.startswith(dh.inkex_version):
-                            flowy[Style0(dbv.strip(dh.inkex_version+' '))] = db[dbv]
-                    # dh.idebug(flowy)
-                    # for ts in self.ctable:
-                    #     flowy[ts] = db[dh.inkex_version+' '+str(ts)]   
-                    self._flowy  = flowy
-                    return self._flowy[sty]  
-            except:
-                from pango_renderer import FontConfig
-                firsty = FontConfig().Flow_Test_Doc()
-                with shelve.open(flowdat) as db:
-                    flowy = dict()
-                    for ts in firsty:
-                        db[dh.inkex_version+' '+str(ts)] = firsty[ts]
-                        flowy[ts] = db[dh.inkex_version+' '+str(ts)]
-                self._flowy  = flowy
-                return self._flowy[sty]  
+        return fcfg.get_fonttools_font(sty)._ascent
 
     def get_prop(self, char, sty):
         try:
@@ -3061,13 +3019,13 @@ class Character_Table:
             self.mults[(char,sty,scl)] = self.get_prop(char,sty) * scl
             return self.mults[(char,sty,scl)]
 
-    def generate_character_table(self, els):
+    def find_characters(self, els):
         ctable = inkex.OrderedDict()
         pctable = inkex.OrderedDict()         # a dictionary of preceding characters in the same style
         rtable = inkex.OrderedDict()
         
-        atxt = [];
-        asty = [];
+        # atxt = [];
+        # asty = [];
         for el in els:
             tree = txttree(el)
             for di, tt, tel, txt in tree.dgenerator():
@@ -3078,39 +3036,93 @@ class Character_Table:
                             # tails get their sty from the parent of the element the tail belongs to
                         sty = sel.cspecified_style
                         
-                        asty.append((Character_Table.true_style(sty),Character_Table.reduced_style(sty)))
-                        atxt.append(txt)
+                        # asty.append((Character_Table.true_style(sty),Character_Table.reduced_style(sty)))
+                        # atxt.append(txt)
                         
-        for ii in range(len(atxt)):
-            sty = asty[ii][0]; txt = atxt[ii];
-            ctable[sty] = dh.unique(ctable.get(sty, []) + list(txt))
-            rtable[asty[ii][1]] = dh.unique(rtable.get(asty[ii][1], []) + list(txt))
-            if sty not in pctable:
-                pctable[sty] = inkex.OrderedDict()
-            for jj in range(1, len(txt)):
-                pctable[sty][txt[jj]] = dh.unique(pctable[sty].get(txt[jj], []) + [txt[jj - 1]])
-        for sty in ctable:  # make sure they have spaces
-            ctable[sty] = dh.unique(ctable[sty] + [" "])
-            for pc in pctable[sty]:
-                pctable[sty][pc] = dh.unique(pctable[sty][pc] + [" "])
-        for sty in rtable:  # make sure they have spaces
-            rtable[sty] = dh.unique(rtable[sty] + [" "])
-            
-        
+                        tsty = Character_Table.true_style(sty)
+                        rsty = Character_Table.reduced_style(sty)
+                        ctable[tsty] = dh.unique(ctable.get(tsty, []) + list(txt))
+                        rtable[rsty] = dh.unique(rtable.get(rsty, []) + list(txt))
+                        if tsty not in pctable:
+                            pctable[tsty] = inkex.OrderedDict()
+                        for jj in range(1, len(txt)):
+                            pctable[tsty][txt[jj]] = dh.unique(pctable[tsty].get(txt[jj], []) + [txt[jj - 1]])
+                        
+        # for ii in range(len(atxt)):
+        #     tsty = asty[ii][0]; txt = atxt[ii];
+        #     ctable[tsty] = dh.unique(ctable.get(tsty, []) + list(txt))
+        #     rtable[asty[ii][1]] = dh.unique(rtable.get(asty[ii][1], []) + list(txt))
+        #     if tsty not in pctable:
+        #         pctable[tsty] = inkex.OrderedDict()
+        #     for jj in range(1, len(txt)):
+        #         pctable[tsty][txt[jj]] = dh.unique(pctable[tsty].get(txt[jj], []) + [txt[jj - 1]])
+        for tsty in ctable:  # make sure they have spaces
+            ctable[tsty] = dh.unique(ctable[tsty] + [" "])
+            for pc in pctable[tsty]:
+                pctable[tsty][pc] = dh.unique(pctable[tsty][pc] + [" "])
+        for rsty in rtable:  # make sure they have spaces
+            rtable[rsty] = dh.unique(rtable[rsty] + [" "])
         return ctable, pctable, rtable
     
+    
+    def extract_characters(self, ct, pct, rt):
+        # For most fonts and characters we can directly extract their information
+        # from the font file
+        try:
+            badchars = {'\n','\r'}
+            ct2 = inkex.OrderedDict()  
+            for ts in ct:
+                bcs = [c for c in ct[ts] if c in badchars] # strip out unusual chars
+                gcs = [c for c in ct[ts] if c not in badchars]
+                chrfs = fcfg.get_true_font_by_char(ts,gcs)
+                if any([v is None for k,v in chrfs.items()]):
+                    return self.measure_characters(ct, pct, rt)
+                fntcs = dict()
+                for k,v in chrfs.items():
+                    if v in fntcs:
+                        fntcs[v] += [k]
+                    else:
+                        fntcs[v] = [k]
+                        
+                ct2[ts] = inkex.OrderedDict();  
+                for chrfnt in fntcs:
+                    fnt = fcfg.get_fonttools_font(chrfnt)
+                    pct2 = {k:v for k,v in pct[ts].items() if k in fntcs[chrfnt]}
+                    advs, dkern, inkbbs = fnt.get_char_advances(fntcs[chrfnt],pct2)
+                    if advs is None:
+                        return self.measure_characters(ct, pct, rt)
+                    for ii in range(len(fntcs[chrfnt])):
+                        c = fntcs[chrfnt][ii]
+                        cw = advs[c]
+                        ch = fnt.cap_height
+                        dr = 0
+                        inkbb = inkbbs[c]
+                        ct2[ts][c] = cprop(c,cw,None,ch,dr,dkern,inkbb)
+                spc = ct2[ts][' ']
+                for c in ct2[ts]:
+                    ct2[ts][c].spacew = spc.charw
+                    ct2[ts][c].caph = spc.caph
+                for bc in bcs:
+                    ct2[ts][bc] = cprop(bc,0,spc.charw,spc.caph,0,dict(),[0,0,0,0])
+            return ct2
+        except:
+            # In case there are special cases not yet supported
+            return self.measure_characters(ct, pct, rt)
 
-
-    def meas_char_ws(self, els, forcecommand = False):
-        # Measure the width of all characters of a given style by generating copies with a prefix and suffix.
-        # To get the character width we compare this to a blank that does not contain any character.
-        # Note that this is the logical "pen width," the width including intercharacter space
+    def measure_characters(self, ct, pct, rt, forcecommand = False):
+        # Occasionally we must resort to measuring characters instead. The best way of doing this is using
+        # Pango to render them to a canvas that is not displayed. This requires the GTK Python bindings, which
+        # should be present in most versions of Inkscape after 1.1. If Pango is not present, we must instead
+        # resort to calling Inkscape with a command call, which is the worst option since it can be very slow.
+        #
+        # To do this, generate copies of each string with a prefix and suffix, then compare to a blank version
+        # that does not contain any character.
+        # Note that this is the logical advance, the width including intercharacter space
         # The width will be the width of a character whose composed font size is 1 uu.
-        ctels = els
-        if forcecommand and len(els)>0:
+        if forcecommand:
             # Examine the whole document if using command
-            ctels = [d for d in els[0].croot.cdescendants if isinstance(d,TextElement)];
-        ct, pct, self.rtable = self.generate_character_table(ctels)
+            ctels = [d for d in self.root.cdescendants if isinstance(d,(TextElement,FlowRoot))];
+            ct, pct, self.rtable = self.find_characters(ctels)
 
         prefix = 'I='
         suffix = '=I'
@@ -3128,7 +3140,6 @@ class Character_Table:
         cnt = 0
         if not(usepango):
             # A new document is generated instead of using the existing one. We don't have to parse an entire element tree
-            # pxinuu = inkex.units.convert_unit("1px", "mm")
             # test document has uu = 1 mm (210 mm / 210)
             svgstart = '<svg width="210mm" height="297mm" viewBox="0 0 210 297" id="svg60386" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"> <defs id="defs60383" /> <g id="layer1">'
             svgstop = "</g> </svg>"
@@ -3140,13 +3151,10 @@ class Character_Table:
             import tempfile, os
             f = tempfile.NamedTemporaryFile(mode="wb",delete=False)
             tmpname = os.path.abspath(f.name);
-            # tmpname = self.caller.options.input_file + "_tmp"
-            # f = open(tmpname, "wb")
             f.write(svgstart.encode("utf8"))
             from xml.sax.saxutils import escape
         else:
             nbb = inkex.OrderedDict()
-            # dh.idebug(ct)
         
 
         def Make_Character(c, sty):
@@ -3173,6 +3181,26 @@ class Character_Table:
         def effc(c):
             return badchars.get(c,c)
         
+        
+        # ct2 = inkex.OrderedDict(); bareids = [];
+        # for s in pct:
+        #     ct2[s] = inkex.OrderedDict()
+        #     for myc in pct[s]:
+        #         t  = Make_Character(prefix + effc(myc) + suffix, s)
+        #         tb = Make_Character(         effc(myc)         , s);
+        #         bareids.append(tb)
+        #         dkern = inkex.OrderedDict()
+        #         if KERN_TABLE:
+        #             for pc in pct[s]:
+        #                 if myc in pct[s] and pc in pct[s][myc]:
+        #                     t2 = Make_Character(prefix + effc(pc)+effc(myc) + suffix, s)
+        #                     # precede by all chars of the same style
+        #                     dkern[pc] = t2
+        #         ct2[s][myc] = StringInfo(myc, t, dkern,tb)
+
+        #     ct2[s][pI]   = StringInfo(pI,   Make_Character(pI,   s), inkex.OrderedDict())
+        #     ct2[s][blnk] = StringInfo(blnk, Make_Character(blnk, s), inkex.OrderedDict())
+        
         ct2 = inkex.OrderedDict(); bareids = [];
         for s in ct:
             ct2[s] = inkex.OrderedDict()
@@ -3193,8 +3221,6 @@ class Character_Table:
 
             ct2[s][pI]   = StringInfo(pI,   Make_Character(pI,   s), inkex.OrderedDict())
             ct2[s][blnk] = StringInfo(blnk, Make_Character(blnk, s), inkex.OrderedDict())
-            
-        # for k in nbb:
 
         ct = ct2
         if not(usepango):
@@ -3219,16 +3245,13 @@ class Character_Table:
                     # dh.idebug(ct.keys())
                     for sty in ct:
                         joinch = ' ';
-                        # dh.idebug(any([type(v[1])==float for k,v in nbb.items()]))
                         mystrs = [v[0] for k,v in nbb.items() if type(v[1])==Style0 and v[1]==sty]
                         myids  = [k    for k,v in nbb.items() if type(v[1])==Style0 and v[1]==sty]
                         
                         success,fm = pr.Set_Text_Style(str(sty)+';font-size:'+str(TEXTSIZE)+"px")
-                        # dh.idebug(sty)
-                        # dh.idebug(fm)
                         if not(success):
                             pangolocked = False
-                            return self.meas_char_ws(els, forcecommand=True)
+                            return self.measure_characters(ct, pct, rt, forcecommand=True)
                         joinedstr = joinch.join(mystrs)+joinch+prefix
                         
                         # We need to render all the characters, but we don't need all of their extents.
@@ -3241,10 +3264,10 @@ class Character_Table:
                         
                         pr.Render_Text(joinedstr)
                         exts,nu = pr.Get_Character_Extents(fm[1],needexts2)
-                        # ws = [v[0][2] if v is not None else None for v in exts] # logical width by char
-                        if nu>0:
-                            pangolocked = False
-                            return self.meas_char_ws(els, forcecommand=True)
+                        # I don't think this is necessary
+                        # if nu>0:
+                        #     pangolocked = False
+                        #     return self.measure_characters(ct, pct, rt, forcecommand=True)
                         
                         sw = exts[-len(prefix)-1][0][2]
                         cnt=0; x=0;
@@ -3268,8 +3291,8 @@ class Character_Table:
                             (xb,yb,wb,hb) = tuple(firstch[2]);
                             if myids[ii] not in bareids:
                                 xb = x; wb = w; # use logical width
-                            if mystr==blnk:
-                                ycorr = hb+yb
+                            # if mystr==blnk:
+                            #     ycorr = hb+yb
                                 
                             nbb[myids[ii]] = [v*TEXTSIZE for v in [xb,yb,wb,hb]]
                             cnt += len(mystr)+len(joinch);
@@ -3278,9 +3301,9 @@ class Character_Table:
                         # Certain Windows fonts do not seem to comply with the Pango spec.
                         # The ascent+descent of a font is supposed to match its logical height,
                         # but this is not always the case. Correct using the top of the 'I' character.
-                        for ii in range(len(mystrs)):
-                            # if myids[ii] in bareids:
-                            nbb[myids[ii]][1] -= ycorr*TEXTSIZE
+                        # for ii in range(len(mystrs)):
+                        #     # if myids[ii] in bareids:
+                        #     nbb[myids[ii]][1] -= ycorr*TEXTSIZE
                     pangolocked = False
                     finished = True
             
@@ -3308,7 +3331,8 @@ class Character_Table:
         for s in ct:
             blnkwd = ct[s][blnk].bb.w;
             sw = ct[s][' '].bb.w - blnkwd  # space width
-            ch = ct[s][blnk].bb.h          # cap height
+            # ch = ct[s][blnk].bb.h          # cap height
+            ch = fcfg.get_fonttools_font(s).cap_height*TEXTSIZE
             dr =  ct[s][pI].bb.y2          # descender
             
             dkernscl = inkex.OrderedDict()
@@ -3343,7 +3367,7 @@ class Character_Table:
     def true_style(sty):
         # Actual rendered font, determined using fontconfig
         sty2 = Character_Table.reduced_style(sty)
-        tf = fc.get_true_font(sty2)
+        tf = fcfg.get_true_font(sty2)
         return tf
     
     # Reduced style: the style that has been reduced to the four attributes
@@ -3363,38 +3387,14 @@ class Character_Table:
     # for when a family does not have a character and a default is used
     @property
     def font_table(self):
-        # if not hasattr(self,'_ftable'):
-        #     ctable2 = dict()
-        #     self._ftable = inkex.OrderedDict();
-        #     for s in self.ctable:
-        #         fontsty = inkex.OrderedDict(Character_Table.dfltatt)
-        #         fontsty.update({k:v for k,v in Style0(s).items() if k in Character_Table.fontatt})
-        #         allcs = set(''.join(self.ctable[s].keys()))
-        #         tfbc = fc.get_true_font_by_char(fontsty,allcs)
-        #         # dh.idebug((s,allcs,tfbc))
-        #         self._ftable[s] = {k:v['font-family'] for k,v in tfbc.items()}
-                
-        #         for k,v in tfbc.items():
-        #             v2 = ";".join([f"{key}:{value}" for key, value in v.items()])
-        #             if v2 not in ctable2:
-        #                 ctable2[v2] = dict()
-        #             if k in self.ctable[s]:
-        #                 ctable2[v2][k] = self.ctable[s][k]
-                        
-        #     # Add the character-specific normalized styles to ctable
-        #     for s in ctable2:
-        #         for k in ctable2[s]:
-        #             if s not in self.ctable:
-        #                 self.ctable[s] = inkex.OrderedDict()
-        #             self.ctable[s][k] = ctable2[s][k]
-        # return self._ftable
         if not hasattr(self,'_ftable'):
             ctable2 = dict()
             self._ftable = inkex.OrderedDict();
             for s in self.rtable:
                 tsty = Character_Table.true_style(s);
                 allcs = set(''.join(self.rtable[s]))
-                tfbc = fc.get_true_font_by_char(s,allcs)
+                tfbc = fcfg.get_true_font_by_char(s,allcs)
+                tfbc = {k:v for k,v in tfbc.items() if v is not None}
                 # dh.idebug((s,allcs,tfbc))
                 self._ftable[s] = {k:v['font-family'] for k,v in tfbc.items()}
                 
@@ -3412,7 +3412,6 @@ class Character_Table:
                         self.ctable[s] = inkex.OrderedDict()
                     self.ctable[s][k] = ctable2[s][k]
                     
-            # dh.idebug(self._ftable)
         return self._ftable
             
                 

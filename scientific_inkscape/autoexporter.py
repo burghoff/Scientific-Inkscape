@@ -233,8 +233,8 @@ class AutoExporter(inkex.EffectExtension):
             self.options.exportnow = True
             self.options.margin = 0.5
             self.options.latexpdf = False
-            import random
-            random.seed(1)
+            # import random
+            # random.seed(1)
             # self.options.svgoptpdf = True
 
         if dispprofile:
@@ -552,6 +552,9 @@ class AutoExporter(inkex.EffectExtension):
                 input_options.ctable = svg.char_table; # store for later
             
             nels = []
+            # if input_options.testmode:
+            #     import random 
+            #     random.seed(1)
             for el in reversed(tels):
                 if el.parsed_text.isflow:
                     nels += el.parsed_text.Flow_to_Text()

@@ -18,12 +18,15 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
-# Some functions used for setting up a blank GTK window and rendering Pango text,
-# for font metric calculation. Reuses the same layout for all rendering.
+# Some functions for getting the properties of fonts and characters.
+# Three libraries are used:
+#  fontconfig: Used for discovering fonts based on the SVG style. This uses 
+#              Inkscape's libfontconfig, so it should always match what Inkscape does
+#  fonttools:  Gets font properties once discovered (from font's filename)
+#  Pango:      Used to render test characters (included with GTK)
+#              Sets up a blank GTK window and renders Pango text, reusing 
+#              the same layout for all rendering.
 
-DEBUG_FONTS = True
-
-# Try to import GTK 3 and make a window
 import inkex
 import dhelpers as dh
 import os, warnings, sys, re
@@ -36,7 +39,9 @@ from fontconfig import FC
 from Style0 import Style0
 class FontConfig():
     def __init__(self):
-        self.truefonts = dict();
+        self.truefonts = dict();   # css
+        self.truefontsfc = dict(); # fontconfig
+        self.truefontsft = dict(); # fonttools
         self.fontcharsets = dict();
         
         # CSS to fontconfig lookup
@@ -107,9 +112,6 @@ class FontConfig():
             FC.WIDTH_EXTRAEXPANDED: 'extra-expanded',
             FC.WIDTH_ULTRAEXPANDED: 'ultra-expanded'
         }
-        def nearest_val_func(dictv, width_value):
-            return dictv[min(dictv.keys(), key=lambda x: abs(x - width_value))]
-        self.nearest_val = nearest_val_func
         
     # Use fontconfig to get the true font that most text will be rendered as
     def get_true_font(self,reducedsty):
@@ -122,7 +124,8 @@ class FontConfig():
             found,status = conf.font_match(pat)
             truefont = self.fcfound_to_css(found)
             
-            self.truefonts[nftuple] = truefont
+            self.truefonts[nftuple]   = truefont
+            self.truefontsfc[nftuple] = found
             self.fontcharsets[tuple(truefont.items())] = found.get(fc.PROP.CHARSET,0)[0]
         return self.truefonts[nftuple]
     
@@ -153,7 +156,21 @@ class FontConfig():
                 d.update(d2);
                 if len(d)==len(chars):
                     break;
+            if len(d)<len(chars):
+                # dh.idebug('Not found in any font: '+str([str(ord(c)) for c in chars if c not in d]))
+                # foundcs = sorted(list(set([cf for k,v in self.fontcharsets.items() for cf in v])))
+                # dh.idebug('Found: '+str([str(c) for c in foundcs]))
+                d.update({c:None for c in chars if c not in d})
         return d
+    
+    def get_fonttools_font(self,reducedsty):
+        nftuple = tuple(reducedsty.items()) # for hashing
+        if nftuple not in self.truefontsft:
+            if nftuple not in self.truefontsfc:
+                self.get_true_font(reducedsty)
+            found = self.truefontsfc[nftuple]
+            self.truefontsft[nftuple] = FontTools_FontInstance(found)
+        return self.truefontsft[nftuple]            
     
     
     # Convert a style dictionary to an fc search pattern
@@ -177,9 +194,9 @@ class FontConfig():
         else:
             return Style0([
                     ('font-family',"'" + fcfam.strip("'") + "'"),
-                    ('font-weight',self.nearest_val(self.FCWGT_to_CSSWGT,fcwgt)),
+                    ('font-weight',nearest_val(self.FCWGT_to_CSSWGT,fcwgt)),
                     ('font-style',self.FCSLN_to_CSSSTY[fcsln]),
-                    ('font-stretch',self.nearest_val(self.FCWDT_to_CSSSTR,fcwdt))])
+                    ('font-stretch',nearest_val(self.FCWDT_to_CSSSTR,fcwdt))])
         
     # For testing purposes    
     def Flow_Test_Doc(self):
@@ -247,6 +264,266 @@ class FontConfig():
         # dh.idebug(len(ffcs))
         # dh.toc()
         return firsty
+ 
+# For dicts whose keys are numerical values, return the value corresponding to 
+# the closest one
+def nearest_val(dictv, width_value):
+    return dictv[min(dictv.keys(), key=lambda x: abs(x - width_value))]
+
+# A version of 
+class FontTools_FontInstance:
+    def __init__(self,fcfont):
+        self.font = self.font_from_fc(fcfont)
+        
+        self.head = self.font['head']
+        self.os2  = self.font['OS/2'] if 'OS/2' in self.font else None
+        self.find_font_metrics()
+        
+    # Find a FontTools font from a found FontConfig font
+    def font_from_fc(self,found):
+        fname = found.get(fc.PROP.FILE,0)[0]
+        current_script_directory = os.path.dirname(os.path.abspath(__file__))
+        sys.path += [os.path.join(current_script_directory,'packages')]
+        # dh.idebug(fname)
+        
+        from fontTools.ttLib import TTFont
+        import logging
+        # logging.getLogger('fontTools.ttLib.tables._h_e_a_d').setLevel(logging.ERROR)
+        logging.getLogger('fontTools').setLevel(logging.ERROR)
+        
+        try:
+            font = TTFont(fname)
+            
+            # If font has variants, get them
+            if 'fvar' in font:
+                fcwgt = found.get(fc.PROP.WEIGHT,0)[0]
+                fcsln = found.get(fc.PROP.SLANT, 0)[0]
+                fcwdt = found.get(fc.PROP.WIDTH, 0)[0]
+                FCWGT_to_OS2WGT = {
+                    FC.WEIGHT_THIN: 100,
+                    FC.WEIGHT_EXTRALIGHT: 200,
+                    FC.WEIGHT_LIGHT: 300,
+                    FC.WEIGHT_SEMILIGHT: 350,
+                    FC.WEIGHT_BOOK: 380,
+                    FC.WEIGHT_NORMAL: 400,
+                    FC.WEIGHT_MEDIUM: 500,
+                    FC.WEIGHT_SEMIBOLD: 600,
+                    FC.WEIGHT_BOLD: 700,
+                    FC.WEIGHT_ULTRABOLD: 800,
+                    FC.WEIGHT_HEAVY: 900,
+                    FC.WEIGHT_ULTRABLACK: 1000
+                }
+                location = dict()
+                for axis in font['fvar'].axes:
+                    if axis.axisTag == 'wght':
+                        location['wght'] = nearest_val(FCWGT_to_OS2WGT,fcwgt)
+                    elif axis.axisTag == 'wdth':
+                        location['wdth'] = fcwdt
+                if len(location)>0:
+                    from fontTools.varLib import mutator
+                    font = mutator.instantiateVariableFont(font, location)
+                     
+        except:            
+            OS2WDT_to_FCWDT = {
+                1: FC.WIDTH_ULTRACONDENSED,
+                2: FC.WIDTH_EXTRACONDENSED,
+                3: FC.WIDTH_CONDENSED,
+                4: FC.WIDTH_SEMICONDENSED,
+                5: FC.WIDTH_NORMAL,
+                6: FC.WIDTH_SEMIEXPANDED,
+                7: FC.WIDTH_EXPANDED,
+                8: FC.WIDTH_EXTRAEXPANDED,
+                9: FC.WIDTH_ULTRAEXPANDED
+            }
+            OS2WGT_to_FCWGT = {
+                100: FC.WEIGHT_THIN,
+                200: FC.WEIGHT_EXTRALIGHT,
+                300: FC.WEIGHT_LIGHT,
+                350: FC.WEIGHT_SEMILIGHT,
+                380: FC.WEIGHT_BOOK,
+                400: FC.WEIGHT_NORMAL,
+                500: FC.WEIGHT_MEDIUM,
+                600: FC.WEIGHT_SEMIBOLD,
+                700: FC.WEIGHT_BOLD,
+                800: FC.WEIGHT_ULTRABOLD,
+                900: FC.WEIGHT_HEAVY,
+                1000: FC.WEIGHT_ULTRABLACK
+            }
+            # fcfam = found.get(fc.PROP.FAMILY,0)[0]
+            fcwgt = found.get(fc.PROP.WEIGHT,0)[0]
+            fcsln = found.get(fc.PROP.SLANT, 0)[0]
+            fcwdt = found.get(fc.PROP.WIDTH, 0)[0]
+            
+            from fontTools.ttLib import TTCollection
+            num_fonts = len(TTCollection(fname))
+            num_match = []
+            for i in range(num_fonts):
+                tfont = TTFont(fname, fontNumber=i)
+                font_weight = tfont['OS/2'].usWeightClass
+                font_width = tfont['OS/2'].usWidthClass
+    
+                subfamily = tfont['name'].getName(2, 3, 1, 1033)
+                subfamily = subfamily.toUnicode() if subfamily is not None else 'Unknown'
+                font_italic = (tfont['OS/2'].fsSelection & 1) != 0 or 'italic' in subfamily.lower() or 'oblique' in subfamily.lower()
+                
+                matches = [nearest_val(OS2WGT_to_FCWGT,font_weight)==fcwgt,
+                           OS2WDT_to_FCWDT[font_width]==fcwdt,
+                           ((font_italic and fcsln in [FC.SLANT_ITALIC,FC.SLANT_OBLIQUE]) or (not font_italic and fcsln==FC.SLANT_ROMAN))]
+                num_match.append(sum(matches))
+                if num_match[-1]==3:
+                    # dh.idebug((font_weight,font_width,font_italic))
+                    font = tfont
+                    break
+            if max(num_match)<3:
+                # Did not find a perfect match
+                font = [TTFont(fname, fontNumber=i) for i in range(num_fonts) if num_match[i]==max(num_match)][0]
+        return font
+
+    # A modified version of Inkscape's find_font_metrics
+    # https://gitlab.com/inkscape/inkscape/-/blob/master/src/libnrtype/font-instance.cpp#L267
+    # Uses FontTools, which is Pythonic
+    def find_font_metrics(self):
+        font = self.font
+        unitsPerEm = self.head.unitsPerEm
+        os2  = self.os2
+        if os2:
+            self._ascent  = abs(os2.sTypoAscender / unitsPerEm)
+            self._descent = abs(os2.sTypoDescender / unitsPerEm)
+        else:
+            self._ascent  = abs(font['hhea'].ascent  / unitsPerEm)
+            self._descent = abs(font['hhea'].descent / unitsPerEm)
+        self._ascent_max  = abs(font['hhea'].ascent  / unitsPerEm)
+        self._descent_max = abs(font['hhea'].descent / unitsPerEm)
+        self._design_units = unitsPerEm
+        em = self._ascent + self._descent
+        if em > 0.0:
+            self._ascent /= em
+            self._descent /= em
+
+        if os2 and os2.version >= 0x0002 and os2.version != 0xffff:
+            self._xheight = abs(os2.sxHeight / unitsPerEm)
+        else:
+            glyph_set = font.getGlyphSet()
+            self._xheight = abs(glyph_set['x'].height / unitsPerEm) if 'x' in glyph_set and glyph_set['x'].height is not None else 0.5
+        self._baselines = [0]*8
+        self.SP_CSS_BASELINE_IDEOGRAPHIC = 0
+        self.SP_CSS_BASELINE_HANGING = 1
+        self.SP_CSS_BASELINE_MATHEMATICAL = 2
+        self.SP_CSS_BASELINE_CENTRAL = 3
+        self.SP_CSS_BASELINE_MIDDLE = 4
+        self.SP_CSS_BASELINE_TEXT_BEFORE_EDGE = 5
+        self.SP_CSS_BASELINE_TEXT_AFTER_EDGE = 6
+        self.SP_CSS_BASELINE_ALPHABETIC = 7
+        self._baselines[self.SP_CSS_BASELINE_IDEOGRAPHIC] = -self._descent
+        self._baselines[self.SP_CSS_BASELINE_HANGING] = 0.8 * self._ascent
+        self._baselines[self.SP_CSS_BASELINE_MATHEMATICAL] = 0.8 * self._xheight
+        self._baselines[self.SP_CSS_BASELINE_CENTRAL] = 0.5 - self._descent
+        self._baselines[self.SP_CSS_BASELINE_MIDDLE] = 0.5 * self._xheight
+        self._baselines[self.SP_CSS_BASELINE_TEXT_BEFORE_EDGE] = self._ascent
+        self._baselines[self.SP_CSS_BASELINE_TEXT_AFTER_EDGE] = -self._descent
+        
+        # Get capital height
+        if os2 and hasattr(os2,'sCapHeight') and os2.sCapHeight not in [0,None]:
+            self.cap_height = os2.sCapHeight / unitsPerEm
+        elif 'glyf' in font and 'I' in font.getGlyphNames():
+            glyf_table = font['glyf']
+            i_glyph = glyf_table['I']
+            self.cap_height = (i_glyph.yMax - 0*i_glyph.yMin)/unitsPerEm
+        else:
+            self.cap_height = 1
+            
+    def get_char_advances(self,chars,pchars):
+        unitsPerEm = self.head.unitsPerEm
+        if not hasattr(self,'cmap'):
+            self.cmap = self.font.getBestCmap()
+        if not hasattr(self,'htmx'):
+            self.hmtx = self.font["hmtx"]
+        if not hasattr(self,'kern'):
+            self.kern = self.font['kern'] if 'kern' in self.font else None
+        if not hasattr(self,'GSUB'):
+            self.gsub = self.font['GSUB'] if 'GSUB' in self.font else None
+        if not hasattr(self,'glyf'):
+            self.glyf = self.font['glyf'] if 'glyf' in self.font else None
+        if not hasattr(self,'GlyphNames'):
+            self.GlyphNames = self.font.getGlyphNames()
+
+        if self.cmap is None:
+            # Certain symbol fonts don't have a cmap table
+            return None, None, None
+
+        advs = dict()
+        bbs = dict()
+        for c in chars:
+            glyph1 = self.cmap.get(ord(c))
+            if glyph1 is not None:
+                if glyph1 in self.hmtx.metrics:
+                    advance_width, lsb = self.hmtx.metrics[glyph1]
+                    advs[c] = advance_width/unitsPerEm
+                    
+                try:
+                    glyph = self.glyf[glyph1]
+                    bb = [glyph.xMin,-glyph.yMax,glyph.xMax - glyph.xMin,glyph.yMax - glyph.yMin]
+                    bbs[c] = [v/unitsPerEm for v in bb]
+                except:
+                    bbs[c] = [0,0,0,0]
+            else:
+                advs[c] = None
+                
+        # Get ligature table        
+        if not hasattr(self,'ligatures'):
+            if self.gsub:
+                gsub_table = self.gsub.table
+                # Iterate over each LookupList in the GSUB table
+                self.ligatures = dict()
+                for lookup_index, lookup in enumerate(gsub_table.LookupList.Lookup):
+                    # Each Lookup can contain multiple SubTables
+                    for subtable_index, subtable in enumerate(lookup.SubTable):
+                        # Handle extension lookups
+                        if lookup.LookupType == 7:  # 7 is the Lookup type for Extension Substitutions
+                            ext_subtable = subtable.ExtSubTable
+                            lookup_type = ext_subtable.LookupType
+                        else:
+                            ext_subtable = subtable
+                            lookup_type = lookup.LookupType
+                
+                        # We're only interested in ligature substitutions
+                        if lookup_type == 4:  # 4 is the Lookup type for Ligature Substitutions
+                            # Each subtable can define substitutions for multiple glyphs
+                            for first_glyph, ligature_set in ext_subtable.ligatures.items():
+                                # The ligature set contains all ligatures that start with the first glyph
+                                # Each ligature is a sequence of glyphs that it replaces
+                                for ligature in ligature_set:
+                                    # The 'Component' field is a list of glyphs that make up the ligature
+                                    component_glyphs = [first_glyph] + ligature.Component
+                                    # The 'LigGlyph' field is the glyph that the components are replaced with
+                                    ligature_glyph = ligature.LigGlyph
+                                    self.ligatures[tuple(component_glyphs)] = ligature_glyph
+            else:
+                self.ligatures = dict()
+                
+            
+        dadvs = dict()
+        for c in pchars:
+            glyph2 = self.cmap.get(ord(c))
+            for pc in pchars[c]:
+                glyph1 = self.cmap.get(ord(pc))
+                kerning_value = None;
+                if (glyph1,glyph2) in self.ligatures:
+                    ligglyph = self.ligatures[(glyph1,glyph2)]
+                    awlig, lsb = self.hmtx.metrics[ligglyph]
+                    aw1  , lsb = self.hmtx.metrics[glyph1]
+                    aw2  , lsb = self.hmtx.metrics[glyph2]
+                    kerning_value = awlig - aw1 - aw2
+                else:
+                    if self.kern is not None:
+                        for subtable in self.kern.kernTables:
+                            kerning_value = subtable.kernTable.get((glyph1, glyph2));
+                            if kerning_value is not None:
+                                break
+                if kerning_value is None:
+                    kerning_value = 0
+                dadvs[(pc,c)] = kerning_value/unitsPerEm
+        return advs, dadvs, bbs
 
 # The Pango library is only available starting with v1.1 (when Inkscape added
 # the Python bindings for the gtk library).

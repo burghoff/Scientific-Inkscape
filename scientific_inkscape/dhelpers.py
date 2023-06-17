@@ -1025,8 +1025,6 @@ def add_to_iddict(el, todel=None):
         del svg.iddict[todel]
 
 
-# llgetid = lambda x : lxml.etree.ElementBase.get(x,'id',None)
-# a low-level get is faster for getting ids
 def getiddict(svg):
     if not (hasattr(svg, "_iddict")):
         svg._iddict = inkex.OrderedDict()
@@ -1122,18 +1120,18 @@ inkex.SvgDocumentElement.defs2 = property(defs2)
 # The built-in get_unique_id gets stuck if there are too many elements. Instead use an adaptive
 # size based on the current number of ids
 # Modified from Inkex's get_unique_id
-import random
-def get_unique_id2(svg, prefix):
-    ids = get_ids2(svg) 
-    new_id = None
-    size = math.ceil(math.log10(len(ids))) + 1 
-    _from = 10 ** size - 1
-    _to = 10 ** size
-    while new_id is None or new_id in ids:
-        # Do not use randint because py2/3 incompatibility
-        new_id = prefix + str(int(random.random() * _from - _to) + _to)
-    svg.ids.add(new_id)
-    return new_id
+# import random
+# def get_unique_id2(svg, prefix):
+#     ids = get_ids2(svg)
+#     new_id = None
+#     size = math.ceil(math.log10(len(ids))) + 1 
+#     _from = 10 ** size - 1
+#     _to = 10 ** size
+#     while new_id is None or new_id in ids:
+#         # Do not use randint because py2/3 incompatibility
+#         new_id = prefix + str(int(random.random() * _from - _to) + _to)
+#     svg.ids.add(new_id)
+#     return new_id
 
 def get_ids2(svg):
     """Returns a set of unique document ids"""
@@ -1143,6 +1141,18 @@ def get_ids2(svg):
         else:
             svg.ids = set(svg.xpath("//@id"))
     return svg.ids
+
+import random
+def get_unique_id2(svg, prefix):
+    ids = get_ids2(svg)
+    new_id = None
+    cnt = len(ids)
+    while new_id is None or new_id in ids:
+        new_id = prefix + str(cnt)
+        cnt+=1
+    svg.ids.add(new_id)
+    return new_id
+
 
 # Version that is non-random, useful for debugging
 # global idcount

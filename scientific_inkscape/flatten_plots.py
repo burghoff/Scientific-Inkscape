@@ -108,8 +108,8 @@ class FlattenPlots(inkex.EffectExtension):
 
     def duplicate_layer1(self):
         # For testing, duplicate selection and flatten its elements
-        import random
-        random.seed(1)
+        # import random
+        # random.seed(1)
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
         # should work with both v1.0 and v1.1
         for el in sel:
@@ -129,18 +129,18 @@ class FlattenPlots(inkex.EffectExtension):
 
     def effect(self):
         if self.options.testmode:
-            import random
+            # import random
             if not hasattr(self.options,'enabled_profile'):
                 self.options.enabled_profile = True
                 self.options.lyr1 = self.duplicate_layer1()
-                self.options.rngstate = random.getstate()
+                # self.options.rngstate = random.getstate()
                 dh.ctic()
                 self.effect()
                 dh.ctoc()
                 return
             else:
                 sel = self.options.lyr1
-                random.setstate(self.options.rngstate)
+                # random.setstate(self.options.rngstate)
                 self.options.deepungroup = True
                 self.options.fixtext = True
                 self.options.removerectw = True
