@@ -2980,8 +2980,11 @@ class Character_Table:
         self.fonttestchars = 'pIaA10mMvo' # don't need that many, just to figure out which fonts we have
         ct, pct, self.rtable = self.find_characters(els)
         
-        # self.ctable  = self.measure_characters(ct, pct, self.rtable)
-        self.ctable = self.extract_characters(ct, pct, self.rtable)
+        if not pr.haspango:
+            self.ctable = self.extract_characters(ct, pct, self.rtable)
+        else:
+            self.ctable  = self.measure_characters(ct, pct, self.rtable)
+        # 
         self.mults = dict()
         
     def __str__(self):
@@ -3024,8 +3027,6 @@ class Character_Table:
         pctable = inkex.OrderedDict()         # a dictionary of preceding characters in the same style
         rtable = inkex.OrderedDict()
         
-        # atxt = [];
-        # asty = [];
         for el in els:
             tree = txttree(el)
             for di, tt, tel, txt in tree.dgenerator():
@@ -3036,9 +3037,6 @@ class Character_Table:
                             # tails get their sty from the parent of the element the tail belongs to
                         sty = sel.cspecified_style
                         
-                        # asty.append((Character_Table.true_style(sty),Character_Table.reduced_style(sty)))
-                        # atxt.append(txt)
-                        
                         tsty = Character_Table.true_style(sty)
                         rsty = Character_Table.reduced_style(sty)
                         ctable[tsty] = dh.unique(ctable.get(tsty, []) + list(txt))
@@ -3048,14 +3046,6 @@ class Character_Table:
                         for jj in range(1, len(txt)):
                             pctable[tsty][txt[jj]] = dh.unique(pctable[tsty].get(txt[jj], []) + [txt[jj - 1]])
                         
-        # for ii in range(len(atxt)):
-        #     tsty = asty[ii][0]; txt = atxt[ii];
-        #     ctable[tsty] = dh.unique(ctable.get(tsty, []) + list(txt))
-        #     rtable[asty[ii][1]] = dh.unique(rtable.get(asty[ii][1], []) + list(txt))
-        #     if tsty not in pctable:
-        #         pctable[tsty] = inkex.OrderedDict()
-        #     for jj in range(1, len(txt)):
-        #         pctable[tsty][txt[jj]] = dh.unique(pctable[tsty].get(txt[jj], []) + [txt[jj - 1]])
         for tsty in ctable:  # make sure they have spaces
             ctable[tsty] = dh.unique(ctable[tsty] + [" "])
             for pc in pctable[tsty]:
@@ -3110,7 +3100,7 @@ class Character_Table:
             return self.measure_characters(ct, pct, rt)
 
     def measure_characters(self, ct, pct, rt, forcecommand = False):
-        # Occasionally we must resort to measuring characters instead. The best way of doing this is using
+        # Measures character properties by using
         # Pango to render them to a canvas that is not displayed. This requires the GTK Python bindings, which
         # should be present in most versions of Inkscape after 1.1. If Pango is not present, we must instead
         # resort to calling Inkscape with a command call, which is the worst option since it can be very slow.
@@ -3331,8 +3321,8 @@ class Character_Table:
         for s in ct:
             blnkwd = ct[s][blnk].bb.w;
             sw = ct[s][' '].bb.w - blnkwd  # space width
-            # ch = ct[s][blnk].bb.h          # cap height
-            ch = fcfg.get_fonttools_font(s).cap_height*TEXTSIZE
+            ch = -ct[s][blnk].bb.y1        # cap height is the top of I
+            # ch = fcfg.get_fonttools_font(s).cap_height*TEXTSIZE
             dr =  ct[s][pI].bb.y2          # descender
             
             dkernscl = inkex.OrderedDict()
