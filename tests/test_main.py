@@ -291,7 +291,7 @@ def mod_xmldiff(data_a,data_b):
     # print(diff_xml)
     toremove = []
     for x, (value_a, value_b) in enumerate(delta):
-        if value_a is not None and value_b is not None and \
+        if value_a is not None and value_b is not None and len(value_a)>0 and len(value_b)>0 and \
            ((value_a[0]=='x' and value_b[0]=='x') or (value_a[0]=='y' and value_b[0]=='y')):
             try:
                 if abs(float(value_a[1])-float(value_b[1]))<=1:

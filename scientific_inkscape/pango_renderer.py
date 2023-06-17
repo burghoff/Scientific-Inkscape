@@ -355,7 +355,9 @@ class FontTools_FontInstance:
             fcwdt = found.get(fc.PROP.WIDTH, 0)[0]
             
             from fontTools.ttLib import TTCollection
-            num_fonts = len(TTCollection(fname))
+            collection = TTCollection(fname)
+            num_fonts = len(collection)
+            collection.close()
             num_match = []
             for i in range(num_fonts):
                 tfont = TTFont(fname, fontNumber=i)

@@ -165,6 +165,10 @@ def descendants2(el, return_tails=False):
 
 BaseElement.descendants2 = descendants2
 
+# Returns non-comment children
+def list2(el):
+    return [k for k in list(el) if not(k.tag == ctag)]
+
 
 EBget = lxml.etree.ElementBase.get;
 EBset = lxml.etree.ElementBase.set;
@@ -401,7 +405,7 @@ def get_ccomposed_transform(el):
 def set_ccomposed_transform(el,si):
     if si is None and hasattr(el, "_ccomposed_transform"):
         delattr(el, "_ccomposed_transform")  # invalidate
-        for k in list(el):
+        for k in list2(el):
             k.ccomposed_transform = None     # invalidate descendants
 BaseElement.ccomposed_transform = property(get_ccomposed_transform,set_ccomposed_transform)
 
@@ -1273,7 +1277,7 @@ def bounding_box2(el,dotransform=True,includestroke=True):
     if (dotransform,includestroke) not in el._cbbox:
         try:
             ret = bbox(None)
-            if isinstance(el, (inkex.TextElement)):
+            if isinstance(el, (inkex.TextElement,inkex.FlowRoot)):
                 ret = el.parsed_text.get_full_extent();
             elif isinstance(el, otp_support):
                 pth = get_path2(el)
@@ -1321,7 +1325,7 @@ def bounding_box2(el,dotransform=True,includestroke=True):
         el._cbbox[(dotransform,includestroke)] = ret
     return el._cbbox[(dotransform,includestroke)]
 
-bb2_support = (inkex.TextElement,inkex.Image,inkex.Use,
+bb2_support = (inkex.TextElement,inkex.FlowRoot,inkex.Image,inkex.Use,
                SvgDocumentElement,inkex.Group,inkex.Layer) + otp_support
 
 def set_cbbox(el,val):
@@ -1369,7 +1373,7 @@ def BB2(slf,els=None,forceupdate=False):
         for el in els:
             if el not in allds: # so we're not re-descendants2ing
                 allds += descendants2(el)        
-        dtels = [d for d in unique(allds) if isinstance(d,inkex.TextElement)]
+        dtels = [d for d in unique(allds) if isinstance(d,(inkex.TextElement,inkex.FlowRoot))]
         if len(dtels)>0:
             import TextParser
             assert TextParser # optional, disables pyflakes warning
@@ -1389,9 +1393,9 @@ def BB2(slf,els=None,forceupdate=False):
 
     return ret
 
+# For diagnosing BB2
 def Check_BB2(slf):
     bb2 = BB2(slf)
-    
     HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
     for el in descendants2(slf.svg):
         if el.get_id2() in bb2:

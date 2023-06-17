@@ -1054,6 +1054,7 @@ class ParsedText:
     # Bounding box functions
     def get_char_inkbbox(self):
         # Get the untranformed bounding boxes of all characters' ink
+        import math
         exts = []
         if self.lns is not None and len(self.lns) > 0:
             if self.lns[0].xsrc is not None:
@@ -1062,7 +1063,8 @@ class ParsedText:
                         for c in w.cs:
                             p1 = c.pts_ut_ink[0]
                             p2 = c.pts_ut_ink[2]
-                            exts.append(dh.bbox((p1,p2)))
+                            if not math.isnan(p1[1]):
+                                exts.append(dh.bbox((p1,p2)))
         return exts
     
     def get_full_inkbbox(self):
@@ -1081,6 +1083,7 @@ class ParsedText:
     # Extent functions
     def get_char_extents(self):
         # Get the untranformed extent of each character
+        import math
         exts = []
         if self.lns is not None and len(self.lns) > 0:
             if self.lns[0].xsrc is not None:
@@ -1089,10 +1092,12 @@ class ParsedText:
                         for c in w.cs:
                             p1 = c.pts_ut[0]
                             p2 = c.pts_ut[2]
-                            exts.append(dh.bbox((p1,p2)))
+                            if not math.isnan(p1[1]):
+                                exts.append(dh.bbox((p1,p2)))
         return exts
     def get_word_extents(self):
         # Get the untranformed extent of each word
+        import math
         exts = []
         if self.lns is not None and len(self.lns) > 0:
             if self.lns[0].xsrc is not None:
@@ -1100,10 +1105,12 @@ class ParsedText:
                     for w in ln.ws:
                         p1 = w.pts_ut[0]
                         p2 = w.pts_ut[2]
-                        exts.append(dh.bbox((p1,p2)))
+                        if not math.isnan(p1[1]):
+                            exts.append(dh.bbox((p1,p2)))
         return exts
     def get_line_extents(self):
         # Get the untranformed extent of each line
+        import math
         exts = []
         if self.lns is not None and len(self.lns) > 0:
             if self.lns[0].xsrc is not None:
@@ -1112,12 +1119,14 @@ class ParsedText:
                     for w in ln.ws:
                         p1 = w.pts_ut[0]
                         p2 = w.pts_ut[2]
-                        extln = extln.union(dh.bbox((p1,p2)))
+                        if not math.isnan(p1[1]):
+                            extln = extln.union(dh.bbox((p1,p2)))
                     if not(extln.isnull):
                         exts.append(extln)
         return exts
     def get_full_extent(self):
         # Get the untranformed extent of the whole element
+        import math
         ext = dh.bbox(None);
         if self.lns is not None and len(self.lns) > 0:
             if self.lns[0].xsrc is not None:
@@ -1126,7 +1135,8 @@ class ParsedText:
                         for c in w.cs:
                             p1 = c.pts_ut[0]
                             p2 = c.pts_ut[2]
-                            ext = ext.union(dh.bbox((p1,p2)))
+                            if not math.isnan(p1[1]):
+                                ext = ext.union(dh.bbox((p1,p2)))
         return ext
                     
     @property
@@ -2517,7 +2527,6 @@ class tchar:
         # true location: [parent, TT_TEXT or TT_TAIL, index]
         self.ch = prop.caph * utfs
         # cap height (height of flat capitals like T)
-        # self.dr = dr;     # descender (length of p/q descender))
         self.sw = prop.spacew * utfs
         # space width for style
         self.ln = ln
@@ -2901,8 +2910,8 @@ def sortnone(x):  # sorts an x with Nones (skip Nones)
 # A class representing the properties of a single character
 # It is meant to be immutable...do not modify attributes
 class cprop:
-    __slots__ = ("char", "charw", "spacew", "caph", "descrh", "dkerns", "inkbb")
-    def __init__(self, char, cw, sw, ch, dr, dkerns,inkbb):
+    __slots__ = ("char", "charw", "spacew", "caph", "dkerns", "inkbb")
+    def __init__(self, char, cw, sw, ch, dkerns,inkbb):
         self.char = char
         self.charw = cw
         # character width
@@ -2910,8 +2919,6 @@ class cprop:
         # space width
         self.caph = ch
         # cap height
-        self.descrh = dr
-        # descender height
         self.dkerns = dkerns
         # table of how much extra width a preceding character adds to me
         self.inkbb = inkbb;
@@ -2927,7 +2934,6 @@ class cprop:
             self.charw * scl,
             self.spacew * scl,
             self.caph * scl,
-            self.descrh * scl,
             dkern2, inkbb2
         )
     
@@ -2938,7 +2944,6 @@ class cprop:
             "charw": self.charw,
             "spacew": self.spacew,
             "caph": self.caph,
-            "descrh": self.descrh,
             "inkbb": self.inkbb,
         }
 
@@ -2977,14 +2982,15 @@ class cloc:
 class Character_Table:
     def __init__(self, els):
         self.root = els[0].croot if len(els)>0 else None
-        self.fonttestchars = 'pIaA10mMvo' # don't need that many, just to figure out which fonts we have
         ct, pct, self.rtable = self.find_characters(els)
         
-        if not pr.haspango:
-            self.ctable = self.extract_characters(ct, pct, self.rtable)
-        else:
+        if pr.haspango:
+            # Prefer to measure with Pango if we have it (faster, more accurate)
             self.ctable  = self.measure_characters(ct, pct, self.rtable)
-        # 
+        else:
+            # Can also extract directly using fonttools
+            self.ctable = self.extract_characters(ct, pct, self.rtable)
+
         self.mults = dict()
         
     def __str__(self):
@@ -3024,7 +3030,7 @@ class Character_Table:
 
     def find_characters(self, els):
         ctable = inkex.OrderedDict()
-        pctable = inkex.OrderedDict()         # a dictionary of preceding characters in the same style
+        pctable = inkex.OrderedDict()   # a dictionary of preceding characters in the same style
         rtable = inkex.OrderedDict()
         
         for el in els:
@@ -3057,7 +3063,7 @@ class Character_Table:
     
     def extract_characters(self, ct, pct, rt):
         # For most fonts and characters we can directly extract their information
-        # from the font file
+        # from the font file using fonttools
         try:
             badchars = {'\n','\r'}
             ct2 = inkex.OrderedDict()  
@@ -3087,28 +3093,27 @@ class Character_Table:
                         ch = fnt.cap_height
                         dr = 0
                         inkbb = inkbbs[c]
-                        ct2[ts][c] = cprop(c,cw,None,ch,dr,dkern,inkbb)
+                        ct2[ts][c] = cprop(c,cw,None,ch,dkern,inkbb)
                 spc = ct2[ts][' ']
                 for c in ct2[ts]:
                     ct2[ts][c].spacew = spc.charw
                     ct2[ts][c].caph = spc.caph
                 for bc in bcs:
-                    ct2[ts][bc] = cprop(bc,0,spc.charw,spc.caph,0,dict(),[0,0,0,0])
+                    ct2[ts][bc] = cprop(bc,0,spc.charw,spc.caph,dict(),[0,0,0,0])
             return ct2
         except:
             # In case there are special cases not yet supported
             return self.measure_characters(ct, pct, rt)
 
     def measure_characters(self, ct, pct, rt, forcecommand = False):
-        # Measures character properties by using
-        # Pango to render them to a canvas that is not displayed. This requires the GTK Python bindings, which
-        # should be present in most versions of Inkscape after 1.1. If Pango is not present, we must instead
-        # resort to calling Inkscape with a command call, which is the worst option since it can be very slow.
+        # Uses Pango to measure character properties by rendering them on an unseen
+        # canvas. Requires GTK Python bindings, generally present in Inkscape 1.1 and
+        # later. If Pango is absent, a slow Inkscape command call is used instead.
         #
-        # To do this, generate copies of each string with a prefix and suffix, then compare to a blank version
-        # that does not contain any character.
-        # Note that this is the logical advance, the width including intercharacter space
-        # The width will be the width of a character whose composed font size is 1 uu.
+        # Generates prefixed, suffixed copies of each string, compares them to a blank
+        # version without any character. This measures the logical advance, i.e., the
+        # width including intercharacter space. Width corresponds to a character with
+        # a composed font size of 1 uu.
         if forcecommand:
             # Examine the whole document if using command
             ctels = [d for d in self.root.cdescendants if isinstance(d,(TextElement,FlowRoot))];
@@ -3189,7 +3194,7 @@ class Character_Table:
         #         ct2[s][myc] = StringInfo(myc, t, dkern,tb)
 
         #     ct2[s][pI]   = StringInfo(pI,   Make_Character(pI,   s), inkex.OrderedDict())
-        #     ct2[s][blnk] = StringInfo(blnk, Make_Character(blnk, s), inkex.OrderedDict())
+        #     ct2[s][blnk] = St
         
         ct2 = inkex.OrderedDict(); bareids = [];
         for s in ct:
@@ -3220,8 +3225,7 @@ class Character_Table:
             import os
             os.remove(tmpname)
         else:
-            # Pango doesn't play well with multithreading
-            # Add a lock to prevent multiple simultaneous calls
+            # Pango can't multithread well, lock to prevent multiple simultaneous calls
             global pangolocked
             if 'pangolocked' not in globals():
                 pangolocked = False
@@ -3232,7 +3236,6 @@ class Character_Table:
                     time.sleep(random.uniform(0.010, 0.020))
                 else:
                     pangolocked = True
-                    # dh.idebug(ct.keys())
                     for sty in ct:
                         joinch = ' ';
                         mystrs = [v[0] for k,v in nbb.items() if type(v[1])==Style0 and v[1]==sty]
@@ -3254,8 +3257,7 @@ class Character_Table:
                         
                         pr.Render_Text(joinedstr)
                         exts,nu = pr.Get_Character_Extents(fm[1],needexts2)
-                        # I don't think this is necessary
-                        # if nu>0:
+                        # if nu>0: # Removed 2023.06.16
                         #     pangolocked = False
                         #     return self.measure_characters(ct, pct, rt, forcecommand=True)
                         
@@ -3268,14 +3270,6 @@ class Character_Table:
                             else:
                                 altw = exts[cnt+len(mystr)+1][0][0] - exts[cnt][0][0] -sw
                             w = altw
-
-                            if abs(altw-w)>1e-12:
-                                dh.idebug((w,cnt,altw-w))
-                                dh.idebug(mystr)
-                                # dh.idebug([ord(c) for c in mystr])
-                                dh.idebug(sty)
-                                dh.idebug([v[0] for v in exts[cnt:cnt+len(mystr)]])
-                                dh.idebug(len(mystrs[ii+1]))
                                 
                             firstch = exts[cnt];
                             (xb,yb,wb,hb) = tuple(firstch[2]);
@@ -3291,6 +3285,7 @@ class Character_Table:
                         # Certain Windows fonts do not seem to comply with the Pango spec.
                         # The ascent+descent of a font is supposed to match its logical height,
                         # but this is not always the case. Correct using the top of the 'I' character.
+                        # Removed 2023.06.16
                         # for ii in range(len(mystrs)):
                         #     # if myids[ii] in bareids:
                         #     nbb[myids[ii]][1] -= ycorr*TEXTSIZE
@@ -3321,9 +3316,7 @@ class Character_Table:
         for s in ct:
             blnkwd = ct[s][blnk].bb.w;
             sw = ct[s][' '].bb.w - blnkwd  # space width
-            ch = -ct[s][blnk].bb.y1        # cap height is the top of I
-            # ch = fcfg.get_fonttools_font(s).cap_height*TEXTSIZE
-            dr =  ct[s][pI].bb.y2          # descender
+            ch = -ct[s][blnk].bb.y1        # cap height is the top of I (relative to baseline)
             
             dkernscl = inkex.OrderedDict()
             if KERN_TABLE:
@@ -3343,10 +3336,8 @@ class Character_Table:
                     cw/TEXTSIZE,
                     sw/TEXTSIZE,
                     ch/TEXTSIZE,
-                    dr/TEXTSIZE,
                     dkernscl, [v/TEXTSIZE for v in inkbb]
                 )
-                
         return ct
 
     # For generating test characters, we want to normalize the style so that we don't waste time

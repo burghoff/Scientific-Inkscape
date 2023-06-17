@@ -192,6 +192,8 @@ class FlattenPlots(inkex.EffectExtension):
         if len(gs) == 0 and len(ngs) == 0:
             inkex.utils.errormsg("No objects selected!")
             return
+        
+        # dh.BB2(self);
 
         if self.options.deepungroup:
             # Unlink all clones
