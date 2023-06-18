@@ -561,7 +561,7 @@ def ipx(strin):
 
 # Get points of a path, element, or rectangle in the global coordinate system
 def get_points(el, irange=None):
-    pth = Path(get_path2(el)).to_absolute()
+    pth = get_path2(el).to_absolute()
     if irange is not None:
         pnew = Path()
         for ii in range(irange[0], irange[1]):
@@ -885,10 +885,11 @@ def uniquetol(A, tol):
 
 # Determines if an element is rectangle-like
 # If it is one, also return Path
+ptags = tags((PathElement, Rectangle, Line, Polyline))
 def isrectangle(el,includingtransform=True):
     isrect = False
-    if isinstance(el, (PathElement, Rectangle, Line, Polyline)):
-        pth = Path(get_path2(el)).to_absolute()
+    if el.tag in ptags:
+        pth = get_path2(el)
         if includingtransform:
             pth = pth.transform(el.ctransform)
 
@@ -896,6 +897,7 @@ def isrectangle(el,includingtransform=True):
         cpts = list(pth.control_points)
         xs = [p.x for p in pts]
         ys = [p.y for p in pts]
+
 
         if len(xs)>0:
             maxsz = max(max(xs) - min(xs), max(ys) - min(ys))
@@ -1195,58 +1197,62 @@ BaseElement.get_id2 = get_id2_func
 
 # Modified from Inkex's get_path
 # Correctly calculates path for rectangles and ellipses
-# Gets Path object
+# Caches Path of an object (delete _cpath to reset)
 def get_path2(el):
-    # mostly from inkex.elements._polygons
-    if isinstance(el, (inkex.Rectangle)):
-        left   = ipx(el.get("x", "0"))
-        top    = ipx(el.get("y", "0"))
-        width  = ipx(el.get("width", "0"))
-        height = ipx(el.get("height", "0"))
-        rx = ipx(el.get("rx", el.get("ry", "0")))
-        ry = ipx(el.get("ry", el.get("rx", "0")))
-        right = left + width
-        bottom = top + height
-        if rx:
-            return Path((
-                "M {lft2},{topv}"
-                "L {rgt2},{topv}  A {rxv},{ryv} 0 0 1 {rgtv},{top2}"
-                "L {rgtv},{btm2}  A {rxv},{ryv} 0 0 1 {rgt2},{btmv}"
-                "L {lft2},{btmv}  A {rxv},{ryv} 0 0 1 {lftv},{btm2}"
-                "L {lftv},{top2}  A {rxv},{ryv} 0 0 1 {lft2},{topv} z".format(
-                    topv=top, btmv=bottom, lftv=left,rgtv=right, rxv=rx, ryv=ry,
-                    lft2=left+rx, rgt2=right-rx, top2=top+ry, btm2=bottom-ry
-                ))
+    if not hasattr(el,'_cpath'):
+        # mostly from inkex.elements._polygons
+        if isinstance(el, (inkex.Rectangle)):
+            left   = ipx(el.get("x", "0"))
+            top    = ipx(el.get("y", "0"))
+            width  = ipx(el.get("width", "0"))
+            height = ipx(el.get("height", "0"))
+            rx = ipx(el.get("rx", el.get("ry", "0")))
+            ry = ipx(el.get("ry", el.get("rx", "0")))
+            right = left + width
+            bottom = top + height
+            if rx:
+                return Path((
+                    "M {lft2},{topv}"
+                    "L {rgt2},{topv}  A {rxv},{ryv} 0 0 1 {rgtv},{top2}"
+                    "L {rgtv},{btm2}  A {rxv},{ryv} 0 0 1 {rgt2},{btmv}"
+                    "L {lft2},{btmv}  A {rxv},{ryv} 0 0 1 {lftv},{btm2}"
+                    "L {lftv},{top2}  A {rxv},{ryv} 0 0 1 {lft2},{topv} z".format(
+                        topv=top, btmv=bottom, lftv=left,rgtv=right, rxv=rx, ryv=ry,
+                        lft2=left+rx, rgt2=right-rx, top2=top+ry, btm2=bottom-ry
+                    ))
+                )
+            ret = Path("M {lftv},{topv} h {wdtv} v {hgtv} h {wdt2} z".format(
+                topv=top, lftv=left, wdtv=width, hgtv=height,
+                wdt2=-width)
             )
-        return Path("M {lftv},{topv} h {wdtv} v {hgtv} h {wdt2} z".format(
-            topv=top, lftv=left, wdtv=width, hgtv=height,
-            wdt2=-width)
-        )
-    
-    elif isinstance(el, (inkex.Circle, inkex.Ellipse)):
-        cx = ipx(el.get("cx", "0"))
-        cy = ipx(el.get("cy", "0"))
-        if isinstance(el, (inkex.Ellipse)):  # ellipse
-            rx = ipx(el.get("rx", "0"))
-            ry = ipx(el.get("ry", "0"))
-        else:  # circle
-            rx = ipx(el.get("r", "0"))
-            ry = ipx(el.get("r", "0"))
-        return Path((
-            "M {cx},{y} "
-            "a {rx},{ry} 0 1 0 {rx}, {ry} "
-            "a {rx},{ry} 0 0 0 -{rx}, -{ry} z"
-        ).format(cx=cx, y=cy-ry, rx=rx, ry=ry))
         
-    elif isinstance(el, Line): # updated in v1.2
-        x1 = ipx(el.get("x1", "0"))
-        y1 = ipx(el.get("y1", "0"))
-        x2 = ipx(el.get("x2", "0"))
-        y2 = ipx(el.get("y2", "0"))
-        pth = Path(f"M{x1},{y1} L{x2},{y2}")
-    else:
-        pth = el.get_path()
-    return pth
+        elif isinstance(el, (inkex.Circle, inkex.Ellipse)):
+            cx = ipx(el.get("cx", "0"))
+            cy = ipx(el.get("cy", "0"))
+            if isinstance(el, (inkex.Ellipse)):  # ellipse
+                rx = ipx(el.get("rx", "0"))
+                ry = ipx(el.get("ry", "0"))
+            else:  # circle
+                rx = ipx(el.get("r", "0"))
+                ry = ipx(el.get("r", "0"))
+            ret =  Path((
+                "M {cx},{y} "
+                "a {rx},{ry} 0 1 0 {rx}, {ry} "
+                "a {rx},{ry} 0 0 0 -{rx}, -{ry} z"
+            ).format(cx=cx, y=cy-ry, rx=rx, ry=ry))
+            
+        elif isinstance(el, Line): # updated in v1.2
+            x1 = ipx(el.get("x1", "0"))
+            y1 = ipx(el.get("y1", "0"))
+            x2 = ipx(el.get("x2", "0"))
+            y2 = ipx(el.get("y2", "0"))
+            ret = Path(f"M{x1},{y1} L{x2},{y2}")
+        else:
+            ret = el.get_path()
+            if pre1p2:
+                ret = Path(ret)
+        el._cpath = ret
+    return el._cpath
 
 
 otp_support = (
@@ -1282,8 +1288,7 @@ def bounding_box2(el,dotransform=True,includestroke=True):
             elif isinstance(el, otp_support):
                 pth = get_path2(el)
                 if len(pth)>0:
-                    bb = Path(pth).to_absolute().bounding_box()
-                    
+                    bb = pth.bounding_box()
                     sw = ipx(el.cspecified_style.get('stroke-width','0px'))
                     if el.cspecified_style.get('stroke') is None or not(includestroke):
                         sw = 0;
@@ -1378,6 +1383,8 @@ def BB2(slf,els=None,forceupdate=False):
             import TextParser
             assert TextParser # optional, disables pyflakes warning
             slf.svg.make_char_table(els=dtels)
+            # pts = [TextParser.get_parsed_text(el) for el in dtels]
+            # TextParser.ParsedTextList(pts).precalcs()
         ret = dict()
         for d in els:
             if isinstance(d, bb2_support) and isrendered(d):
@@ -1896,7 +1903,7 @@ def combine_paths(els, mergeii=0):
     si = []
     # start indices
     for el in els:
-        pth = Path(el.get_path()).to_absolute().transform(el.ccomposed_transform)
+        pth = get_path2(el).to_absolute().transform(el.ccomposed_transform)
         if el.get("inkscape-scientific-combined-by-color") is None:
             si.append(len(pnew))
         else:
@@ -2085,6 +2092,8 @@ def vparse(vstr):
 
 
 ivp = vparse(inkex_version)
+pre1p1 = ivp[0] <= 1 and ivp[1] < 1
+pre1p2 = ivp[0] <= 1 and ivp[1] < 2
 
 si_dir = os.path.dirname(os.path.realpath(__file__))
 # Generate a temporary file or folder in SI's location / tmp

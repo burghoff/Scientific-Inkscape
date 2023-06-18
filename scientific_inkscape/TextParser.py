@@ -91,7 +91,8 @@ def make_char_table_fcn(svg,els=None):
         tels = [d for d in svg.cdescendants if d.tag in ttags];
     else:           
         tels = [d for d in els              if d.tag in ttags]
-    svg._char_table = Character_Table(tels)
+    if not (hasattr(svg, "_char_table")) or any([t not in svg._char_table.els for t in tels]):
+        svg._char_table = Character_Table(tels)
 def get_char_table(svg):
     if not (hasattr(svg, "_char_table")):
         svg.make_char_table()
@@ -2981,6 +2982,7 @@ class cloc:
 # A class representing the properties of a collection of characters
 class Character_Table:
     def __init__(self, els):
+        self.els = els
         self.root = els[0].croot if len(els)>0 else None
         ct, pct, self.rtable = self.find_characters(els)
         

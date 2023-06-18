@@ -165,6 +165,25 @@ def fast_end_points(self):
         yield end_point
 inkex.paths.Path.end_points = property(fast_end_points)
 
+ctqs = {'c','t','q','s','C','T','Q','S'}
+def fast_proxy_iterator(self):
+    """
+    Yields :py:class:`AugmentedPathIterator`
+
+    :rtype: Iterator[ Path.PathCommandProxy ]
+    """
+    previous = V2d()
+    prev_prev = V2d()
+    first = V2d()
+    for seg in self:  
+        if seg.letter in zZmM:
+            first = seg.end_point(first, previous)
+        yield inkex.paths.Path.PathCommandProxy(seg, first, previous, prev_prev)
+        if seg.letter in ctqs:
+            prev_prev = list(seg.control_points(first, previous, prev_prev))[-2]
+        previous = seg.end_point(first, previous)
+inkex.paths.Path.proxy_iterator = fast_proxy_iterator
+
 
 # Optimize Path's init to avoid calls to append and reduce instance checks
 # About 50% faster
@@ -243,7 +262,6 @@ def fast_parse_string(cls, path_d):
             cmd_nargs = nargs_cache[cmd]
             yield seg
 inkex.paths.Path.parse_string = fast_parse_string
-
 
 
 
