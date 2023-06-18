@@ -1098,9 +1098,14 @@ inkex.SvgDocumentElement.cdescendants2 = property(get_cd2,set_cd2)
 def delete2(el):
     svg = el.croot
     for d in el.descendants2():
+        did = d.get_id2()
         if svg is not None:
             try:
-                del svg.iddict[d.get_id2()]
+                svg.ids.remove(did)
+            except (KeyError,AttributeError):
+                pass
+            try:
+                del svg.iddict[did]
             except KeyError:
                 pass
         d.croot = None
@@ -1295,8 +1300,8 @@ def bounding_box2(el,dotransform=True,includestroke=True):
                     ret = bbox([bb.left-sw/2, bb.top-sw/2,
                                 bb.width+sw,bb.height+sw])
             elif isinstance(el,(SvgDocumentElement,Group,inkex.Layer,inkex.ClipPath)) or isMask(el):
-                ks = [d for d in list(el) if not(isinstance(d, (lxml.etree._Comment)))]
-                for d in ks:
+                # ks = [d for d in list(el) if not(isinstance(d, (lxml.etree._Comment)))]
+                for d in list2(el):
                     dbb = bounding_box2(d,dotransform=False,includestroke=includestroke);
                     if not(dbb.isnull):
                         ret = ret.union(dbb.transform(d.ctransform))
