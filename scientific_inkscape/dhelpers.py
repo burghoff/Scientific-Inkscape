@@ -1272,7 +1272,7 @@ def object_to_path(el):
 # includestroke: whether or not to add the stroke to the calculation
 # roughpath: use control points for a path's bbox (should be an upper bound)
 ttags = tags((inkex.TextElement,inkex.FlowRoot));
-ltag  = inkex.Line.tag2
+Linetag = inkex.Line.tag2
 ptags = tags(otp_support)
 def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
     if not(hasattr(el,'_cbbox')):
@@ -1283,29 +1283,24 @@ def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
             ret = bbox(None)
             if el.tag in ttags:
                 ret = el.parsed_text.get_full_extent();
-            elif el.tag in ltag:
-                sw = ipx(el.cspecified_style.get('stroke-width','0px'))
-                if el.cspecified_style.get('stroke') is None or not(includestroke):
-                    sw = 0;
-                xs = [el.x1,el.x2]
-                ys = [el.y1,el.y2]
-                ret = bbox([min(xs)-sw/2,min(ys)-sw/2,max(xs)-min(xs)+sw,max(ys)-min(ys)+sw])
             elif el.tag in ptags:
-                # idebug(el.TAG)
                 pth = get_path2(el)
                 if len(pth)>0:
                     sw = ipx(el.cspecified_style.get('stroke-width','0px'))
                     if el.cspecified_style.get('stroke') is None or not(includestroke):
                         sw = 0;
                     
-                    if not roughpath:
+                    if el.tag==Linetag:
+                        xs = [ipx(el.get('x1','0')),ipx(el.get('x2','0'))]
+                        ys = [ipx(el.get('y1','0')),ipx(el.get('y2','0'))]
+                        ret = bbox([min(xs)-sw/2,min(ys)-sw/2,max(xs)-min(xs)+sw,max(ys)-min(ys)+sw])
+                    elif not roughpath:
                         bb = pth.bounding_box()
                         ret = bbox([bb.left-sw/2, bb.top-sw/2,
                                     bb.width+sw,bb.height+sw])
                     else:
                         anyarc = any([s.letter in ['a','A'] for s in pth])
-                        if anyarc:
-                            pth = inkex.Path(inkex.CubicSuperPath(pth));
+                        pth = inkex.Path(inkex.CubicSuperPath(pth)) if anyarc else pth;
                         pts = list(pth.control_points)
                         xs = [p.x for p in pts]
                         ys = [p.y for p in pts]
