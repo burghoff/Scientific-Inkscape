@@ -192,8 +192,6 @@ class FlattenPlots(inkex.EffectExtension):
         if len(gs) == 0 and len(ngs) == 0:
             inkex.utils.errormsg("No objects selected!")
             return
-        
-        # dh.BB2(self);
 
         if self.options.deepungroup:
             # Unlink all clones
@@ -304,6 +302,9 @@ class FlattenPlots(inkex.EffectExtension):
                                     and tuple(sf.fill) == (255, 255, 255, 1)
                                 ):
                                     dh.deleteup(el)
+
+        
+        # dh.BB2(self,seld,roughpath=True);
 
         # Remove any unused clips we made, unnecessary white space in document
         # import time

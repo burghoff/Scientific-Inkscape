@@ -1000,16 +1000,6 @@ def merge_clipmask(node, newclip, mask=False):
 
 # Repeated getElementById lookups can be really slow, so instead create a cached iddict property.
 # When an element is created that may be needed later, it must be added using add_to_iddict.
-# def getElementById2(svg, eid,literal=False):
-#     if svg is not None:
-#         if not(literal):
-#             eid = eid.strip()[4:-1] if eid.startswith("url(") else eid
-#             eid = eid.lstrip("#")
-#         return svg.iddict.get(eid)
-#     else:
-#         return None
-# inkex.SvgDocumentElement.getElementById2 = getElementById2;
-
 urlpat = re.compile(r'^url\(#(.*)\)$|^#')
 def getElementById2(svg, eid: str, elm="*", literal=False):
     if eid is not None and not literal:
@@ -1020,7 +1010,6 @@ def getElementById2(svg, eid: str, elm="*", literal=False):
         return None
 inkex.SvgDocumentElement.getElementById = getElementById2;
 inkex.SvgDocumentElement.getElementById2 = getElementById2;
-
 
 
 
@@ -1041,21 +1030,39 @@ def getiddict(svg):
             else:
                 toassign.append(el)
             el.croot = svg  # do now to speed up later
+        svg._prefixcounter = dict();
         for el in toassign:
             set_random_id2(el, el.TAG)
             svg._iddict[EBget(el,'id')] = el
     return svg._iddict
 inkex.SvgDocumentElement.iddict = property(getiddict)
 
+
+# Deletes an element from cached dicts on deletion
+def delete2(el):
+    svg = el.croot
+    for d in el.descendants2():
+        did = d.get_id2()
+        if svg is not None:
+            try:
+                svg.ids.remove(did)
+            except (KeyError,AttributeError):
+                pass
+            try:
+                del svg.iddict[did]
+            except KeyError:
+                pass
+        d.croot = None
+    if hasattr(svg, "_cd2"):
+        svg.cdescendants2.delel(el)
+    el.delete()
+BaseElement.delete2 = delete2
+
+
 # A cached list of all descendants of an svg (not necessarily in order)
 def getcdescendants(svg):
     return list(svg.iddict.values())
 inkex.SvgDocumentElement.cdescendants = property(getcdescendants)
-
-
-
-
-
             
 # A cached list of all descendants of an svg in order
 # Currently only handles deletions appropriately
@@ -1093,26 +1100,6 @@ def set_cd2(svg,sv):
     if sv is None and hasattr(svg, "_cd2"):
         delattr(svg, "_cd2")
 inkex.SvgDocumentElement.cdescendants2 = property(get_cd2,set_cd2)
-
-# Deletes an element from cached dicts on deletion
-def delete2(el):
-    svg = el.croot
-    for d in el.descendants2():
-        did = d.get_id2()
-        if svg is not None:
-            try:
-                svg.ids.remove(did)
-            except (KeyError,AttributeError):
-                pass
-            try:
-                del svg.iddict[did]
-            except KeyError:
-                pass
-        d.croot = None
-    if hasattr(svg, "_cd2"):
-        svg.cdescendants2.delel(el)
-    el.delete()
-BaseElement.delete2 = delete2
 
 def defs2(svg):
     # Defs get that avoids xpath. Looks for a defs under the svg
@@ -1157,10 +1144,11 @@ import random
 def get_unique_id2(svg, prefix):
     ids = get_ids2(svg)
     new_id = None
-    cnt = len(ids)
+    cnt = svg._prefixcounter.get(prefix,0)
     while new_id is None or new_id in ids:
         new_id = prefix + str(cnt)
         cnt+=1
+    svg._prefixcounter[prefix]=cnt
     svg.ids.add(new_id)
     return new_id
 
@@ -1278,31 +1266,55 @@ def object_to_path(el):
         el.tag = ptag; #"{http://www.w3.org/2000/svg}path"
         el.set("d", str(pth))
 
-# Alternate bbox function that requires no command call (uses extents for text)
+# Alternate bbox function that requires no command call
+# Uses extents for text
 # dotransform: whether or not we want the element's bbox or its true transformed bbox
 # includestroke: whether or not to add the stroke to the calculation
-def bounding_box2(el,dotransform=True,includestroke=True):
+# roughpath: use control points for a path's bbox (should be an upper bound)
+ttags = tags((inkex.TextElement,inkex.FlowRoot));
+ltag  = inkex.Line.tag2
+ptags = tags(otp_support)
+def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
     if not(hasattr(el,'_cbbox')):
         el._cbbox = dict()
         
-    if (dotransform,includestroke) not in el._cbbox:
+    if (dotransform,includestroke,roughpath) not in el._cbbox:
         try:
             ret = bbox(None)
-            if isinstance(el, (inkex.TextElement,inkex.FlowRoot)):
+            if el.tag in ttags:
                 ret = el.parsed_text.get_full_extent();
-            elif isinstance(el, otp_support):
+            elif el.tag in ltag:
+                sw = ipx(el.cspecified_style.get('stroke-width','0px'))
+                if el.cspecified_style.get('stroke') is None or not(includestroke):
+                    sw = 0;
+                xs = [el.x1,el.x2]
+                ys = [el.y1,el.y2]
+                ret = bbox([min(xs)-sw/2,min(ys)-sw/2,max(xs)-min(xs)+sw,max(ys)-min(ys)+sw])
+            elif el.tag in ptags:
+                # idebug(el.TAG)
                 pth = get_path2(el)
                 if len(pth)>0:
-                    bb = pth.bounding_box()
                     sw = ipx(el.cspecified_style.get('stroke-width','0px'))
                     if el.cspecified_style.get('stroke') is None or not(includestroke):
                         sw = 0;
-                    ret = bbox([bb.left-sw/2, bb.top-sw/2,
-                                bb.width+sw,bb.height+sw])
+                    
+                    if not roughpath:
+                        bb = pth.bounding_box()
+                        ret = bbox([bb.left-sw/2, bb.top-sw/2,
+                                    bb.width+sw,bb.height+sw])
+                    else:
+                        anyarc = any([s.letter in ['a','A'] for s in pth])
+                        if anyarc:
+                            pth = inkex.Path(inkex.CubicSuperPath(pth));
+                        pts = list(pth.control_points)
+                        xs = [p.x for p in pts]
+                        ys = [p.y for p in pts]
+                        ret = bbox([min(xs)-sw/2,min(ys)-sw/2,max(xs)-min(xs)+sw,max(ys)-min(ys)+sw])
+                    
             elif isinstance(el,(SvgDocumentElement,Group,inkex.Layer,inkex.ClipPath)) or isMask(el):
                 # ks = [d for d in list(el) if not(isinstance(d, (lxml.etree._Comment)))]
                 for d in list2(el):
-                    dbb = bounding_box2(d,dotransform=False,includestroke=includestroke);
+                    dbb = bounding_box2(d,dotransform=False,includestroke=includestroke,roughpath=roughpath);
                     if not(dbb.isnull):
                         ret = ret.union(dbb.transform(d.ctransform))
             elif isinstance(el,(inkex.Image)):
@@ -1311,14 +1323,14 @@ def bounding_box2(el,dotransform=True,includestroke=True):
                 lel = el.get_link('xlink:href');
                 
                 if lel is not None:
-                    ret = bounding_box2(lel,dotransform=False)
+                    ret = bounding_box2(lel,dotransform=False,roughpath=roughpath)
                     ret = ret.transform(lel.ctransform) # clones have the transform of the link, but not anything above
         
             if not(ret.isnull):
                 for cm in ['clip-path','mask']:
                     clip = el.get_link(cm,llget=True)
                     if clip is not None:
-                       cbb = bounding_box2(clip,dotransform=False,includestroke=False)
+                       cbb = bounding_box2(clip,dotransform=False,includestroke=False,roughpath=roughpath)
                        if not(cbb.isnull):
                            ret = ret.intersection(cbb)
                        else:
@@ -1332,8 +1344,8 @@ def bounding_box2(el,dotransform=True,includestroke=True):
             import traceback
             idebug(traceback.format_exc())
                     
-        el._cbbox[(dotransform,includestroke)] = ret
-    return el._cbbox[(dotransform,includestroke)]
+        el._cbbox[(dotransform,includestroke,roughpath)] = ret
+    return el._cbbox[(dotransform,includestroke,roughpath)]
 
 bb2_support = (inkex.TextElement,inkex.FlowRoot,inkex.Image,inkex.Use,
                SvgDocumentElement,inkex.Group,inkex.Layer) + otp_support
@@ -1349,7 +1361,14 @@ metatags = set([inkex.addNS('RDF','rdf'),
               inkex.addNS('Work','cc'),
               inkex.addNS('format','dc'),
               inkex.addNS('type','dc')])
-def BB2(slf,els=None,forceupdate=False):
+
+masktag = inkex.addNS('mask','svg')
+otags = tags((NamedView, Defs, Metadata, ForeignObject, inkex.Guide,
+                    inkex.ClipPath,inkex.StyleElement,
+                    Tspan,inkex.FlowRegion,inkex.FlowPara))
+otags.add(masktag)
+bb2tags = tags(bb2_support)
+def BB2(slf,els=None,forceupdate=False,roughpath=False):
     if els is None:
         els = descendants2(slf.svg);
     
@@ -1363,26 +1382,24 @@ def BB2(slf,els=None,forceupdate=False):
             if myp is None or isrendered(myp):
                 if el.tag in metatags:
                     ret=False
-                elif isinstance(el,(NamedView, Defs, Metadata, ForeignObject, inkex.Guide,
-                                    inkex.ClipPath,inkex.StyleElement,
-                                    Tspan,inkex.FlowRegion,inkex.FlowPara)) or isMask(el):
+                elif el.tag in otags:
                     ret=False
             else:
                 ret = False
             render_dict[el] = ret
             return ret
     
-    if all([isinstance(d, bb2_support) or not(isrendered(d)) for d in els]):
+    if all([d.tag in bb2tags or not(isrendered(d)) for d in els]):
         if forceupdate:
             if hasattr(slf.svg, '_char_table'):
                 delattr(slf.svg,'_char_table')
             for d in els:
                 d.cbbox = None
                 
-        allds = []
+        allds = set()
         for el in els:
             if el not in allds: # so we're not re-descendants2ing
-                allds += descendants2(el)        
+                allds.update(descendants2(el))
         dtels = [d for d in unique(allds) if isinstance(d,(inkex.TextElement,inkex.FlowRoot))]
         if len(dtels)>0:
             import TextParser
@@ -1392,8 +1409,9 @@ def BB2(slf,els=None,forceupdate=False):
             # TextParser.ParsedTextList(pts).precalcs()
         ret = dict()
         for d in els:
-            if isinstance(d, bb2_support) and isrendered(d):
-                mbbox = d.cbbox; # Attribute Errors here are not actually here usually
+            if d.tag in bb2tags and isrendered(d):
+                # mbbox = d.cbbox; # Attribute Errors here are not actually here usually
+                mbbox = bounding_box2(d,roughpath=roughpath)
                 if not(mbbox.isnull):
                     ret[d.get_id2()] = mbbox.sbb
     else:

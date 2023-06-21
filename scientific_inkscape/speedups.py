@@ -185,6 +185,23 @@ def fast_proxy_iterator(self):
 inkex.paths.Path.proxy_iterator = fast_proxy_iterator
 
 
+def fast_control_points(self):
+    """Returns all control points of the Path"""
+    prev = Vector2da(0,0)
+    prev_prev = Vector2da(0,0)
+    first = Vector2da(0,0)
+
+    for seg in self:  
+        cpts = list(seg.control_points(first, prev, prev_prev))
+        if seg.letter in zZmM:
+            first = cpts[-1]
+        for cpt in cpts:
+            prev_prev = prev
+            prev = cpt
+            yield cpt
+inkex.paths.Path.control_points = property(fast_control_points)
+
+
 # Optimize Path's init to avoid calls to append and reduce instance checks
 # About 50% faster
 ipcspth, ipln = inkex.paths.CubicSuperPath, inkex.paths.Line
