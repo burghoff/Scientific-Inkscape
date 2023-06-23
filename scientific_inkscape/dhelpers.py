@@ -1306,8 +1306,7 @@ def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
                         ys = [p.y for p in pts]
                         ret = bbox([min(xs)-sw/2,min(ys)-sw/2,max(xs)-min(xs)+sw,max(ys)-min(ys)+sw])
                     
-            elif isinstance(el,(SvgDocumentElement,Group,inkex.Layer,inkex.ClipPath)) or isMask(el):
-                # ks = [d for d in list(el) if not(isinstance(d, (lxml.etree._Comment)))]
+            elif el.tag in grouplike_tags:
                 for d in list2(el):
                     dbb = bounding_box2(d,dotransform=False,includestroke=includestroke,roughpath=roughpath);
                     if not(dbb.isnull):
@@ -1316,10 +1315,12 @@ def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
                 ret = bbox([ipx(el.get(v, "0")) for v in ['x',"y","width","height"]]);
             elif isinstance(el,(inkex.Use,)):
                 lel = el.get_link('xlink:href');
-                
                 if lel is not None:
                     ret = bounding_box2(lel,dotransform=False,roughpath=roughpath)
-                    ret = ret.transform(lel.ctransform) # clones have the transform of the link, but not anything above
+                    
+                    # clones have the transform of the link, followed by any xy transform
+                    xyt = inkex.Transform('translate({0},{1})'.format(ipx(el.get('x','0')), ipx(el.get('y','0'))))
+                    ret = ret.transform(xyt @ lel.ctransform) 
         
             if not(ret.isnull):
                 for cm in ['clip-path','mask']:
@@ -1342,27 +1343,30 @@ def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
         el._cbbox[(dotransform,includestroke,roughpath)] = ret
     return el._cbbox[(dotransform,includestroke,roughpath)]
 
-bb2_support = (inkex.TextElement,inkex.FlowRoot,inkex.Image,inkex.Use,
-               SvgDocumentElement,inkex.Group,inkex.Layer) + otp_support
-
 def set_cbbox(el,val):
     if val is None and hasattr(el,'_cbbox'):
         delattr(el,'_cbbox')
 inkex.BaseElement.cbbox = property(bounding_box2,set_cbbox)
 inkex.SvgDocumentElement.cbbox = property(bounding_box2,set_cbbox)
 
+bb2_support = (inkex.TextElement,inkex.FlowRoot,inkex.Image,inkex.Use,
+               SvgDocumentElement,inkex.Group,inkex.Layer) + otp_support
+bb2tags = tags(bb2_support)
+
 # A wrapper that replaces Get_Bounding_Boxes with Pythonic calls only if possible
 metatags = set([inkex.addNS('RDF','rdf'),
-              inkex.addNS('Work','cc'),
-              inkex.addNS('format','dc'),
-              inkex.addNS('type','dc')])
+                inkex.addNS('Work','cc'),
+                inkex.addNS('format','dc'),
+                inkex.addNS('type','dc')])
 
 masktag = inkex.addNS('mask','svg')
+grouplike_tags = tags((SvgDocumentElement,Group,inkex.Layer,inkex.ClipPath,inkex.Symbol))
+grouplike_tags.add(masktag)
+
 otags = tags((NamedView, Defs, Metadata, ForeignObject, inkex.Guide,
-                    inkex.ClipPath,inkex.StyleElement,
-                    Tspan,inkex.FlowRegion,inkex.FlowPara))
+              inkex.ClipPath,inkex.StyleElement,
+              Tspan,inkex.FlowRegion,inkex.FlowPara))
 otags.add(masktag)
-bb2tags = tags(bb2_support)
 def BB2(slf,els=None,forceupdate=False,roughpath=False):
     if els is None:
         els = descendants2(slf.svg);
@@ -1423,7 +1427,7 @@ def Check_BB2(slf):
     bb2 = BB2(slf)
     HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
     for el in descendants2(slf.svg):
-        if el.get_id2() in bb2:
+        if el.get_id2() in bb2 and not el.tag in grouplike_tags:
             bb = bbox(bb2[el.get_id2()]);
             # bb = bbox(bb2[el.get_id2()])*(1/slf.svg.cscale);
             r = inkex.Rectangle()

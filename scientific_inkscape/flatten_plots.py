@@ -303,7 +303,6 @@ class FlattenPlots(inkex.EffectExtension):
                                 ):
                                     dh.deleteup(el)
 
-        
         # dh.BB2(self,seld,roughpath=True);
 
         # Remove any unused clips we made, unnecessary white space in document

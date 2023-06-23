@@ -255,7 +255,7 @@ class ParsedText:
         self.textel = el
         
         sty = el.cspecified_style
-        self.isflow = el.tag==frtag or sty.get_link('shape-inside',el.croot) is not None or sty.get('inline-size') is not None
+        self.isflow = el.tag==frtag or sty.get_link('shape-inside',el.croot) is not None or dh.ipx(sty.get('inline-size','0'))!=0
         if self.isflow:
             self.lns = self.Parse_Lines_Flow()
         else:
@@ -1160,6 +1160,7 @@ class ParsedText:
         # Determine the flow region 
         if isshapeins:
             fr = sty.get_link('shape-inside',self.textel.croot)
+            pctr = dict(fr.croot._prefixcounter) if hasattr(fr.croot,'_prefixcounter') else dict()
             dfr = fr.duplicate2()
             from applytransform_mod import fuseTransform
             fuseTransform(dfr)
@@ -1174,6 +1175,7 @@ class ParsedText:
                     if len(pths)>0:
                         region = pths[0]
         elif isinlinesz:
+            pctr = dict(self.textel.croot._prefixcounter) if hasattr(self.textel.croot,'_prefixcounter') else dict()
             r = dh.new_element(inkex.Rectangle,self.textel)
             xsrc,ysrc = self.Parse_Lines(srcsonly=True)
             iszx = self.textel.get('x')
@@ -1214,8 +1216,10 @@ class ParsedText:
         # Delete duplicate
         if isshapeins:
             dfr.delete2()
+            fr.croot._prefixcounter = pctr
         elif isinlinesz:
             r.delete2()
+            self.textel.croot._prefixcounter = pctr
             
         def Height_AboveBelow_Baseline(el):
             lh = dh.Get_Composed_LineHeight(el)

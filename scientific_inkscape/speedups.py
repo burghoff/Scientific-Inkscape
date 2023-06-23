@@ -165,13 +165,8 @@ def fast_end_points(self):
         yield end_point
 inkex.paths.Path.end_points = property(fast_end_points)
 
-ctqs = {'c','t','q','s','C','T','Q','S'}
+ctqsCTQS = {'c','t','q','s','C','T','Q','S'}
 def fast_proxy_iterator(self):
-    """
-    Yields :py:class:`AugmentedPathIterator`
-
-    :rtype: Iterator[ Path.PathCommandProxy ]
-    """
     previous = V2d()
     prev_prev = V2d()
     first = V2d()
@@ -179,28 +174,51 @@ def fast_proxy_iterator(self):
         if seg.letter in zZmM:
             first = seg.end_point(first, previous)
         yield inkex.paths.Path.PathCommandProxy(seg, first, previous, prev_prev)
-        if seg.letter in ctqs:
+        if seg.letter in ctqsCTQS:
             prev_prev = list(seg.control_points(first, previous, prev_prev))[-2]
         previous = seg.end_point(first, previous)
 inkex.paths.Path.proxy_iterator = fast_proxy_iterator
-
 
 def fast_control_points(self):
     """Returns all control points of the Path"""
     prev = Vector2da(0,0)
     prev_prev = Vector2da(0,0)
     first = Vector2da(0,0)
-
-    for seg in self:  
-        cpts = list(seg.control_points(first, prev, prev_prev))
-        if seg.letter in zZmM:
-            first = cpts[-1]
-        for cpt in cpts:
+    for seg in self:
+        for cpt in seg.control_points(first, prev, prev_prev):
             prev_prev = prev
             prev = cpt
             yield cpt
+        if seg.letter in zZmM:
+            first = cpt
 inkex.paths.Path.control_points = property(fast_control_points)
-
+from typing import (
+    Union,
+    List,
+    Generator,
+)
+def fast_control_points_move(
+    self, first: Vector2da, prev: Vector2da, prev_prev: Vector2da
+) -> Union[List[Vector2da], Generator[Vector2da, None, None]]:
+    yield Vector2da(prev.x + self.dx, prev.y + self.dy)
+inkex.paths.move.control_points = fast_control_points_move
+def fast_control_points_line(
+    self, first: Vector2da, prev: Vector2da, prev_prev: Vector2da
+) -> Union[List[Vector2da], Generator[Vector2da, None, None]]:
+    yield Vector2da(prev.x + self.dx, prev.y + self.dy)
+inkex.paths.line.control_points = fast_control_points_line
+def fast_control_points_Vert(self, first, prev, prev_prev):
+    yield Vector2da(prev.x, self.y)
+inkex.paths.Vert.control_points = fast_control_points_Vert
+def fast_control_points_vert(self, first, prev, prev_prev):
+    yield Vector2da(prev.x, prev.y + self.dy)
+inkex.paths.vert.control_points = fast_control_points_vert
+def fast_control_points_Horz(self, first, prev, prev_prev):
+    yield Vector2da(self.x, prev.y)
+inkex.paths.Horz.control_points = fast_control_points_Horz
+def fast_control_points_horz(self, first, prev, prev_prev):
+    yield Vector2da(prev.x+self.dx, prev.y)
+inkex.paths.horz.control_points = fast_control_points_horz
 
 # Optimize Path's init to avoid calls to append and reduce instance checks
 # About 50% faster
