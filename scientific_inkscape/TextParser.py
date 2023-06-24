@@ -1368,7 +1368,10 @@ class ParsedText:
                         def intersection_belowabove(T,below=True):
                             pt = sptregion.point(T)
                             vl = spt.Line(pt.real+(bb[1])*1j,pt.real+(bb[1]+bb[3])*1j)
-                            iv = sptregion.intersect(vl)
+                            try:
+                                iv = sptregion.intersect(vl)
+                            except AssertionError:
+                                return None, None
                             ys = sorted([sptregion.point(T1b).imag for (T1b, seg1b, t1b), (T2b, seg2b, t2b) in iv])
                             if below:
                                 ys = [yv for yv in ys if yv>pt.imag+tol]

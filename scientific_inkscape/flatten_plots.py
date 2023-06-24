@@ -278,32 +278,45 @@ class FlattenPlots(inkex.EffectExtension):
             prltag = dh.tags((PathElement, Rectangle, Line))
             fltag  = dh.tags((FlowPara, FlowRegion, FlowRoot))
             rtag = Rectangle.tag2
+            nones = {None, "none", "None"}
             for el in ngs:
+                # if el.tag in prltag:
+                #     myp = el.getparent()
+                #     if myp is not None and not(myp.tag in fltag):
+                #         pts = list(dh.get_path2(el).end_points)
+                #         xs = [p.x for p in pts]
+                #         ys = [p.y for p in pts]
+    
+                #         if len(xs) > 0:
+                #             maxsz = max(max(xs) - min(xs), max(ys) - min(ys))
+                #             tol = 1e-3 * maxsz
+                #             if (
+                #                 el.tag == rtag
+                #                 or 4 <= len(xs) <= 5
+                #                 and len(dh.uniquetol(xs, tol)) == 2
+                #                 and len(dh.uniquetol(ys, tol)) == 2
+                #             ):  # is a rectangle
+                #                 sf = dh.get_strokefill(el)
+                #                 if (
+                #                     sf.stroke is None
+                #                     and sf.fill is not None
+                #                     and tuple(sf.fill) == (255, 255, 255, 1)
+                #                 ):
+                #                     dh.deleteup(el)
+                
                 if el.tag in prltag:
                     myp = el.getparent()
-                    if myp is not None and not(myp.tag in fltag):
-                        pts = list(Path(dh.get_path2(el)).end_points)
-                        xs = [p.x for p in pts]
-                        ys = [p.y for p in pts]
-    
-                        if len(xs) > 0:
-                            maxsz = max(max(xs) - min(xs), max(ys) - min(ys))
-                            tol = 1e-3 * maxsz
-                            if (
-                                el.tag == rtag
-                                or 4 <= len(xs) <= 5
-                                and len(dh.uniquetol(xs, tol)) == 2
-                                and len(dh.uniquetol(ys, tol)) == 2
-                            ):  # is a rectangle
-                                sf = dh.get_strokefill(el)
-                                if (
-                                    sf.stroke is None
-                                    and sf.fill is not None
-                                    and tuple(sf.fill) == (255, 255, 255, 1)
-                                ):
-                                    dh.deleteup(el)
+                    if myp is not None and not(myp.tag in fltag) and dh.isrectangle(el,includingtransform=False):
+                        sty = el.cspecified_style
+                        strk = sty.get("stroke", None)
+                        fill = sty.get("fill", None)
+                        if (
+                            strk in nones and fill not in nones
+                            and tuple(dh.get_strokefill(el).fill) == (255, 255, 255, 1)
+                        ):
+                            dh.deleteup(el)
 
-        # dh.BB2(self,seld,roughpath=True);
+        # dh.BB2(self,self.svg.descendants2(),roughpath=True);
 
         # Remove any unused clips we made, unnecessary white space in document
         # import time

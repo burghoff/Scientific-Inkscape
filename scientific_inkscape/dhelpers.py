@@ -885,28 +885,38 @@ def uniquetol(A, tol):
 
 # Determines if an element is rectangle-like
 # If it is one, also return Path
-ptags = tags((PathElement, Rectangle, Line, Polyline))
+rectlike_tags = tags((PathElement, Rectangle, Line, Polyline))
+rect_tag = Rectangle.tag2;
+pel_tag = PathElement.tag2;
+
+pth_cmds = ''.join(list(inkex.paths.PathCommand._letter_to_class.keys()))
+pth_cmd_pat = re.compile('[' + re.escape(pth_cmds) + ']')
+cnt_pth_cmds = lambda d : len(pth_cmd_pat.findall(d)) # count path commands
 def isrectangle(el,includingtransform=True):
     isrect = False
-    if el.tag in ptags:
+    
+    if not includingtransform and el.tag == rect_tag:
+        pth = get_path2(el)
+        isrect = True
+    elif el.tag in rectlike_tags:
+        if el.tag==pel_tag and cnt_pth_cmds(el.get('d',''))>5:
+            return False, None
         pth = get_path2(el)
         if includingtransform:
             pth = pth.transform(el.ctransform)
 
-        pts = list(pth.end_points)
-        cpts = list(pth.control_points)
-        xs = [p.x for p in pts]
-        ys = [p.y for p in pts]
-
-
-        if len(xs)>0:
+        xs=[]; ys=[]; cnt=0;
+        for pt in pth.control_points:
+            xs.append(pt.x)
+            ys.append(pt.y)
+            cnt += 1
+            if cnt>5: # don't iterate through long paths
+                return False, None
+        
+        if 4 <= len(xs) <= 5:
             maxsz = max(max(xs) - min(xs), max(ys) - min(ys))
             tol = 1e-3 * maxsz
-            if (
-                4 <= len(xs) <= 5 and 4 <= len(cpts) <= 5
-                and len(uniquetol(xs, tol)) == 2
-                and len(uniquetol(ys, tol)) == 2
-            ):
+            if len(uniquetol(xs, tol)) == 2 and len(uniquetol(ys, tol)) == 2:
                 isrect = True
     
     # if I am clipped I may not be a rectangle
