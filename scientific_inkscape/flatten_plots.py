@@ -310,11 +310,10 @@ class FlattenPlots(inkex.EffectExtension):
                         sty = el.cspecified_style
                         strk = sty.get("stroke", None)
                         fill = sty.get("fill", None)
-                        if (
-                            strk in nones and fill not in nones
-                            and tuple(dh.get_strokefill(el).fill) == (255, 255, 255, 1)
-                        ):
-                            dh.deleteup(el)
+                        if strk in nones and fill not in nones:
+                            sf = dh.get_strokefill(el)
+                            if sf.fill is not None and tuple(sf.fill) == (255, 255, 255, 1):
+                                dh.deleteup(el)
 
         # dh.BB2(self,self.svg.descendants2(),roughpath=True);
 

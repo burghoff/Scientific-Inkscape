@@ -435,7 +435,10 @@ class AutoExporter(inkex.EffectExtension):
             #         failed_to_delete = tempdir
             Delete_Dir(tempdir)
         else:
-            dh.idebug(tempdir)
+            import warnings
+            warnings.simplefilter("ignore", ResourceWarning); # prevent warning that process is open
+            subprocess.Popen(f'explorer "{os.path.realpath(tempdir)}"')
+            # dh.idebug(tempdir)
         return failed_to_delete
 
     # Modifications that are done prior to conversion to any vector output
@@ -483,6 +486,8 @@ class AutoExporter(inkex.EffectExtension):
                 newel = dh.unlink2(el)
                 myi = vds.index(el)
                 vds[myi] = newel;
+                for dv in newel.descendants2()[1:]:
+                    vds.append(dv)
             
             # Remove trivial groups inside masks/transparent objects or clipped groups
             if isinstance(el,(inkex.Group)):
@@ -511,14 +516,14 @@ class AutoExporter(inkex.EffectExtension):
             ms = self.Marker_Fix(el)
             # Convert markers to path for Office
             if len(ms)>0 and input_options.usepsvg:
-                stps.append(elid)  
+                stps.append(elid)
             
             # Fix opacity bug for Office PDF saving
             self.Opacity_Fix(el)
 
             
             # Find out which objects need to be rasterized
-            sty = el.cstyle; # only want the object with the filter
+            sty = el.cstyle;                          # only want the object with the filter
             if sty.get_link('filter',svg) is not None:                          
                 raster_ids.append(elid)               # filtered objects (always rasterized at PDF)
             if (sty.get('fill') is not None   and 'url' in sty.get('fill')) or \
@@ -532,6 +537,13 @@ class AutoExporter(inkex.EffectExtension):
                     jpgs.append(elid)
             if isinstance(el, (inkex.Image)):
                 image_ids.append(elid);
+                
+                
+            # Remove style attributes with invalid URLs
+            # (Office doesn't display the element while Inkscape ignores it)
+            for satt in list(sty.keys()):
+                if satt in dh.urlatts and sty.get(satt).startswith('url') and sty.get_link(satt,svg) is None:
+                    el.cstyle[satt]=None
              
         # Fix Avenir/Whitney
         tels = [el for el in vds if isinstance(el, (inkex.TextElement,inkex.FlowRoot))]
@@ -552,9 +564,6 @@ class AutoExporter(inkex.EffectExtension):
                 input_options.ctable = svg.char_table; # store for later
             
             nels = []
-            # if input_options.testmode:
-            #     import random 
-            #     random.seed(1)
             for el in reversed(tels):
                 if el.parsed_text.isflow:
                     nels += el.parsed_text.Flow_to_Text()
@@ -747,6 +756,7 @@ class AutoExporter(inkex.EffectExtension):
                         
             oldwd = os.getcwd();
             os.chdir(tempdir); # use relative paths to reduce arg length
+            
             bbs = Split_Acts(fn=cfile, inkbin=bfn, acts=allacts)
             try:
                 os.chdir(oldwd);   # return to original dir so no problems in calling function
@@ -967,15 +977,18 @@ class AutoExporter(inkex.EffectExtension):
                 else:
                     overwrite_output(filein,fileout);
                     input_options.made_outputs = [fileout];
+            # dh.idebug(fileout)
                                 
 
         if not (ispsvg):
             make_output(fin,myoutput)
+            finalnames = input_options.made_outputs
         else:
             tmp = tempbase+"_tmp_small.svg"
             make_output(fin,tmp)
                 
             moutputs = input_options.made_outputs;
+            finalnames = []
             for ii, mout in enumerate(moutputs):  
                 svg = get_svg(mout)
                 self.postprocessing(svg,input_options)
@@ -984,7 +997,30 @@ class AutoExporter(inkex.EffectExtension):
                     pnum = mout.split('_page_')[-1].strip('.svg');
                     finalname = myoutput.replace('_plain.svg','_page_'+pnum+'_plain.svg')
                 dh.overwrite_svg(svg, finalname)
-
+                finalnames.append(finalname)
+        
+        # dh.idebug((myoutput,finalnames))
+        
+        
+        # Remove any previous outputs that we did not just make
+        directory, file_name = os.path.split(myoutput)
+        base_name, extension = os.path.splitext(file_name)
+        if extension == ".svg" and base_name.endswith("_plain"):
+            base_name = base_name[:-6]  # Remove "_plain" from the base name
+            pattern = re.compile(rf"{re.escape(base_name)}(_page_\d+)?_plain{re.escape(extension)}$")
+        else:
+            pattern = re.compile(rf"{re.escape(base_name)}(_page_\d+)?{re.escape(extension)}$")
+        matching_files = []
+        for file in os.listdir(directory):
+            if pattern.match(file):
+                matching_files.append(os.path.join(directory, file))
+        for file in matching_files:
+            if file not in finalnames:
+                try:
+                    os.remove(file)
+                except:
+                    pass
+        
         if input_options.prints:
             toc = time.time() - timestart;
             input_options.prints(fname+": Conversion to "+fformat+" done (" + str(round(1000 * toc) / 1000) + " s)")
@@ -1213,10 +1249,8 @@ class AutoExporter(inkex.EffectExtension):
                         for a, v in dsty.items():
                             if (a == "stroke" or a == "fill") and "context" in v:
                                 if v == "context-stroke":
-                                    # dh.Set_Style_Comp(d, a, sty.get("stroke",'none'))
                                     d.cstyle[a]=sty.get("stroke",'none')
                                 elif v == "context-fill":
-                                    # dh.Set_Style_Comp(d, a, sty.get("fill",'none'))
                                     d.cstyle[a]= sty.get("fill",'none')
                                 else:  # I don't know what this is
                                     handled = False
@@ -1229,7 +1263,8 @@ class AutoExporter(inkex.EffectExtension):
         # Fuse opacity onto fill and stroke for path-like elements
         # Prevents rasterization-at-PDF for Office products
         sty = el.cspecified_style;
-        if sty.get('opacity') is not None and isinstance(el,dh.otp_support):
+        # if sty.get('opacity') is not None and isinstance(el,dh.otp_support):
+        if sty.get('opacity') is not None and float(sty.get("opacity", 1.0))!=1.0:
             sf = dh.get_strokefill(el) # fuses opacity and stroke-opacity/fill-opacity
             if sf.stroke is not None:
                 # dh.Set_Style_Comp(el,'stroke-opacity',sf.stroke.alpha)
@@ -1244,47 +1279,42 @@ class AutoExporter(inkex.EffectExtension):
     # Replace super and sub with numerical values
     # Collapse Tspans with 0% baseline-shift, which Office displays incorrectly    
     def SubSuper_Fix(self,el):
-        for d in reversed(el.descendants2()): # all Tspan sizes
+        for d in el.descendants2():
+            bs = d.ccascaded_style.get('baseline-shift')
+            if bs in ['super','sub']:
+                sty = d.ccascaded_style
+                sty['baseline-shift'] = '40%' if bs=='super' else '-20%'
+                d.cstyle = sty
+        
+        for d in reversed(el.descendants2()): # all Tspans
             bs = d.ccascaded_style.get('baseline-shift')
             if bs is not None and bs.replace(' ','')=='0%':
                 # see if any ancestors with non-zero shift
-                cel = d
                 anysubsuper = False
-                while cel!=el and cel is not None and not(anysubsuper):
-                    cel = cel.getparent()
-                    if cel is not None:
-                        bsa = cel.ccascaded_style.get('baseline-shift')
-                        if bsa is not None and '%' in bsa:
-                            anysubsuper = float(bsa.replace(' ','').strip('%'))!=0
-                        else:
-                            anysubsuper = bsa in ['super','sub']
-                
+                for a in d.ancestors2(stopafter=el):
+                    bsa = a.ccascaded_style.get('baseline-shift')
+                    if bsa is not None and '%' in bsa:
+                        anysubsuper = float(bsa.replace(' ','').strip('%'))!=0
+                    
                 # split parent
                 myp = d.getparent();
                 if anysubsuper and myp is not None:
-                    ds = dh.split_text(myp)
+                    from TextParser import split_text
+                    ds = split_text(myp)
                     for d in reversed(ds):
-                        if len(list(d))==1:
+                        if len(list(d))==1 and list(d)[0].ccascaded_style.get('baseline-shift')=='0%':
                             s = list(d)[0]
-                            if s.ccascaded_style.get('baseline-shift')=='0%':
-                                mys = s.ccascaded_style
-                                if mys.get('baseline-shift')=='0%':
-                                    mys['baseline-shift'] = d.ccascaded_style.get('baseline-shift')
-                                fs,sf,tmp,tmp = dh.Get_Composed_Width(s,'font-size',nargout=4);
-                                mys['font-size'] = str(fs/sf)
-                                d.addprevious(s)
-                                s.cstyle = mys
-                                d.delete2();
-                    self.SubSuper_Fix(el)
-                    return
-            elif bs=='super':
-                mys = d.ccascaded_style
-                mys['baseline-shift'] = '40%'
-                d.cstyle = mys
-            elif bs=='sub':
-                mys = d.ccascaded_style
-                mys['baseline-shift'] = '-20%'
-                d.cstyle = mys
+                            mys = s.ccascaded_style
+                            if mys.get('baseline-shift')=='0%':
+                                mys['baseline-shift'] = d.ccascaded_style.get('baseline-shift')
+                            fs,sf,tmp,tmp = dh.Get_Composed_Width(s,'font-size',nargout=4);
+                            mys['font-size'] = str(fs/sf)
+                            d.addprevious(s)
+                            s.cstyle = mys
+                            s.tail = d.tail;
+                            d.delete2();
+                            self.SubSuper_Fix(el) # parent is now gone, so start over
+                            return
                     
             
     def Scale_Text(self,el,scaleto):

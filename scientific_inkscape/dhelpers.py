@@ -1040,7 +1040,6 @@ def getiddict(svg):
             else:
                 toassign.append(el)
             el.croot = svg  # do now to speed up later
-        svg._prefixcounter = dict();
         for el in toassign:
             set_random_id2(el, el.TAG)
             svg._iddict[EBget(el,'id')] = el
@@ -1154,6 +1153,8 @@ import random
 def get_unique_id2(svg, prefix):
     ids = get_ids2(svg)
     new_id = None
+    if not hasattr(svg,'_prefixcounter'):
+        svg._prefixcounter = dict()
     cnt = svg._prefixcounter.get(prefix,0)
     while new_id is None or new_id in ids:
         new_id = prefix + str(cnt)
@@ -1520,18 +1521,20 @@ def overwrite_svg(svg, fileout):
         os.remove(fileout)
     except:
         pass
+    # idebug(inkex)
+    import inkex.command # needed for a weird bug in v1.1
     inkex.command.write_svg(svg, fileout)
 
 # Version of ancestors that works in v1.0
-def get_ancestors(el,includeme=False,stopbefore=None):
-    anc = []; cel = el;
-    while cel.getparent() is not None and cel.getparent() is not stopbefore:
-        cel = cel.getparent()
+def get_ancestors(el, includeme=False, stopbefore=None, stopafter=None):
+    anc = []
+    cel = el if includeme else el.getparent()
+    while cel is not None and cel != stopbefore:
         anc.append(cel)
-    if includeme:
-        return [el]+anc;
-    else:
-        return anc
+        if cel == stopafter:
+            break
+        cel = cel.getparent()
+    return anc
 BaseElement.ancestors2 = get_ancestors
 
 # Reference a URL (return None if does not exist or invalid)
@@ -1688,6 +1691,14 @@ def get_mod(slf, *types):
         ],
     )
 
+# style atts that could have urls
+# urlatts = ["fill", "stroke", "clip-path", "mask", "filter",
+#             "marker-start", "marker-mid", "marker-end", "marker", "font", 
+#             "font-family", "fill-opacity", "stroke-opacity", "opacity"]
+
+urlatts = ["fill", "stroke", "clip-path", "mask", "filter",
+            "marker-start", "marker-mid", "marker-end", "marker"]
+
 # An efficient Pythonic version of Clean Up Document
 def clean_up_document(svg):
     # defs types that do nothing unless they are referenced
@@ -1702,13 +1713,10 @@ def clean_up_document(svg):
     def should_prune(el):
         return el.tag in prune or (el.getparent()==svg.defs2 and el.tag not in exclude)
     
-    # style atts that could have urls
-    styleatt = ["fill", "stroke", "clip-path", "mask", "filter",
-                "marker-start", "marker-mid", "marker-end", "marker", "font", 
-                "font-family", "fill-opacity", "stroke-opacity", "opacity"]
+
     xlink = [inkex.addNS("href", "xlink"),"href"]
     
-    attids = {sa : dict() for sa in styleatt}
+    attids = {sa : dict() for sa in urlatts}
     xlinks = dict()
 
     
@@ -1721,7 +1729,7 @@ def clean_up_document(svg):
     # for d in miterdescendants(svg):
     for d in svg.cdescendants2.ds:
         for attName in d.attrib.keys():
-            if attName in styleatt:
+            if attName in urlatts:
                 if d.attrib[attName].startswith('url'):
                     attids[attName][d.get_id2()] = d.attrib[attName][5:-1]
             elif attName in xlink:
@@ -1731,13 +1739,13 @@ def clean_up_document(svg):
                 if 'url' in d.attrib[attName]:
                     sty = Style0(d.attrib[attName])
                     for an2 in sty.keys():
-                        if an2 in styleatt:
+                        if an2 in urlatts:
                             if sty[an2].startswith('url'):
                                 attids[an2][d.get_id2()] = sty[an2][5:-1] 
 
     deletedsome = True
     while deletedsome:
-        allurls = set([v for sa in styleatt for v in attids[sa].values()] + list(xlinks.values()))
+        allurls = set([v for sa in urlatts for v in attids[sa].values()] + list(xlinks.values()))
         # sets much faster than lists for membership testing
         deletedsome = False
         # for el in miterdescendants(svg):
@@ -1749,7 +1757,7 @@ def clean_up_document(svg):
                     el.delete2()
                     deletedsome = True  
                     for did in eldids:
-                        for anm in styleatt:
+                        for anm in urlatts:
                             if did in attids[anm]:
                                 del attids[anm][did]
                         if did in xlinks:
@@ -1901,33 +1909,33 @@ def deleteup(el):
 
 # Splits a text element into its consituent parts by duplication (deleting original)
 # Order is text, child1, child1 tail, child2, child2 tail, etc.
-def split_text(el):
-    ds = [];
-    for ii,s in reversed(list(enumerate(list(el)))):
-        # pop out copy with tail
-        if s.tail is not None:
-            dup = el.duplicate2();
-            dup.text = s.tail;
-            for jj,s2 in reversed(list(enumerate(list(dup)))):
-                delete2(s2)
-            ds.append(dup)
+# def split_text(el):
+#     ds = [];
+#     for ii,s in reversed(list(enumerate(list(el)))):
+#         # pop out copy with tail
+#         if s.tail is not None:
+#             dup = el.duplicate2();
+#             dup.text = s.tail;
+#             for jj,s2 in reversed(list(enumerate(list(dup)))):
+#                 delete2(s2)
+#             ds.append(dup)
         
-        # pop out copy with child
-        dup = el.duplicate2();
-        dup.text = None;
-        for jj,s2 in reversed(list(enumerate(list(dup)))):
-            if jj!=ii:
-                delete2(s2)
-            else:
-                s2.tail = None
-        ds.append(dup)
-        s.delete();
+#         # pop out copy with child
+#         dup = el.duplicate2();
+#         dup.text = None;
+#         for jj,s2 in reversed(list(enumerate(list(dup)))):
+#             if jj!=ii:
+#                 delete2(s2)
+#             else:
+#                 s2.tail = None
+#         ds.append(dup)
+#         s.delete();
         
-    if len(list(el))==0 and el.text is not None:
-        dup = el.duplicate2();
-        ds.append(dup)
-    el.delete2();
-    return list(reversed(ds))
+#     if len(list(el))==0 and el.text is not None:
+#         dup = el.duplicate2();
+#         ds.append(dup)
+#     el.delete2();
+#     return list(reversed(ds))
 
 # Combines a group of path-like elements
 def combine_paths(els, mergeii=0):

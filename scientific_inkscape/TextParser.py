@@ -433,12 +433,12 @@ class ParsedText:
         # Finally, walk the text tree generating lines
         lns = []
         sprl_inherits = None
-        for di, tt, tel, txt in self.tree.dgenerator():
+        for di, tt, tel, sel, txt in self.tree.dgenerator():
             newsprl = tt==TT_TEXT and types[di] == "tlvlsprl"
             if (txt is not None and len(txt) > 0) or newsprl:
-                sel = tel
-                if tt==TT_TAIL:
-                    sel = pd[tel]
+                # sel = tel
+                # if tt==TT_TAIL:
+                #     sel = pd[tel]
                     # tails get their sty from the parent of the element the tail belongs to
                 sty = sel.cspecified_style
                 ct = sel.ccomposed_transform
@@ -657,7 +657,7 @@ class ParsedText:
     def Get_DeltaNum(self):
         allcs = [c for ln in self.lns for c in ln.cs]
         topcnt=0
-        for di, tt, d, txt in self.tree.dgenerator():
+        for di, tt, d, sel, txt in self.tree.dgenerator():
             ttv = TT_TAIL if tt==TT_TAIL else TT_TEXT
             if (
                 tt==TT_TAIL
@@ -680,7 +680,7 @@ class ParsedText:
             if len(dxy) > 0 and dxy[0] is not None and not(self.isflow):
                 allcs = [c for ln in self.lns for c in ln.cs]
                 cnt = 0;
-                for di, tt, d, txt in self.tree.dgenerator(subel=do):
+                for di, tt, d, sel, txt in self.tree.dgenerator(subel=do):
                     ttv = TT_TAIL if tt==TT_TAIL else TT_TEXT
                     if (
                         tt==TT_TAIL
@@ -1241,7 +1241,7 @@ class ParsedText:
         # Group characters into lines
         lns = [];
         fparas = [k for k in list(self.textel) if isinstance(k, FlowPara)] # top-level FlowParas
-        for di, tt, tel, txt in self.tree.dgenerator():
+        for di, tt, tel, sel, txt in self.tree.dgenerator():
             if txt is not None and len(txt) > 0:
                 if isflowroot:
                     lnno = [ii for ii,fpv in enumerate(fparas) if fpv in tel.ancestors2(includeme=True)]
@@ -1257,7 +1257,7 @@ class ParsedText:
                     lnno = 0
                     
                 # Determine above- and below-baseline lineheight
-                sel = tel if tt==TT_TEXT else tel.getparent()
+                # sel = tel if tt==TT_TEXT else tel.getparent()
                 sty = sel.cspecified_style
                 tsty = Character_Table.true_style(sty)
                 ct = sel.ccomposed_transform
@@ -1567,7 +1567,11 @@ class ParsedText:
                 self.fparaafter = any([isinstance(d,FlowPara) for d in ds[m+1:]])
         return blns
     
-# Descendant tree class
+# Descendant tree class for text, with a generator for iterating through blocks of text.
+# Generator returns the current descendant index, tt (TT_TAIL or TT_TEXT),
+# descendant element, element from which it gets its style, and text string.
+# When starting at subel, only gets the tree subset corresponding to that element.
+# Note: If there is no text/tail, returns None for that block.
 class txttree():
     def __init__(self,el):
         ds, pts = dh.descendants2(el, True)
@@ -1575,11 +1579,8 @@ class txttree():
         self.ptails = pts;
         # self.cdict = cd;
         # self.pdict = pd;
-        self.pdict = {d:d.getparent() for d in ds}        
-    # A generator for crawling through a specific text descendant tree
-    # Returns the current descendant index, tt (0 for tail, 1 for text),
-    # descendant element, and text. When starting at subel, only gets the
-    # tree subset corresponding to that element
+        self.pdict = {d:d.getparent() for d in ds}   
+        
     def dgenerator(self, subel=None):
         if subel is None:
             starti = 0
@@ -1590,16 +1591,17 @@ class txttree():
             stopi = [ii for ii,pt in enumerate(self.ptails) if subel in pt][0]
             
         for di, tt in ttgenerator(len(self.ds),starti,stopi):
-            ds = self.ptails[di] if tt==TT_TAIL else [self.ds[di]]
-            for d in ds:
-                if tt==TT_TAIL and d==subel: # finish at my own tail (do not yield it)
+            srcs = self.ptails[di] if tt==TT_TAIL else [self.ds[di]]
+            for s in srcs:
+                if tt==TT_TAIL and s==subel: # finish at my own tail (do not yield it)
                     return
-                txt = d.tail if tt==TT_TAIL else d.text
-                yield di, tt, d, txt
+                txt = s.tail if tt==TT_TAIL else s.text
+                sel = self.pdict[s] if tt==TT_TAIL else s  # tails get style from parent
+                yield di, tt, s, sel, txt
 
 
 # A generator for crawling through a general text descendant tree
-# Returns the current descendant index and tt (0 for tail, 1 for text)
+# Returns the current descendant index and tt (TT_TAIL for tail, TT_TEXT for text)
 TT_TEXT = 1
 TT_TAIL = 0
 def ttgenerator(Nd,starti=0,stopi=None):
@@ -3044,11 +3046,11 @@ class Character_Table:
         
         for el in els:
             tree = txttree(el)
-            for di, tt, tel, txt in tree.dgenerator():
+            for di, tt, tel, sel, txt in tree.dgenerator():
                     if txt is not None and len(txt) > 0:
-                        sel = tel
-                        if tt==TT_TAIL:
-                            sel = tree.pdict[tel]
+                        # sel = tel
+                        # if tt==TT_TAIL:
+                        #     sel = tree.pdict[tel]
                             # tails get their sty from the parent of the element the tail belongs to
                         sty = sel.cspecified_style
                         
@@ -3485,52 +3487,49 @@ def Character_Fixer(els):
 def Character_Fixer2(els):
     for el in els:
         tree = txttree(el)
-        for di, tt, tel, txt in tree.dgenerator():
-                if txt is not None and len(txt) > 0:
-                    sel = tel
-                    if tt==TT_TAIL:
-                        sel = tree.pdict[tel]
-                        # tails get their sty from the parent of the element the tail belongs to
-                    sty = sel.cspecified_style
-                    shouldfix, fixw = shouldfixfont(sty.get('font-family'))
-                    if shouldfix:
-                        # Replace_Non_Ascii_Font(sel, fixw)
-                        fixcondition, fixw = fixw
-                        prev_nonascii = False
-                        for jj, c in enumerate(reversed(txt)):
-                            ii = len(txt) - 1 - jj
-                            if fixcondition(c):
-                                if not prev_nonascii:
-                                    t = dh.new_element(Tspan, tel)
-                                    t.text = c
-                                    if tt==TT_TEXT:
-                                        tbefore = tel.text[0 : ii]
-                                        tafter = tel.text[ii + 1 :]
-                                        tel.text = tbefore
-                                        tel.insert(0, t)
-                                        t.tail = tafter
-                                    else:
-                                        tbefore = tel.tail[0 : ii]
-                                        tafter = tel.tail[ii + 1 :]
-                                        tel.tail = tbefore
-                                        gp = tel.getparent()
-                                        # parent is a Tspan, so insert it into the grandparent
-                                        pi = gp.index(tel)
-                                        gp.insert(pi + 1, t)
-                                        # after the parent
-                                        t.tail = tafter
-                                    t.cstyle = Style0('font-family:'+fixw+';baseline-shift:0%')
+        for di, tt, tel, sel, txt in tree.dgenerator():
+            if txt is not None and len(txt) > 0:
+                sty = sel.cspecified_style
+                shouldfix, fixw = shouldfixfont(sty.get('font-family'))
+                if shouldfix:
+                    # Replace_Non_Ascii_Font(sel, fixw)
+                    el.set("xml:space", "preserve") # so spaces don't vanish
+                    fixcondition, fixw = fixw
+                    prev_nonascii = False
+                    for jj, c in enumerate(reversed(txt)):
+                        ii = len(txt) - 1 - jj
+                        if fixcondition(c):
+                            if not prev_nonascii:
+                                t = dh.new_element(Tspan, tel)
+                                t.text = c
+                                if tt==TT_TEXT:
+                                    tbefore = tel.text[0 : ii]
+                                    tafter = tel.text[ii + 1 :]
+                                    tel.text = tbefore
+                                    tel.insert(0, t)
+                                    t.tail = tafter
                                 else:
-                                    t.text = c+t.text
-                                    if tt==TT_TEXT:
-                                        tel.text = tel.text[0 : ii]
-                                    else:
-                                        tel.tail = tel.tail[0 : ii]
-                                if tel.text is not None and tel.text=='':
-                                    tel.text = None
-                                if tel.tail is not None and tel.tail=='':
-                                    tel.tail = None
-                            prev_nonascii = nonascii(c)
+                                    tbefore = tel.tail[0 : ii]
+                                    tafter = tel.tail[ii + 1 :]
+                                    tel.tail = tbefore
+                                    gp = tel.getparent()
+                                    # parent is a Tspan, so insert it into the grandparent
+                                    pi = gp.index(tel)
+                                    gp.insert(pi + 1, t)
+                                    # after the parent
+                                    t.tail = tafter
+                                t.cstyle = Style0('font-family:'+fixw+';baseline-shift:0%')
+                            else:
+                                t.text = c+t.text
+                                if tt==TT_TEXT:
+                                    tel.text = tel.text[0 : ii]
+                                else:
+                                    tel.tail = tel.tail[0 : ii]
+                            if tel.text is not None and tel.text=='':
+                                tel.text = None
+                            if tel.tail is not None and tel.tail=='':
+                                tel.tail = None
+                        prev_nonascii = nonascii(c)
 
 def Replace_Non_Ascii_Font(el, newfont, *args):
     def alltext(el):
@@ -3601,3 +3600,30 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
                 d.text = None
             if d.tail is not None and d.tail=='':
                 d.tail = None
+              
+# Splits a text or tspan into its constituent blocks of text
+# (i.e., each text and each tail in separate hierarchies)
+def split_text(el):
+    dups = []
+    ds = el.descendants2()
+    for dgen in reversed(list(txttree(el).dgenerator())):
+        di, tt, tel, sel, txt = dgen
+        if txt is not None:
+            # For each block of text, spin off a copy of the structure
+            # that only has this block and only the needed ancestors.
+            dup = el.duplicate2();
+            d2s = dup.descendants2()
+            mydup = d2s[ds.index(sel)]
+            ancs = mydup.ancestors2(includeme=True)
+            for d2 in d2s:
+                d2.text = None
+                d2.tail = None
+                if d2 not in ancs:
+                    d2.delete2()
+            mydup.text = txt
+            dups = [dup]+dups
+    if len(dups)>0 and el.tail is not None:
+        dups[-1].tail = el.tail
+    el.delete2()
+    return dups
+    
