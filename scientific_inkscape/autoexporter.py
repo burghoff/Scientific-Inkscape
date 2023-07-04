@@ -48,8 +48,18 @@ def get_svg(fin):
 def delete_quit(tempdir):
     Delete_Dir(tempdir)
     sys.exit()
+    
 orig_key = 'si_ae_original_filename'
 dup_key = 'si_ae_original_duplicate'
+def hash_file(filename): 
+    import hashlib
+    h = hashlib.sha256()
+    with open(filename, 'rb') as file:
+        chunk = 0
+        while chunk != b'':
+            chunk = file.read(1024)
+            h.update(chunk)
+    return h.hexdigest()
 
 # Runs a Python script using a Python binary in a working directory
 # It detaches from Inkscape, allowing it to continue running after the extension has finished
@@ -1084,7 +1094,7 @@ class AutoExporter(inkex.EffectExtension):
                 te = el;
         if te is None:
             te = dh.new_element(inkex.TextElement, svg)
-        te.text = orig_key + ': {0}'.format(input_options.original_file)
+        te.text = orig_key + ': {0}, hash: {1}'.format(input_options.original_file,hash_file(input_options.original_file))
         te.set('style','display:none')
         dh.clean_up_document(svg) # Clean up
 

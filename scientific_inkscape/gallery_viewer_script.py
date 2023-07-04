@@ -81,11 +81,6 @@ try:
         def send_image(folder,path):
             global folder_dict
             return send_from_directory(os.path.abspath(folder_dict[folder]), path)
-            # response = send_from_directory(os.path.abspath(folder_dict[folder]), path)
-            # response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            # response.headers["Pragma"] = "no-cache"
-            # response.headers["Expires"] = "0"
-            # return response
 
         @app.route("/")
         def index():
@@ -93,7 +88,6 @@ try:
             gloc = os.path.join(temp_dir,"Gallery.html");
             with open(gloc, "rb") as f:
                 gallery = f.read();
-                
                 global fileuris
                 nnames = [];
                 for v in fileuris:
@@ -107,13 +101,12 @@ try:
                     else:
                         k = next(key for key, value in folder_dict.items() if value == folder)
                     nnames.append(url_for('send_image', path=file, folder=k))
-                new_string = gallery.replace(b'var imgAddresses = '+bytes(str(fileuris),'utf-8'),
-                                             b'var imgAddresses = '+bytes(str(nnames),'utf-8'))
-                # print(gallery)
-                # print(bytes('hello\n'*1000,'utf-8'))
-                # print(gallery)
+                
+                new_string = gallery
+                for ii, fu in enumerate(fileuris):
+                    new_string = new_string.replace(bytes('data-src="{0}"'.format(str(fu)),        'utf-8'),
+                                                    bytes('data-src="{0}"'.format(str(nnames[ii])),'utf-8'))
                 return new_string
-                # return '<img src="{}">'.format(url_for('send_image', path='image2.svg'))
         @app.route("/stop")
         def stop():
             func = request.environ.get('werkzeug.server.shutdown')
@@ -162,24 +155,6 @@ try:
                         subprocess.run([bfn, tsvg]);
                     else:
                         subprocess.run([bfn, svg_file]);
-                                
-                        
-                        # import shutil
-                        # shutil.copy2(converted_files[hashed], fileout)
-                        
-                        
-                        
-                        # import re
-                        # key = orig_key + r":\s*(.+?)<"
-                        # match = re.search(key, file_content);
-                        # if match:
-                        #     orig_file = match.group(1)
-                        #     if os.path.exists(orig_file):
-                        #         ev = os.path.abspath(orig_file)
-                
-                
-                
-                
                 
             return f"The parameter received is: {param}"
         
@@ -202,10 +177,6 @@ try:
     
     global temp_dir
     temp_dir = si_tmp(dirbase='gv');
-    
-    # global temp_dir
-    # import tempfile
-    # temp_dir = tempfile.TemporaryDirectory().name
     
     import os
     import zipfile
@@ -279,35 +250,43 @@ try:
             global fileuris
             fileuris = [];# tii=0;
             global watcher_threads
+            # wt2 = [wt for wt in watcher_threads if wt.run_on_fof_done]
             for wt in watcher_threads:
-                svg_filenames,thumbnails,header,slidenums,islinked = wt.files,wt.thumbnails,wt.header,wt.slidenums,wt.islinked
+                svg_filenames,thumbnails,header,slidenums,islinked = wt.files[:],wt.thumbnails,wt.header,wt.slidenums,wt.islinked
                 
-                file.write('<br><details open><summary><h2>'+header+'</h2></summary>\n<div class="serverdown" style="color: #e41a1cff;"></div>')
+                det = '<details open>' if wt.open_at_load else '<details closed>'
+                file.write('<br>'+det+'<summary><h2>'+header+'</h2></summary>\n<div class="serverdown" style="color: #e41a1cff;"></div>')
                 # Loop through the SVG filenames and write an img tag for each one
-                for ii, svg in enumerate(svg_filenames):
-                    gallery = """
-                    <div class="gallery">
-                      <a target="_blank" href="#">
-                        <img src="#" alt="" id='img{2}'>
-                      </a>
-                      <div class="desc">{4}<a href="http://localhost:{3}/process?param={0}" class="open">Open current</a>{5}</div>
-                    </div>
-                    """
-                    myloc = "file://" + svg;
-                    myloc = pathlib.Path(svg).as_uri()
-                    tnloc = pathlib.Path(thumbnails[ii]).as_uri()
-                    if slidenums is not None:
-                        label = 'Slide {0}'.format(slidenums[ii])+(' (linked)' if islinked[ii] else '')+'<br>'
-                    else:
-                        pn = ' ({0})'.format(wt.pagenums[ii]) if wt.pagenums[ii] is not None else ''
-                        label = os.path.split(svg)[-1]+pn+'<br>';
-                    embed = ''
-                    if wt.embeds is not None:
-                        if wt.embeds[ii]:
-                            embed = pathlib.Path(wt.embeds[ii]).as_uri()
-                            embed = '<br><a href="http://localhost:{0}/process?param={1}" class="open">Open original</a><br>'.format(str(PORTNUMBER),embed)
-                    file.write(gallery.format(myloc,os.path.split(svg)[-1],len(fileuris),str(PORTNUMBER),label,embed))
-                    fileuris.append(tnloc);
+                if wt.run_on_fof_done:
+                    for ii, svg in enumerate(svg_filenames):
+                        gallery = """
+                        <div class="gallery">
+                          <a target="_blank" href="#">
+                            <img data-src="#" alt="" id='img{2}'>
+                          </a>
+                          <div class="desc">{4}<a href="http://localhost:{3}/process?param={0}" class="open">Open current</a>{5}</div>
+                        </div>
+                        """
+                        # if any([isinstance(fn,list) for fn in wt.files]):
+                        #     return
+                        myloc = "file://" + svg;
+                        myloc = pathlib.Path(svg).as_uri()
+                        tnloc = pathlib.Path(thumbnails[ii]).as_uri()
+                        gallery = gallery.replace('data-src="#"','data-src="{0}" class="lazyload"'.format(tnloc))
+                        if slidenums is not None:
+                            label = 'Slide {0}'.format(slidenums[ii])+(' (linked)' if islinked[ii] else '')+'<br>'
+                        else:
+                            pn = ' ({0})'.format(wt.pagenums[ii]) if wt.pagenums[ii] is not None else ''
+                            label = os.path.split(svg)[-1]+pn+'<br>';
+                        embed = ''
+                        if wt.embeds is not None:
+                            if wt.embeds[ii]:
+                                embed = pathlib.Path(wt.embeds[ii]).as_uri()
+                                embed = '<br><a href="http://localhost:{0}/process?param={1}" class="open">Open original</a><br>'.format(str(PORTNUMBER),embed)
+                        file.write(gallery.format(myloc,os.path.split(svg)[-1],len(fileuris),str(PORTNUMBER),label,embed))
+                        fileuris.append(tnloc);
+                else:
+                    file.write('<br>Processing')
                 file.write('</details>')
                 
             #<br><a href="http://localhost:5000/stop" id="stop_link">Stop Server</a>
@@ -327,50 +306,6 @@ try:
             
             script = """
             <script>
-            var imgAddresses = replacemenow;
-            var imgloaded = imgAddresses.map(() => false);
-    
-/*             function loadImage(counter) {
-              // Break out if no more images
-              if (counter==imgAddresses.length) { return; }
-            
-              // Grab an image obj
-              var I = document.getElementById("img"+counter);
-            
-              // Monitor load or error events, moving on to next image in either case
-              try {
-                  I.onload = I.onerror = function() {checkRun(counter);}
-                  I.src = imgAddresses[counter];
-                  I.parentNode.href = imgAddresses[counter];
-              } catch (error) {
-              }
-            }
-            const Nshow = 2100;
-            var currentRun = 0;
-            var waitingOn = 0;
-            function checkRun(cval) {
-                imgloaded[cval]=true;
-                if (imgloaded.slice(0, currentRun*Nshow).some(element => element === true) & cval-(cval%Nshow)==Nshow*waitingOn) {
-                    queueRun();
-                }
-            }
-            function queueRun() {
-                for (let i = currentRun*Nshow; i < (currentRun+1)*Nshow; i++) {
-                  loadImage(i);
-                }
-                waitingOn = currentRun;
-                currentRun++;
-                // console.log(currentRun)
-                // console.log(imgAddresses.length)
-            }
-            queueRun(); */
-            
-            for (let i = 0; i < imgAddresses.length; i++) {
-                var I = document.getElementById("img"+i);
-                I.src = imgAddresses[i];
-                I.parentNode.href = imgAddresses[i];
-                imgloaded[i] = true;
-            }
             
             var mylastupdate = Date.now() / 1000;
             setInterval(function(){
@@ -389,11 +324,52 @@ try:
                 };
                 xhr.send();
             }, 1000);
+            
+            document.addEventListener("DOMContentLoaded", function() {
+              var lazyImages = [].slice.call(document.querySelectorAll("img.lazyload"));
+              var outsideViewImagesQueue = [];
+            
+              function handleIntersection(entries, observer) {
+                  let insideViewImages = entries.filter(entry => entry.isIntersecting).map(entry => entry.target);
+                  let outsideViewImages = entries.filter(entry => !entry.isIntersecting).map(entry => entry.target);
+                
+                  insideViewImages.forEach(function(lazyImage) {
+                    lazyImage.src = lazyImage.dataset.src;
+                    lazyImage.classList.remove("lazyload");
+                    observer.unobserve(lazyImage);
+                  });
+                
+                  // Wait until all inside view images have finished loading
+                  Promise.all(insideViewImages.map(img => new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                  }))).then(() => {
+                    // Then load the images outside the view
+                    outsideViewImages.forEach(function(lazyImage) {
+                      lazyImage.src = lazyImage.dataset.src;
+                      lazyImage.classList.remove("lazyload");
+                      observer.unobserve(lazyImage);
+                    });
+                  }).catch(error => {
+                    console.error('Some images did not load successfully', error);
+                  });
+                }
+            
+              if ("IntersectionObserver" in window) {
+                let lazyImageObserver = new IntersectionObserver(handleIntersection);
+                lazyImages.forEach(function(lazyImage) {
+                  lazyImageObserver.observe(lazyImage);
+                });
+              } else {
+                lazyImages.forEach(function(lazyImage) {
+                  lazyImage.src = lazyImage.dataset.src;
+                  lazyImage.classList.remove("lazyload");
+                });
+              }
+            });
+
             </script>
             """
-            # global replacemenowval
-            # replacemenowval = tofill
-            script = script.replace('replacemenow',str(fileuris))
             file.write(script)
             
             # Write the HTML footer
@@ -432,11 +408,13 @@ try:
     class WatcherThread(threading.Thread):
         # A thread that generates an SVG gallery of files, then watches
         # it for changes
-        def __init__(self, file_or_folder):
+        def __init__(self, file_or_folder,opened=True):
             threading.Thread.__init__(self)
             # self.threadID = threadID
             self.fof = file_or_folder
             self.stopped = False
+            self.open_at_load = opened
+            self.run_on_fof_done = False
 
         def get_image_slidenums(self,dirin):
             import os
@@ -521,14 +499,12 @@ try:
                     self.islinked = None
                     self.embeds = None
 
-                # print(self.slidenums)
-                # print(self.slidenums)
-                # self.files.sort(key=lambda x: (min(self.slidenums.get(x, [float('inf')])), x))
                 self.thumbnails = copy.copy(self.files)
                 self.header = self.fof
                 print("Temp dir: "+temp_dir)
                 
                 self.embeds = []
+                subfiles = None
                 for fn in self.files:
                     ev = False
                     if fn.endswith('.svg'):
@@ -540,8 +516,27 @@ try:
                                 match = re.search(key, file_content);
                                 if match:
                                     orig_file = match.group(1)
+                                    orig_hash = None
+                                    if ', hash: ' in orig_file: # introduced hashing later than orig_key
+                                        orig_file, orig_hash = orig_file.split(', hash: ')
                                     if os.path.exists(orig_file):
                                         ev = os.path.abspath(orig_file)
+                                    else:
+                                        # Check subdirectories of the file's location in case it was moved
+                                        
+                                        def list_all_files(directory):
+                                            for dirpath, dirs, files in os.walk(directory):
+                                                for filename in files:
+                                                    yield os.path.join(dirpath, filename)
+                                        fndir = os.path.split(self.fof)[0]
+                                        subfiles = list(list_all_files(fndir)) if subfiles is None else subfiles
+                                        from autoexporter import hash_file
+                                        for tryfile in subfiles:
+                                            if os.path.split(orig_file)[-1]==os.path.split(tryfile)[-1] \
+                                               and (orig_hash is None or hash_file(tryfile)==orig_hash):
+                                                   ev = os.path.abspath(tryfile)
+                                                   break
+                                        
                     self.embeds.append(ev)
                 self.pagenums = [None]*len(self.files)
 
@@ -588,23 +583,8 @@ try:
                     tnpng = os.path.join(tndir,str(numtns)+'.png')
                     numtns+=1
                     self.thumbnails[ii] = tnpng
-                    
             
-            print(self.files)
-            print(self.thumbnails)
-                
-            make_svg_display()            
-            global myapp, refreshapp
-            if myapp is None:
-                myapp = Make_Flask_App();
-                time.sleep(1); # wait to see if check_for_refresh called
-                global openedgallery
-                if not(openedgallery):
-                    webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
-                    openedgallery = True;
-            else:
-                refreshapp = True
-            self.convert_emfs()
+            self.run_on_fof_done = True
             
             
         def convert_emfs(self):
@@ -651,6 +631,20 @@ try:
             print('Initial run')
             self.run_on_fof()
             
+            make_svg_display()            
+            global myapp, refreshapp
+            if myapp is None:
+                myapp = True
+                myapp = Make_Flask_App();
+                time.sleep(1); # wait to see if check_for_refresh called
+                global openedgallery
+                if not(openedgallery):
+                    webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
+                    openedgallery = True;
+            else:
+                refreshapp = True
+            self.convert_emfs()
+            
             def get_modtimes():
                 modtimes = dict()
                 if os.path.isfile(self.fof):
@@ -680,21 +674,14 @@ try:
     lastupdate = time.time();
     watcher_threads = [];
     openedgallery = False;
-    # def process_selection(file):
-    #     global watcher_threads
-    #     # for wt in watcher_threads:
-    #     #     wt.stopped = True
-    #     wt = WatcherThread(file)
-    #     wt.start()
-    #     watcher_threads.append(wt)
         
-    def process_selection(file):
+    def process_selection(file,opened=True):
         if os.path.isdir(file) and os.path.isfile(os.path.join(file,'Gallery.cfg')):
             with open(os.path.join(file,'Gallery.cfg'), "r") as f:
                 lines = f.readlines()
                 lines = [line.strip() for line in lines]
-                for ln in lines:
-                    process_selection(os.path.join(file,ln))
+                for ii, ln in enumerate(lines):
+                    process_selection(os.path.join(file,ln),opened=(ii==0))
                 return
         
         global watcher_threads
@@ -702,11 +689,11 @@ try:
             if file==wt.fof:
                 wt.stopped = True
                 watcher_threads.remove(wt);
-        wt = WatcherThread(file)
-        wt.win = win;
         print('About to start')
-        wt.start()
+        wt = WatcherThread(file,opened=opened)
+        wt.win = win;
         watcher_threads.append(wt)
+        wt.start()
       
     def quitnow():
         import requests
@@ -730,7 +717,7 @@ try:
     if guitype=='gtk':            
         import gi
         gi.require_version('Gtk', '3.0')
-        class HelloWorldWindow(Gtk.Window):
+        class GalleryViewerServer(Gtk.Window):
             def __init__(self):
                 Gtk.Window.__init__(self, title="Gallery Viewer")
                 self.set_default_size(400, -1)  # set width to 400 pixels, height can be automatic
@@ -832,12 +819,12 @@ try:
                 webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
             def clear_clicked(self, widget):
                 global watcher_threads
-                for wt in watcher_threads:
+                for wt in reversed(watcher_threads):
                     wt.stopped = True
                     watcher_threads.remove(wt)
                 self.liststore.clear()
                 
-        win = HelloWorldWindow()
+        win = GalleryViewerServer()
         win.set_keep_above(True)
         # win.connect("destroy", quitnow)
         def quit_and_close(self):
@@ -875,69 +862,3 @@ except:
     print(traceback.format_exc())
     import time
     time.sleep(10);
-        
-    # try:
-    #     import gi
-    #     gi.require_version('Gtk', '3.0')
-    #     from gi.repository import Gtk
-        
-        # class FileSelector(Gtk.Window):
-        
-        #     def __init__(self):
-        #         Gtk.Window.__init__(self, title="File Selector")
-        #         self.set_border_width(10)
-        
-        #         self.file_label = Gtk.Label(label="No file selected.")
-        #         self.add(self.file_label)
-        
-        #         select_button = Gtk.Button(label="Select File")
-        #         select_button.connect("clicked", self.on_open_clicked)
-        #         self.add(select_button)
-        
-        #         end_button = Gtk.Button(label="End Program")
-        #         end_button.connect("clicked", self.on_end_clicked)
-        #         self.add(end_button)
-        
-        #     def on_open_clicked(self, widget):
-        #         dialog = Gtk.FileChooserDialog("Please choose a file", self,
-        #             Gtk.FileChooserAction.OPEN,
-        #             (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-        #               Gtk.STOCK_OPEN, Gtk.ResponseType.OK))
-        
-        #         self.add_filters(dialog)
-        #         response = dialog.run()
-        
-        #         if response == Gtk.ResponseType.OK:
-        #             file = dialog.get_filename()
-        #             self.file_label.set_label(file)
-        #             # file = 'Presentation12.pptx'
-        #             process_selection(file)
-        #         elif response == Gtk.ResponseType.CANCEL:
-        #             print("Cancel clicked")
-        
-        #         dialog.destroy()
-        
-        #     def on_end_clicked(self, widget):
-        #         Gtk.main_quit()
-        #         import requests
-        #         requests.get('http://localhost:5000/stop') # kill Flask app
-        
-        #     def add_filters(self, dialog):
-        #         filter_text = Gtk.FileFilter()
-        #         filter_text.set_name("Text files")
-        #         filter_text.add_mime_type("text/plain")
-        #         dialog.add_filter(filter_text)
-        
-        #         filter_py = Gtk.FileFilter()
-        #         filter_py.set_name("Python files")
-        #         filter_py.add_mime_type("text/x-python")
-        #         dialog.add_filter(filter_py)
-    # except:
-    #     import traceback
-    #     print("An error has occurred:")
-    #     print(traceback.format_exc())
-        
-    #     import time
-    #     # import flask
-    # print('Running?')
-    # time.sleep(10);
