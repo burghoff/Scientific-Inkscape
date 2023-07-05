@@ -243,9 +243,6 @@ class AutoExporter(inkex.EffectExtension):
             self.options.exportnow = True
             self.options.margin = 0.5
             self.options.latexpdf = False
-            # import random
-            # random.seed(1)
-            # self.options.svgoptpdf = True
 
         if dispprofile:
             import cProfile, pstats, io

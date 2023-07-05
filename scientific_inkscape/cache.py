@@ -18,12 +18,13 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-# A collection of functions that provide caching of certain Inkex properties 
-# for speedups. Most provide the same functionality as the regular properties,
+# A collection of functions that provide caching of certain Inkex properties. 
+# Most provide the same functionality as the regular properties,
 # but with a 'c' in front of the name. For example,
 #   Style: cstyle, cspecified_style, ccascaded_style
 #   Transform: ctransform, ccomposed_transform
-#   Miscellaneous: croot, cdefs
+#   Miscellaneous: croot, cdefs, ctag
+# Most are invalidated by setting to None (except ctransform).
 #
 # Also gives SvgDocumentElements some dictionaries that are used to speed up
 # various lookups:
@@ -42,13 +43,28 @@ import lxml, re
 EBget = lxml.etree.ElementBase.get;
 EBset = lxml.etree.ElementBase.set;
 
+
+
+# Adds ctag to the inkex classes, which holds each class's corresponding tag
+# Checking the tag is usually much faster than instance checking, which can
+# substantially speed up low-level functions.
+try:
+    lt = dict(inkex.elements._parser.NodeBasedLookup.lookup_table)
+except:
+    lt = dict(inkex.elements._base.NodeBasedLookup.lookup_table)
+shapetags = set();
+for k,v in lt.items():
+    for v2 in v:
+        v2.ctag = inkex.addNS(k[1],k[0])
+        if issubclass(v2, inkex.ShapeElement):
+            shapetags.add(v2.ctag)
+
 # Cached specified style property
+cstytags = shapetags | {SvgDocumentElement.ctag}
 def get_cspecified_style(el):
     if not (hasattr(el, "_cspecified_style")):
         parent = el.getparent()
-        if parent is not None and isinstance(
-            parent, (inkex.ShapeElement, SvgDocumentElement)
-        ):
+        if parent is not None and parent.tag in cstytags:
             ret = parent.cspecified_style + el.ccascaded_style
         else:
             ret = el.ccascaded_style
@@ -152,12 +168,12 @@ BaseElement.cstyle = CStyleDescriptor()
 
 
 # Returns non-comment children
-ctag = lxml.etree.Comment
+comment_tag = lxml.etree.Comment
 def list2(el):
-    return [k for k in list(el) if not(k.tag == ctag)]
+    return [k for k in list(el) if not(k.tag == comment_tag)]
 
-# Cached composed_transform, which can be invalidated by changes to transform of any ancestor.
-# Currently is not invalidated when the element is moved, so beware!
+# Cached composed_transform, which can be invalidated by changes to
+# transform of any ancestor.
 def get_ccomposed_transform(el):
     if not (hasattr(el, "_ccomposed_transform")):
         myp = el.getparent()
@@ -188,7 +204,7 @@ BaseElement.ctransform = property(get_ctransform, set_ctransform)
 
 
 # Cached root property
-svgtag = '{http://www.w3.org/2000/svg}svg'
+svgtag = SvgDocumentElement.ctag
 def get_croot(el):
     try:
         return el._croot
@@ -266,7 +282,7 @@ def get_id_func(el, as_url=0):
     return eid
 BaseElement.get_id  = get_id_func
 
-# Repeated getElementById lookups can be really slow, so instead create a cached iddict property.
+# Repeated getElementById lookups can be slow, so instead create a cached iddict property.
 # When an element is created that may be needed later, it must be added using svg.iddict.add.
 urlpat = re.compile(r'^url\(#(.*)\)$|^#')
 def getElementById_func(svg, eid: str, elm="*", literal=False):
@@ -276,17 +292,7 @@ def getElementById_func(svg, eid: str, elm="*", literal=False):
 inkex.SvgDocumentElement.getElementById = getElementById_func;
 
 
-# Adds tag2 to the inkex classes, which holds the corresponding tag
-# Checking the tag can be much faster than instance checking (about 6x)
-try:
-    lt = dict(inkex.elements._parser.NodeBasedLookup.lookup_table)
-except:
-    lt = dict(inkex.elements._base.NodeBasedLookup.lookup_table)
-for k,v in lt.items():
-    for v2 in v:
-        v2.tag2 = inkex.addNS(k[1],k[0])
-
-# Keeps track of the IDs in a document
+# Add iddict, which keeps track of the IDs in a document
 class iddict(inkex.OrderedDict):
     def __init__(self,svg):
         self.svg = svg
@@ -410,7 +416,7 @@ def descendants2(el, return_tails=False):
     precedingtails = [[]]
     endsat = [(el,None)]
     for d in el.iterdescendants():
-        if not(d.tag == ctag):
+        if not(d.tag == comment_tag):
             if return_tails:
                 precedingtails.append([])
                 while endsat[-1][1]==d:
@@ -502,7 +508,7 @@ def append_func(g, el):
 inkex.BaseElement.append = append_func
 
 # Duplication
-clipmasktags = {inkex.addNS('mask','svg'), inkex.ClipPath.tag2}
+clipmasktags = {inkex.addNS('mask','svg'), inkex.ClipPath.ctag}
 def duplicate_func(el):
     svg = el.croot
     svg.iddict
@@ -523,7 +529,7 @@ def duplicate_func(el):
     svg.iddict.add(d)
 
     for k in descendants2(d)[1:]:
-        if not (isinstance(k, lxml.etree._Comment)):
+        if not k.tag == comment_tag:
             oldid = k.get_id()
             k.croot = svg  # set now for speed
             k.set_random_id()

@@ -217,9 +217,6 @@ class ScalePlots(inkex.EffectExtension):
         
 
     def effect(self):
-        import random
-
-        random.seed(1)
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
         sel = [
             k
@@ -495,7 +492,6 @@ class ScalePlots(inkex.EffectExtension):
                 else:
                     if el not in sclels:
                         sclels.append(el)
-            # sclels = list(set(sclels)) # randomly changes order, bad for repeatability
 
             # Apply transform and compute corrections (if needed)
             for el in sclels:

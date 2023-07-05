@@ -84,7 +84,7 @@ inkex.TextElement.parsed_text = property(get_parsed_text)
 inkex.FlowRoot.parsed_text    = property(get_parsed_text)
 
 # Add character table property and function to SVG
-tetag, frtag = TextElement.tag2, FlowRoot.tag2
+tetag, frtag = TextElement.ctag, FlowRoot.ctag
 ttags = {tetag, frtag}
 def make_char_table_fcn(svg,els=None):
     # Can be called with els argument to examine list of elements only 
@@ -1001,9 +1001,9 @@ class ParsedText:
                 if isinstance(newtxt,FlowRoot):
                     for d in newtxt.descendants2():
                         if isinstance(d,FlowRoot):
-                            d.tag = TextElement.tag2
+                            d.tag = TextElement.ctag
                         elif isinstance(d,(FlowPara,FlowSpan)):
-                            d.tag = Tspan.tag2
+                            d.tag = Tspan.ctag
                         elif isinstance(d,inkex.FlowRegion):
                             d.delete();
                 else:
@@ -3413,7 +3413,7 @@ class Character_Table:
 
 # Recursively delete empty elements
 # Tspans are deleted if they're totally empty, TextElements are deleted if they contain only whitespace
-TEtag = TextElement.tag2
+TEtag = TextElement.ctag
 def wstrip(txt):  # strip whitespaces
     return txt.translate({ord(c): None for c in " \n\t\r"})
 def deleteempty(el):

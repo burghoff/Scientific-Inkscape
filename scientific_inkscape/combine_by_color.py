@@ -40,9 +40,6 @@ class CombineByColor(inkex.EffectExtension):
         )
 
     def effect(self):
-        import random
-
-        random.seed(1)
         lightness_threshold = self.options.lightnessth / 100
 
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]

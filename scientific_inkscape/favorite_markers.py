@@ -365,9 +365,6 @@ class FavoriteMarkers(inkex.EffectExtension):
         # dh.debug(mkrdat)
 
     def effect(self):
-        import random
-
-        random.seed(1)
         if dispprofile:
             import cProfile, pstats, io
             from pstats import SortKey

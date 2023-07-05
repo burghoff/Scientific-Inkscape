@@ -219,7 +219,7 @@ def get_points(el, irange=None):
 
 # Unlinks clones and composes transform/clips/etc, along with descendants
 def unlink2(el):
-    if isinstance(el, (Use)):
+    if el.tag == usetag:
         useel = el.get_link("xlink:href")
         if useel is not None:
             d = useel.duplicate()
@@ -263,7 +263,7 @@ def unlink2(el):
         return el
 
 
-tags = lambda x : set([v.tag2 for v in x]) # converts class tuple to set of tags
+tags = lambda x : set([v.ctag for v in x]) # converts class tuple to set of tags
 
 # unungroupable = (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment)
 unungroupable = tags((inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.ForeignObject))
@@ -428,8 +428,8 @@ def uniquetol(A, tol):
 # Determines if an element is rectangle-like
 # If it is one, also return Path
 rectlike_tags = tags((PathElement, inkex.Rectangle, inkex.Line, inkex.Polyline))
-rect_tag = inkex.Rectangle.tag2;
-pel_tag = PathElement.tag2;
+rect_tag = inkex.Rectangle.ctag;
+pel_tag = PathElement.ctag;
 
 pth_cmds = ''.join(list(inkex.paths.PathCommand._letter_to_class.keys()))
 pth_cmd_pat = re.compile('[' + re.escape(pth_cmds) + ']')
@@ -473,6 +473,7 @@ def isrectangle(el,includingtransform=True):
     else:
         return False, None
 
+usetag = inkex.Use.ctag
 def merge_clipmask(node, newclip, mask=False):
     # Modified from Deep Ungroup
     def compose_clips(el, ptha, pthb):
@@ -508,13 +509,13 @@ def merge_clipmask(node, newclip, mask=False):
 
         if newclip is not None:
             for k in list(newclip):
-                if isinstance(k, (Use)):
+                if k.tag == usetag:
                     k = unlink2(k)
         oldclip = node.get_link(cmstr,llget=True)
         if oldclip is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
             for k in list(oldclip):
-                if isinstance(k, (Use)):
+                if k.tag == usetag:
                     k = unlink2(k)
 
             d = oldclip.duplicate()
@@ -690,7 +691,7 @@ def object_to_path(el):
 # includestroke: whether or not to add the stroke to the calculation
 # roughpath: use control points for a path's bbox (should be an upper bound)
 ttags = tags((inkex.TextElement,inkex.FlowRoot));
-Linetag = inkex.Line.tag2
+Linetag = inkex.Line.ctag
 ptags = tags(otp_support)
 def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
     if not(hasattr(el,'_cbbox')):
