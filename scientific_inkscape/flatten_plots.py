@@ -113,7 +113,7 @@ class FlattenPlots(inkex.EffectExtension):
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
         # should work with both v1.0 and v1.1
         for el in sel:
-            d = el.duplicate2()
+            d = el.duplicate()
             el.getparent().insert(list(el.getparent()).index(el), d)
             if d.get("inkscape:label") is not None:
                 el.set("inkscape:label", el.get("inkscape:label") + " flat")
@@ -160,23 +160,23 @@ class FlattenPlots(inkex.EffectExtension):
         mergenearby = self.options.mergenearby and self.options.fixtext
         setreplacement = self.options.setreplacement and self.options.fixtext
 
-        sel = [el for el in dh.descendants2(self.svg) if el in sel] # doc order
-        seld = [v for el in sel for v in dh.descendants2(el)]
+        sel = [el for el in self.svg.descendants2() if el in sel] # doc order
+        seld = [v for el in sel for v in el.descendants2()]
 
         # Move selected defs/clips/mask into global defs
         if self.options.deepungroup:
             seldefs = [el for el in seld if isinstance(el, Defs)]
             for el in seldefs:
-                self.svg.defs2.append(el)
-                for d in dh.descendants2(el):
+                self.svg.cdefs.append(el)
+                for d in el.descendants2():
                     if d in seld:
                         seld.remove(d)  # no longer selected
             selcm = [
                 el for el in seld if isinstance(el, (inkex.ClipPath)) or dh.isMask(el)
             ]
             for el in selcm:
-                self.svg.defs2.append(el)
-                for d in dh.descendants2(el):
+                self.svg.cdefs.append(el)
+                for d in el.descendants2():
                     if d in seld:
                         seld.remove(d)  # no longer selected
         
@@ -318,10 +318,7 @@ class FlattenPlots(inkex.EffectExtension):
         # dh.BB2(self,self.svg.descendants2(),roughpath=True);
 
         # Remove any unused clips we made, unnecessary white space in document
-        # import time
-        # tic = time.time();
-        # ds = dh.descendants2(self.svg);
-        ds = self.svg.cdescendants
+        ds = self.svg.iddict.ds
         clips = [dh.EBget(el,"clip-path") for el in ds]
         masks = [dh.EBget(el,"mask") for el in ds]
         clips = [url[5:-1] for url in clips if url is not None]
@@ -330,9 +327,9 @@ class FlattenPlots(inkex.EffectExtension):
         ctag = inkex.ClipPath.tag2
         if hasattr(self.svg, "newclips"):
             for el in self.svg.newclips:
-                if el.tag==ctag and not (el.get_id2() in clips):
+                if el.tag==ctag and not (el.get_id() in clips):
                     dh.deleteup(el)
-                elif dh.isMask(el) and not (el.get_id2() in masks):
+                elif dh.isMask(el) and not (el.get_id() in masks):
                     dh.deleteup(el)
 
         ttags = dh.tags((Tspan, TextPath, FlowPara, FlowRegion, FlowSpan))

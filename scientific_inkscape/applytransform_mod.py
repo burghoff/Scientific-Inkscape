@@ -77,10 +77,10 @@ def transform_clipmask(el, mask=False):
     clippathurl = el.get(cm)
     if clippathurl is not None and el.ctransform is not None:
         svg = el.croot
-        clippath = dh.getElementById2(svg, clippathurl[5:-1])
+        clippath = svg.getElementById(clippathurl[5:-1])
         if clippath is not None:
-            d = clippath.duplicate2()
-            clippathurl = "url(#" + d.get_id2() + ")"
+            d = clippath.duplicate()
+            clippathurl = "url(#" + d.get_id() + ")"
             el.set(cm, clippathurl)
             dh.fix_css_clipmask(el, mask=mask)
             for k in d.getchildren():
@@ -236,9 +236,9 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
             for sf in ['fill','stroke']:
                 sfel = el.cstyle.get_link(sf,svg=el.croot)
                 if sfel is not None and 'gradient' in sfel.tag.lower():
-                    d = sfel.duplicate2()
-                    # dh.Set_Style_Comp(el,sf,'url(#{0})'.format(d.get_id2()))
-                    el.cstyle[sf]='url(#{0})'.format(d.get_id2())
+                    d = sfel.duplicate()
+                    # dh.Set_Style_Comp(el,sf,'url(#{0})'.format(d.get_id()))
+                    el.cstyle[sf]='url(#{0})'.format(d.get_id())
                     gt = d.get('gradientTransform');
                     gt = Transform(gt) if gt is not None else Itr
                     d.set('gradientTransform',str(transf @ gt))

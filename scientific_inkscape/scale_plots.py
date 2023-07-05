@@ -84,12 +84,12 @@ def Find_Plot_Area(els,gbbs):
     for el in list(reversed(els)):
         isrect = False
         if isinstance(el, (PathElement, Rectangle, Line, Polyline)):
-            gbb = gbbs[el.get_id2()]
+            gbb = gbbs[el.get_id()]
             xs, ys = dh.get_points(el)
             if (max(xs) - min(xs)) < 0.001 * gbb[3]:
-                vl[el.get_id2()] = gbb
+                vl[el.get_id()] = gbb
             if (max(ys) - min(ys)) < 0.001 * gbb[2]: 
-                hl[el.get_id2()] = gbb
+                hl[el.get_id()] = gbb
 
             tol = 1e-3 * max(max(xs) - min(xs), max(ys) - min(ys))
             if 3 <= len(xs) <= 5 and len(dh.uniquetol(xs, tol)) == 2 and len(dh.uniquetol(ys, tol)) == 2:
@@ -100,11 +100,11 @@ def Find_Plot_Area(els,gbbs):
             hasstroke = sf.stroke is not None and sf.stroke!=[255, 255, 255,1]
             
             if hasfill and (not(hasstroke) or sf.stroke == sf.fill):  # solid rectangle
-                solids[el.get_id2()] = gbb
+                solids[el.get_id()] = gbb
             elif hasstroke:                                           # framed rectangle
-                boxes[el.get_id2()]  = gbb
+                boxes[el.get_id()]  = gbb
                 
-#        if el.get_id2()=='path1034':
+#        if el.get_id()=='path1034':
 #            dh.idebug(dh.uniquetol(xs, tol))
     
     vels = dict()
@@ -271,22 +271,9 @@ class ScalePlots(inkex.EffectExtension):
 
         dsfchildren = [] # objects whose children are designated scale-free
         dsfels = []      # designated scale-free els, whether or not they're selected
-        # if not (layerfix == "None"):  # find scale-free objects
-        #     ditems = [t.strip() for t in layerfix.split(",")]
-        #     for ditem in ditems:
-        #         el = self.svg.getElementById2(ditem)
-        #         if el is None:  # ID didn't work, try name
-        #             el = self.svg.getElementByName(ditem)
-        #         if el is not None:
-        #             if isinstance(el, Group):
-        #                 dsfchildren.append(el)
-        #                 dsfels = dsfels + list(el)
-        #             elif isinstance(el, PathElement):
-        #                 dsfels.append(el)
-
 
         # dh.tic()
-        fbbs = dh.BB2(self,dh.unique([d for el in sel for d in dh.descendants2(el)]))
+        fbbs = dh.BB2(self,dh.unique([d for el in sel for d in el.descendants2()]))
         # dh.toc()
         # full visual bbs
         firstsel = sel[0]
@@ -300,13 +287,13 @@ class ScalePlots(inkex.EffectExtension):
             all_pels = [list(s) for s in sel]
 
         for i0 in range(len(all_pels)):  # sel in asel:
-            pels = [k for k in all_pels[i0] if k.get_id2() in list(fbbs.keys())]  # plot elements list
+            pels = [k for k in all_pels[i0] if k.get_id() in list(fbbs.keys())]  # plot elements list
             
             # Calculate geometric (tight) bounding boxes of plot elements
             gbbs = dict()
             for el in [firstsel] + pels + dsfels + list(firstsel):
-                if el.get_id2() in fbbs:
-                    gbbs[el.get_id2()] = geometric_bbox(el, fbbs[el.get_id2()]).sbb
+                if el.get_id() in fbbs:
+                    gbbs[el.get_id()] = geometric_bbox(el, fbbs[el.get_id()]).sbb
 
             vl, hl, lvel, lhel = Find_Plot_Area(pels,gbbs)   
             if lvel is None or lhel is None or wholesel:
@@ -320,7 +307,7 @@ class ScalePlots(inkex.EffectExtension):
                         "A box-like plot area could not be automatically detected on the "
                         + numgroup
                         + " selected plot (group ID "
-                        + sel[i0].get_id2()
+                        + sel[i0].get_id()
                         + ").\n\nDraw a box with a stroke to define the plot area."
                         + "\nScaling will still be performed, but the results may not be ideal."
                     )
@@ -343,9 +330,9 @@ class ScalePlots(inkex.EffectExtension):
             bba = bbox2(None,None);    # all elements
             bbp = bbox2(None,None);    # plot area
             for el in pels:
-                bba  = bba.union(gbbs[el.get_id2()],fbbs[el.get_id2()])
-                if el.get_id2() in [lvel, lhel] or noplotarea:
-                    bbp  = bbp.union(gbbs[el.get_id2()],fbbs[el.get_id2()])
+                bba  = bba.union(gbbs[el.get_id()],fbbs[el.get_id()])
+                if el.get_id() in [lvel, lhel] or noplotarea:
+                    bbp  = bbp.union(gbbs[el.get_id()],fbbs[el.get_id()])
 
             if self.options.tab == "correction":
                 # Invert the existing transform so we can run the rest of the code regularly
@@ -390,9 +377,9 @@ class ScalePlots(inkex.EffectExtension):
                 bba = bbox2(None,None);    # bbox of all elements
                 bbp = bbox2(None,None);    # bbox of plot area
                 for el in pels:
-                    bba  = bba.union(gbbs[el.get_id2()],fbbs[el.get_id2()])
-                    if el.get_id2() in [lvel, lhel] or noplotarea:
-                        bbp  = bbp.union(gbbs[el.get_id2()],fbbs[el.get_id2()])
+                    bba  = bba.union(gbbs[el.get_id()],fbbs[el.get_id()])
+                    if el.get_id() in [lvel, lhel] or noplotarea:
+                        bbp  = bbp.union(gbbs[el.get_id()],fbbs[el.get_id()])
                 
                 if self.options.figuremode:
                     oscalex = scalex
@@ -426,18 +413,18 @@ class ScalePlots(inkex.EffectExtension):
                 
                 bbmatch = None
                 if self.options.matchto == 'firstbbox':
-                    bbmatch = bbox(gbbs[firstsel.get_id2()]);
+                    bbmatch = bbox(gbbs[firstsel.get_id()]);
                 elif self.options.matchto == 'firstplotarea':
                     vl0, hl0, lvel0, lhel0 = Find_Plot_Area(list(firstsel),gbbs)   
                     if lvel0 is None or lhel0 is None:
                         inkex.utils.errormsg(
                             "A box-like plot area could not be automatically detected on the "
                             + "first selected object (ID "
-                            + firstsel.get_id2()
+                            + firstsel.get_id()
                             + ").\n\nIts bounding box will be matched instead. If this is not ideal,"
                             + " draw an outlined box to define the plot area.\n"
                         )
-                        bbmatch = bbox(gbbs[firstsel.get_id2()]);
+                        bbmatch = bbox(gbbs[firstsel.get_id()]);
                     else:
                         bbmatch = bbox(gbbs[lvel0]).union(bbox(gbbs[lhel0]));
                 elif self.options.matchto == 'meanbbox':
@@ -515,7 +502,7 @@ class ScalePlots(inkex.EffectExtension):
                 dh.global_transform(el, gtr)
                 # apply the transform
 
-                elid = el.get_id2()
+                elid = el.get_id()
                 gbb = gbbs[elid]
                 fbb = fbbs[elid]
                 
@@ -590,7 +577,7 @@ class ScalePlots(inkex.EffectExtension):
                     dh.global_transform(el, tr1)
                 # elif isalwayscorr or isoutsideplot or issf:
                 elif stype in ['scale_free','aspect_locked']:
-                    # dh.idebug(el.get_id2())
+                    # dh.idebug(el.get_id())
                     # Invert the transformation for text/groups, anything outside the plot, scale-free
                     cbc = el.get("inkscape-scientific-combined-by-color")
                     if cbc is None:
@@ -672,7 +659,7 @@ class ScalePlots(inkex.EffectExtension):
         #        ps.print_stats()
         #        dh.debug(s.getvalue())
         dh.flush_stylesheet_entries(self.svg)
-        # dh.debug([el.get_id2() for el in self.svg.defs])
+        # dh.debug([el.get_id() for el in self.svg.defs])
         # dh.write_debug()
 
 

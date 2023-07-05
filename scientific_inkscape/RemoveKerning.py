@@ -632,16 +632,16 @@ def Perform_Merges(ws, mk=False):
                     w.ln.pt.textel.set('clip-path',None)
                 else:
                     # Duplicate main clip
-                    dc = clips[0].duplicate2();
+                    dc = clips[0].duplicate();
                     wt = mels[0].ccomposed_transform;
                     for ii in range(1,len(mels)):
                         # Duplicate merged clip, group contents, move to main dupe
-                        dc2 = clips[ii].duplicate2();
+                        dc2 = clips[ii].duplicate();
                         ng = dh.group(list(dc2))
                         dc.append(ng);
                         ng.ctransform = (-wt) @ mels[ii].ccomposed_transform
-                        dc2.delete2();
-                    mels[0].set('clip-path',dc.get_id2(2))
+                        dc2.delete();
+                    mels[0].set('clip-path',dc.get_id(2))
                 
     # Clear out clips
     # for el in set(mels):

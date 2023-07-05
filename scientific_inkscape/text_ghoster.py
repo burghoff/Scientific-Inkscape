@@ -67,34 +67,32 @@ class TextGhoster(inkex.EffectExtension):
             # el.set("transform", None)
             el.ctransform = None
             # Remove transform
-            oldts[g.get_id2()] = g.ccomposed_transform
-            dh.global_transform(g, -oldts[g.get_id2()])
+            oldts[g.get_id()] = g.ccomposed_transform
+            dh.global_transform(g, -oldts[g.get_id()])
 
         # dh.idebug(sel)
         
-        # seld = dh.unique([dv for s in sel for dv in dh.descendants2(s)])
         # dh.idebug(dir(sel[0]))
         bbs = dh.BB2(self,sel,forceupdate=True) # need to investigate why sel didn't work
         
 
-        # dh.debug(dh.getElementById2(self.svg,'feGaussianBlur3441').typename)
         for g in gs:
             el = g.getchildren()[0]
             f = inkex.Filter()
             el.root.defs.insert(0, f)
             gb = inkex.Filter.GaussianBlur()
             f.insert(0, gb)
-            fid = f.get_id2()
+            fid = f.get_id()
 
             r = inkex.Rectangle()
             g.insert(0, r)
 
-            bb = bbs[el.get_id2()]
+            bb = bbs[el.get_id()]
             ct = el.ccomposed_transform
             # bb = [v / (self.svg.cscale) for v in bb]
 
             fss = []
-            for d in dh.descendants2(el):
+            for d in el.descendants2():
                 sty = d.cspecified_style
                 fs = sty.get("font-size")
                 if fs is not None:
@@ -129,7 +127,7 @@ class TextGhoster(inkex.EffectExtension):
             # dh.Set_Style_Comp(r, "opacity", str(OPACITY))
             r.cstyle["opacity"]=str(OPACITY)
 
-            dh.global_transform(g, oldts[g.get_id2()])
+            dh.global_transform(g, oldts[g.get_id()])
 
         if dispprofile:
             pr.disable()

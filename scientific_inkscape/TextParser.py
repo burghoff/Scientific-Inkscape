@@ -59,7 +59,6 @@ sys.path.append(
     os.path.dirname(os.path.realpath(sys.argv[0]))
 )  # make sure my directory is on the path
 import dhelpers as dh
-import speedups as su
 from dhelpers import bbox
 from Style0 import Style0
 
@@ -72,6 +71,9 @@ import inkex
 from inkex import TextElement, Tspan, Transform
 from inkex import FlowRoot, FlowRegion, FlowPara, FlowSpan
 
+import lxml
+EBget = lxml.etree.ElementBase.get
+EBset = lxml.etree.ElementBase.set
 
 # Add parsed_text property to TextElements
 def get_parsed_text(el):
@@ -88,7 +90,7 @@ def make_char_table_fcn(svg,els=None):
     # Can be called with els argument to examine list of elements only 
     # (otherwise use entire SVG)
     if els is None: 
-        tels = [d for d in svg.cdescendants if d.tag in ttags];
+        tels = [d for d in svg.iddict.ds if d.tag in ttags];
     else:           
         tels = [d for d in els              if d.tag in ttags]
     if not (hasattr(svg, "_char_table")) or any([t not in svg._char_table.els for t in tels]):
@@ -281,7 +283,7 @@ class ParsedText:
     def duplicate(self):
         # Duplicates a PT and its text without reparsing
         ret = copy(self)
-        ret.textel = self.textel.duplicate2()
+        ret.textel = self.textel.duplicate()
         ret.tree = None
         cmemo = {d1v : d2v for d1v,d2v in zip(self.tree.ds,ret.tree.ds)}
 
@@ -311,7 +313,6 @@ class ParsedText:
     def Parse_Lines(self, srcsonly=False):
         el = self.textel
         # First we get the tree structure of the text and do all our gets
-        # ds, pts, cd, pd = dh.descendants2(el, True)
         ds, pts, pd = self.tree.ds, self.tree.ptails, self.tree.pdict
         
         Nd = len(ds)
@@ -646,7 +647,7 @@ class ParsedText:
 
     @staticmethod
     def GetXY(el, xy):
-        val = su.fget(el,xy) # fine for 'x','y','dx','dy'
+        val = EBget(el,xy) # fine for 'x','y','dx','dy'
         if val is None:
             val = [None]  # None forces inheritance
         else:
@@ -791,7 +792,7 @@ class ParsedText:
                     # may have deleted spr lines
 
     def Split_Off_Words(self, ws):
-        # newtxt = dh.duplicate2(ws[0].ln.pt.textel);
+        # newtxt = dh.duplicate(ws[0].ln.pt.textel);
         # nll = ParsedText(newtxt,self.ctable);
         nll = self.duplicate()
         newtxt = nll.textel
@@ -1004,7 +1005,7 @@ class ParsedText:
                         elif isinstance(d,(FlowPara,FlowSpan)):
                             d.tag = Tspan.tag2
                         elif isinstance(d,inkex.FlowRegion):
-                            d.delete2();
+                            d.delete();
                 else:
                     newtxt.cstyle['shape-inside']=None
                     newtxt.cstyle['inline-size']=None
@@ -1013,7 +1014,7 @@ class ParsedText:
                         k.cstyle['text-anchor'] = anch
                       
                 if nany:
-                    newtxt.delete2()
+                    newtxt.delete()
                 else:  
                     deleteempty(newtxt)
                     npt = newtxt.parsed_text
@@ -1023,7 +1024,7 @@ class ParsedText:
                         npt.lns[0].change_pos(newx)  
                     newtxts.append(newtxt)
                 
-            self.textel.delete2()
+            self.textel.delete()
             return newtxts
     
     # For debugging: make a rectange at all of the line's words' nominal extents
@@ -1161,7 +1162,7 @@ class ParsedText:
         if isshapeins:
             fr = sty.get_link('shape-inside',self.textel.croot)
             pctr = dict(fr.croot._prefixcounter) if hasattr(fr.croot,'_prefixcounter') else dict()
-            dfr = fr.duplicate2()
+            dfr = fr.duplicate()
             from applytransform_mod import fuseTransform
             fuseTransform(dfr)
             # shape transform fused on path (not composed transform though)
@@ -1176,7 +1177,8 @@ class ParsedText:
                         region = pths[0]
         elif isinlinesz:
             pctr = dict(self.textel.croot._prefixcounter) if hasattr(self.textel.croot,'_prefixcounter') else dict()
-            r = dh.new_element(inkex.Rectangle,self.textel)
+            # r = self.textel.croot.new_element(inkex.Rectangle,self.textel)
+            r = inkex.Rectangle()
             xsrc,ysrc = self.Parse_Lines(srcsonly=True)
             iszx = self.textel.get('x')
             iszy = self.textel.get('y',ysrc.get('y'))
@@ -1215,10 +1217,10 @@ class ParsedText:
         
         # Delete duplicate
         if isshapeins:
-            dfr.delete2()
+            dfr.delete()
             fr.croot._prefixcounter = pctr
         elif isinlinesz:
-            r.delete2()
+            r.delete()
             self.textel.croot._prefixcounter = pctr
             
         def Height_AboveBelow_Baseline(el):
@@ -1574,7 +1576,7 @@ class ParsedText:
 # Note: If there is no text/tail, returns None for that block.
 class txttree():
     def __init__(self,el):
-        ds, pts = dh.descendants2(el, True)
+        ds, pts = el.descendants2(True)
         self.ds = ds;
         self.ptails = pts;
         # self.cdict = cd;
@@ -2795,7 +2797,8 @@ class tchar:
         # Adds a style to an existing character by wrapping it in a new Tspan
         # t = Tspan();
         span = Tspan if isinstance(self.ln.pt.textel,TextElement) else inkex.FlowSpan
-        t = dh.new_element(span, self.loc.el)
+        # t = self.loc.el.croot.new_element(span, self.loc.el)
+        t = span()
         t.text = self.c
 
         prt = self.loc.el
@@ -2837,7 +2840,7 @@ class tchar:
         for a in newspfd:
             if a not in styset and setdefault:
                 styset[a] = dh.default_style_atts[a]
-                # dh.idebug([t.get_id2(),a,sty])
+                # dh.idebug([t.get_id(),a,sty])
 
         t.cstyle = styset
         self.sty = styset
@@ -3127,7 +3130,7 @@ class Character_Table:
         # a composed font size of 1 uu.
         if forcecommand:
             # Examine the whole document if using command
-            ctels = [d for d in self.root.cdescendants if isinstance(d,(TextElement,FlowRoot))];
+            ctels = [d for d in self.root.iddict.ds if isinstance(d,(TextElement,FlowRoot))];
             ct, pct, self.rtable = self.find_characters(ctels)
 
         prefix = 'I='
@@ -3425,7 +3428,7 @@ def deleteempty(el):
         and (tail is None or len(tail) == 0)
         and len(el) == 0
     ):
-        el.delete2()
+        el.delete()
         anydeleted = True
         # delete anything empty
         # dh.debug(el.get_id())
@@ -3435,10 +3438,10 @@ def deleteempty(el):
             [
                 (d.text is None or len(wstrip(d.text)) == 0)
                 and (d.tail is None or len(wstrip(d.tail)) == 0)
-                for d in dh.descendants2(el)
+                for d in el.descendants2()
             ]
         ):
-            el.delete2()
+            el.delete()
             anydeleted = True
             # delete any text elements that are just white space
     return anydeleted
@@ -3453,12 +3456,11 @@ def maxnone(xi):
 
 # A fast setter for 'x', 'y', 'dx', and 'dy' that uses lxml's set directly and
 # converts arrays to a string
-fset = su.fset
 def xyset(el,xy,v):
     if not(v):
         el.attrib.pop(xy, None)  # pylint: disable=no-member
     else:
-        fset(el,xy, str(v)[1:-1].replace(',',''))
+        EBset(el,xy, str(v)[1:-1].replace(',',''))
 
 
 
@@ -3500,7 +3502,8 @@ def Character_Fixer2(els):
                         ii = len(txt) - 1 - jj
                         if fixcondition(c):
                             if not prev_nonascii:
-                                t = dh.new_element(Tspan, tel)
+                                # t = tel.croot.new_element(Tspan, tel)
+                                t = Tspan()
                                 t.text = c
                                 if tt==TT_TEXT:
                                     tbefore = tel.text[0 : ii]
@@ -3551,11 +3554,11 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
         el.text = ""
         for k in list(el):
             if isinstance(k, (Tspan, inkex.FlowPara, inkex.FlowSpan)):
-                dupe = k.duplicate2();
+                dupe = k.duplicate();
                 alltxt.append(dupe)
                 alltxt.append(k.tail)
                 k.tail = ""
-                k.delete2()
+                k.delete()
         lstspan = None
         for t in alltxt:
             if t is None:
@@ -3576,7 +3579,8 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
                         w = w.replace(" ", "\u00A0")
                         # spaces can disappear, replace with NBSP
                         if el.croot is not None:
-                            ts = dh.new_element(Tspan,el);
+                            # ts = el.croot.new_element(Tspan,el);
+                            ts = Tspan()
                             el.append(ts)
                             ts.text = w; ts.cstyle=Style0(sty+'font-family:'+newfont)
                             ts.cspecified_style = None; ts.ccomposed_transform = None;
@@ -3611,7 +3615,7 @@ def split_text(el):
         if txt is not None:
             # For each block of text, spin off a copy of the structure
             # that only has this block and only the needed ancestors.
-            dup = el.duplicate2();
+            dup = el.duplicate();
             d2s = dup.descendants2()
             mydup = d2s[ds.index(sel)]
             ancs = mydup.ancestors2(includeme=True)
@@ -3619,11 +3623,11 @@ def split_text(el):
                 d2.text = None
                 d2.tail = None
                 if d2 not in ancs:
-                    d2.delete2()
+                    d2.delete()
             mydup.text = txt
             dups = [dup]+dups
     if len(dups)>0 and el.tail is not None:
         dups[-1].tail = el.tail
-    el.delete2()
+    el.delete()
     return dups
     

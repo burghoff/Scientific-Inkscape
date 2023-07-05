@@ -122,6 +122,10 @@ try:
             if svg_file is not None:
                 print('Opening'+str(svg_file))
                 
+                if str(svg_file).endswith('.emf'):
+                    subprocess.run([bfn, svg_file]);
+                    return f"The parameter received is: {param}"
+                
                 with OpenWithEncoding(svg_file) as f:
                     file_content = f.read()
                     if dup_key in file_content:
@@ -136,14 +140,14 @@ try:
                         tsvg = os.path.join(deembeds,'tmp_'+str(len(os.listdir(deembeds)))+'.svg')
                         svg = dh.svg_from_file(svg_file);
                         
-                        for d in dh.descendants2(svg):
+                        for d in svg.descendants2():
                             if isinstance(d,inkex.TextElement) and d.text is not None and dup_key in d.text:
                                 dupid = d.text[len(dup_key+': '):]
-                                dup = dh.getElementById2(svg,dupid)
+                                dup = svg.getElementById(dupid)
                                 if dup is not None:
-                                    dup.delete2();
+                                    dup.delete();
                                 g = d.getparent();
-                                d.delete2();
+                                d.delete();
                                 g.set('display',None) # office converts to att
                                 g.cstyle['display'] = None
                                 list(g)[0].set_id(dupid)
@@ -665,6 +669,7 @@ try:
                 if lmts!=mts:
                     self.run_on_fof()
                 lmts = mts
+            refreshapp = True
             
 
     global myapp, refreshapp, converted_files, watcher_threads, openedgallery
@@ -785,6 +790,7 @@ try:
                 
             def on_file_button_clicked(self, widget):
                 native = Gtk.FileChooserNative.new("Please choose a file", self, Gtk.FileChooserAction.OPEN, None, None)
+                native.set_select_multiple(True)
                 filter_ppt = Gtk.FileFilter()
                 filter_ppt.set_name("Powerpoint or Word files")
                 filter_ppt.add_pattern("*.docx")
@@ -792,13 +798,12 @@ try:
                 native.add_filter(filter_ppt)
                 response = native.run()
                 if response == Gtk.ResponseType.ACCEPT:
-                    selected_file = native.get_filename()
-                    # self.print_text(selected_file)
-                    
-                    file_name = os.path.basename(selected_file)
-                    file_dir = os.path.dirname(selected_file)
-                    self.liststore.append([file_name, file_dir])
-                    process_selection(selected_file)
+                    selected_files = native.get_filenames()
+                    for selected_file in selected_files:
+                        file_name = os.path.basename(selected_file)
+                        file_dir = os.path.dirname(selected_file)
+                        self.liststore.append([file_name, file_dir])
+                        process_selection(selected_file)
                 native.destroy()
                 
             def on_folder_button_clicked(self, widget):

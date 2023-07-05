@@ -294,7 +294,7 @@ class FavoriteMarkers(inkex.EffectExtension):
 
     def get_marker_props(self, murl):
         if murl is not None and murl != "" and murl != "none":
-            mkr = dh.getElementById2(self.svg, murl.strip("#url(").strip(")"))
+            mkr = self.svg.getElementById(murl.strip("#url(").strip(")"))
             mkratt = dict()
             for att in mkr.attrib:
                 if att != "id":
@@ -323,7 +323,7 @@ class FavoriteMarkers(inkex.EffectExtension):
             # strip white space
             mysize = self.options.size / 100
             existing = [
-                v for v in dh.descendants2(self.svg.defs) if newname in v.get_id()
+                v for v in self.svg.defs.descendants2() if newname in v.get_id()
             ]
             previousmkr = None
             for eel in existing:
@@ -352,7 +352,7 @@ class FavoriteMarkers(inkex.EffectExtension):
                             p.set(att, patt[ii][att])
                     g.append(p)
                 self.svg.defs.append(m)
-                dh.set_random_id2(m, prefix=newname)
+                m.set_random_id(prefix=newname)
             else:
                 m = previousmkr
             # dh.Set_Style_Comp(el, "marker-" + mtype, "url(#" + m.get_id() + ")")
@@ -377,7 +377,7 @@ class FavoriteMarkers(inkex.EffectExtension):
 
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
         # should work with both v1.0 and v1.1
-        sel = [v for el in sel for v in dh.descendants2(el)]
+        sel = [v for el in sel for v in el.descendants2()]
         import pickle, os
 
         fmsettings = os.path.abspath(

@@ -131,7 +131,7 @@ class Homogenizer(inkex.EffectExtension):
 
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
         # should work with both v1.0 and v1.1
-        sel = [v for el in sel for v in dh.descendants2(el)]
+        sel = [v for el in sel for v in el.descendants2()]
 
         sela = [el for el in sel if not (isinstance(el, badels))]
         sel = [
@@ -161,7 +161,7 @@ class Homogenizer(inkex.EffectExtension):
             for el in sel:
                 if isinstance(el, (TextElement, FlowRoot)):
                     maxsz = float("-inf")
-                    for d in dh.descendants2(el):
+                    for d in el.descendants2():
                         if (d.text is not None and len(d.text) > 0) or (
                             d.tail is not None and len(d.tail) > 0
                         ):
