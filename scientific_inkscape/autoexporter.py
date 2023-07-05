@@ -1255,7 +1255,7 @@ class AutoExporter(inkex.EffectExtension):
                 )
                 if anycontext:
                     handled = True
-                    dup = dh.get_duplicate2(mkrel)
+                    dup = mkrel.duplicate()
                     dupds = dup.descendants2()
                     for d in dupds:
                         dsty = d.cspecified_style
