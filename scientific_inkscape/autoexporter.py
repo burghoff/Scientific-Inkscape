@@ -345,7 +345,9 @@ class AutoExporter(inkex.EffectExtension):
             optcopy.prints = False; DEBUGGING
             optcopy.linked_locations = ih.get_linked_locations(self); # needed to find linked images in relative directories
 
+            # dh.ctic()
             AutoExporter().export_all(bfn, self.options.input_file, pth, formats, optcopy)
+            # dh.ctoc()
 
         if dispprofile:
             pr.disable()
@@ -600,7 +602,6 @@ class AutoExporter(inkex.EffectExtension):
                     # Make sure nested tspans have fill specified (STP bug)
                     for d in el.descendants2()[1:]:
                         if 'fill' in d.cspecified_style and d.cspecified_style['fill']!='#000000':
-                            # dh.Set_Style_Comp(d, 'fill', d.cspecified_style['fill'])
                             d.cstyle['fill']= d.cspecified_style['fill']
         
         dh.flush_stylesheet_entries(svg) # since we ungrouped
@@ -611,6 +612,9 @@ class AutoExporter(inkex.EffectExtension):
 
         do_rasterizations = len(raster_ids+image_ids)>0
         do_stroketopaths  = input_options.texttopath or input_options.stroketopath or len(stps)>0;
+        
+        do_rasterizations = do_rasterizations and not input_options.testmode
+        do_stroketopaths  = do_stroketopaths  and not input_options.testmode
 
         allacts = [];
         if do_stroketopaths:
