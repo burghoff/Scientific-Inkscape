@@ -72,7 +72,7 @@ def replace_element(el1, el2):
 
     el1.delete()
     el2.set_id(newid)
-    el2.croot.iddict.add(el2, todel=oldid)
+    el2.croot.iddict.add(el2)
     el2.croot.cssdict.dupe_entry(oldid, newid)
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate

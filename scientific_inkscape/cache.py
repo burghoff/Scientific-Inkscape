@@ -306,15 +306,13 @@ class iddict(inkex.OrderedDict):
         for el in toassign:
             el.set_random_id(el.TAG)
             self[EBget(el,'id')] = el
-    def add(self,el,todel=None):
+    def add(self,el):
         elid = el.get_id() # fine since el should have a croot to get called here
         if elid in self and not self[elid]==el:
             # Make a new id when there's a conflict
             el.set_random_id(el.TAG)
             elid = el.get_id()
         self[elid] = el
-        if todel is not None and todel in self:
-            del self[todel]
     @property
     def ds(self):  # all svg descendants, not necessarily in order
         return list(self.values())
@@ -451,17 +449,14 @@ BaseElement.descendants2 = descendants2
 inkexdelete = inkex.BaseElement.delete
 def delete_func(el):
     svg = el.croot
-    for d in el.descendants2():
+    for d in reversed(el.descendants2()):
         did = d.get_id()
         if svg is not None:
             try:
                 svg.ids.remove(did)
             except (KeyError,AttributeError):
                 pass
-            try:
-                del svg.iddict[did]
-            except KeyError:
-                pass
+            svg.iddict.remove(d)
         d.croot = None
     if hasattr(svg, "_cd2"):
         svg.cdescendants2.delel(el)
