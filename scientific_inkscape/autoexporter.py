@@ -593,9 +593,9 @@ class AutoExporter(inkex.EffectExtension):
                    
                     # te = svg.new_element(inkex.TextElement, svg)
                     te = inkex.TextElement()
+                    g.append(te)  # Remember the original ID
                     te.text = '{0}: {1}'.format(dup_key,el.get_id())
                     te.set('display','none')
-                    g.append(te)  # Remember the original ID
                     excludetxtids.append(te.get_id())
                     input_options.duplicatelabels[te.get_id()] = el.get_id()
                     
@@ -603,7 +603,6 @@ class AutoExporter(inkex.EffectExtension):
                     for d in el.descendants2()[1:]:
                         if 'fill' in d.cspecified_style and d.cspecified_style['fill']!='#000000':
                             d.cstyle['fill']= d.cspecified_style['fill']
-        
         dh.flush_stylesheet_entries(svg) # since we ungrouped
         tmp = tempbase+"_mod.svg"
         dh.overwrite_svg(svg, tmp)
@@ -818,9 +817,6 @@ class AutoExporter(inkex.EffectExtension):
                 dh.overwrite_svg(svg, tmp)
                 cfile = tmp
 
-
-
-
         if do_stroketopaths:
             svg = get_svg(cfile)     
             # Remove temporary groups
@@ -833,6 +829,7 @@ class AutoExporter(inkex.EffectExtension):
             dh.flush_stylesheet_entries(svg) # since we ungrouped            
             dh.overwrite_svg(svg, tmp)
             cfile = tmp
+            
 
         if input_options.prints:
             input_options.prints(
@@ -876,7 +873,6 @@ class AutoExporter(inkex.EffectExtension):
             tmp = tempbase+ "_tld" + fformat[0] + ".svg"
             dh.overwrite_svg(svg, tmp)
             fin = copy.copy(tmp)
-            # tmpoutputs.append(tmp)
 
         if fformat == "psvg":
             myoutput = myoutput.replace(".psvg", "_plain.svg")
@@ -924,7 +920,6 @@ class AutoExporter(inkex.EffectExtension):
                 if (haspgs or input_options.testmode) and len(pgs)>0:
                     bbs = dh.BB2(type('DummyClass', (), {'svg': osvg}));  
                     dl = input_options.duplicatelabels
-                    
                     outputs = [];
                     pgiis = range(len(pgs)) if not(input_options.testmode) else [input_options.testpage-1]
                     for ii in pgiis:

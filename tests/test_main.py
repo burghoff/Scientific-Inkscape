@@ -36,8 +36,8 @@ testcbc             = True;
 testfm              = True;
 testhomogenizer     = True;
 testhomogenizer2    = True;
-testae              = True;
 testaemp            = True;
+testae              = True;
 
 
 
@@ -435,8 +435,6 @@ if testhomogenizer2:
               "--setfontfamily=True","--fontfamily=Avenir",\
               "--setstroke=True","--setstrokew=0.75","--strokemodes=2","--fusetransforms=True")
         ] 
- 
-        
         
 if testaemp:
     class TestAutoExporterMP1(ComparisonMixin, TestCase):
@@ -453,7 +451,8 @@ if testaemp:
                            CompareImages()]
         compare_file = ['svg/'+aepages]
         comparisons = [aeargs+("--testpage=2",)]  
-        
+ 
+       
 if testae:
     class TestAutoExporter(ComparisonMixin, TestCase):
         effect_class = AutoExporter
@@ -461,7 +460,8 @@ if testae:
                            CompareWithoutIds(),CompareURLs(),
                            CompareImages()]
         compare_file = ['svg/'+aename]
-        comparisons = [aeargs] 
+        comparisons = [aeargs]  
+        
 
 
 if __name__ == "__main__":

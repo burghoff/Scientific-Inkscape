@@ -825,7 +825,7 @@ def BB2(slf,els=None,forceupdate=False,roughpath=False):
             slf.svg.make_char_table(els=dtels)
             # pts = [TextParser.get_parsed_text(el) for el in dtels]
             # TextParser.ParsedTextList(pts).precalcs()
-        ret = dict()
+        ret = inkex.OrderedDict()
         for d in els:
             if d.tag in bb2tags and isrendered(d):
                 # mbbox = d.cbbox; # Attribute Errors here are not actually here usually

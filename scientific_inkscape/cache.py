@@ -307,7 +307,12 @@ class iddict(inkex.OrderedDict):
             el.set_random_id(el.TAG)
             self[EBget(el,'id')] = el
     def add(self,el,todel=None):
-        self[el.get_id()] = el
+        elid = el.get_id() # fine since el should have a croot to get called here
+        if elid in self and not self[elid]==el:
+            # Make a new id when there's a conflict
+            el.set_random_id(el.TAG)
+            elid = el.get_id()
+        self[elid] = el
         if todel is not None and todel in self:
             del self[todel]
     @property
@@ -326,7 +331,7 @@ inkex.SvgDocumentElement.iddict = property(get_iddict)
 # A dict that keeps track of the CSS style for each element
 estyle = Style0()
 estyle2 = inkex.Style()  # still using Inkex's Style here since from stylesheets
-class cssdict(dict):
+class cssdict(inkex.OrderedDict):
     def __init__(self,svg):
         self.svg = svg
         
@@ -466,21 +471,24 @@ BaseElement.delete  = delete_func
 # Insertion
 BEinsert = inkex.BaseElement.insert 
 def insert_func(g, index, el):
+    oldroot = el.croot
+    newroot = g.croot
+    
     BEinsert(g,index, el)
     el.ccascaded_style = None
     el.cspecified_style = None
     el.ccomposed_transform = None
     
-    oldroot = el.croot
-    newroot = g.croot
-    if not oldroot==newroot:
+    # When the root is changing, removing from old dicts and add to new
+    # Note that most new elements have their IDs assigned here or in append
+    if not oldroot==newroot or el.get('id') is None:
         css = None
         if oldroot is not None:
             oldroot.iddict.remove(el)
             css = oldroot.cssdict.pop(el.get_id(),None)
         el.croot = newroot
         if newroot is not None:
-            newroot.iddict.add(el)
+            newroot.iddict.add(el) # generates an ID if needed
             if css is not None:
                 newroot.cssdict[el.get_id()]=css
 inkex.BaseElement.insert = insert_func
@@ -488,21 +496,24 @@ inkex.BaseElement.insert = insert_func
 # Appending
 BEappend = inkex.BaseElement.append 
 def append_func(g, el):
+    oldroot = el.croot
+    newroot = g.croot
+    
     BEappend(g, el)
     el.ccascaded_style = None
     el.cspecified_style = None
     el.ccomposed_transform = None
     
-    oldroot = el.croot
-    newroot = g.croot
-    if not oldroot==newroot:
+    # When the root is changing, removing from old dicts and add to new
+    # Note that most new elements have their IDs assigned here or in insert
+    if not oldroot==newroot or el.get('id') is None:
         css = None
         if oldroot is not None:
             oldroot.iddict.remove(el)
             css = oldroot.cssdict.pop(el.get_id(),None)
         el.croot = newroot
         if newroot is not None:
-            newroot.iddict.add(el)
+            newroot.iddict.add(el) # generates an ID if needed
             if css is not None:
                 newroot.cssdict[el.get_id()]=css
 inkex.BaseElement.append = append_func
@@ -523,6 +534,7 @@ def duplicate_func(el):
     d.set_random_id();
     if eltail is not None:
         el.tail = eltail
+    # Fix tail bug: https://gitlab.com/inkscape/extensions/-/issues/480
     
     d.croot = svg          # set now for speed
     el.croot.cssdict.dupe_entry(el.get_id(), d.get_id())
@@ -541,14 +553,3 @@ def duplicate_func(el):
         d.croot.cdefs.append(d)
     return d
 BaseElement.duplicate = duplicate_func
-
-# Addition
-# This function should be used to create new objects
-# def new_element_func(svg, newelclass, cssfrom=None):
-#     g = newelclass()                # e.g Rectangle
-#     svg.append(g)
-#     if cssfrom is not None:
-#         svg.cssdict.dupe_entry(cssfrom.get_id(), g.get_id())
-#     svg.iddict.add(g)
-#     return g
-# inkex.SvgDocumentElement.new_element = new_element_func
