@@ -2185,7 +2185,10 @@ class tword:
                     elif c.sf != newc.sf:
                         # Prevent accidental font size changes when differently transformed
                         sz = round((c.sw*c.sf)/(newc.sw*newc.sf)*100)
-                        newsty['font-size'] = str(sz)+'%';
+                        # newsty['font-size'] = str(sz)+'%';
+                        newsty['font-size'] = f"{sz:.2f}%";
+                        
+                        
 
                 if newsty is not None:
                     newc.add_style(newsty)

@@ -268,7 +268,9 @@ class Homogenizer(inkex.EffectExtension):
                         else:
                             # Set absolute size
                             scl = fontsize*onept/dfs if not fixedscale else fontsize/100
-                            d.cstyle["font-size"]= str(dfs*scl/sf)+'px'
+                            nfs = dfs*scl/sf
+                            nfs = f"{nfs:.2f}" if abs(nfs)>1 else "{:.3g}".format(nfs)
+                            d.cstyle["font-size"] = nfs.rstrip('0').rstrip('.')+'px'
 
 
         if fixtextdistortion:
