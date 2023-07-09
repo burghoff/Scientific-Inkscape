@@ -813,6 +813,8 @@ def BB2(slf,els=None,forceupdate=False,roughpath=False):
                 delattr(slf.svg,'_char_table')
             for d in els:
                 d.cbbox = None
+                if hasattr(d, "_parsed_text"):
+                    delattr(d,'_parsed_text')
                 
         allds = set()
         for el in els:
@@ -1159,7 +1161,7 @@ class bbox:
         return ret
 
     def transform(self, xform):
-        if not(self.isnull):
+        if not(self.isnull) and xform is not None:
             tr1 = xform.apply_to_point([self.x1, self.y1])
             tr2 = xform.apply_to_point([self.x2, self.y2])
             tr3 = xform.apply_to_point([self.x1, self.y2])
@@ -1183,14 +1185,19 @@ class bbox:
     def union(self, bb2):
         if isinstance(bb2,list):
             bb2 = bbox(bb2)
-        if not(self.isnull):
+        if not(self.isnull) and not bb2.isnull:
             minx = min([self.x1, self.x2, bb2.x1, bb2.x2])
             maxx = max([self.x1, self.x2, bb2.x1, bb2.x2])
             miny = min([self.y1, self.y2, bb2.y1, bb2.y2])
             maxy = max([self.y1, self.y2, bb2.y1, bb2.y2])
             return bbox([minx, miny, abs(maxx - minx), abs(maxy - miny)])
-        else:
+        elif self.isnull and not bb2.isnull:
             return bbox(bb2.sbb)
+        elif not self.isnull and bb2.isnull:
+            return bbox(self.sbb)
+        else:
+            return bbox(None)
+                
         
     def intersection(self,bb2):
         if isinstance(bb2,list):

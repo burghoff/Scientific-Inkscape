@@ -1579,8 +1579,6 @@ class txttree():
         ds, pts = el.descendants2(True)
         self.ds = ds;
         self.ptails = pts;
-        # self.cdict = cd;
-        # self.pdict = pd;
         self.pdict = {d:d.getparent() for d in ds}   
         
     def dgenerator(self, subel=None):
@@ -2694,7 +2692,7 @@ class tchar:
 
     @staticmethod
     def get_baseline(styin, fsel):
-        bshft = styin.get("baseline-shift")
+        bshft = styin.get("baseline-shift",'0')
         if bshft == "super":
             bshft = "40%"
         elif bshft == "sub":

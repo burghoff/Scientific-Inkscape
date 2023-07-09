@@ -26,6 +26,7 @@
             </param>            
             <param name="fontsize" type="float" precision="1" min="0" max="10000"
                     gui-text="Font size value (if applicable)">8</param>
+            <param name="plotaware" type="bool" gui-text="Plot-aware text adjustments?" gui-description="When adjusting text, maintain distance to a plot. Requires that each selected item be a grouped plot with a well-defined plot area.">false</param>
 
                  
             <label appearance="header">Stroke options</label>

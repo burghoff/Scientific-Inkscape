@@ -19,34 +19,17 @@
 #
 
 import inkex
-
 from inkex import (
     TextElement,
     FlowRoot,
-    FlowPara,
     Tspan,
-    TextPath,
-    Rectangle,
-    addNS,
     Transform,
     PathElement,
     Line,
     Rectangle,
-    Path,
-    Vector2d,
-    Use,
-    NamedView,
-    Defs,
-    Metadata,
-    ForeignObject,
     Group,
-    SvgDocumentElement,
-    Image,
     Polyline,
 )
-
-import lxml
-
 import os, sys, math, copy
 
 sys.path.append(
@@ -103,9 +86,6 @@ def Find_Plot_Area(els,gbbs):
                 solids[el.get_id()] = gbb
             elif hasstroke:                                           # framed rectangle
                 boxes[el.get_id()]  = gbb
-                
-#        if el.get_id()=='path1034':
-#            dh.idebug(dh.uniquetol(xs, tol))
     
     vels = dict()
     hels = dict()
@@ -189,13 +169,6 @@ class ScalePlots(inkex.EffectExtension):
         pars.add_argument(
             "--tickthreshold", type=int, default=10, help="Tick threshold"
         )
-        # pars.add_argument(
-        #     "--layerfix",
-        #     type=str,
-        #     default="None",
-        #     help="Layer whose elements should not be scaled",
-        # )
-
         pars.add_argument(
             "--wholeplot1",
             type=inkex.Boolean,
@@ -221,14 +194,9 @@ class ScalePlots(inkex.EffectExtension):
         sel = [
             k
             for k in sel
-            if not (isinstance(k, (Tspan, NamedView, Defs, Metadata, ForeignObject)))
+            if not (isinstance(k, (Tspan, inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.ForeignObject)))
         ]
         # regular selectable objects only
-
-        #        import cProfile, pstats, io
-        #        from pstats import SortKey
-        #        pr = cProfile.Profile()
-        #        pr.enable()
 
         tickcorrect = self.options.tickcorrect
         tickthr = self.options.tickthreshold / 100
@@ -269,10 +237,8 @@ class ScalePlots(inkex.EffectExtension):
         dsfchildren = [] # objects whose children are designated scale-free
         dsfels = []      # designated scale-free els, whether or not they're selected
 
-        # dh.tic()
-        fbbs = dh.BB2(self,dh.unique([d for el in sel for d in el.descendants2()]))
-        # dh.toc()
         # full visual bbs
+        fbbs = dh.BB2(self,dh.unique([d for el in sel for d in el.descendants2()]))
         firstsel = sel[0]
         if self.options.tab == "matching":
             sel = sel[1:]
@@ -511,18 +477,9 @@ class ScalePlots(inkex.EffectExtension):
                 if mtype is not None:
                     stype = mtype
                     
-                    
-                # isalwayscorr = isinstance(el, (TextElement, Group, FlowRoot)) and stype!='normal'
-                # els always corrected
-                # isoutsideplot = (
-                #     fbb[0] > bbp.f.x2
-                #     or fbb[0] + fbb[2] < bbp.f.x1
-                #     or fbb[1] > bbp.f.y2
-                #     or fbb[1] + fbb[3] < bbp.f.y1
-                # )
-                # els outside plot
-                # issf = el in dsfels or stype in ['scale_free','aspect_locked']
-                # is scale-free
+                if hasattr(self.options,'hcall') and self.options.hcall:
+                    if isinstance(el, (TextElement, Group, FlowRoot)):
+                        stype = 'normal'
 
                 vtickt = vtickb = htickl = htickr = False
                 # el is a tick
@@ -648,16 +605,7 @@ class ScalePlots(inkex.EffectExtension):
                 fbbs = actfbbs
                 gbbs = actgbbs
 
-        #        pr.disable()
-        #        s = io.StringIO()
-        #        sortby = SortKey.CUMULATIVE
-        #        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-        #        ps.print_stats()
-        #        dh.debug(s.getvalue())
         dh.flush_stylesheet_entries(self.svg)
-        # dh.debug([el.get_id() for el in self.svg.defs])
-        # dh.write_debug()
-
 
 if __name__ == "__main__":
     dh.Run_SI_Extension(ScalePlots(),"Scale plots")
