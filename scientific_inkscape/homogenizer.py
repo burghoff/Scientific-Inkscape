@@ -296,8 +296,8 @@ class Homogenizer(inkex.EffectExtension):
                 # dh.Set_Style_Comp(el, "-inkscape-font-specification", None)
                 el.cstyle["-inkscape-font-specification"]= None
                 
-            from TextParser import Character_Fixer
-            Character_Fixer(sel)
+            from TextParser import Character_Fixer2
+            Character_Fixer2(tels)
         
         if setfontfamily or setfontsize or fixtextdistortion:
             bbs2 = dh.BB2(self,tels,True)

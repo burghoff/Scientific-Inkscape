@@ -2186,7 +2186,7 @@ class tword:
                         # Prevent accidental font size changes when differently transformed
                         sz = round((c.sw*c.sf)/(newc.sw*newc.sf)*100)
                         # newsty['font-size'] = str(sz)+'%';
-                        newsty['font-size'] = f"{sz:.2f}%";
+                        newsty['font-size'] = f"{format(sz, '.2f').rstrip('0').rstrip('.')}%";
                         
                         
 
@@ -3498,42 +3498,46 @@ def Character_Fixer2(els):
                     # Replace_Non_Ascii_Font(sel, fixw)
                     el.set("xml:space", "preserve") # so spaces don't vanish
                     fixcondition, fixw = fixw
-                    prev_nonascii = False
-                    for jj, c in enumerate(reversed(txt)):
-                        ii = len(txt) - 1 - jj
-                        if fixcondition(c):
-                            if not prev_nonascii:
-                                # t = tel.croot.new_element(Tspan, tel)
-                                t = Tspan()
-                                t.text = c
-                                if tt==TT_TEXT:
-                                    tbefore = tel.text[0 : ii]
-                                    tafter = tel.text[ii + 1 :]
-                                    tel.text = tbefore
-                                    tel.insert(0, t)
-                                    t.tail = tafter
+                    
+                    if all([fixcondition(c) for c in txt]) and tt==TT_TEXT:
+                        sel.cstyle['font-family']=fixw
+                    else:
+                        prev_nonascii = False
+                        for jj, c in enumerate(reversed(txt)):
+                            ii = len(txt) - 1 - jj
+                            if fixcondition(c):
+                                if not prev_nonascii:
+                                    # t = tel.croot.new_element(Tspan, tel)
+                                    t = Tspan()
+                                    t.text = c
+                                    if tt==TT_TEXT:
+                                        tbefore = tel.text[0 : ii]
+                                        tafter = tel.text[ii + 1 :]
+                                        tel.text = tbefore
+                                        tel.insert(0, t)
+                                        t.tail = tafter
+                                    else:
+                                        tbefore = tel.tail[0 : ii]
+                                        tafter = tel.tail[ii + 1 :]
+                                        tel.tail = tbefore
+                                        gp = tel.getparent()
+                                        # parent is a Tspan, so insert it into the grandparent
+                                        pi = gp.index(tel)
+                                        gp.insert(pi + 1, t)
+                                        # after the parent
+                                        t.tail = tafter
+                                    t.cstyle = Style0('font-family:'+fixw+';baseline-shift:0%')
                                 else:
-                                    tbefore = tel.tail[0 : ii]
-                                    tafter = tel.tail[ii + 1 :]
-                                    tel.tail = tbefore
-                                    gp = tel.getparent()
-                                    # parent is a Tspan, so insert it into the grandparent
-                                    pi = gp.index(tel)
-                                    gp.insert(pi + 1, t)
-                                    # after the parent
-                                    t.tail = tafter
-                                t.cstyle = Style0('font-family:'+fixw+';baseline-shift:0%')
-                            else:
-                                t.text = c+t.text
-                                if tt==TT_TEXT:
-                                    tel.text = tel.text[0 : ii]
-                                else:
-                                    tel.tail = tel.tail[0 : ii]
-                            if tel.text is not None and tel.text=='':
-                                tel.text = None
-                            if tel.tail is not None and tel.tail=='':
-                                tel.tail = None
-                        prev_nonascii = nonascii(c)
+                                    t.text = c+t.text
+                                    if tt==TT_TEXT:
+                                        tel.text = tel.text[0 : ii]
+                                    else:
+                                        tel.tail = tel.tail[0 : ii]
+                                if tel.text is not None and tel.text=='':
+                                    tel.text = None
+                                if tel.tail is not None and tel.tail=='':
+                                    tel.tail = None
+                            prev_nonascii = nonascii(c)
 
 def Replace_Non_Ascii_Font(el, newfont, *args):
     def alltext(el):
