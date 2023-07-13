@@ -80,8 +80,12 @@ def get_parsed_text(el):
     if not (hasattr(el, "_parsed_text")):
         el._parsed_text = ParsedText(el, el.croot.char_table);
     return el._parsed_text
-inkex.TextElement.parsed_text = property(get_parsed_text)
-inkex.FlowRoot.parsed_text    = property(get_parsed_text)
+
+def set_parsed_text(el,sv):
+    if hasattr(el, "_parsed_text") and sv is None:
+        delattr(el,"_parsed_text")
+inkex.TextElement.parsed_text = property(get_parsed_text,set_parsed_text)
+inkex.FlowRoot.parsed_text    = property(get_parsed_text,set_parsed_text)
 
 # Add character table property and function to SVG
 tetag, frtag = TextElement.ctag, FlowRoot.ctag
@@ -306,6 +310,9 @@ class ParsedText:
 
     def txt(self):
         return [v.txt() for v in self.lns]
+    
+    def reparse(self):
+        self.__init__(self.textel, self.ctable)
 
     # Every text element in an SVG can be thought of as a group of lines.
     # A line is a collection of text that gets its position from a single source element.
@@ -610,7 +617,7 @@ class ParsedText:
             odxs = [c.dx for ln in self.lns for c in ln.cs]
             odys = [c.dy for ln in self.lns for c in ln.cs]
             [d.set('sodipodi:role',None) for d in self.tree.ds]
-            self.__init__(self.textel, self.ctable) # reparse
+            self.reparse()
             
             # Correct the position of the first character
             cs = [c for ln in self.lns for c in ln.cs]
@@ -643,7 +650,17 @@ class ParsedText:
             for ln in self.lns:
                 for w in ln.ws:
                     w.charpos = None
-
+    
+    # Remove baseline-shift if applied to the whole element
+    def Strip_Text_BaselineShift(self):
+        if 'baseline-shift' in self.textel.cspecified_style:
+            if len(self.lns)>0 and len(self.lns[0].cs)>0:
+                lny = self.lns[0].y[:]
+                bsv = self.lns[0].cs[0].bshft
+                self.textel.cstyle['baseline-shift']=None
+                self.reparse()
+                newy = [v-bsv for v in lny]
+                self.lns[0].change_pos(newy=newy)
 
     @staticmethod
     def GetXY(el, xy):
@@ -1019,7 +1036,7 @@ class ParsedText:
                     deleteempty(newtxt)
                     npt = newtxt.parsed_text
                     if origx is not None and len(npt.lns)>0 and len(npt.lns[0].cs)>0:
-                        npt.__init__(npt.textel, npt.ctable)
+                        npt.reparse()
                         newx = [xv+origx-npt.lns[0].cs[0].pts_ut[0][0] for xv in npt.lns[0].x]
                         npt.lns[0].change_pos(newx)  
                     newtxts.append(newtxt)
@@ -2669,12 +2686,26 @@ class tchar:
     @staticmethod
     def bshftfunc(styv,strtel,stopel):
         if "baseline-shift" in styv:
+            # Find all ancestors with baseline-shift
+            bsancs = []
             cel = strtel
-            bshft = 0
-            while cel != stopel:  # sum all ancestor baseline-shifts
-                if "baseline-shift" in cel.cstyle:
-                    bshft += tchar.get_baseline(cel.cstyle, cel.getparent())
+            while cel is not None and "baseline-shift" in cel.cspecified_style:
+                bsancs.append(cel)  
                 cel = cel.getparent()
+                
+            # Starting from the most distant ancestor, calculate relative 
+            # baseline shifts (i.e., how much each element is raised/lowered
+            # from the last block of text)
+            relbs = []
+            for a in reversed(bsancs):
+                if "baseline-shift" in a.cstyle:
+                    relbs.append(tchar.get_baseline(a.cstyle, a.getparent()))
+                else:
+                    # When an element has a baseline-shift from inheritance
+                    # but no baseline-shift is specified, implicitly gets the
+                    # sum of the previous values
+                    relbs.append(sum(relbs))
+            bshft = sum(relbs)
         else:
             bshft = 0
         return bshft

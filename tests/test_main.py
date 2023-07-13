@@ -20,10 +20,11 @@ version = '1.2'
 usepango = True
 lprofile = False
 
-testflattentext,testflattenrest,testflattenflow,testflattenpapers,testscalecorrection,testscalecorrection2,\
-testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp = (False,)*15
+testflattentext,testflattentextdebug, testflattenrest,testflattenflow,testflattenpapers,testscalecorrection,testscalecorrection2,\
+testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp = (False,)*16
 
 testflattentext     = True;
+testflattentextdebug = True;
 testflattenflow     = True; 
 testflattenrest     = True; 
 testflattenpapers   = True; 
@@ -310,6 +311,14 @@ if testflattentext:
         effect_class = FlattenPlots
         compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         comparisons = [flattenerargs]
+        compare_file = ['svg/'+flattentext]
+        
+
+if testflattentextdebug:
+    class TestFlattenerTextDebug(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
+        comparisons = [flattenerargs+("--debugparser=True",)]
         compare_file = ['svg/'+flattentext]
         
 if testflattenflow:

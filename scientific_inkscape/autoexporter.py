@@ -579,7 +579,8 @@ class AutoExporter(inkex.EffectExtension):
                     tels.remove(el)
             tels += nels
             
-            for el in tels:
+            for el in tels:                   
+                el.parsed_text.Strip_Text_BaselineShift();
                 el.parsed_text.Strip_Sodipodirole_Line();
                 el.parsed_text.Fuse_Fonts()
                 self.SubSuper_Fix(el)
