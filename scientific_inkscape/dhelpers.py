@@ -692,7 +692,7 @@ def object_to_path(el):
 # roughpath: use control points for a path's bbox (should be an upper bound)
 ttags = tags((inkex.TextElement,inkex.FlowRoot));
 Linetag = inkex.Line.ctag
-ptags = tags(otp_support)
+otp_support_tags = tags(otp_support)
 def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
     if not(hasattr(el,'_cbbox')):
         el._cbbox = dict()
@@ -702,7 +702,7 @@ def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
             ret = bbox(None)
             if el.tag in ttags:
                 ret = el.parsed_text.get_full_extent();
-            elif el.tag in ptags:
+            elif el.tag in otp_support_tags:
                 pth = get_path2(el)
                 if len(pth)>0:
                     sw = ipx(el.cspecified_style.get('stroke-width','0px'))

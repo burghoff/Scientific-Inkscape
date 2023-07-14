@@ -811,7 +811,6 @@ class AutoExporter(inkex.EffectExtension):
                         embedimg = (nsz < osz) or (anyalpha0 or hasmaskclip)
                         if embedimg:                 
                             self.Replace_with_Raster(el,tmpimg,bbs[el.get_id()],bbox)
-
                 
                 dh.flush_stylesheet_entries(svg) # since we ungrouped
                 tmp = tempbase+"_eimg.svg"

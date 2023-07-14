@@ -411,7 +411,11 @@ class Homogenizer(inkex.EffectExtension):
 
         if self.options.fusetransforms:
             for el in sela:
-                fuseTransform(el)
+                if el.tag in dh.otp_support_tags:
+                    # Fuse the composed transform onto the path
+                    el.ctransform = el.ccomposed_transform
+                    fuseTransform(el)
+                    el.ctransform = -el.getparent().ccomposed_transform
 
         if dispprofile:
             pr.disable()

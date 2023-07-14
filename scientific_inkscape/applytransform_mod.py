@@ -89,15 +89,13 @@ def transform_clipmask(el, mask=False):
                 else:
                     tr = el.ctransform
                 k.ctransform = tr
-
+             
 def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
-    # Modification by David Burghoff:
+    # Fuses an object's transform to its path, adding the additional transformation transf
     # When applytostroke enabled, transform goes onto stroke/dashes, keeping it looking the same
     # Without it, it is applied to the points only
 
-    if "d" in el.attrib or isinstance(
-        el, (Polygon, Polyline, Ellipse, Circle, Line, Rectangle)
-    ):  # supported types
+    if el.tag in dh.otp_support_tags:  # supported types
         # Since transforms apply to an object's clips, before applying the transform
         # we will need to duplicate the clip path and transform it
         transform_clipmask(el, mask=False)
