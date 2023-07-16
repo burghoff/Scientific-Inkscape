@@ -1649,13 +1649,9 @@ class AutoExporter(inkex.EffectExtension):
                             csty = el.cspecified_style
                             if 'stroke-width' in csty:
                                 sw = dh.ipx(csty['stroke-width'])
-                                # dh.Set_Style_Comp(el, 'stroke-width',str(sw*SCALEBY))
                                 el.cstyle['stroke-width']=str(sw*SCALEBY)
                             if 'stroke-dasharray' in csty:
-                                sd = csty["stroke-dasharray"].split(",")
-                                # dh.Set_Style_Comp(
-                                #     el, "stroke-dasharray",
-                                #     str([dh.ipx(sdv)*SCALEBY for sdv in sd]).strip("[").strip("]"))
+                                sd = dh.listsplit(csty["stroke-dasharray"])
                                 el.cstyle["stroke-dasharray"]=str([(dh.ipx(sdv) or 0)*SCALEBY for sdv in sd]).strip("[").strip("]")
                         
                         

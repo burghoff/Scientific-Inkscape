@@ -64,7 +64,6 @@ def remove_kerning(
     if DEBUG_PARSER or debugparser:
         for el in tels:
             el.parsed_text.Make_Highlights('char')
-        # dh.debug(tels[0].croot.char_table)
     else:
         # Do merges first (deciding based on original position)
         tels = [el for el in els if isinstance(el, (inkex.TextElement,))]

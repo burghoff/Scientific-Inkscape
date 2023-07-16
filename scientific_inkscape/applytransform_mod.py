@@ -6,7 +6,7 @@
 # Modified by David Burghoff
 
 import inkex
-import math
+import math, re
 from inkex.paths import CubicSuperPath, Path
 from inkex.transforms import Transform
 from inkex import Line, Rectangle, Polygon, Polyline, Ellipse, Circle
@@ -32,7 +32,7 @@ def remove_attrs(el):
     return el
 
 # Scale stroke width and dashes
-def applyToStrokes(el, transf):
+def applyToStrokes(el, tf):
     if "style" in el.attrib:
         style = el.cstyle
         update = False
@@ -40,7 +40,7 @@ def applyToStrokes(el, transf):
             try:
                 stroke_width = dh.ipx(style.get("stroke-width"))
                 stroke_width *= math.sqrt(
-                    abs(transf.a * transf.d - transf.b * transf.c)
+                    abs(tf.a * tf.d - tf.b * tf.c)
                 )
                 style["stroke-width"] = str(stroke_width)
                 update = True
@@ -50,13 +50,11 @@ def applyToStrokes(el, transf):
             try:
                 strokedasharray = style.get("stroke-dasharray")
                 if strokedasharray.lower() != "none":
-                    strokedasharray = [
-                        dh.ipx(v)
-                        for v in style.get("stroke-dasharray").split(",")
-                    ]
+                    strokedasharray = [dh.ipx(v) for v in dh.listsplit(style.get("stroke-dasharray"))]
+                    dh.idebug(dh.listsplit(style.get("stroke-dasharray")))
                     strokedasharray = [
                         sdv
-                        * math.sqrt(abs(transf.a * transf.d - transf.b * transf.c))
+                        * math.sqrt(abs(tf.a * tf.d - tf.b * tf.c))
                         for sdv in strokedasharray
                     ]
                     style["stroke-dasharray"] = (
@@ -66,7 +64,6 @@ def applyToStrokes(el, transf):
             except AttributeError:
                 pass
         if update:
-            # el.attrib['style'] = Style0(style).to_str()
             el.cstyle = style
 
 def transform_clipmask(el, mask=False):

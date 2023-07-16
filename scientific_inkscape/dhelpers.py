@@ -137,6 +137,9 @@ def Get_Composed_LineHeight(el):
 
 # For style components that are a list (stroke-dasharray), calculate
 # the true size reported by Inkscape, inheriting any styles/transforms
+def listsplit(x):
+    # split list on commas or spaces
+    return [v for v in re.split('[ ,]', x) if v]
 def Get_Composed_List(el, comp, nargout=1):
     cs = el.cspecified_style
     ct = el.ccomposed_transform
@@ -144,13 +147,13 @@ def Get_Composed_List(el, comp, nargout=1):
     if sc == "none":
         return "none"
     elif sc is not None:
-        sw = sc.split(",")
+        sv = listsplit(sc)
         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))
-        sw = [ipx(x) * sf for x in sw]
+        sv = [ipx(x) * sf for x in sv]
         if nargout == 1:
-            return sw
+            return sv
         else:
-            return sw, sf
+            return sv, sf
     else:
         if nargout == 1:
             return None
@@ -1257,7 +1260,6 @@ def global_transform(el, trnsfrm, irange=None, trange=None,preserveStroke=True):
             # fix width
         if not (sd in [None, "none"]):
             nd, sf = Get_Composed_List(el, "stroke-dasharray", nargout=2)
-            # Set_Style_Comp(el, "stroke-dasharray", str([sdv / sf for sdv in sd]).strip("[").strip("]"))
             el.cstyle["stroke-dasharray"]=str([sdv / sf for sdv in sd]).strip("[").strip("]")
             # fix dash
 
