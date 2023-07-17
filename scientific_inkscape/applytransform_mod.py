@@ -50,8 +50,7 @@ def applyToStrokes(el, tf):
             try:
                 strokedasharray = style.get("stroke-dasharray")
                 if strokedasharray.lower() != "none":
-                    strokedasharray = [dh.ipx(v) for v in dh.listsplit(style.get("stroke-dasharray"))]
-                    dh.idebug(dh.listsplit(style.get("stroke-dasharray")))
+                    strokedasharray = dh.listsplit(style.get("stroke-dasharray"))
                     strokedasharray = [
                         sdv
                         * math.sqrt(abs(tf.a * tf.d - tf.b * tf.c))

@@ -139,7 +139,7 @@ def Get_Composed_LineHeight(el):
 # the true size reported by Inkscape, inheriting any styles/transforms
 def listsplit(x):
     # split list on commas or spaces
-    return [v for v in re.split('[ ,]', x) if v]
+    return [ipx(v) for v in re.split('[ ,]', x) if v]
 def Get_Composed_List(el, comp, nargout=1):
     cs = el.cspecified_style
     ct = el.ccomposed_transform
@@ -149,7 +149,7 @@ def Get_Composed_List(el, comp, nargout=1):
     elif sc is not None:
         sv = listsplit(sc)
         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))
-        sv = [ipx(x) * sf for x in sv]
+        sv = [x * sf for x in sv]
         if nargout == 1:
             return sv
         else:

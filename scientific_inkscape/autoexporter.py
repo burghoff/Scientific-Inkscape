@@ -1652,7 +1652,7 @@ class AutoExporter(inkex.EffectExtension):
                                 el.cstyle['stroke-width']=str(sw*SCALEBY)
                             if 'stroke-dasharray' in csty:
                                 sd = dh.listsplit(csty["stroke-dasharray"])
-                                el.cstyle["stroke-dasharray"]=str([(dh.ipx(sdv) or 0)*SCALEBY for sdv in sd]).strip("[").strip("]")
+                                el.cstyle["stroke-dasharray"]=str([(sdv or 0)*SCALEBY for sdv in sd]).strip("[").strip("]")
                         
                         
                         # Fix bug on start markers where auto-start-reverse oriented markers
