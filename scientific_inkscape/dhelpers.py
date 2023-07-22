@@ -696,15 +696,15 @@ def object_to_path(el):
 ttags = tags((inkex.TextElement,inkex.FlowRoot));
 Linetag = inkex.Line.ctag
 otp_support_tags = tags(otp_support)
-def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
+def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False,parsed=False):
     if not(hasattr(el,'_cbbox')):
         el._cbbox = dict()
         
-    if (dotransform,includestroke,roughpath) not in el._cbbox:
+    if (dotransform,includestroke,roughpath,parsed) not in el._cbbox:
         try:
             ret = bbox(None)
             if el.tag in ttags:
-                ret = el.parsed_text.get_full_extent();
+                ret = el.parsed_text.get_full_extent(parsed=parsed);
             elif el.tag in otp_support_tags:
                 pth = get_path2(el)
                 if len(pth)>0:
@@ -730,7 +730,7 @@ def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
                     
             elif el.tag in grouplike_tags:
                 for d in list2(el):
-                    dbb = bounding_box2(d,dotransform=False,includestroke=includestroke,roughpath=roughpath);
+                    dbb = bounding_box2(d,dotransform=False,includestroke=includestroke,roughpath=roughpath,parsed=parsed);
                     if not(dbb.isnull):
                         ret = ret.union(dbb.transform(d.ctransform))
             elif isinstance(el,(inkex.Image)):
@@ -738,7 +738,7 @@ def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
             elif isinstance(el,(inkex.Use,)):
                 lel = el.get_link('xlink:href');
                 if lel is not None:
-                    ret = bounding_box2(lel,dotransform=False,roughpath=roughpath)
+                    ret = bounding_box2(lel,dotransform=False,roughpath=roughpath,parsed=parsed)
                     
                     # clones have the transform of the link, followed by any xy transform
                     xyt = inkex.Transform('translate({0},{1})'.format(ipx(el.get('x','0')), ipx(el.get('y','0'))))
@@ -748,7 +748,7 @@ def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
                 for cm in ['clip-path','mask']:
                     clip = el.get_link(cm,llget=True)
                     if clip is not None:
-                       cbb = bounding_box2(clip,dotransform=False,includestroke=False,roughpath=roughpath)
+                       cbb = bounding_box2(clip,dotransform=False,includestroke=False,roughpath=roughpath,parsed=parsed)
                        if not(cbb.isnull):
                            ret = ret.intersection(cbb)
                        else:
@@ -762,8 +762,8 @@ def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False):
             import traceback
             idebug(traceback.format_exc())
                     
-        el._cbbox[(dotransform,includestroke,roughpath)] = ret
-    return el._cbbox[(dotransform,includestroke,roughpath)]
+        el._cbbox[(dotransform,includestroke,roughpath,parsed)] = ret
+    return el._cbbox[(dotransform,includestroke,roughpath,parsed)]
 
 def set_cbbox(el,val):
     if val is None and hasattr(el,'_cbbox'):
@@ -775,66 +775,58 @@ bb2_support = (inkex.TextElement,inkex.FlowRoot,inkex.Image,inkex.Use,
                inkex.SvgDocumentElement,inkex.Group,inkex.Layer) + otp_support
 bb2tags = tags(bb2_support)
 
-# A wrapper that replaces Get_Bounding_Boxes with Pythonic calls only if possible
-metatags = set([inkex.addNS('RDF','rdf'),
-                inkex.addNS('Work','cc'),
-                inkex.addNS('format','dc'),
-                inkex.addNS('type','dc')])
-
 masktag = inkex.addNS('mask','svg')
 grouplike_tags = tags((inkex.SvgDocumentElement,Group,inkex.Layer,inkex.ClipPath,inkex.Symbol))
 grouplike_tags.add(masktag)
+svgtag = inkex.SvgDocumentElement.ctag
 
-otags = tags((inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.ForeignObject, inkex.Guide,
-              inkex.ClipPath,inkex.StyleElement,
-              Tspan,inkex.FlowRegion,inkex.FlowPara))
-otags.add(masktag)
-def BB2(slf,els=None,forceupdate=False,roughpath=False):
+unrendered = tags((inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.ForeignObject, inkex.Guide,
+              inkex.ClipPath,inkex.StyleElement,Tspan,inkex.FlowRegion,inkex.FlowPara))
+unrendered.update({masktag,inkex.addNS('RDF','rdf'),   inkex.addNS('Work','cc'),
+                          inkex.addNS('format','dc'), inkex.addNS('type','dc')})
+# Determine if object has a bbox
+@lru_cache(maxsize=None)    
+def hasbbox(el):
+    myp = el.getparent();
+    if myp is None:
+        return el.tag == svgtag
+    else:
+        return el.tag not in unrendered if hasbbox(myp) else False
+
+# Determine if object itself is drawn
+@lru_cache(maxsize=None)     
+def isdrawn(el):
+    return el.tag not in grouplike_tags and hasbbox(el) and el.cspecified_style.get('display')!='none'
+
+# A wrapper that replaces Get_Bounding_Boxes with Pythonic calls only if possible
+def BB2(slf,els=None,forceupdate=False,roughpath=False,parsed=False):
     if els is None:
         els = slf.svg.descendants2();
-    
-    render_dict = dict();
-    def isrendered(el):
-        if el in render_dict:
-            return render_dict[el]
-        else:
-            myp = el.getparent();
-            ret = True
-            if myp is None or isrendered(myp):
-                if el.tag in metatags:
-                    ret=False
-                elif el.tag in otags:
-                    ret=False
-            else:
-                ret = False
-            render_dict[el] = ret
-            return ret
-    
-    if all([d.tag in bb2tags or not(isrendered(d)) for d in els]):
-        if forceupdate:
-            if hasattr(slf.svg, '_char_table'):
-                delattr(slf.svg,'_char_table')
-            for d in els:
-                d.cbbox = None
-                if hasattr(d, "_parsed_text"):
-                    delattr(d,'_parsed_text')
-                
+    if all([d.tag in bb2tags or not(hasbbox(d)) for d in els]):
+        # All descendants of all els in the list               
         allds = set()
         for el in els:
             if el not in allds: # so we're not re-descendants2ing
                 allds.update(el.descendants2())
-        dtels = [d for d in unique(allds) if isinstance(d,(inkex.TextElement,inkex.FlowRoot))]
-        if len(dtels)>0:
-            import TextParser
-            assert TextParser # optional, disables pyflakes warning
-            slf.svg.make_char_table(els=dtels)
-            # pts = [TextParser.get_parsed_text(el) for el in dtels]
-            # TextParser.ParsedTextList(pts).precalcs()
+        tels = [d for d in unique(allds) if isinstance(d,(inkex.TextElement,inkex.FlowRoot))]
+        
+        if len(tels)>0:
+            if forceupdate:
+                if hasattr(slf.svg, '_char_table'):
+                    delattr(slf.svg,'_char_table')
+                for d in els:
+                    d.cbbox = None
+                    if hasattr(d, "_parsed_text"):
+                        delattr(d,'_parsed_text')
+            if not hasattr(slf.svg, '_char_table'):
+                import TextParser                    # noqa
+                slf.svg.make_char_table(els=tels)
+                pts = [TextParser.get_parsed_text(el) for el in tels]
+                TextParser.ParsedTextList(pts).precalcs()
         ret = inkex.OrderedDict()
         for d in els:
-            if d.tag in bb2tags and isrendered(d):
-                # mbbox = d.cbbox; # Attribute Errors here are not actually here usually
-                mbbox = bounding_box2(d,roughpath=roughpath)
+            if d.tag in bb2tags and hasbbox(d):
+                mbbox = bounding_box2(d,roughpath=roughpath,parsed=parsed)
                 if not(mbbox.isnull):
                     ret[d.get_id()] = mbbox.sbb
     else:
@@ -906,6 +898,23 @@ def commandqueryall(fn, inkscape_binary=None,extra_args = []):
     p = subprocess_repeat(arg2)
     tFStR = p.stdout
     return tFStR
+
+# Vectorized calculation of bbox intersection bools
+# Returns a matrix sized len(bbs) x len(bb2s)
+def bb_intersects(bbs,bb2s=None):
+    if bb2s is None:
+        bb2s = bbs
+    import numpy as np
+    
+    if len(bbs)==0 or len(bb2s)==0:
+        return np.zeros((len(bbs), len(bb2s)), dtype=bool)
+    else:
+        xc1, yc1, wd1, ht1 = np.array([(bb.xc, bb.yc, bb.w, bb.h) for bb in bbs]).T
+        xc2, yc2, wd2, ht2 = np.array([(bb.xc, bb.yc, bb.w, bb.h) for bb in bb2s]).T
+        return np.logical_and(
+            (abs(xc1.reshape(-1, 1) - xc2) * 2 < (wd1.reshape(-1, 1) + wd2)),
+            (abs(yc1.reshape(-1, 1) - yc2) * 2 < (ht1.reshape(-1, 1) + ht2)),
+        )
 
 # Get SVG from file
 from inkex import load_svg

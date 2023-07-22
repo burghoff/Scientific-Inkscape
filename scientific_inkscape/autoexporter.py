@@ -912,8 +912,8 @@ class AutoExporter(inkex.EffectExtension):
                 input_options.made_outputs = [fileout];
                 
                 osvg = get_svg(filein);   # original has pages
-                if hasattr(input_options,'ctable'):
-                    osvg._char_table = input_options.ctable
+                # if hasattr(input_options,'ctable'):
+                #     osvg._char_table = input_options.ctable
                 
                 pgs = osvg.cdocsize.pgs
                 haspgs = osvg.cdocsize.inkscapehaspgs 

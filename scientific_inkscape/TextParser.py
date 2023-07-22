@@ -1143,7 +1143,7 @@ class ParsedText:
                     if not(extln.isnull):
                         exts.append(extln)
         return exts
-    def get_full_extent(self):
+    def get_full_extent(self,parsed=False):
         # Get the untranformed extent of the whole element
         import math
         ext = dh.bbox(None);
@@ -1152,8 +1152,9 @@ class ParsedText:
                 for ln in self.lns:
                     for w in ln.ws:
                         for c in w.cs:
-                            p1 = c.pts_ut[0]
-                            p2 = c.pts_ut[2]
+                            pts = c.parsed_pts_ut if parsed and c.parsed_pts_ut is not None else c.pts_ut
+                            p1 = pts[0]
+                            p2 = pts[2]
                             if not math.isnan(p1[1]):
                                 ext = ext.union(dh.bbox((p1,p2)))
         return ext
@@ -3058,14 +3059,14 @@ class Character_Table:
             if sty not in self.ctable:
                 dh.idebug("No style matches!")
                 dh.idebug("Character: " + char)
-                dh.idebug("Style: " + sty)
+                dh.idebug("Style: " + str(sty))
                 dh.idebug("Existing styles: " + str(list(self.ctable.keys())))
             else:
                 dh.idebug("No character matches!")
                 dh.idebug("Character: " + char)
-                dh.idebug("Style: " + sty)
+                dh.idebug("Style: " + str(sty))
                 dh.idebug("Existing chars: " + str(list(self.ctable[sty].keys())))
-            quit()
+            raise KeyError
             
     def get_prop_mult(self,char,sty,scl):
         try:

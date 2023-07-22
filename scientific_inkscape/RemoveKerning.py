@@ -68,6 +68,7 @@ def remove_kerning(
         # Do merges first (deciding based on original position)
         tels = [el for el in els if isinstance(el, (inkex.TextElement,))]
         lls = [TextParser.get_parsed_text(el) for el in tels]
+        # dh.idebug(len([1 for pt in lls if pt.isflow]))
         TextParser.ParsedTextList(lls).precalcs()
         if removemanual:
             tels = Remove_Manual_Kerning(tels, mergesupersub)
@@ -380,24 +381,29 @@ def External_Merges(els, mergenearby, mergesupersub):
     # Vectorized angle / bbox calculations
     angles = np.array([[w.angle for w in ws]])
     sameangle = abs(angles - angles.T) < 0.001
-    xc1, yc1, wd1, ht1, xc2, yc2, wd2, ht2 = np.zeros((8, len(ws)))
-    for ii in range(len(ws)):
-        box1 = ws[ii].bb_big
-        box2 = ws[ii].bb
-        if ws[ii].parsed_bb is not None:
-            box2 = ws[ii].parsed_bb
-        xc1[ii] = box1.xc
-        yc1[ii] = box1.yc
-        wd1[ii] = box1.w
-        ht1[ii] = box1.h
-        xc2[ii] = box2.xc
-        yc2[ii] = box2.yc
-        wd2[ii] = box2.w
-        ht2[ii] = box2.h
-    intersects = np.logical_and(
-        (abs(xc1.reshape(-1, 1) - xc2) * 2 < (wd1.reshape(-1, 1) + wd2)),
-        (abs(yc1.reshape(-1, 1) - yc2) * 2 < (ht1.reshape(-1, 1) + ht2)),
-    )
+    # xc1, yc1, wd1, ht1, xc2, yc2, wd2, ht2 = np.zeros((8, len(ws)))
+    # for ii in range(len(ws)):
+    #     box1 = ws[ii].bb_big
+    #     box2 = ws[ii].bb
+    #     if ws[ii].parsed_bb is not None:
+    #         box2 = ws[ii].parsed_bb
+    #     xc1[ii] = box1.xc
+    #     yc1[ii] = box1.yc
+    #     wd1[ii] = box1.w
+    #     ht1[ii] = box1.h
+    #     xc2[ii] = box2.xc
+    #     yc2[ii] = box2.yc
+    #     wd2[ii] = box2.w
+    #     ht2[ii] = box2.h
+    # intersects = np.logical_and(
+    #     (abs(xc1.reshape(-1, 1) - xc2) * 2 < (wd1.reshape(-1, 1) + wd2)),
+    #     (abs(yc1.reshape(-1, 1) - yc2) * 2 < (ht1.reshape(-1, 1) + ht2)),
+    # )
+    
+    bb1s = [w.bb_big for w in ws]
+    bb2s = [w.bb if w.parsed_bb is None else w.parsed_bb for w in ws]
+    intersects = dh.bb_intersects(bb1s,bb2s)
+    
     # reshape(-1,1) is a transpose
     potentials = np.logical_and(sameangle, intersects)
     potentials = np.logical_and(

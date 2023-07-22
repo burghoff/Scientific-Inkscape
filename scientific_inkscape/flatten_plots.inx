@@ -8,7 +8,7 @@
             <param name="deepungroup" type="bool"  gui-text="Deep ungroup?">true</param>
             <param name="fixtext"  type="bool" gui-text="Apply text fixes?">true</param>
         <label appearance="header">Other options</label>
-            <param name="removerectw" type="bool" gui-text="Remove white-filled rectangles?">true</param>
+            <param name="removerectw" type="bool" gui-text="Remove white background rectangles?">true</param>
             
             
             <label appearance="header">Note</label>

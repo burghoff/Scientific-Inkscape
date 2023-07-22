@@ -242,12 +242,16 @@ def process_items(items):
                 f"Bad path type: {type(items).__name__}"
                 f"({type(item).__name__}, ...): {item}"
             )
+            
+from functools import lru_cache
+# @lru_cache(maxsize=None)            
 def fast_init(self, path_d=None):
     list.__init__(self)
     if isinstance(path_d, str):
         # Returns a generator returning PathCommand objects
-        path_d = self.parse_string(path_d)
-        self.extend(path_d)
+        # path_d = self.parse_string(path_d)
+        # self.extend(path_d)
+        self.extend(cached_parse_string(path_d))
     else:
         if isinstance(path_d, ipcspth):
             path_d = path_d.to_path()
@@ -279,7 +283,6 @@ except:
     )
 nargs_cache = {cmd: cmd.nargs for cmd in letter_to_class.values()}
 next_command_cache = {cmd: cmd.next_command for cmd in letter_to_class.values()}
-# inkex.utils.debug(next_command_cache)
 def fast_parse_string(cls, path_d):
     for cmd, numbers in LEX_REX.findall(path_d):
         args = [float(val) for val in NUMBER_REX.findall(numbers)]
@@ -292,13 +295,29 @@ def fast_parse_string(cls, path_d):
                 return
             seg = cmd(*args[i: i + cmd_nargs])
             i += cmd_nargs
-            # cmd = seg.next_command
             cmd = next_command_cache[type(seg)]
             cmd_nargs = nargs_cache[cmd]
             yield seg
 inkex.paths.Path.parse_string = fast_parse_string
 
-
+@lru_cache(maxsize=None)
+def cached_parse_string(path_d):
+    ret = []
+    for cmd, numbers in LEX_REX.findall(path_d):
+        args = [float(val) for val in NUMBER_REX.findall(numbers)]
+        cmd = letter_to_class[cmd]
+        cmd_nargs = nargs_cache[cmd]
+        i = 0
+        args_len = len(args)
+        while i < args_len or cmd_nargs == 0:
+            if args_len < i + cmd_nargs:
+                return
+            seg = cmd(*args[i: i + cmd_nargs])
+            i += cmd_nargs
+            cmd = next_command_cache[type(seg)]
+            cmd_nargs = nargs_cache[cmd]
+            ret.append(seg)
+    return ret
 
 
 """ transforms.py """
@@ -406,7 +425,6 @@ trpattern = re.compile(r'\b(scale|translate|rotate|skewX|skewY|matrix)\(([^\)]*)
 split_pattern = re.compile(r'[\s,]+')
 
 # Converts a transform string into a standard matrix
-from functools import lru_cache
 @lru_cache(maxsize=None)
 def transform_to_matrix(transform):
     null = ((1, 0, 0), (0, 1, 0))

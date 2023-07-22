@@ -272,33 +272,9 @@ class FlattenPlots(inkex.EffectExtension):
         if self.options.removerectw:
             prltag = dh.tags((PathElement, Rectangle, Line))
             fltag  = dh.tags((FlowPara, FlowRegion, FlowRoot))
-            rtag = Rectangle.ctag
             nones = {None, "none", "None"}
-            for el in ngs:
-                # if el.tag in prltag:
-                #     myp = el.getparent()
-                #     if myp is not None and not(myp.tag in fltag):
-                #         pts = list(dh.get_path2(el).end_points)
-                #         xs = [p.x for p in pts]
-                #         ys = [p.y for p in pts]
-    
-                #         if len(xs) > 0:
-                #             maxsz = max(max(xs) - min(xs), max(ys) - min(ys))
-                #             tol = 1e-3 * maxsz
-                #             if (
-                #                 el.tag == rtag
-                #                 or 4 <= len(xs) <= 5
-                #                 and len(dh.uniquetol(xs, tol)) == 2
-                #                 and len(dh.uniquetol(ys, tol)) == 2
-                #             ):  # is a rectangle
-                #                 sf = dh.get_strokefill(el)
-                #                 if (
-                #                     sf.stroke is None
-                #                     and sf.fill is not None
-                #                     and tuple(sf.fill) == (255, 255, 255, 1)
-                #                 ):
-                #                     dh.deleteup(el)
-                
+            wrects = []
+            for ii, el in enumerate(ngs):
                 if el.tag in prltag:
                     myp = el.getparent()
                     if myp is not None and not(myp.tag in fltag) and dh.isrectangle(el,includingtransform=False):
@@ -308,9 +284,22 @@ class FlattenPlots(inkex.EffectExtension):
                         if strk in nones and fill not in nones:
                             sf = dh.get_strokefill(el)
                             if sf.fill is not None and tuple(sf.fill) == (255, 255, 255, 1):
-                                dh.deleteup(el)
+                                wrects.append(el)
+                                
+            ngset = set(ngs)
+            ngs2 = [el for el in self.svg.descendants2() if el in ngset and dh.isdrawn(el)]
+            bbs = dh.BB2(self,ngs2,roughpath=True,parsed=True);
+            ngs3 = [el for el in ngs2 if el.get_id() in bbs]
+            bbs = [dh.bbox(bbs.get(el.get_id())) for el in ngs3];
+            wriis = [ii for ii,el in enumerate(ngs3) if el in wrects]
+            wrbbs = [bbs[ii] for ii in wriis]
+            intrscts = dh.bb_intersects(bbs,wrbbs);
+            for jj,ii in enumerate(wriis):                    
+                if not any(intrscts[:ii,jj]):
+                    dh.deleteup(ngs3[ii])
+                    intrscts[ii,:]=False
 
-        # dh.BB2(self,self.svg.descendants2(),roughpath=True);
+
 
         # Remove any unused clips we made, unnecessary white space in document
         ds = self.svg.iddict.ds

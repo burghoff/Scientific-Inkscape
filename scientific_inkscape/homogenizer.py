@@ -301,7 +301,6 @@ class Homogenizer(inkex.EffectExtension):
         
         if setfontfamily or setfontsize or fixtextdistortion:
             bbs2 = dh.BB2(self,tels,True)
-            
             if not self.options.plotaware:
                 for el in sel:
                     myid = el.get_id()
