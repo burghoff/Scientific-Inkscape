@@ -1145,6 +1145,7 @@ class ParsedText:
         return exts
     def get_full_extent(self,parsed=False):
         # Get the untranformed extent of the whole element
+        # parsed=True gets original prior to any mods
         import math
         ext = dh.bbox(None);
         if self.lns is not None and len(self.lns) > 0:
