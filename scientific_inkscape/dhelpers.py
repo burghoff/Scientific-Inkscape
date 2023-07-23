@@ -1827,7 +1827,7 @@ inkex.Style.to_xpath  = to_xpath_func
 
 
 def Version_Check(caller):
-    siv = "v1.2.29"  # Scientific Inkscape version
+    siv = "v1.3.0"  # Scientific Inkscape version
     maxsupport = "1.3.1"
     minsupport = "1.1.0"
 
