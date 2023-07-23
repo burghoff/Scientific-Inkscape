@@ -18,7 +18,25 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import inkex
+# from dhelpers import count_callers
 
+import inspect
+from functools import lru_cache
+def count_callers():
+    caller_frame = inspect.stack()[2]
+    filename = caller_frame.filename
+    line_number = caller_frame.lineno
+    lstr = f"{filename} at line {line_number}"
+    global callinfo
+    try:
+        callinfo
+    except:
+        callinfo = dict();
+    if lstr in callinfo:
+        callinfo[lstr]+=1
+    else:
+        callinfo[lstr]=1
+    inkex.utils.debug(lstr)
 
 class Style0(inkex.OrderedDict):
     """A list of style directives"""
@@ -26,13 +44,23 @@ class Style0(inkex.OrderedDict):
     color_props = ("stroke", "fill", "stop-color", "flood-color", "lighting-color")
     opacity_props = ("stroke-opacity", "fill-opacity", "opacity", "stop-opacity")
     unit_props = "stroke-width"
+    
+    # We modify Style so that it has two versions: one without the callback
+    # (Style0) and one with (Style0cb). That way, when no callback is needed, 
+    # we do not incur extra overhead by overloading __setitem__, __delitem__, etc.
+    def __new__(cls, style=None, callback=None, **kw):
+        if cls != Style0 and issubclass(cls, Style0):  # Don't treat subclasses' arguments as callback
+            return inkex.OrderedDict.__new__(cls)
+        elif callback is not None:
+            instance = inkex.OrderedDict.__new__(Style0cb)
+            instance.__init__(style, callback, **kw)
+            return instance
+        else:
+            return inkex.OrderedDict.__new__(cls)
 
-    def __init__(self, style=None, callback=None, **kw):
-        # inkex.utils.debug('init')
-        # This callback is set twice because this is 'pre-initial' data (no callback)
-        self.callback = None
+    def __init__(self, style=None, **kw):
         # Either a string style or kwargs (with dashes as underscores).
-        style = style or [(k.replace("_", "-"), v) for k, v in kw.items()]
+        style = ((k.replace("_", "-"), v) for k, v in kw.items()) if style is None else style
         if isinstance(style, str):
             style = self.parse_str(style)
         # Order raw dictionaries so tests can be made reliable
@@ -40,19 +68,20 @@ class Style0(inkex.OrderedDict):
             style = [(name, style[name]) for name in sorted(style)]
         # Should accept dict, Style, parsed string, list etc.
         super().__init__(style)
-        # Now after the initial data, the callback makes sense.
-        self.callback = callback
 
     @staticmethod
+    @lru_cache(maxsize=None)
     def parse_str(style):
         """Create a dictionary from the value of an inline style attribute"""
         if style is None:
             style = ""
+        ret = []
         for directive in style.split(";"):
             if ":" in directive:
                 (name, value) = directive.split(":", 1)
                 # FUTURE: Parse value here for extra functionality
-                yield (name.strip().lower(), value.strip())
+                ret.append((name.strip().lower(), value.strip()))
+        return ret
 
     def __str__(self):
         """Format an inline style attribute from a dictionary"""
@@ -60,7 +89,12 @@ class Style0(inkex.OrderedDict):
 
     def to_str(self, sep=";"):
         """Convert to string using a custom delimiter"""
-        return sep.join(["{0}:{1}".format(*seg) for seg in self.items()])
+        # return sep.join(["{0}:{1}".format(*seg) for seg in self.items()])
+        return sep.join([f"{key}:{value}" for key, value in self.items()]) # about 40% faster
+    
+    def __hash__(self):
+        return hash(tuple(self.items()))
+        # return hash(self.to_str())
 
     def __add__(self, other):
         """Add two styles together to get a third, composing them"""
@@ -69,6 +103,13 @@ class Style0(inkex.OrderedDict):
             other = Style0(other)
         ret.update(other)
         return ret
+    
+    # A shallow copy that does not call __init__
+    def copy(self):
+        new_instance = type(self).__new__(type(self))
+        for k,v in self.items():
+            inkex.OrderedDict.__setitem__(new_instance,k,v)
+        return new_instance
 
     def __iadd__(self, other):
         """Add style to this style, the same as style.update(dict)"""
@@ -99,22 +140,10 @@ class Style0(inkex.OrderedDict):
     __ne__ = lambda self, other: not self.__eq__(other)
 
     def update(self, other):
-        """Make sure callback is called when updating"""
         if not (isinstance(other, Style0)):
             other = Style0(other)
         super().update(other)
-        if self.callback is not None:
-            self.callback(self)
 
-    def __delitem__(self, key):
-        super().__delitem__(key)
-        if self.callback is not None:
-            self.callback(self)
-
-    def __setitem__(self, key, value):
-        super().__setitem__(key, value)
-        if self.callback is not None:
-            self.callback(self)
 
     def get_color(self, name="fill"):
         """Get the color AND opacity as one Color object"""
@@ -166,9 +195,43 @@ class Style0(inkex.OrderedDict):
         return style
 
 
+class Style0cb(Style0):
+    def __init__(self, style=None, callback=None, **kw):
+        # This callback is set twice because this is 'pre-initial' data (no callback)
+        self.callback = None
+        super().__init__(style, **kw)
+        self.callback = callback
+    
+    # A shallow copy that does not call __init__
+    def copy(self):
+        new_instance = type(self).__new__(type(self))
+        for k,v in self.items():
+            inkex.OrderedDict.__setitem__(new_instance,k,v)
+        new_instance.callback = self.callback
+        return new_instance
+
+    def update(self, other):
+        super().update(other)
+        if self.callback is not None:
+            self.callback(self)
+
+    def __delitem__(self, key):
+        super().__delitem__(key)
+        if self.callback is not None:
+            self.callback(self)
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        if self.callback is not None:
+            self.callback(self)
+            
+# Style0 = inkex.Style
+            
 # Replace Style wrapped attr with Style0
 inkex.BaseElement.WRAPPED_ATTRS = (
     ("transform", inkex.Transform),
     ("style", Style0),
     ("classes", "class", inkex.styles.Classes),
+    ("gradientTransform", inkex.Transform),
+    ("patternTransform", inkex.Transform),
 )

@@ -1,0 +1,13 @@
+Werkzeug>=2.2.2
+Jinja2>=3.0
+itsdangerous>=2.0
+click>=8.0
+
+[:python_version < "3.10"]
+importlib-metadata>=3.6.0
+
+[async]
+asgiref>=3.2
+
+[dotenv]
+python-dotenv

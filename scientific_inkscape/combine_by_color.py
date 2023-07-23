@@ -40,24 +40,13 @@ class CombineByColor(inkex.EffectExtension):
         )
 
     def effect(self):
-        import random
-
-        random.seed(1)
-        # v1 = all([isinstance(el,(str)) for el in self.svg.selection]); # version 1.0 of Inkscape
-        # if v1:
-        #     inkex.utils.errormsg('Academic-Inkscape requires version 1.1 of Inkscape or higher. Please install the latest version and try again.');
-        #     return
-        #     # gpe= dh.get_mod(self.svg.selection)
-        #     # sel =[gpe[k] for k in gpe.id_dict().keys()];
-        # else:
-        #     els = [v for el in self.svg.selection for v in dh.descendants2(el)];
         lightness_threshold = self.options.lightnessth / 100
 
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
         # should work with both v1.0 and v1.1
-        sel = [v for el in sel for v in dh.descendants2(el)]
+        sel = [v for el in sel for v in el.descendants2()]
 
-        allel = [v for v in dh.descendants2(self.svg)]
+        allel = [v for v in self.svg.descendants2()]
         elord = [allel.index(v) for v in sel]
         # order of selected elements in svg
 

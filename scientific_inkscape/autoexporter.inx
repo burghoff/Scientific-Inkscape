@@ -5,8 +5,8 @@
     <param name="tab" type="notebook">        
         <page name="scaling" gui-text="Options">
         <label>Launches the Autoexporter, a background program that watches a directory for changes to any SVG and then writes exports in the selected formats.</label>
-        <label>Mac users: You may get a security prompt asking whether to allow Inkscape to open a Terminal. Make sure you allow it.</label>
-        <label>Linux users: This extension cannot run as an AppImage or as a Snap installation.</label>
+        <label>Mac users: You may get a security prompt asking whether to allow the program to run.</label>
+        <label>Linux users: AppImages and Snap installations may not be able to see folders outside the installation folder.</label>
         <label appearance="header">Formats to export</label>
         <param name="usepdf" type="bool" gui-text="PDF"
          gui-description="Filters and gradients will be rasterized.">true</param>   
@@ -14,8 +14,8 @@
         <param name="useemf" type="bool" gui-text="EMF"
          gui-description="Recommended for older versions of Microsoft Office that do not support SVG.">false</param>   
         <param name="useeps" type="bool" gui-text="EPS">false</param>  
-        <param name="usepsvg" type="bool" gui-text="Portable SVG"
-          gui-description="SVG that has been converted to PDF and back. &#13;Recommended for newer versions of Microsoft Office that support SVG.">false</param> 
+        <param name="usepsvg" type="bool" gui-text="Plain SVG"
+          gui-description="Plain SVG that has been optimized for compatibility. &#13;Recommended for newer versions of Microsoft Office that support SVG.">false</param> 
         <param name="dpi" type="float" precision="0" min="1" max="9999" gui-text="Rasterization DPI"
         gui-description="Resolution for PNG output and PDF filter rasterization.">600</param>
         

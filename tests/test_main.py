@@ -9,19 +9,23 @@ aepages = 'Multipage_nonuniform.svg'
 MAXPAPERS = 0
 flattentext = 'Text_tests.svg'
 flattenrest = 'Acid_tests.svg';
+flattenflow = 'Flow_tests.svg';
 priority_flatten = ['']
 exclude_flatten = ['Ohtani_SA_2019_Deep_group.svg',flattentext,flattenrest,fname,aename]
 
 flattenerargs = ("--id=layer1","--testmode=True")
 aeargs = ("--testmode=True",)
 
-version = '1.2.2'
+version = '1.2'
+usepango = True
 lprofile = False
 
-testflattentext,testflattenrest,testflattenpapers,testscalecorrection,testscalecorrection2,\
-testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae = (False,)*13
+testflattentext,testflattentextdebug, testflattenrest,testflattenflow,testflattenpapers,testscalecorrection,testscalecorrection2,\
+testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp = (False,)*16
 
 testflattentext     = True;
+testflattentextdebug = True;
+testflattenflow     = True; 
 testflattenrest     = True; 
 testflattenpapers   = True; 
 testscalecorrection = True;
@@ -33,30 +37,28 @@ testcbc             = True;
 testfm              = True;
 testhomogenizer     = True;
 testhomogenizer2    = True;
-testae              = True;
 testaemp            = True;
+testae              = True;
 
-
-
-vpaths = {'1.0' :  ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python38.zip', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\lib-dynload', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\site-packages', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']+\
-                   ['D:\\Inkscapes\\inkscape-1.0.2-2-x64\\bin'],
-          '1.1' :  ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python39.zip', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\site-packages', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']+\
-                   ['D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\bin'],
-          '1.2' :  ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2_2022-05-15_dc2aedaf03-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2_2022-05-15_dc2aedaf03-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.2_2022-05-15_dc2aedaf03-x64\\lib\\python39.zip', 'D:\\Inkscapes\\inkscape-1.2_2022-05-15_dc2aedaf03-x64\\lib\\python3.9', 'D:\\Inkscapes\\inkscape-1.2_2022-05-15_dc2aedaf03-x64\\lib\\python3.9\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.2_2022-05-15_dc2aedaf03-x64\\lib\\python3.9\\site-packages', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'D:\\Inkscapes\\inkscape-1.2_2022-05-15_dc2aedaf03-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']+\
-                   ['D:\\Inkscapes\\inkscape-1.2_2022-05-15_dc2aedaf03-x64\\bin'],
-          '1.2.1': ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2.1_2022-07-14_9c6d41e410-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2.1_2022-07-14_9c6d41e410-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.2.1_2022-07-14_9c6d41e410-x64\\lib\\python310.zip', 'D:\\Inkscapes\\inkscape-1.2.1_2022-07-14_9c6d41e410-x64\\lib\\python3.10', 'D:\\Inkscapes\\inkscape-1.2.1_2022-07-14_9c6d41e410-x64\\lib\\python3.10\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.2.1_2022-07-14_9c6d41e410-x64\\lib\\python3.10\\site-packages', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'D:\\Inkscapes\\inkscape-1.2.1_2022-07-14_9c6d41e410-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal']+\
-                   ['D:\\Inkscapes\\inkscape-1.2.1_2022-07-14_9c6d41e410-x64\\bin'],
-          '1.2.2': ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\lib\\python310.zip', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\lib\\python3.10', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\lib\\python3.10\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\lib\\python3.10\\site-packages', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'G:\\My Drive\\Work\\2021.03 Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-01_b0a8486541-x64\\bin'],
-          '1.3': ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.3-dev_2023-02-03_b66badc1-x64\\inkscape\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.3-dev_2023-02-03_b66badc1-x64\\inkscape\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.3-dev_2023-02-03_b66badc1-x64\\inkscape\\lib\\python310.zip', 'D:\\Inkscapes\\inkscape-1.3-dev_2023-02-03_b66badc1-x64\\inkscape\\lib\\python3.10', 'D:\\Inkscapes\\inkscape-1.3-dev_2023-02-03_b66badc1-x64\\inkscape\\lib\\python3.10\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.3-dev_2023-02-03_b66badc1-x64\\inkscape\\lib\\python3.10\\site-packages', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'G:\\My Drive\\Storage\\Github\\Academic-Inkscape\\scientific_inkscape', 'D:\\Inkscapes\\inkscape-1.3-dev_2023-02-03_b66badc1-x64\\inkscape\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.3-dev_2023-02-03_b66badc1-x64\\inkscape\\bin']};
-    
 import os
+sidir = os.path.join(os.path.split(os.path.split(__file__)[0])[0],'scientific_inkscape')
+vpaths = {'1.0' :  ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python38.zip', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\lib-dynload', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\site-packages', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\bin'],
+          '1.1' :  ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python39.zip', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\site-packages', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\bin'],
+          '1.2': ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\lib\\python310.zip', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\lib\\python3.10', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\lib\\python3.10\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\lib\\python3.10\\site-packages', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\bin'],
+          '1.3': ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.3-beta_2023-05-28_cedbd6c6ff-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.3-beta_2023-05-28_cedbd6c6ff-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.3-beta_2023-05-28_cedbd6c6ff-x64\\lib\\python310.zip', 'D:\\Inkscapes\\inkscape-1.3-beta_2023-05-28_cedbd6c6ff-x64\\lib\\python3.10', 'D:\\Inkscapes\\inkscape-1.3-beta_2023-05-28_cedbd6c6ff-x64\\lib\\python3.10\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.3-beta_2023-05-28_cedbd6c6ff-x64\\lib\\python3.10\\site-packages', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.3-beta_2023-05-28_cedbd6c6ff-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.3-beta_2023-05-28_cedbd6c6ff-x64\\bin']};
 if 'TESTMAINVERSION' in os.environ:
     version = os.environ['TESTMAINVERSION']
 if version=='1.0':
-    flattenerargs += ("--v=1.0",)
+    # flattenerargs += ("--v=1.0",)
+    os.environ["SI_FC_DIR"] = [d for d in vpaths['1.1'] if os.path.split(d)[-1]=='bin'][0]
+    # Font selection changed after 1.0, use 1.1's fc for consistency
 
-import sys; sys.path += vpaths[version]
+import sys
+sys.path += vpaths[version]
+sys.path += [sidir]
 os.environ['LINEPROFILE'] = str(lprofile)
+os.environ['USEPANGO']=str(usepango)
+
 
 from flatten_plots import FlattenPlots
 from scale_plots import ScalePlots
@@ -65,6 +67,7 @@ from combine_by_color import CombineByColor
 from favorite_markers import FavoriteMarkers
 from homogenizer import Homogenizer
 from autoexporter import AutoExporter
+import inkex.tester
 from inkex.tester import ComparisonMixin, TestCase
 from inkex.tester.filters import CompareWithoutIds
 from inkex.tester.filters import Compare 
@@ -75,58 +78,7 @@ def get_files(dirin):
     for f in os.scandir(dirin):
         if f.name[-4:]=='.svg':
             fs.append(os.path.join(os.path.abspath(dirin),f.name))
-    return fs
-# class CompareNeg0(Compare):
-#     """Convert negative 0s into regular 0s"""
-#     @staticmethod
-#     def filter(contents):
-        # c2 = re.sub(rb'-0 ', b"0 ", contents)
-        # c3 = c2.replace(b'-0)',b'0)')
-        # c4 = re.sub(rb'-0,', b"0,", c3)
-        # return c4
-        # return contents
-# class CompareDx0(Compare):
-#     """Remove empty dx/dy values"""
-#     @staticmethod
-#     def filter(contents):
-#         c2 = re.sub(rb'dx="0"', b"", contents)
-#         c3 = re.sub(rb'dy="0"', b"", c2)
-#         return c3
-    
-# class CompareTransforms(Compare):
-#     """Standardize commas in transforms"""
-#     @staticmethod
-#     def filter(contents):
-        # mmat = [];
-        # for tr in [rb'matrix',rb'scale',rb'translate']:
-        #     mmat += [m.span()[1] for m in re.compile(tr+rb'\(').finditer(contents)]
-        # pmat = [m.span()[0] for m in re.compile(rb'\)').finditer(contents)]
-        # repl = [];
-        # for m in reversed(mmat):
-        #     myp = min([pl for pl in pmat if pl>=m])
-        #     newmat = re.sub(rb', ', rb" ", contents[m:myp])
-        #     newmat = re.sub(rb',' , rb" ", newmat)
-        #     repl.append((m,myp,newmat))
-            
-        # def Make_Replacements(x,rs):
-        #     rs = sorted(rs, key=lambda r: r[0])   
-        #     if len(rs)>0:
-        #         lst = 0; pieces=[]
-        #         for r in rs:
-        #             pieces.append(x[lst:r[0]])
-        #             pieces.append(r[2])
-        #             lst = r[1]
-        #         pieces.append(x[lst:])
-        #         ret = b''.join(pieces)
-        #     else:
-        #         ret = x
-        #     return ret
-        # ret = Make_Replacements(contents,repl)
-        # ret = re.sub(rb"scale\(0 0\)", rb"scale(0)", ret)
-        # ret = re.sub(rb'transform="translate\(0 0\)"', rb"", ret)
-        # return ret
-        # return contents
-    
+    return fs    
 
 # Replace all ids contained in urls in the order they appear in the document
 class CompareURLs(Compare):
@@ -275,7 +227,7 @@ def Replace_Spans(string,spans,repls):
 class CompareNumericFuzzy2(Compare):
     @staticmethod
     def filter(contents):
-        prec_xy   = 0;
+        prec_else   = 0;
         prec_trfm = 3;
         
         # Standardize transforms to matrix()
@@ -286,7 +238,7 @@ class CompareNumericFuzzy2(Compare):
             spans.append(m.span())
             tcnts = m.group(1) # contents of transform tag
             newstr= matrix_to_transform(transform_to_matrix(tcnts),
-                       precision_abcd=prec_trfm, precision_ef=prec_xy)
+                       precision_abcd=prec_trfm, precision_ef=prec_else)
             repls.append(b'transform="' + newstr + b'"')
         contents2 = Replace_Spans(contents,spans,repls)
         
@@ -303,9 +255,11 @@ class CompareNumericFuzzy2(Compare):
             intfm = ti<len(tfms) and s>tfms[ti][0] and e<tfms[ti][1]  # in next tfm
             # print((m.group(0),intfm))
             if not(intfm):
-                fmt = b"%." + f"{prec_xy}".encode('utf-8') + b"f";
+                fmt = b"%." + f"{prec_else}".encode('utf-8') + b"f";
                 repl = fmt % (float(m.group(0))+0) # Adding 0 changes -0 to 0
                 spans.append((s,e))
+                # if contents2[s-3:s] in (b'x="',b'y="'):
+                #     print((contents2[s-3:e+1],repl))
                 repls.append(repl)
         contents3 = Replace_Spans(contents2,spans,repls)
         contents = contents3
@@ -329,6 +283,35 @@ class CompareImages(Compare):
         contents = re.sub(rb'image\/svg\+xml',rb'',contents) # header for different versions
         contents = re.sub(b'sodipodi:docname="[^"]*"', b'sodipodi:docname=""', contents)
         return contents
+    
+
+# For x values, due to kerning measurement differences we allow for up to 1 pixel
+from inkex.tester.xmldiff import xmldiff
+def mod_xmldiff(data_a,data_b):
+    diff_xml, delta = xmldiff(data_a, data_b)
+    # print(diff_xml)
+    toremove = []
+    for x, (value_a, value_b) in enumerate(delta):
+        if value_a is not None and value_b is not None and len(value_a)>0 and len(value_b)>0 and \
+           ((value_a[0]=='x' and value_b[0]=='x') or (value_a[0]=='y' and value_b[0]=='y')):
+            try:
+                if abs(float(value_a[1])-float(value_b[1]))<=1:
+                    toremove.append((value_a, value_b))
+            except:
+                pass
+        elif version=='1.0' and \
+            value_a is not None and value_b is not None and len(value_a)>0 and len(value_b)>0 and \
+           ((value_a[0]=='height' and value_b[0]=='height')):
+            # Cap height slightly different
+            try:
+                if abs(float(value_a[1])-float(value_b[1]))<=1:
+                    toremove.append((value_a, value_b))
+            except:
+                pass
+    for r in toremove:
+        delta.remove(r)
+    return diff_xml, delta
+inkex.tester.xmldiff = mod_xmldiff
         
     
 
@@ -339,6 +322,21 @@ if testflattentext:
         compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         comparisons = [flattenerargs]
         compare_file = ['svg/'+flattentext]
+        
+
+if testflattentextdebug:
+    class TestFlattenerTextDebug(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
+        comparisons = [flattenerargs+("--debugparser=True",)]
+        compare_file = ['svg/'+flattentext]
+        
+if testflattenflow:
+    class TestFlattenerFlow(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
+        comparisons = [flattenerargs+("--debugparser=True",)]
+        compare_file = ['svg/'+flattenflow]
 
 if testflattenrest:
     class TestFlattenerRest(ComparisonMixin, TestCase):
@@ -346,6 +344,7 @@ if testflattenrest:
         compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
         comparisons = [flattenerargs]
         compare_file = ['svg/'+flattenrest]
+
     
 if testflattenpapers:
     class TestFlattenerPapers(ComparisonMixin, TestCase):
@@ -454,16 +453,6 @@ if testhomogenizer2:
               "--setfontfamily=True","--fontfamily=Avenir",\
               "--setstroke=True","--setstrokew=0.75","--strokemodes=2","--fusetransforms=True")
         ] 
-
-if testae:
-    class TestAutoExporter(ComparisonMixin, TestCase):
-        effect_class = AutoExporter
-        compare_filters = [CompareNumericFuzzy2(),
-                           CompareWithoutIds(),CompareURLs(),
-                           CompareImages()]
-        compare_file = ['svg/'+aename]
-        comparisons = [aeargs]  
-        
         
 if testaemp:
     class TestAutoExporterMP1(ComparisonMixin, TestCase):
@@ -480,8 +469,17 @@ if testaemp:
                            CompareImages()]
         compare_file = ['svg/'+aepages]
         comparisons = [aeargs+("--testpage=2",)]  
-
-
+ 
+       
+if testae:
+    class TestAutoExporter(ComparisonMixin, TestCase):
+        effect_class = AutoExporter
+        compare_filters = [CompareNumericFuzzy2(),
+                           CompareWithoutIds(),CompareURLs(),
+                           CompareImages()]
+        compare_file = ['svg/'+aename]
+        comparisons = [aeargs]  
+        
 
 
 if __name__ == "__main__":

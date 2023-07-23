@@ -17,8 +17,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-# PDFLATEX = False
-
+USE_TERMINAL = False;
 DEBUGGING = False
 dispprofile = False
 
@@ -26,7 +25,7 @@ import subprocess
 import inkex
 from inkex import TextElement, Transform, PathElement, Vector2d
 
-import os, sys
+import os, sys, time, re
 import numpy as np
 
 sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0])))  # make sure my directory is on the path
@@ -37,14 +36,129 @@ import image_helpers as ih
 def joinmod(dirc, f):
     return os.path.join(os.path.abspath(dirc), f)
 def subprocess_check(inputargs,input_opts):
-    if hasattr(input_opts,'mythread') and input_opts.mythread.stopped == True:
-        sys.exit()
+    if hasattr(input_opts,'aeThread') and input_opts.aeThread.stopped == True:
+        delete_quit(input_opts.aeThread.tempdir)
     dh.subprocess_repeat(inputargs)
-    if hasattr(input_opts,'mythread') and input_opts.mythread.stopped == True:
-        sys.exit()
+    if hasattr(input_opts,'aeThread') and input_opts.aeThread.stopped == True:
+        delete_quit(input_opts.aeThread.tempdir)
 def get_svg(fin):
     svg = inkex.load_svg(fin).getroot()
     return svg
+
+def delete_quit(tempdir):
+    Delete_Dir(tempdir)
+    sys.exit()
+    
+orig_key = 'si_ae_original_filename'
+dup_key = 'si_ae_original_duplicate'
+def hash_file(filename): 
+    import hashlib
+    h = hashlib.sha256()
+    with open(filename, 'rb') as file:
+        chunk = 0
+        while chunk != b'':
+            chunk = file.read(1024)
+            h.update(chunk)
+    return h.hexdigest()
+
+# Runs a Python script using a Python binary in a working directory
+# It detaches from Inkscape, allowing it to continue running after the extension has finished
+def gtk_call(python_bin,python_script,python_wd):
+    DEVNULL = dh.si_tmp(filename='si_ae_output.txt')
+    with open(DEVNULL, 'w') as devnull:
+        subprocess.Popen([python_bin, python_script], stdout=devnull, stderr=devnull)
+
+def terminal_call(python_bin,python_script,python_wd):
+    def escp(x):
+        return x.replace(" ", "\\\\ ")
+    import platform
+    if platform.system().lower() == "darwin":
+        # https://stackoverflow.com/questions/39840632/launch-python-script-in-new-terminal
+        os.system(
+            'osascript -e \'tell application "Terminal" to do script "'
+            + escp(sys.executable)
+            + " "
+            + escp(python_script)
+            + "\"' >/dev/null"
+        )
+    elif platform.system().lower() == "windows":
+        if 'pythonw.exe' in python_bin:
+            python_bin = python_bin.replace('pythonw.exe', 'python.exe')
+        subprocess.Popen([python_bin, python_script], shell=False, cwd=python_wd)
+        
+        # if 'pythonw.exe' in python_bin:
+        #     python_bin = python_bin.replace('pythonw.exe', 'python.exe')
+        # DETACHED_PROCESS = 0x08000000
+        # subprocess.Popen([python_bin, python_script, 'standalone'], creationflags=DETACHED_PROCESS)
+    else:
+        if sys.executable[0:4] == "/tmp":
+            inkex.utils.errormsg(
+                "This appears to be an AppImage of Inkscape, which the Autoexporter cannot support since AppImages are sandboxed."
+            )
+            return
+        elif sys.executable[0:5] == "/snap":
+            inkex.utils.errormsg(
+                "This appears to be an Snap installation of Inkscape, which the Autoexporter cannot support since Snap installations are sandboxed."
+            )
+            return
+        else:
+            terminals = [
+                "x-terminal-emulator", "mate-terminal", "gnome-terminal", "terminator", "xfce4-terminal",
+                "urxvt", "rxvt", "termit", "Eterm", "aterm", "uxterm", "xterm", "roxterm", "termite",
+                "lxterminal", "terminology", "st", "qterminal", "lilyterm", "tilix", "terminix",
+                "konsole", "kitty", "guake", "tilda", "alacritty", "hyper", "terminal", "iTerm", "mintty",
+                "xiterm", "terminal.app", "Terminal.app", "terminal-w", "terminal.js", "Terminal.js",
+                "conemu", "cmder", "powercmd", "terminus", "termina", "terminal-plus", "iterm2",
+                "terminus-terminal", "terminal-tabs"
+            ]
+            terms = []
+            for terminal in terminals:
+                result = subprocess.run(['which', terminal], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if result.returncode == 0:
+                    terms.append(terminal)
+            
+            for t in reversed(terms):
+                if t == "x-terminal-emulator":
+                    LINUX_TERMINAL_CALL = (
+                        "x-terminal-emulator -e bash -c '%CMD'"
+                    )
+                elif t == "gnome-terminal":
+                    LINUX_TERMINAL_CALL = (
+                        'gnome-terminal -- bash -c "%CMD; exec bash"'
+                    )
+                elif t == "konsole":
+                    LINUX_TERMINAL_CALL = "konsole -e bash -c '%CMD'"
+            os.system(
+                LINUX_TERMINAL_CALL.replace(
+                    "%CMD",
+                    escp(sys.executable) + " " + escp(python_script) + " >/dev/null",
+                )
+            )
+
+# Delete a directory and its contents, trying repeatedly on failure
+def Delete_Dir(dirpath):
+    MAXATTEMPTS = 2
+    for t in list(set(os.listdir(dirpath))):
+        deleted = False
+        nattempts = 0;
+        while not(deleted) and nattempts<MAXATTEMPTS:
+            try:
+                os.remove(joinmod(dirpath,t))
+                deleted = True
+            except:
+                time.sleep(5)
+                nattempts += 1
+    if dirpath is not None:
+        deleted = False
+        nattempts = 0;
+        while not(deleted) and nattempts<MAXATTEMPTS:
+            try:
+                # print('Attempting to delete '+os.path.split(dirpath)[-1])
+                os.rmdir(dirpath)
+                deleted = True
+            except:
+                time.sleep(5)
+                nattempts += 1
 
 PTH_COMMANDS = list('MLHVCSQTAZmlhvcsqtaz')
 class AutoExporter(inkex.EffectExtension):
@@ -65,7 +179,7 @@ class AutoExporter(inkex.EffectExtension):
             "--useeps", type=inkex.Boolean, default=False, help="Export EPS?"
         )
         pars.add_argument(
-            "--usepsvg", type=inkex.Boolean, default=False, help="Export Portable SVG?"
+            "--usepsvg", type=inkex.Boolean, default=False, help="Export plain SVG?"
         )
         pars.add_argument("--dpi", default=600, help="Rasterization DPI")
         pars.add_argument("--dpi_im", default=300, help="Resampling DPI")
@@ -129,9 +243,6 @@ class AutoExporter(inkex.EffectExtension):
             self.options.exportnow = True
             self.options.margin = 0.5
             self.options.latexpdf = False
-            import random
-            random.seed(1)
-            # self.options.svgoptpdf = True
 
         if dispprofile:
             import cProfile, pstats, io
@@ -184,6 +295,28 @@ class AutoExporter(inkex.EffectExtension):
             optcopy.inkscape_bfn = bfn;
             optcopy.formats = formats;
             optcopy.syspath = sys.path;
+            
+            try:
+                import warnings
+                with warnings.catch_warnings():
+                    # Ignore ImportWarning for Gtk/Pango
+                    warnings.simplefilter('ignore') 
+                    import gi
+                    gi.require_version('Gtk', '3.0')
+                    
+                    # GTk warning suppression from Martin Owens
+                    # Can sometimes suppress Inkex debug output also
+                    from gi.repository import GLib
+                    def _nope(*args, **kwargs): #
+                        return GLib.LogWriterOutput.HANDLED
+                    GLib.log_set_writer_func(_nope, None)
+                    from gi.repository import Gtk
+                guitype = 'gtk'
+            except:
+                guitype = 'terminal'
+            if USE_TERMINAL:
+                guitype = 'terminal'
+            optcopy.guitype = guitype
 
             import tempfile
             aes = os.path.join(os.path.abspath(tempfile.gettempdir()), "si_ae_settings.p")
@@ -195,81 +328,12 @@ class AutoExporter(inkex.EffectExtension):
             import warnings
             warnings.simplefilter("ignore", ResourceWarning); # prevent warning that process is open
 
-            def escp(x):
-                return x.replace(" ", "\\\\ ")
-
-            import platform
-
-            if platform.system().lower() == "darwin":
-                # https://stackoverflow.com/questions/39840632/launch-python-script-in-new-terminal
-                os.system(
-                    'osascript -e \'tell application "Terminal" to do script "'
-                    + escp(sys.executable)
-                    + " "
-                    + escp(aepy)
-                    + "\"' >/dev/null"
-                )
-            elif platform.system().lower() == "windows":
-                if 'pythonw.exe' in pybin:
-                    pybin = pybin.replace('pythonw.exe', 'python.exe')
-                subprocess.Popen([pybin, aepy], shell=False, cwd=pyloc)
-                
-                # if 'pythonw.exe' in pybin:
-                #     pybin = pybin.replace('pythonw.exe', 'python.exe')
-                # DETACHED_PROCESS = 0x08000000
-                # subprocess.Popen([pybin, aepy, 'standalone'], creationflags=DETACHED_PROCESS)
-            else:
-                if sys.executable[0:4] == "/tmp":
-                    inkex.utils.errormsg(
-                        "This appears to be an AppImage of Inkscape, which the Autoexporter cannot support since AppImages are sandboxed."
-                    )
-                    return
-                elif sys.executable[0:5] == "/snap":
-                    inkex.utils.errormsg(
-                        "This appears to be an Snap installation of Inkscape, which the Autoexporter cannot support since Snap installations are sandboxed."
-                    )
-                    return
-                else:
-                    # shpath = os.path.abspath(
-                    #     os.path.join(dh.get_script_path(), "FindTerminal.sh")
-                    # )
-                    # os.system("sh " + escp(shpath))
-                    # f = open("tmp", "rb")
-                    # terms = f.read()
-                    # f.close()
-                    # os.remove("tmp")
-                    # terms = terms.split()
-
-                    terminals = [
-                        "x-terminal-emulator", "mate-terminal", "gnome-terminal", "terminator", "xfce4-terminal",
-                        "urxvt", "rxvt", "termit", "Eterm", "aterm", "uxterm", "xterm", "roxterm", "termite",
-                        "lxterminal", "terminology", "st", "qterminal", "lilyterm", "tilix", "terminix",
-                        "konsole", "kitty", "guake", "tilda", "alacritty", "hyper", "terminal", "iTerm", "mintty",
-                        "xiterm", "terminal.app", "Terminal.app", "terminal-w", "terminal.js", "Terminal.js",
-                        "conemu", "cmder", "powercmd", "terminus", "termina", "terminal-plus", "iterm2",
-                        "terminus-terminal", "terminal-tabs"
-                    ]
-                    terms = []
-                    for terminal in terminals:
-                        result = subprocess.run(['which', terminal], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        if result.returncode == 0:
-                            terms.append(terminal)
-                    
-                    for t in reversed(terms):
-                        if t == "x-terminal-emulator":
-                            LINUX_TERMINAL_CALL = (
-                                "x-terminal-emulator -e bash -c '%CMD'"
-                            )
-                        elif t == "gnome-terminal":
-                            LINUX_TERMINAL_CALL = (
-                                'gnome-terminal -- bash -c "%CMD; exec bash"'
-                            )
-                    os.system(
-                        LINUX_TERMINAL_CALL.replace(
-                            "%CMD",
-                            escp(sys.executable) + " " + escp(aepy) + " >/dev/null",
-                        )
-                    )
+            if guitype=='gtk':
+                # dh.idebug([f.name for f in os.scandir(optcopy.watchdir)])
+                gtk_call(pybin,aepy,pyloc)
+            else:    
+                terminal_call(pybin,aepy,pyloc)
+            
 
         else:
             if not (self.options.testmode):
@@ -281,10 +345,9 @@ class AutoExporter(inkex.EffectExtension):
             optcopy.prints = False; DEBUGGING
             optcopy.linked_locations = ih.get_linked_locations(self); # needed to find linked images in relative directories
 
-            AutoExporter().export_all(
-                bfn, self.options.input_file, pth, formats, optcopy
-            )
-            # dh.overwrite_svg(self.svg,pth)
+            # dh.ctic()
+            AutoExporter().export_all(bfn, self.options.input_file, pth, formats, optcopy)
+            # dh.ctoc()
 
         if dispprofile:
             pr.disable()
@@ -295,7 +358,7 @@ class AutoExporter(inkex.EffectExtension):
             dh.debug(s.getvalue())
 
         if self.options.testmode:
-            nf = os.path.abspath(pth[0:-4] + "_portable.svg")
+            nf = os.path.abspath(pth[0:-4] + "_plain.svg")
             stream = self.options.output
 
             if isinstance(stream, str):
@@ -319,11 +382,14 @@ class AutoExporter(inkex.EffectExtension):
     def export_all(self, bfn, fin, outtemplate, exp_fmts, input_options):
         # Make a temp directory
         import tempfile
-        tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
-        # print(tempdir)
+        # tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
+        tempdir = dh.si_tmp(dirbase='ae');
         if input_options.debug:
             if input_options.prints:
-                dh.idebug("\n    " + joinmod(tempdir, ""))
+                input_options.prints("\n    " + joinmod(tempdir, ""))
+        if hasattr(input_options,'aeThread'):
+            input_options.aeThread.tempdir = tempdir
+        
         tempbase = joinmod(tempdir, 't')
         input_options.input_file = fin;
         
@@ -367,18 +433,410 @@ class AutoExporter(inkex.EffectExtension):
         # Remove temporary outputs and directory
         failed_to_delete = None
         if not (input_options.debug):
-            # for t in list(set(tempoutputs)):
-            #     os.remove(t)
-            for t in list(set(os.listdir(tempdir))):
-                os.remove(joinmod(tempdir,t)) 
-            if tempdir is not None:
-                try:
-                    os.rmdir(tempdir)
-                except PermissionError:
-                    failed_to_delete = tempdir
+            # # for t in list(set(tempoutputs)):
+            # #     os.remove(t)
+            # for t in list(set(os.listdir(tempdir))):
+            #     os.remove(joinmod(tempdir,t)) 
+            # if tempdir is not None:
+            #     try:
+            #         os.rmdir(tempdir)
+            #     except PermissionError:
+            #         failed_to_delete = tempdir
+            Delete_Dir(tempdir)
         else:
-            dh.idebug(tempdir)
+            import warnings
+            warnings.simplefilter("ignore", ResourceWarning); # prevent warning that process is open
+            subprocess.Popen(f'explorer "{os.path.realpath(tempdir)}"')
+            # dh.idebug(tempdir)
         return failed_to_delete
+
+    # Modifications that are done prior to conversion to any vector output
+    def preprocessing(self, bfn, fin, fout, input_options,tempbase):
+        import os, time, copy
+        import image_helpers as ih
+
+        if input_options.prints:
+            fname = os.path.split(input_options.input_file)[1];
+            try:
+                offset = round(os.get_terminal_size().columns/2);
+            except:
+                offset = 40;    
+            fname = fname + ' '*max(0,offset-len(fname))
+            input_options.prints(fname+": Preprocessing vector output", flush=True)
+            timestart = time.time()
+
+        tempdir  = os.path.split(tempbase)[0]
+        temphead = os.path.split(tempbase)[1]
+        
+        # SVG modifications that should be done prior to any binary calls
+        cfile = fin
+        svg = get_svg(cfile)
+        
+        # Prune hidden items
+        for el in dh.visible_descendants(svg):
+            if el.cspecified_style.get('display')=='none':
+                el.delete()
+        
+        # Embed linked images into the SVG. This should be done prior to clone unlinking
+        # since some images may be cloned
+        if input_options.exportnow:
+            lls = input_options.linked_locations
+        else:
+            lls = ih.get_linked_locations_file(cfile,svg)
+        for k in lls:
+            el = svg.getElementById(k)
+            ih.embed_external_image(el, lls[k])
+        
+        vds = dh.visible_descendants(svg);
+        raster_ids, image_ids, jpgs = [],[],[];
+        for el in vds:
+            # Unlink any clones for the PDF image and marker fixes 
+            if isinstance(el,(inkex.Use)) and not(isinstance(el, (inkex.Symbol))):
+                newel = dh.unlink2(el)
+                myi = vds.index(el)
+                vds[myi] = newel;
+                for dv in newel.descendants2()[1:]:
+                    vds.append(dv)
+            
+            # Remove trivial groups inside masks/transparent objects or clipped groups
+            if isinstance(el,(inkex.Group)):
+                ancs = el.ancestors2(includeme=True);
+                masked = any([anc.get_link('mask',svg) is not None \
+                         or (el.ccascaded_style.get('opacity') is not None and \
+                             float(el.ccascaded_style.get('opacity'))<1)  \
+                             for anc in ancs])
+                clipped = any([anc.get_link('clip-path',svg) is not None for anc in ancs])
+                if len(list(el))==1 and (masked or clipped) and el.get('autoexporter_rasterize') not in ['png','jpg','True']:
+                    dh.ungroup(el)
+                
+            # Remove groups inside clips
+            cp = el.get_link('clip-path',svg);
+            if cp is not None:
+                while any([isinstance(v,inkex.Group) for v in list(cp)]):
+                    for g in list(cp):
+                        if isinstance(g,inkex.Group):
+                            dh.ungroup(g)
+            
+        stps = [];
+        for el in vds:
+            elid = el.get_id();
+            
+            # Fix marker export bug for PDFs
+            ms = self.Marker_Fix(el)
+            # Convert markers to path for Office
+            if len(ms)>0 and input_options.usepsvg:
+                stps.append(elid)
+            
+            # Fix opacity bug for Office PDF saving
+            self.Opacity_Fix(el)
+
+            
+            # Find out which objects need to be rasterized
+            sty = el.cstyle;                          # only want the object with the filter
+            if sty.get_link('filter',svg) is not None:                          
+                raster_ids.append(elid)               # filtered objects (always rasterized at PDF)
+            if (sty.get('fill') is not None   and 'url' in sty.get('fill')) or \
+               (sty.get('stroke') is not None and 'url' in sty.get('stroke')):
+                raster_ids.append(elid)               # gradient objects  
+            if el.get_link('mask') is not None:
+                raster_ids.append(elid)               # masked objects (always rasterized at PDF)
+            if el.get('autoexporter_rasterize') in ['png','jpg','True']:
+                raster_ids.append(elid);              # rasterizer-marked
+                if el.get('autoexporter_rasterize')=='jpg':
+                    jpgs.append(elid)
+            if isinstance(el, (inkex.Image)):
+                image_ids.append(elid);
+                
+                
+            # Remove style attributes with invalid URLs
+            # (Office doesn't display the element while Inkscape ignores it)
+            for satt in list(sty.keys()):
+                if satt in dh.urlatts and sty.get(satt).startswith('url') and sty.get_link(satt,svg) is None:
+                    el.cstyle[satt]=None
+             
+        # Fix Avenir/Whitney
+        tels = [el for el in vds if isinstance(el, (inkex.TextElement,inkex.FlowRoot))]
+        from TextParser import Character_Fixer2
+        Character_Fixer2(tels)
+                
+        if not(input_options.reduce_images):
+            input_options.dpi_im = input_options.dpi
+                
+        # Strip all sodipodi:role lines from document
+        # Conversion to plain SVG does this automatically but poorly
+        excludetxtids = [];
+        input_options.duplicatelabels = dict()
+        if input_options.usepsvg:  
+            import TextParser # noqa
+            if len(tels)>0:
+                svg.make_char_table()
+                input_options.ctable = svg.char_table; # store for later
+            
+            nels = []
+            for el in reversed(tels):
+                if el.parsed_text.isflow:
+                    nels += el.parsed_text.Flow_to_Text()
+                    tels.remove(el)
+            tels += nels
+            
+            for el in tels:                   
+                el.parsed_text.Strip_Text_BaselineShift();
+                el.parsed_text.Strip_Sodipodirole_Line();
+                el.parsed_text.Fuse_Fonts()
+                self.SubSuper_Fix(el)
+                
+                # Preserve duplicate of text to be converted to paths
+                if input_options.texttopath and el.get('display')!='none':
+                    d = el.duplicate();
+                    excludetxtids.append(d.get_id())
+                    g = dh.group([d])
+                    g.set('display','none')
+                   
+                    # te = svg.new_element(inkex.TextElement, svg)
+                    te = inkex.TextElement()
+                    g.append(te)  # Remember the original ID
+                    te.text = '{0}: {1}'.format(dup_key,el.get_id())
+                    te.set('display','none')
+                    excludetxtids.append(te.get_id())
+                    input_options.duplicatelabels[te.get_id()] = el.get_id()
+                    
+                    # Make sure nested tspans have fill specified (STP bug)
+                    for d in el.descendants2()[1:]:
+                        if 'fill' in d.cspecified_style and d.cspecified_style['fill']!='#000000':
+                            d.cstyle['fill']= d.cspecified_style['fill']
+        dh.flush_stylesheet_entries(svg) # since we ungrouped
+        tmp = tempbase+"_mod.svg"
+        dh.overwrite_svg(svg, tmp)
+        cfile = tmp
+        input_options.excludetxtids = excludetxtids;
+
+        do_rasterizations = len(raster_ids+image_ids)>0
+        do_stroketopaths  = input_options.texttopath or input_options.stroketopath or len(stps)>0;
+        
+        do_rasterizations = do_rasterizations and not input_options.testmode
+        do_stroketopaths  = do_stroketopaths  and not input_options.testmode
+
+        allacts = [];
+        if do_stroketopaths:
+            svg = get_svg(cfile)
+            vd = dh.visible_descendants(svg)
+            
+            tels = []
+            if input_options.texttopath:
+                for el in vd:
+                    if isinstance(el, (inkex.TextElement)) and el.get_id() not in excludetxtids:
+                        tels.append(el.get_id())
+ 
+            pels = [];
+            if input_options.stroketopath or len(stps)>0:
+                # Stroke to Path has a number of bugs, try to fix them
+                if input_options.stroketopath:
+                    stpels = vd 
+                elif len(stps)>0:
+                    stpels = [el for el in vd if el.get_id() in stps]
+                stpels = [el for el in stpels if el.get_id() not in raster_ids]
+                pels = self.Stroke_to_Path_Fixes(stpels)        
+                dh.overwrite_svg(svg, cfile)
+
+            celsj = ",".join(tels+pels)
+            tmpstp = tempbase+"_stp.svg"
+            
+            if (input_options.stroketopath or len(stps)>0) and dh.ivp[0] >= 1 and dh.ivp[1] > 0:
+                act = 'object-stroke-to-path'
+            else:
+                act = 'object-to-path'
+            
+            if not(input_options.testmode):
+                allacts += ["select:{0}; {1}; export-filename:{2}; export-do;".format(celsj,act,tmpstp)];
+                # arg2 = [bfn,"--actions",acts,cfile]
+
+        # Rasterizations
+        if do_rasterizations:
+            svg = get_svg(cfile)
+
+            vds = dh.visible_descendants(svg);
+            els = [el for el in vds if el.get_id() in list(set(raster_ids+image_ids))]
+            if len(els) > 0:
+                imgtype = "png"
+                acts, acts2, imgs_trnp, imgs_opqe = [], [], [], []
+                for el in els:
+                    elid = el.get_id();
+                    tmpimg = temphead+"_im_" + elid + "." + imgtype
+                    imgs_trnp.append(tmpimg)
+                    tmpimg2 = temphead+"_imbg_" + elid + "." + imgtype
+                    imgs_opqe.append(tmpimg2)
+                    
+                    if elid in raster_ids:
+                        mydpi = input_options.dpi
+                    else:
+                        mydpi = input_options.dpi_im
+                    
+                    # export item only
+                    fmt1 = "export-id:{0}; export-id-only; export-dpi:{1}; "\
+                           "export-filename:{2}; export-background-opacity:0.0; export-do; "
+                    acts.append( fmt1.format(el.get_id(),int(mydpi),tmpimg))
+                    # export all w/background
+                    fmt2 = "export-id:{0}; export-dpi:{1}; "\
+                           "export-filename:{2}; export-background-opacity:1.0; export-do; "
+                    acts2.append(fmt2.format(el.get_id(),int(mydpi),tmpimg2))
+                    
+                if ih.hasPIL:
+                    acts = acts2+acts  # export-id-onlys need to go last
+                allacts += acts
+        
+        # To reduce the number of binary calls, we collect the stroke-to-path and rasterization
+        # actions into a single call that also gets the Bounding Boxes
+        if len(allacts)>0:
+            # Windows cannot handle arguments that are too long. If this happens,
+            # split the actions in half and run on each
+            
+            def Split_Select(fn,inkbin,acts,selii,reserved):
+                import math, shutil
+                act = acts[selii]
+                
+                m1 = re.search(r'export-filename:(.+?); export-background-opacity:', act)
+                m2 = re.search(r'export-filename:(.+?); export-do;', act)
+                if m1:
+                    actfn = m1.group(1)
+                elif m2:
+                    actfn = m2.group(1)
+                else:
+                    actfn = None
+                
+                match = re.search(r'select:(.*?); object-stroke-to-path', act)
+                selects = match.group(1).split(',')
+                after = re.search(r'; object-stroke-to-path(.*)', act).group(1)
+                mp = math.ceil(len(selects)/2);
+                
+                reserved.update({fn,actfn})
+                isreserved = True
+                cnt = 0
+                while isreserved:
+                    actfna = actfn.strip('.svg')+str(cnt)+'.svg'
+                    isreserved = actfna in reserved
+                    cnt += 1
+                reserved.update({actfna}) 
+                
+                if len(selects)==1:
+                    # cannot split, fact that we failed means there is a STP crash 
+                    # dh.idebug('failed: '+str(selects))
+                    shutil.copy(fn, actfn)
+                    return Split_Acts(fn=fn, inkbin=inkbin, acts=acts[:selii] + acts[selii+1:], reserved=reserved);
+                else:
+                    act1 = 'select:'+','.join(selects[:mp])+'; object-stroke-to-path'+after
+                    act1 = act1.replace(actfn,actfna)
+                    act2 = 'select:'+','.join(selects[mp:])+'; object-stroke-to-path'+after
+                    
+                    acts1 = acts[:selii]+[act1]   if len(selects[:mp])>0 else acts[:selii]
+                    acts2 = [act2]+acts[selii+1:] if len(selects[mp:])>0 else acts[selii+1:]
+                    
+                    bbs = Split_Acts(fn=fn, inkbin=inkbin,     acts=acts1,  reserved=reserved);
+                    bbs = Split_Acts(fn=actfna, inkbin=inkbin, acts=acts2,  reserved=reserved);
+                    return bbs
+            
+            def Split_Acts(fn, inkbin, acts, reserved=set()):
+                import math
+                try:
+                    eargs = ["--actions",''.join(acts)]
+                    bbs = dh.Get_Bounding_Boxes(filename=fn, inkscape_binary=inkbin, extra_args = eargs)
+                    for ii, act in enumerate(acts):
+                        if 'export-filename' and 'export-do' in act:
+                            m1 = re.search(r'export-filename:(.+?); export-background-opacity:', act)
+                            m2 = re.search(r'export-filename:(.+?); export-do;', act)
+                            if m1:
+                                actfn = m1.group(1)
+                            elif m2:
+                                actfn = m2.group(1)
+                            else:
+                                actfn = None
+                            if actfn is not None and not os.path.exists(actfn):
+                                if 'select' in act and 'object-stroke-to-path' in act:
+                                    return Split_Select(fn,inkbin,acts,ii,reserved=reserved)
+                except FileNotFoundError:
+                    if len(acts)==1:
+                        if 'select' in acts[0] and 'object-stroke-to-path' in acts[0]:
+                            return Split_Select(fn,inkbin,acts,0,reserved=reserved)
+                        else:
+                            inkex.utils.errormsg('Argument too long and cannot split')
+                            quit()
+                    else:
+                        acts1 = acts[:math.ceil(len(acts)/2)]
+                        acts2 = acts[math.ceil(len(acts)/2):]
+                    bbs = Split_Acts(fn=fn, inkbin=inkbin, acts=acts1,reserved=reserved);
+                    bbs = Split_Acts(fn=fn, inkbin=inkbin, acts=acts2,reserved=reserved);
+                return bbs;
+                        
+            oldwd = os.getcwd();
+            os.chdir(tempdir); # use relative paths to reduce arg length
+            
+            bbs = Split_Acts(fn=cfile, inkbin=bfn, acts=allacts)
+            try:
+                os.chdir(oldwd);   # return to original dir so no problems in calling function
+            except FileNotFoundError:
+                pass               # occasionally directory no longer exists (deleted by tempfile?)
+            if do_stroketopaths and not(input_options.testmode):
+                cfile = tmpstp
+                
+            
+        if do_rasterizations:
+            svg = get_svg(cfile)
+            vds = dh.visible_descendants(svg);
+            els = [el for el in vds if el.get_id() in list(set(raster_ids+image_ids))]
+            if len(els) > 0:
+                imgs_trnp = [os.path.join(tempdir,t) for t in imgs_trnp]
+                imgs_opqe = [os.path.join(tempdir,t) for t in imgs_opqe]
+                  
+
+                for ii, el in enumerate(els):
+                    tmpimg = imgs_trnp[ii]
+                    tmpimg2 = imgs_opqe[ii]
+                    
+                    if os.path.exists(tmpimg):
+                        anyalpha0 = False
+                        if ih.hasPIL:
+                            bbox = ih.crop_images([tmpimg,tmpimg2])
+                            anyalpha0 = ih.Set_Alpha0_RGB(tmpimg,tmpimg2)
+                            if el.get_id() in jpgs:
+                                tmpjpg = tmpimg.replace(".png", ".jpg")
+                                ih.to_jpeg(tmpimg2,tmpjpg)
+                                tmpimg = copy.copy(tmpjpg)
+                        else:
+                            bbox = None;
+
+                        # Compare size of old and new images
+                        osz = ih.embedded_size(el);
+                        if osz is None: osz = float("inf")
+                        nsz = os.path.getsize(tmpimg)
+                        hasmaskclip = el.get_link('mask') is not None or el.get_link('clip-path') is not None  # clipping and masking
+                        embedimg = (nsz < osz) or (anyalpha0 or hasmaskclip)
+                        if embedimg:                 
+                            self.Replace_with_Raster(el,tmpimg,bbs[el.get_id()],bbox)
+                
+                dh.flush_stylesheet_entries(svg) # since we ungrouped
+                tmp = tempbase+"_eimg.svg"
+                dh.overwrite_svg(svg, tmp)
+                cfile = tmp
+
+        if do_stroketopaths:
+            svg = get_svg(cfile)     
+            # Remove temporary groups
+            if input_options.stroketopath:
+                for elid in pels:
+                    el = svg.getElementById(elid);
+                    if el is not None:
+                        dh.ungroup(el.getparent())
+            
+            dh.flush_stylesheet_entries(svg) # since we ungrouped            
+            dh.overwrite_svg(svg, tmp)
+            cfile = tmp
+            
+
+        if input_options.prints:
+            input_options.prints(
+                fname + ": Preprocessing done (" + str(round(1000 * (time.time() - timestart)) / 1000) + " s)"
+            )
+        return cfile
+
 
     # Use the Inkscape binary to export the file
     def export_file(self, bfn, fin, fout, fformat, ppoutput, input_options,tempbase):
@@ -388,9 +846,12 @@ class AutoExporter(inkex.EffectExtension):
         myoutput = fout[0:-4] + "." + fformat
         if input_options.prints:
             fname = os.path.split(input_options.input_file)[1];
-            offset = round(os.get_terminal_size().columns/2);
+            try:
+                offset = round(os.get_terminal_size().columns/2);
+            except:
+                offset = 40;  
             fname = fname + ' '*max(0,offset-len(fname))
-            print(fname+": Converting to " + fformat, flush=True)
+            input_options.prints(fname+": Converting to " + fformat, flush=True)
         timestart = time.time()
 
         if ppoutput is not None:
@@ -412,10 +873,9 @@ class AutoExporter(inkex.EffectExtension):
             tmp = tempbase+ "_tld" + fformat[0] + ".svg"
             dh.overwrite_svg(svg, tmp)
             fin = copy.copy(tmp)
-            # tmpoutputs.append(tmp)
 
         if fformat == "psvg":
-            myoutput = myoutput.replace(".psvg", "_portable.svg")
+            myoutput = myoutput.replace(".psvg", "_plain.svg")
             
         
         def overwrite_output(filein,fileout):  
@@ -437,362 +897,205 @@ class AutoExporter(inkex.EffectExtension):
                 if os.path.exists(fileout+'_tex'):
                     os.remove(fileout+'_tex')
                 args = args[0:5]+["--export-latex"]+args[5:]
+            if fileout.endswith('.svg'):
+                args = [args[0]] + ["--vacuum-defs"] + args[1:5]+["--export-plain-svg"]+args[5:]
             subprocess_check(args,input_options)
         
         
         def make_output(filein,fileout):
-            if filein.endswith('.svg'):
-                svg = get_svg(filein);
-                # pgs = self.Get_Pages(svg)
-                pgs = svg.cdocsize.pgs
+            if fileout.endswith('.svg'):
+                if not(input_options.testmode):
+                    overwrite_output(filein,fileout);
+                else:
+                    import shutil
+                    shutil.copy(filein, fileout) # skip conversion
+                input_options.made_outputs = [fileout];
                 
-                svgtopdf = fileout.endswith('.pdf') or input_options.testmode
-                haspgs = svg.cdocsize.inkscapehaspgs or input_options.testmode
-                if haspgs and len(pgs)>1:
-                    outputs,dss = [],[];
+                osvg = get_svg(filein);   # original has pages
+                # if hasattr(input_options,'ctable'):
+                #     osvg._char_table = input_options.ctable
+                
+                pgs = osvg.cdocsize.pgs
+                haspgs = osvg.cdocsize.inkscapehaspgs 
+                if (haspgs or input_options.testmode) and len(pgs)>0:
+                    bbs = dh.BB2(type('DummyClass', (), {'svg': osvg}));  
+                    dl = input_options.duplicatelabels
+                    outputs = [];
+                    pgiis = range(len(pgs)) if not(input_options.testmode) else [input_options.testpage-1]
+                    for ii in pgiis:
+                        # match the viewbox to each page and delete them
+                        psvg = get_svg(fileout);  # plain SVG has no pages
+                        pgs2 = psvg.cdocsize.pgs
+                                                
+                        self.Change_Viewbox_To_Page(psvg, pgs[ii])
+                        # Only need to delete other Pages in testmode since plain SVGs have none
+                        if input_options.testmode:
+                            for jj in reversed(range(len(pgs2))):
+                                pgs2[jj].delete();    
+                        
+                        # Delete content not on current page
+                        pgbb = dh.bbox(psvg.cdocsize.effvb)
+                        for k,v in bbs.items():
+                            removeme = not(dh.bbox(v).intersect(pgbb))
+                            if k in dl:
+                                if dl[k] in bbs: # remove duplicate label if removing original
+                                    removeme = not(dh.bbox(bbs[dl[k]]).intersect(pgbb))
+                                else:
+                                    removeme = True
+                            if removeme:
+                                el = psvg.getElementById(k);
+                                if el is not None:
+                                    el.delete();
+                          
+                        pnum = str(ii+1);  
+                        addendum = '_page_'+pnum if not(input_options.testmode or len(pgs)==1) else ''
+                        outparts = fileout.split('.')
+                        pgout = '.'.join(outparts[:-1])+addendum+'.'+outparts[-1]
+                        dh.overwrite_svg(psvg,pgout)
+                        outputs.append(pgout)
+                    input_options.made_outputs = outputs;
+            else:
+                svg = get_svg(filein);
+                pgs = svg.cdocsize.pgs
+
+                haspgs = svg.cdocsize.inkscapehaspgs
+                if (haspgs or input_options.testmode) and len(pgs)>1:
+                    outputs = [];
                     pgiis = range(len(pgs)) if not(input_options.testmode) else [input_options.testpage-1]
                     for ii in pgiis:
                         # match the viewbox to each page and delete them
                         svgpg = get_svg(filein);
-                        # pgs2 = self.Get_Pages(svgpg);
                         pgs2 = svgpg.cdocsize.pgs
                                                 
                         self.Change_Viewbox_To_Page(svgpg, pgs[ii])
                         for jj in reversed(range(len(pgs2))):
-                            pgs2[jj].delete2();    
+                            pgs2[jj].delete();    
                           
                         pnum = str(ii+1);  
                         addendum = '_page_'+pnum if not(input_options.testmode) else ''
                         svgpgfn = tempbase+addendum+'.svg';
                         dh.overwrite_svg(svgpg,svgpgfn)
-                        dss.append(svgpg.cdocsize)
                         
                         outparts = fileout.split('.')
                         pgout = '.'.join(outparts[:-1])+addendum+'.'+outparts[-1]
                         overwrite_output(svgpgfn,pgout);
                         outputs.append(pgout)
-                    if svgtopdf:
-                        input_options.svgtopdf_dss     = dss;
-                        input_options.svgtopdf_outputs = outputs;
-                    return
-                elif svgtopdf:
-                    input_options.svgtopdf_dss = [svg.cdocsize];
-                    input_options.svgtopdf_outputs = [fileout];
-            overwrite_output(filein,fileout)
+                    input_options.made_outputs = outputs;
+                else:
+                    overwrite_output(filein,fileout);
+                    input_options.made_outputs = [fileout];
+            # dh.idebug(fileout)
                                 
 
         if not (ispsvg):
             make_output(fin,myoutput)
+            finalnames = input_options.made_outputs
         else:
-            # Make PDF if necessary
-            if input_options.testmode:
-                # pdfs = [copy.copy(fin)]; # skip pdf conversion for testing
-                tmp = tempbase+"_tmp_small.svg"
-                make_output(fin,tmp)
-                # input_options.svgtopdf_dss = [get_svg(fin).cdocsize];
-                # input_options.svgtopdf_outputs = [copy.copy(fin)];
-            elif not(input_options.usepdf):
-                tmp = tempbase+"_tmp_small.pdf"
-                make_output(fin,tmp)
-            pdfs = input_options.svgtopdf_outputs;
-            for ii, pdf in enumerate(pdfs):
-                # Convert back to SVG
-                tmp = tempbase+"_fin" + ".svg"
-                make_output(pdf,tmp)
+            tmp = tempbase+"_tmp_small.svg"
+            make_output(fin,tmp)
                 
-                # Post PDFication cleanup for Office products
-                svg = get_svg(tmp)
-                vds = dh.visible_descendants(svg)
-                for d in vds:
-                    if isinstance(d,(TextElement)):
-                        self.Scale_Text(d)
-                    elif isinstance(d,(inkex.Image)):
-                        if ih.hasPIL:
-                            self.Merge_Mask(d)
-                        while d.getparent()!=d.croot and d.getparent() is not None and d.croot is not None: # causes problems and doesn't help
-                            dh.ungroup(d.getparent());
-                    elif isinstance(d,(inkex.Group)):
-                        if len(d)==0:
-                            dh.deleteup(d)
-                
-                if input_options.thinline:
-                    for d in vds:
-                        self.Bezier_to_Split(d)   
-                        
-                if len(pdfs)==1:
-                    finalname = myoutput
-                else:
-                    pnum = pdf.split('_page_')[-1].strip('.pdf');
-                    finalname = myoutput.replace('_portable.svg','_page_'+pnum+'_portable.svg')
-                # print(finalname)
-                
-                # dh.idebug(input_options.svgtopdf_vbs)
-                # embed_original = False
-                # if embed_original:
-                #     def main_contents(svg):
-                #         ret = list(svg)
-                #         for k in reversed(ret):
-                #             if k.tag in [inkex.addNS('metadata','svg'),
-                #                           inkex.addNS('namedview','sodipodi')]:
-                #                 ret.remove(k);
-                #         return ret
-                    
-                    
-                #     g  = dh.group(main_contents(svg))
-                #     svgo = get_svg(original_file)
-                #     go = dh.group(main_contents(svgo))
-                #     svg.append(go)
-                #     go.set('style','display:none');
-                #     go.set('inkscape:label','SI original');
-                #     go.set('inkscape:groupmode','layer');
-                    
-                #     # Conversion to PDF changes the viewbox to pixels. Convert back to the
-                #     # original viewbox by applying a transform
-                #     ds = input_options.svgtopdf_dss[ii]
-                #     tfmt = 'matrix({0},{1},{2},{3},{4},{5})';
-                #     T =inkex.Transform(tfmt.format(ds.uuw,0,0,ds.uuh,
-                #                                       -ds.effvb[0]*ds.uuw,
-                #                                       -ds.effvb[1]*ds.uuh))
-                #     g.set('transform',str(-T))
-                #     svg.set_viewbox(ds.effvb)
-                
-                # te = dh.new_element(inkex.TextElement, svg)
-                # te.text = 'si_ae_original_filename: {0}'.format(input_options.original_file)
-                # te.set('style','display:none')
+            moutputs = input_options.made_outputs;
+            finalnames = []
+            for ii, mout in enumerate(moutputs):  
+                svg = get_svg(mout)
+                self.postprocessing(svg,input_options)
+                finalname = myoutput
+                if len(moutputs)>1:
+                    pnum = mout.split('_page_')[-1].strip('.svg');
+                    finalname = myoutput.replace('_plain.svg','_page_'+pnum+'_plain.svg')
                 dh.overwrite_svg(svg, finalname)
-
+                finalnames.append(finalname)
+        
+        # dh.idebug((myoutput,finalnames))
+        
+        
+        # Remove any previous outputs that we did not just make
+        directory, file_name = os.path.split(myoutput)
+        base_name, extension = os.path.splitext(file_name)
+        if extension == ".svg" and base_name.endswith("_plain"):
+            base_name = base_name[:-6]  # Remove "_plain" from the base name
+            pattern = re.compile(rf"{re.escape(base_name)}(_page_\d+)?_plain{re.escape(extension)}$")
+        else:
+            pattern = re.compile(rf"{re.escape(base_name)}(_page_\d+)?{re.escape(extension)}$")
+        matching_files = []
+        for file in os.listdir(directory):
+            if pattern.match(file):
+                matching_files.append(os.path.join(directory, file))
+        for file in matching_files:
+            if file not in finalnames:
+                try:
+                    os.remove(file)
+                except:
+                    pass
+        
         if input_options.prints:
             toc = time.time() - timestart;
-            print(fname+": Conversion to "+fformat+" done (" + str(round(1000 * toc) / 1000) + " s)")
+            input_options.prints(fname+": Conversion to "+fformat+" done (" + str(round(1000 * toc) / 1000) + " s)")
         return True, myoutput
-
-    def preprocessing(self, bfn, fin, fout, input_options,tempbase):
-        import os, time, copy
-        import image_helpers as ih
-
-        if input_options.prints:
-            fname = os.path.split(input_options.input_file)[1];
-            offset = round(os.get_terminal_size().columns/2);
-            fname = fname + ' '*max(0,offset-len(fname))
-            print(fname+": Preprocessing vector output", flush=True)
-            timestart = time.time()
-
-        tempdir  = os.path.split(tempbase)[0]
-        temphead = os.path.split(tempbase)[1]
-        
-        # SVG modifications that should be done prior to any binary calls
-        cfile = fin
-        svg = get_svg(cfile)
-        
-        # Embed linked images into the SVG. This should be done prior to clone unlinking
-        # since some images may be cloned
-        if input_options.exportnow:
-            lls = input_options.linked_locations
-        else:
-            lls = ih.get_linked_locations_file(cfile,svg)
-        for k in lls:
-            el = dh.getElementById2(svg,k)
-            ih.embed_external_image(el, lls[k])
-        
-        vds = dh.visible_descendants(svg);
-        raster_ids, image_ids, jpgs = [],[],[];
-        for el in vds:
-            # Unlink any clones for the PDF image and marker fixes 
-            if isinstance(el,(inkex.Use)) and not(isinstance(el, (inkex.Symbol))):
-                newel = dh.unlink2(el)
-                myi = vds.index(el)
-                vds[myi] = newel;
-            
-            # Remove trivial groups inside masks/transparent objects
-            if isinstance(el,(inkex.Group)) and len(list(el))==1 and\
-                any([anc.get_link('mask',svg) is not None \
-                     or (el.ccascaded_style.get('opacity') is not None and \
-                         float(el.ccascaded_style.get('opacity'))<1) \
-                         for anc in el.ancestors2(includeme=True)]):
-                dh.ungroup(el)
-            
-        for el in vds:
-            elid = el.get_id2();
-            # Fix marker export bug for PDFs
-            self.Marker_Fix(el)
-            
-            # Fix opacity bug for Office PDF saving
-            self.Opacity_Fix(el)
-            
-            # Find out which objects need to be rasterized
-            sty = el.cstyle; # only want the object with the filter
-            if sty.get_link('filter',svg) is not None:                          
-                raster_ids.append(elid)               # filtered objects (always rasterized at PDF)
-            if (sty.get('fill') is not None   and 'url' in sty.get('fill')) or \
-               (sty.get('stroke') is not None and 'url' in sty.get('stroke')):
-                raster_ids.append(elid)               # gradient objects  
-            if el.get_link('mask') is not None:
-                raster_ids.append(elid)               # masked objects (always rasterized at PDF)
-            if el.get('autoexporter_rasterize') in ['png','jpg','True']:
-                raster_ids.append(elid);              # rasterizer-marked
-                if el.get('autoexporter_rasterize')=='jpg':
-                    jpgs.append(elid)
-            if isinstance(el, (inkex.Image)):
-                image_ids.append(elid);
-        if not(input_options.reduce_images):
-            input_options.dpi_im = input_options.dpi
-                
-        
-        dh.flush_stylesheet_entries(svg) # since we ungrouped
-        tmp = tempbase+"_mod.svg"
-        dh.overwrite_svg(svg, tmp)
-        cfile = tmp
-
-        # Rasterizations
-        if len(raster_ids+image_ids)>0:
-            svg = get_svg(cfile)
-
-            vds = dh.visible_descendants(svg);
-            els = [el for el in vds if el.get_id2() in list(set(raster_ids+image_ids))]
-            if len(els) > 0:
-                imgtype = "png"
-                acts, acts2, imgs_trnp, imgs_opqe = [], [], [], []
-                for el in els:
-                    elid = el.get_id2();
-                    tmpimg = temphead+"_im_" + elid + "." + imgtype
-                    imgs_trnp.append(tmpimg)
-                    tmpimg2 = temphead+"_imbg_" + elid + "." + imgtype
-                    imgs_opqe.append(tmpimg2)
-                    
-                    if elid in raster_ids:
-                        mydpi = input_options.dpi
-                    else:
-                        mydpi = input_options.dpi_im
-                    
-                    # export item only
-                    fmt1 = "export-id:{0}; export-id-only; export-dpi:{1}; "\
-                           "export-filename:{2}; export-background-opacity:0.0; export-do; "
-                    acts.append( fmt1.format(el.get_id2(),int(mydpi),tmpimg))
-                    # export all w/background
-                    fmt2 = "export-id:{0}; export-dpi:{1}; "\
-                           "export-filename:{2}; export-background-opacity:1.0; export-do; "
-                    acts2.append(fmt2.format(el.get_id2(),int(mydpi),tmpimg2))
-                    
+    
+    def postprocessing(self,svg,input_options):
+        # Postprocessing of SVGs, mainly for overcoming bugs in Office products
+        vds = dh.visible_descendants(svg)
+        for d in vds:
+            if isinstance(d,(TextElement)) and d.get_id() not in input_options.excludetxtids:
+                scaleto = 100 if not input_options.testmode else 10
+                # Make 10 px in test mode so that errors are not unnecessarily large
+                self.Scale_Text(d,scaleto)
+            elif isinstance(d,(inkex.Image)):
                 if ih.hasPIL:
-                    acts = acts2+acts  # export-id-onlys need to go last
-                
-                # Windows cannot handle arguments that are too long. If this happens,
-                # split the export actions in half and run on each
-                def Split_Acts(filename, inkscape_binary, acts):
-                    try:
-                        bbs = dh.Get_Bounding_Boxes(
-                            filename=filename, inkscape_binary=inkscape_binary, extra_args = ["--actions",''.join(acts)]
-                        )
-                    except FileNotFoundError:
-                        import math
-                        acts1 = acts[:math.ceil(len(acts)/2)]
-                        acts2 = acts[math.ceil(len(acts)/2):]
-                        bbs = Split_Acts(filename=filename, inkscape_binary=inkscape_binary, acts=acts1);
-                        bbs = Split_Acts(filename=filename, inkscape_binary=inkscape_binary, acts=acts2);
-                    return bbs;
-                            
-                
-                oldwd = os.getcwd();
-                os.chdir(tempdir); # use relative paths to reduce arg length
-                bbs = Split_Acts(filename=cfile, inkscape_binary=bfn, acts=acts)
-                try:
-                    os.chdir(oldwd);   # return to original dir so no problems in calling function
-                except FileNotFoundError:
-                    pass               # occasionally directory no longer exists (deleted by tempfile?)
-                imgs_trnp = [os.path.join(tempdir,t) for t in imgs_trnp]
-                imgs_opqe = [os.path.join(tempdir,t) for t in imgs_opqe]
-                  
-
-                for ii, el in enumerate(els):
-                    tmpimg = imgs_trnp[ii]
-                    tmpimg2 = imgs_opqe[ii]
-                    
-                    if os.path.exists(tmpimg):
-                        anyalpha0 = False
-                        if ih.hasPIL:
-                            bbox = ih.crop_images([tmpimg,tmpimg2])
-                            anyalpha0 = ih.Set_Alpha0_RGB(tmpimg,tmpimg2)
-                            if el.get_id2() in jpgs:
-                                tmpjpg = tmpimg.replace(".png", ".jpg")
-                                ih.to_jpeg(tmpimg2,tmpjpg)
-                                tmpimg = copy.copy(tmpjpg)
-                        else:
-                            bbox = None;
-
-                        # Compare size of old and new images
-                        osz = ih.embedded_size(el);
-                        if osz is None: osz = float("inf")
-                        nsz = os.path.getsize(tmpimg)
-                        hasmaskclip = el.get_link('mask') is not None or el.get_link('clip-path') is not None  # clipping and masking
-                        embedimg = (nsz < osz) or (anyalpha0 or hasmaskclip)
-                        if embedimg:                 
-                            self.Replace_with_Raster(el,tmpimg,bbs[el.get_id2()],bbox)
-
-                
-                dh.flush_stylesheet_entries(svg) # since we ungrouped
-                tmp = tempbase+"_eimg.svg"
-                dh.overwrite_svg(svg, tmp)
-                cfile = tmp
-
-        if input_options.texttopath or input_options.stroketopath:
-            svg = get_svg(cfile)
-            vd = dh.visible_descendants(svg)
+                    self.Merge_Mask(d)
+                # while d.getparent()!=d.croot and d.getparent() is not None and d.croot is not None:
+                #     # iteratively remove groups containing images
+                #     # I don't think it's necessary?
+                #     dh.ungroup(d.getparent());
+            elif isinstance(d,(inkex.Group)):
+                if len(d)==0:
+                    dh.deleteup(d)
+        
+        if input_options.thinline:
+            for d in vds:
+                self.Bezier_to_Split(d)   
+        # dh.idebug(input_options.svgtopdf_vbs)
+        # embed_original = False
+        # if embed_original:
+        #     def main_contents(svg):
+        #         ret = list(svg)
+        #         for k in reversed(ret):
+        #             if k.tag in [inkex.addNS('metadata','svg'),
+        #                           inkex.addNS('namedview','sodipodi')]:
+        #                 ret.remove(k);
+        #         return ret
             
-            tels = []
-            if input_options.texttopath:
-                tels = [
-                    el.get_id() for el in vd if isinstance(el, (inkex.TextElement))
-                ]  # text-like          
- 
-            pels = [];
-            if input_options.stroketopath:
-                # Stroke to Path has a number of bugs, try to fix them
-                pels = self.Stroke_to_Path_Fixes(vd)                
-                dh.overwrite_svg(svg, cfile)
-
-            celsj = ",".join(tels+pels)
-            tmp = tempbase+"_stp.svg"
             
-            if input_options.stroketopath and dh.ivp[0] >= 1 and dh.ivp[1] > 0:
-                act = 'object-stroke-to-path'
-            else:
-                act = 'object-to-path'
+        #     g  = dh.group(main_contents(svg))
+        #     svgo = get_svg(original_file)
+        #     go = dh.group(main_contents(svgo))
+        #     svg.append(go)
+        #     go.set('style','display:none');
+        #     go.set('inkscape:label','SI original');
+        #     go.set('inkscape:groupmode','layer');
             
-            acts = "select:{0}; {1}; export-filename:{2}; export-do".format(celsj,act,tmp);
-            arg2 = [bfn,"--actions",acts,cfile]
-            if not(input_options.testmode):
-                subprocess_check(arg2,input_options)
-                
-                # Text converted to paths are a group of characters. Combine them all
-                svg = get_svg(tmp)
-                for elid in tels:
-                    el = dh.getElementById2(svg, elid)
-                    if el is not None and len(list(el)) > 0:
-                        dh.combine_paths(list(el))
-                    if el is not None:
-                        dh.ungroup(el)
-            else:
-                # Skip conversion in test mode
-                svg = get_svg(cfile)
-
-                   
-            # Remove temporary groups
-            if input_options.stroketopath:
-                for elid in pels:
-                    el = svg.getElementById2(elid);
-                    if el is not None:
-                        dh.ungroup(el.getparent())
-            
-            dh.flush_stylesheet_entries(svg) # since we ungrouped            
-            dh.overwrite_svg(svg, tmp)
-            cfile = tmp
-
-        if input_options.prints:
-            print(
-                fname + ": Preprocessing done (" + str(round(1000 * (time.time() - timestart)) / 1000) + " s)"
-            )
-        return cfile
-
+        #     # Conversion to PDF changes the viewbox to pixels. Convert back to the
+        #     # original viewbox by applying a transform
+        #     ds = input_options.svgtopdf_dss[ii]
+        #     tfmt = 'matrix({0},{1},{2},{3},{4},{5})';
+        #     T =inkex.Transform(tfmt.format(ds.uuw,0,0,ds.uuh,
+        #                                       -ds.effvb[0]*ds.uuw,
+        #                                       -ds.effvb[1]*ds.uuh))
+        #     g.set('transform',str(-T))
+        #     svg.set_viewbox(ds.effvb)
+        
+        te = None
+        for el in list(svg):
+            if isinstance(el, (inkex.TextElement,)) and el.text is not None and orig_key in el.text:
+                te = el;
+        if te is None:
+            # te = svg.new_element(inkex.TextElement, svg)
+            te = inkex.TextElement()
+            svg.append(te)
+        te.text = orig_key + ': {0}, hash: {1}'.format(input_options.original_file,hash_file(input_options.original_file))
+        te.set('style','display:none')
+        dh.clean_up_document(svg) # Clean up
 
     def Thinline_Dehancement(self, svg, mode='split'):
         # Prevents thin-line enhancement in certain bad PDF renderers
@@ -801,7 +1104,7 @@ class AutoExporter(inkex.EffectExtension):
         # The Office PDF renderer removes trivial Beziers, as does conversion to EMF
         # The Inkscape PDF renderer removes split commands
         # In general I prefer split, so I do this for everything other than PDF
-        for el in dh.descendants2(svg):
+        for el in svg.descendants2():
             if isinstance(el, dh.otp_support) and not (isinstance(el, (PathElement))):
                 dh.object_to_path(el)
             d = el.get("d")
@@ -873,7 +1176,7 @@ class AutoExporter(inkex.EffectExtension):
                 el.set("d", newd)
                 
     def Bezier_to_Split(self, el):
-        # Converts the Bezier TLD to split (for the Portable SVG)
+        # Converts the Bezier TLD to split (for the plain SVG)
         if isinstance(el, dh.otp_support) and not (isinstance(el, (PathElement))):
             dh.object_to_path(el)
         d = el.get("d")
@@ -931,14 +1234,14 @@ class AutoExporter(inkex.EffectExtension):
             mkrs.append("marker-end")
         for m in mkrs:
             url = sty[m][5:-1]
-            mkrel = dh.getElementById2(svg, url)
+            mkrel = svg.getElementById(url)
             if mkrel is not None:
                 sf = dh.get_strokefill(el)
                 # if sf.stroke is None:
                 #     # Clear marker on blank stroke
                 #     dh.Set_Style_Comp(el, m, None)
                 # else:
-                mkrds = dh.descendants2(mkrel)
+                mkrds = mkrel.descendants2()
                 anycontext = any(
                     [
                         (a == "stroke" or a == "fill") and "context" in v
@@ -948,82 +1251,140 @@ class AutoExporter(inkex.EffectExtension):
                 )
                 if anycontext:
                     handled = True
-                    dup = dh.get_duplicate2(mkrel)
-                    dupds = dh.descendants2(dup)
+                    dup = mkrel.duplicate()
+                    dupds = dup.descendants2()
                     for d in dupds:
                         dsty = d.cspecified_style
                         for a, v in dsty.items():
                             if (a == "stroke" or a == "fill") and "context" in v:
                                 if v == "context-stroke":
-                                    dh.Set_Style_Comp(d, a, sty.get("stroke",'none'))
+                                    d.cstyle[a]=sty.get("stroke",'none')
                                 elif v == "context-fill":
-                                    dh.Set_Style_Comp(d, a, sty.get("fill",'none'))
+                                    d.cstyle[a]= sty.get("fill",'none')
                                 else:  # I don't know what this is
                                     handled = False
                     if handled:
-                        dh.Set_Style_Comp(el, m, dup.get_id2(as_url=2))
+                        # dh.Set_Style_Comp(el, m, dup.get_id(as_url=2))
+                        el.cstyle[m]=dup.get_id(as_url=2)
+        return mkrs
                             
     def Opacity_Fix(self, el):
         # Fuse opacity onto fill and stroke for path-like elements
         # Prevents rasterization-at-PDF for Office products
         sty = el.cspecified_style;
-        if sty.get('opacity') is not None and isinstance(el,dh.otp_support):
+        # if sty.get('opacity') is not None and isinstance(el,dh.otp_support):
+        if sty.get('opacity') is not None and float(sty.get("opacity", 1.0))!=1.0:
             sf = dh.get_strokefill(el) # fuses opacity and stroke-opacity/fill-opacity
             if sf.stroke is not None:
-                dh.Set_Style_Comp(el,'stroke-opacity',sf.stroke.alpha)
+                # dh.Set_Style_Comp(el,'stroke-opacity',sf.stroke.alpha)
+                el.cstyle['stroke-opacity']=sf.stroke.alpha
             if sf.fill is not None:
-                dh.Set_Style_Comp(el,'fill-opacity',sf.fill.alpha)
-            dh.Set_Style_Comp(el,'opacity',1);
+                # dh.Set_Style_Comp(el,'fill-opacity',sf.fill.alpha)
+                el.cstyle['fill-opacity']=sf.fill.alpha
+            # dh.Set_Style_Comp(el,'opacity',1);
+            el.cstyle['opacity']=1;
                 
-    def Scale_Text(self,el):
+            
+    # Replace super and sub with numerical values
+    # Collapse Tspans with 0% baseline-shift, which Office displays incorrectly    
+    def SubSuper_Fix(self,el):
+        for d in el.descendants2():
+            bs = d.ccascaded_style.get('baseline-shift')
+            if bs in ['super','sub']:
+                sty = d.ccascaded_style
+                sty['baseline-shift'] = '40%' if bs=='super' else '-20%'
+                d.cstyle = sty
+        
+        for d in reversed(el.descendants2()): # all Tspans
+            bs = d.ccascaded_style.get('baseline-shift')
+            if bs is not None and bs.replace(' ','')=='0%':
+                # see if any ancestors with non-zero shift
+                anysubsuper = False
+                for a in d.ancestors2(stopafter=el):
+                    bsa = a.ccascaded_style.get('baseline-shift')
+                    if bsa is not None and '%' in bsa:
+                        anysubsuper = float(bsa.replace(' ','').strip('%'))!=0
+                    
+                # split parent
+                myp = d.getparent();
+                if anysubsuper and myp is not None:
+                    from TextParser import split_text
+                    ds = split_text(myp)
+                    for d in reversed(ds):
+                        if len(list(d))==1 and list(d)[0].ccascaded_style.get('baseline-shift')=='0%':
+                            s = list(d)[0]
+                            mys = s.ccascaded_style
+                            if mys.get('baseline-shift')=='0%':
+                                mys['baseline-shift'] = d.ccascaded_style.get('baseline-shift')
+                            fs,sf,tmp,tmp = dh.Get_Composed_Width(s,'font-size',nargout=4);
+                            mys['font-size'] = str(fs/sf)
+                            d.addprevious(s)
+                            s.cstyle = mys
+                            s.tail = d.tail;
+                            d.delete();
+                            self.SubSuper_Fix(el) # parent is now gone, so start over
+                            return
+                    
+            
+    def Scale_Text(self,el,scaleto):
         # Sets all font-sizes to 100 px by moving size into transform
         # Office rounds every fonts to the nearest px and then transforms it,
         # so this makes text sizes more accurate
         from TextParser import ParsedText, tline      
         svg = el.croot;
         szs = []
-        for d in el.descendants2: # all Tspan sizes
+        for d in el.descendants2(): # all Tspan sizes
             fs = d.ccascaded_style.get('font-size')
             fs = {"small": "10px", "medium": "12px", "large": "14px"}.get(fs, fs)
             if fs is not None and '%' not in fs:
-                szs.append(dh.implicitpx(fs))
+                szs.append(dh.ipx(fs))
         if len(szs)==0:
-            minsz = dh.default_style_atts['font-size']
-            minsz = {"small": 10, "medium": 12, "large": 14}.get(minsz, minsz)
+            maxsz = dh.default_style_atts['font-size']
+            maxsz = {"small": 10, "medium": 12, "large": 14}.get(maxsz, maxsz)
         else:
-            minsz = min(szs)
+            maxsz = max(szs)
             
-        s=1/minsz*100
+        s=1/maxsz*scaleto
         
         # Make a dummy group so we can properly compose the transform
         g = dh.group([el],moveTCM=True)
         
-        for d in reversed(el.descendants2):
+        from TextParser import xyset
+        for d in reversed(el.descendants2()):
             xv = ParsedText.GetXY(d,'x')
             yv = ParsedText.GetXY(d,'y')
             dxv = ParsedText.GetXY(d,'dx')
             dyv = ParsedText.GetXY(d,'dy')
             
-            if xv[0] is not None:  d.set('x',tline.writev([v*s for v in xv]))
-            if yv[0] is not None:  d.set('y',tline.writev([v*s for v in yv]))
-            if dxv[0] is not None: d.set('dx',tline.writev([v*s for v in dxv]))
-            if dyv[0] is not None: d.set('dy',tline.writev([v*s for v in dyv]))
+            if xv[0] is not None:  xyset(d,'x',[v*s for v in xv])
+            if yv[0] is not None:  xyset(d,'y',[v*s for v in yv])
+            if dxv[0] is not None: xyset(d,'dx',[v*s for v in dxv])
+            if dyv[0] is not None: xyset(d,'dy',[v*s for v in dyv])
                 
             fs,sf,tmp,tmp = dh.Get_Composed_Width(d,'font-size',nargout=4)
-            dh.Set_Style_Comp(d, 'font-size', str(fs/sf*s))    
+            # dh.Set_Style_Comp(d, 'font-size', "{:.3f}".format(fs/sf*s))    
+            d.cstyle['font-size']= "{:.3f}".format(fs/sf*s)
                 
-            otherpx = ['letter-spacing','inline-size']
+            otherpx = ['letter-spacing','inline-size','stroke-width','stroke-dasharray']
             for oth in otherpx:
                 othv = d.ccascaded_style.get(oth)
+                if othv is None and oth=='stroke-width' and 'stroke' in d.ccascaded_style:
+                    othv = dh.default_style_atts[oth]
                 if othv is not None:
-                    dh.Set_Style_Comp(d, oth, str(dh.implicitpx(othv)*s))
+                    if ',' not in othv:
+                        # dh.Set_Style_Comp(d, oth, str(dh.ipx(othv)*s))
+                        d.cstyle[oth]= str((dh.ipx(othv) or 0)*s)
+                    else:
+                        # dh.Set_Style_Comp(d, oth, ','.join([str(dh.ipx(v)*s) for v in othv.split(',')]))
+                        d.cstyle[oth]= ','.join([str((dh.ipx(v) or 0)*s) for v in othv.split(',')])
                 
             shape = d.ccascaded_style.get_link('shape-inside',svg);
             if shape is not None:
-                dup = shape.duplicate2();
-                svg.defs2.append(dup);
+                dup = shape.duplicate();
+                svg.cdefs.append(dup);
                 dup.ctransform = inkex.Transform((s,0,0,s,0,0)) @ dup.ctransform
-                dh.Set_Style_Comp(d, 'shape-inside', dup.get_id2(as_url=2))
+                # dh.Set_Style_Comp(d, 'shape-inside', dup.get_id(as_url=2))
+                d.cstyle['shape-inside']=dup.get_id(as_url=2)
 
         el.ctransform = inkex.Transform((1/s,0,0,1/s,0,0))
         dh.ungroup(g)
@@ -1052,7 +1413,7 @@ class AutoExporter(inkex.EffectExtension):
                             from PIL import Image as ImagePIL
                             newstr = ih.ImagePIL_to_str(ImagePIL.fromarray(nd))
                             el.set('xlink:href',newstr)
-                            mask.delete2();
+                            mask.delete();
                             el.set('mask',None)
                             
     def Replace_with_Raster(self,el,imgloc,bb,imgbbox):
@@ -1082,12 +1443,13 @@ class AutoExporter(inkex.EffectExtension):
             (-ct).apply_to_point(p) for p in pbb
         ]  # untransformed bbox (where the image needs to go)
         
-        newel = dh.new_element(inkex.Image, el);
+        # newel = el.croot.new_element(inkex.Image, el);
+        newel = inkex.Image();
         dh.replace_element(el, newel)
         newel.set('x',0); myx=0;
         newel.set('y',0); myy=0;
-        newel.set('width',1);  myw = dh.implicitpx(newel.get("width"));
-        newel.set('height',1); myh = dh.implicitpx(newel.get("height"));
+        newel.set('width',1);  myw = dh.ipx(newel.get("width"));
+        newel.set('height',1); myh = dh.ipx(newel.get("height"));
         newel.set('xlink:href',el.get('xlink:href'))
         
         sty = ''
@@ -1160,8 +1522,8 @@ class AutoExporter(inkex.EffectExtension):
             # Has Pages
             # pgvbs = []
             # for pg in pgs:
-            #     pgbb = [dh.implicitpx(pg.get('x')),    dh.implicitpx(pg.get('y')),
-            #             dh.implicitpx(pg.get('width')),dh.implicitpx(pg.get('height'))]
+            #     pgbb = [dh.ipx(pg.get('x')),    dh.ipx(pg.get('y')),
+            #             dh.ipx(pg.get('width')),dh.ipx(pg.get('height'))]
             #     pgbbpx = svg.cdocsize.uutopx(pgbb);
             #     newbb  = svg.cdocsize.pxtouu([pgbbpx[0]-m,pgbbpx[1]-m,pgbbpx[2]+2*m,pgbbpx[3]+2*m])
             #     pg.set('x',     str(newbb[0]))
@@ -1169,10 +1531,10 @@ class AutoExporter(inkex.EffectExtension):
             #     pg.set('width', str(newbb[2]))
             #     pg.set('height',str(newbb[3]))
                 
-                # x = dh.implicitpx(pg.get('x'))*uuw
-                # y = dh.implicitpx(pg.get('y'))*uuh
-                # w = dh.implicitpx(pg.get('width'))*uuw
-                # h = dh.implicitpx(pg.get('height'))*uuh
+                # x = dh.ipx(pg.get('x'))*uuw
+                # y = dh.ipx(pg.get('y'))*uuh
+                # w = dh.ipx(pg.get('width'))*uuw
+                # h = dh.ipx(pg.get('height'))*uuh
                 
                 # pg.set('x',str((x-m)/uuw))
                 # pg.set('y',str((y-m)/uuh))
@@ -1197,12 +1559,7 @@ class AutoExporter(inkex.EffectExtension):
 
         
     def Change_Viewbox_To_Page(self,svg,pg):
-        # oldvb = svg.cdocsize.effvb;
-        # newvb = [dh.implicitpx(pg.get('x'))+oldvb[0],\
-        #          dh.implicitpx(pg.get('y'))+oldvb[1],\
-        #          dh.implicitpx(pg.get('width')),\
-        #          dh.implicitpx(pg.get('height'))]
-        newvb = svg.cdocsize.pxtouu(pg.bbpx)
+        newvb = pg.croot.cdocsize.pxtouu(pg.bbpx)
         svg.set_viewbox(newvb)
         
         
@@ -1213,21 +1570,28 @@ class AutoExporter(inkex.EffectExtension):
     # 2. Densely-spaced nodes can be converted incorrectly, so scale paths up
     #    by a large amount to account for this.
     # 3. Starting markers can be flipped.
+    # 4. Markers on groups cause crashes
         grouped = [];
         if len(els)>0:
             svg = els[0].croot
         for el in els:
-            if isinstance(el,dh.otp_support):
+            if isinstance(el,inkex.Group):
+                sty = el.cstyle
+                for m in ['marker-start','marker-mid','marker-end']:
+                    mv = sty.get_link(m,svg);
+                    if mv is not None:
+                        dh.ungroup(el)
+            elif isinstance(el,dh.otp_support):
                 sty = el.cspecified_style
                 if 'stroke' in sty and sty['stroke']!='none':
                     sw = sty.get('stroke-width')
-                    if dh.implicitpx(sw)==0:
+                    if dh.ipx(sw)==0:
                         # Fix bug on zero-stroke paths
                         sty['stroke'] = 'none'
                         el.cstyle = sty;
                     else:
                         # Clip and mask issues solved by moving to a dummy group
-                        grouped.append(el.get_id2())
+                        grouped.append(el.get_id())
                         dh.group([el],moveTCM=True)
                         
                         # Scale up certain paths
@@ -1251,7 +1615,7 @@ class AutoExporter(inkex.EffectExtension):
                             #     h = max(ys)-min(ys);
                             # else:
                             #     h = 0;
-                            # dh.idebug((el.get_id2(),w,h))
+                            # dh.idebug((el.get_id(),w,h))
                             # if w==0 and h!=0:
                             #     SCALEBY = 1000/h;
                             # elif w!=0 and h==0:
@@ -1284,13 +1648,11 @@ class AutoExporter(inkex.EffectExtension):
                             
                             csty = el.cspecified_style
                             if 'stroke-width' in csty:
-                                sw = dh.implicitpx(csty['stroke-width'])
-                                dh.Set_Style_Comp(el, 'stroke-width',str(sw*SCALEBY))
+                                sw = dh.ipx(csty['stroke-width'])
+                                el.cstyle['stroke-width']=str(sw*SCALEBY)
                             if 'stroke-dasharray' in csty:
-                                sd = csty["stroke-dasharray"].split(",")
-                                dh.Set_Style_Comp(
-                                    el, "stroke-dasharray",
-                                    str([dh.implicitpx(sdv)*SCALEBY for sdv in sd]).strip("[").strip("]"))
+                                sd = dh.listsplit(csty["stroke-dasharray"])
+                                el.cstyle["stroke-dasharray"]=str([(sdv or 0)*SCALEBY for sdv in sd]).strip("[").strip("]")
                         
                         
                         # Fix bug on start markers where auto-start-reverse oriented markers
@@ -1299,11 +1661,11 @@ class AutoExporter(inkex.EffectExtension):
                         mstrt = sty.get_link('marker-start',svg);
                         if mstrt is not None:
                             if mstrt.get('orient')=='auto-start-reverse':
-                                d = mstrt.duplicate2();
+                                d = mstrt.duplicate();
                                 d.set('orient','auto')
                                 for dk in list(d):
                                     dk.ctransform = Transform('scale(-1)') @ dk.ctransform;
-                                sty['marker-start']=d.get_id2(as_url=2)
+                                sty['marker-start']=d.get_id(as_url=2)
                                 el.cstyle = sty;
         return grouped
 
@@ -1350,7 +1712,7 @@ if __name__ == "__main__":
 #     try:
 #         ScourInkscape().run(sargs, myoutput)
 #     except:  # Scour failed
-#         dh.idebug("\nWarning: Optimizer failed, making portable SVG instead")
+#         dh.idebug("\nWarning: Optimizer failed, making plain SVG instead")
 #         if not(input_options.usepdf):
 #             # Convert to PDF
 #             tmp3 = basetemp.replace(".svg", "_tmp_small.pdf")
