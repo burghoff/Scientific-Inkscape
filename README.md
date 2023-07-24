@@ -11,7 +11,7 @@ It also includes the following utility extensions:
 
 6. **Text Ghoster**: Adds a semi-transparent background to text so that it can be overlaid with data.
 7. **Combine by Color**: An extension that fuses paths of the same color and style together into a single path. Speeds up operations on plots with thousands of similar elements, like markers. 
-8. **Favorite Markers**: Lets you designate certain markers as favorites, mainly for convenience. 
+8. **Favorite Markers**: Lets you save certain markers as favorites. 
 
 All were written by [David Burghoff](https://burghoff.org) at the UT Austin. If you find it useful, tell your collegaues! We would also appreciate it if you could give us a star on Github and on [Inkscape's website](https://inkscape.org/gallery/item/30306/). You may also find it helpful to map the extensions to hotkeys (done in the Edit > Preferences > Interface > Keyboard menu).
 
