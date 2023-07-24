@@ -31,9 +31,8 @@ To use:
 
 Scale Plots has three modes. In Scaling Mode, the plot is scaled by a constant factor. In Matching Mode, the plot area is made to match the size of the first object you select. This can be convenient when assembling subfigures, as it allows you to match the size of one plot to another plot or to a template rectangle. In Correction Mode, a plot that has already been (badly) manually scaled by normal dragging will be corrected. In any case, to scale something that is not a plot while leaving text and groups unaffected, check the "Selection has no well-defined plot area" option.
 
-## Advanced options
-1. If "Auto tick correct" is enabled, the extension assumes that any small horizontal or vertical lines near the edges of the plot area are ticks, and automatically leaves them unscaled.
-2. If a layer name or group ID is put into the "Scale-free elements" option, any elements on that layer will remain unscaled. This is basically the same thing as putting an object in a group, but can be easier if there are many such objects (e.g, if your plot has markers).
+### Exclusions
+Sometimes, you may want to lock the aspect ratio of certain objects while scaling, or you may want to leave them unscaled altogether. For example, this is common for plots with markers—changing the aspect ratio usually makes them look bad. To exclude objects, (a) select them, (b) open the "Advanced" tab of Scale Plots, (c) select the appropriate option under Exclusions, and (d) click Apply. They are now invisibly marked for exclusion, and any subsequent scaling will ignore them.
 
 # The Flattener
 The Flattener removes unwanted structure from figures imported into Inkscape. Several of the other extensions require the figure be pre-Flattened, so it is recommended that you map it to a keyboard shortcut for easy calling.
