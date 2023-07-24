@@ -21,7 +21,7 @@
                     gui-text="Size (%)">100</param>
             
             <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Notre Dame</label>
+            <label>By David Burghoff, University of Texas at Austin</label>
         </page>
         
         <page name="addremove" gui-text="Add/remove templates">

@@ -33,7 +33,7 @@
         
         
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-        <label>By David Burghoff, University of Notre Dame</label>
+        <label>By David Burghoff, University of Texas at Austin</label>
         </page>
     
         <page name="advanced" gui-text="Advanced">
@@ -61,7 +61,7 @@
          
 
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-        <label>By David Burghoff, University of Notre Dame</label>
+        <label>By David Burghoff, University of Texas at Austin</label>
         </page>
         
         <page name="rasterizer" gui-text="Rasterizer">
@@ -77,7 +77,7 @@
                    <option value="3">Left unchanged</option>
                 </param>
         <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-        <label>By David Burghoff, University of Notre Dame</label>
+        <label>By David Burghoff, University of Texas at Austin</label>
         </page>
     </param>
     <effect needs-live-preview="false">
