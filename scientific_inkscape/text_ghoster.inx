@@ -11,7 +11,7 @@
             <label>To treat multiple text objects as one, group them together.</label>
 
             <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Notre Dame</label>
+            <label>By David Burghoff, University of Texas at Austin</label>
         </page>
     </param>
     <effect needs-live-preview="false">

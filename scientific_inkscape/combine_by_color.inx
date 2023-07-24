@@ -17,7 +17,7 @@
             <param name="lightnessth" type="float" precision="0" min="0" max="100" gui-text="Lightness threshold (%)">15</param>
 
             <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Notre Dame</label> 
+            <label>By David Burghoff, University of Texas at Austin</label> 
         </page>
     </param>
     <effect needs-live-preview="false">

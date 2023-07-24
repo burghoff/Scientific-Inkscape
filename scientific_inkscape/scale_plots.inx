@@ -14,7 +14,7 @@
             <spacer/><param name="wholeplot1" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
             <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Notre Dame</label>
+            <label>By David Burghoff, University of Texas at Austin</label>
         </page> 
         
         <page name="matching" gui-text="Matching mode">
@@ -40,7 +40,7 @@
             <spacer/><param name="wholeplot2" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
             <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Notre Dame</label>
+            <label>By David Burghoff, University of Texas at Austin</label>
         </page>
         
         <page name="correction" gui-text="Correction mode">
@@ -62,7 +62,7 @@
             <spacer/><param name="wholeplot3" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
             <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Notre Dame</label>
+            <label>By David Burghoff, University of Texas at Austin</label>
         </page>
         
         <page name="options" gui-text="Advanced">

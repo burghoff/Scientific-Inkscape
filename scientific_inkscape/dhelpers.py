@@ -1831,7 +1831,7 @@ def Version_Check(caller):
     maxsupport = "1.3.1"
     minsupport = "1.1.0"
 
-    logname = "Log.txt"
+    logname = "Log.txt";
     NFORM = 200
 
     maxsupp = vparse(maxsupport)

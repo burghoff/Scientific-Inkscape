@@ -15,7 +15,7 @@
             <label>For anyone using Inkscape to prepare figures, it is strongly recommended that you change the transformation preferences from Optimized to Preserved in Edit > Preferences > Behavior > Transforms. The Optimized setting can distort certain paths.</label>
             
             <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Notre Dame</label>
+            <label>By David Burghoff, University of Texas at Austin</label>
         </page>
         <page name="Options2" gui-text="Text fix options">
         <label appearance="header">Recommended options</label>
@@ -34,7 +34,7 @@
             <param name="setreplacement" type="bool" gui-text="Replace missing fonts">false</param>
             <param name="replacement" type="string" gui-text="Missing font replacement">Arial</param>
             <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Notre Dame</label>
+            <label>By David Burghoff, University of Texas at Austin</label>
         </page>
     </param>
     <effect needs-live-preview="false">
