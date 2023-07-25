@@ -2383,10 +2383,11 @@ class tword:
             ty = np.array([wy + dy - bs - ch for dy, ch, bs 
                            in zip(adyl, self.ch, self.bshft)],dtype=float)[:, np.newaxis]
             
-            lx2 = float(min(lx - self.dxeff[0]))
+            
+            lx2 = float(min(lx - self.dxeff[0]).squeeze())
             rx2 = float(lx2 + ww)
-            by2 = float(max(by))
-            ty2 = float(min(ty))
+            by2 = float(max(by).squeeze())
+            ty2 = float(min(ty).squeeze())
 
             self._charpos = (lx, rx, by, ty,lx2, rx2, by2, ty2)
 

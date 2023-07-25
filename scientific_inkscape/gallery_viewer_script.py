@@ -68,6 +68,12 @@ try:
                 file_uri, result))
         return result
     
+    global refreshapp
+    refreshapp = False
+    def trigger_refresh():
+        global refreshapp
+        refreshapp = True
+    
     def Make_Flask_App():
         import warnings
         warnings.simplefilter("ignore", DeprecationWarning); # prevent warning that process is open
@@ -168,6 +174,7 @@ try:
             openedgallery = True
             if refreshapp:
                 refreshapp = False
+                make_svg_display()
                 lastupdate = time.time();
             return jsonify(lastupdate=lastupdate)
             
@@ -268,7 +275,7 @@ try:
                           <a target="_blank" href="#">
                             <img data-src="#" alt="" id='img{2}'>
                           </a>
-                          <div class="desc">{4}<a href="http://localhost:{3}/process?param={0}" class="open">Open current</a>{5}</div>
+                          <div class="desc">{4}<a href="http://localhost:{3}/process?param={0}" class="open">{6}</a>{5}</div>
                         </div>
                         """
                         # if any([isinstance(fn,list) for fn in wt.files]):
@@ -278,7 +285,7 @@ try:
                         tnloc = pathlib.Path(thumbnails[ii]).as_uri()
                         gallery = gallery.replace('data-src="#"','data-src="{0}" class="lazyload"'.format(tnloc))
                         if slidenums is not None:
-                            label = 'Slide {0}'.format(slidenums[ii])+(' (linked)' if islinked[ii] else '')+'<br>'
+                            label = 'Slide {0}'.format(slidenums[ii])+'<br>'
                         else:
                             pn = ' ({0})'.format(wt.pagenums[ii]) if wt.pagenums[ii] is not None else ''
                             label = os.path.split(svg)[-1]+pn+'<br>';
@@ -286,8 +293,11 @@ try:
                         if wt.embeds is not None:
                             if wt.embeds[ii]:
                                 embed = pathlib.Path(wt.embeds[ii]).as_uri()
-                                embed = '<br><a href="http://localhost:{0}/process?param={1}" class="open">Open original</a><br>'.format(str(PORTNUMBER),embed)
-                        file.write(gallery.format(myloc,os.path.split(svg)[-1],len(fileuris),str(PORTNUMBER),label,embed))
+                                embed = '<br><a href="http://localhost:{0}/process?param={1}" class="open">Original</a><br>'.format(str(PORTNUMBER),embed)
+                        
+                        linked = islinked is not None and islinked[ii]
+                        currenttype = 'Current' if os.path.isdir(wt.fof) else 'Linked' if linked else 'Embedded'
+                        file.write(gallery.format(myloc,os.path.split(svg)[-1],len(fileuris),str(PORTNUMBER),label,embed,currenttype))
                         fileuris.append(tnloc);
                 else:
                     file.write('<br>Processing')
@@ -442,7 +452,7 @@ try:
 
 
         def run_on_fof(self):
-            print("Running on file:", self.fof)
+            print("Running on file:", self.fof,flush=True)
             global temp_dir
             
             import random
@@ -505,7 +515,8 @@ try:
 
                 self.thumbnails = copy.copy(self.files)
                 self.header = self.fof
-                print("Temp dir: "+temp_dir)
+                print("Temp dir: "+temp_dir,flush=True)
+                print(self.files,flush=True)
                 
                 self.embeds = []
                 subfiles = None
@@ -601,18 +612,23 @@ try:
                 global converted_files
                 if hashed not in converted_files:
                     notdone = True
-                    while notdone:
+                    nattempts=0
+                    while notdone and nattempts<5:
                         try:
+                            print('Starting export...',flush=True)
                             if os.path.exists(fileout):
                                 os.remove(fileout)
                             args = [bfn,"--export-area-drawing","--export-background","#ffffff","--export-background-opacity",
                                 "1.0","--export-dpi",str(300),"--export-filename",fileout,filein,]
                             dh.subprocess_repeat(args)
                             notdone = False
+                            print('Finished export...',flush=True)
                         except:
-                            pass
-                    global refreshapp
-                    refreshapp = True
+                            nattempts+=1
+                    if not os.path.exists(fileout): # write a 1x1 png
+                        with open(fileout, 'wb') as f2:
+                            f2.write(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\xff\xff?\x00\x05\xfe\x02\xfe\xdc\xccY\xe7\x00\x00\x00\x00IEND\xaeB`\x82')
+                    trigger_refresh()
                     converted_files[hashed] = fileout
                 else:
                     import shutil
@@ -623,7 +639,7 @@ try:
             threads = []
             for ii, f in enumerate(self.files):
                 if f.endswith('.emf'):
-                    print('Making thumbnail '+self.thumbnails[ii])
+                    print('Making thumbnail '+self.thumbnails[ii],flush=True)
                     thread = Thread(target=overwrite_output, args=(f,self.thumbnails[ii]))
                     threads.append(thread)
                     while len([t for t in threads if t.is_alive()])>10:
@@ -632,22 +648,22 @@ try:
                         
 
         def run(self):
-            print('Initial run')
+            print('Initial run',flush=True)
             self.run_on_fof()
             
-            make_svg_display()            
-            global myapp, refreshapp
+            make_svg_display()       
+            global myapp
             if myapp is None:
                 myapp = True
                 myapp = Make_Flask_App();
-                time.sleep(1); # wait to see if check_for_refresh called
+                time.sleep(1); # wait to see if check_for_refresh called 
                 global openedgallery
                 if not(openedgallery):
                     webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
                     openedgallery = True;
             else:
-                refreshapp = True
-            self.convert_emfs()
+                trigger_refresh()
+            self.convert_emfs()    
             
             def get_modtimes():
                 modtimes = dict()
@@ -667,14 +683,15 @@ try:
                 time.sleep(1)
                 mts = get_modtimes();
                 if lmts!=mts:
+                    print('Update '+self.fof,flush=True)
                     self.run_on_fof()
+                    trigger_refresh()
                 lmts = mts
-            refreshapp = True
+            trigger_refresh()
             
 
-    global myapp, refreshapp, converted_files, watcher_threads, openedgallery
+    global myapp, converted_files, watcher_threads, openedgallery
     myapp = None
-    refreshapp = False
     converted_files = dict()
     lastupdate = time.time();
     watcher_threads = [];
@@ -785,7 +802,6 @@ try:
                 self.selected_file_label.scroll_to_mark(buffer.get_insert(), 0, True, 0, 0)
 
             def on_button_clicked(self, widget):
-                print("Hello World")
                 self.destroy()
                 
             def on_file_button_clicked(self, widget):
