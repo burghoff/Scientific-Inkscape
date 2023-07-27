@@ -41,21 +41,22 @@ testaemp            = True;
 testae              = True;
 
 import os
-sidir = os.path.join(os.path.split(os.path.split(__file__)[0])[0],'scientific_inkscape')
-vpaths = {'1.0' :  ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python38.zip', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\lib-dynload', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\lib\\python3.8\\site-packages', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.0.2-2-x64\\bin'],
-          '1.1' :  ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python39.zip', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\lib\\python3.9\\site-packages', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64\\bin'],
-          '1.2': ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\lib\\python310.zip', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\lib\\python3.10', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\lib\\python3.10\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\lib\\python3.10\\site-packages', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64\\bin'],
-          '1.3': ['C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64\\share\\inkscape\\extensions', 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64\\lib\\python310.zip', 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64\\lib\\python3.10', 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64\\lib\\python3.10\\lib-dynload', 'C:\\Users\\burgh\\AppData\\Roaming\\inkscape\\extensions\\personal', 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64\\lib\\python3.10\\site-packages', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64\\share\\inkscape\\extensions\\inkex\\deprecated-simple', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'G:\\My Drive\\Work\\Inkscape extension\\personal', 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64\\bin']};
+vpaths = {'1.0' : 'D:\\Inkscapes\\inkscape-1.0.2-2-x64',
+          '1.1' : 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64',
+          '1.2' : 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64', 
+          '1.3' : 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64'}
+
 if 'TESTMAINVERSION' in os.environ:
     version = os.environ['TESTMAINVERSION']
 if version=='1.0':
-    # flattenerargs += ("--v=1.0",)
-    os.environ["SI_FC_DIR"] = [d for d in vpaths['1.1'] if os.path.split(d)[-1]=='bin'][0]
+    os.environ["SI_FC_DIR"] = os.path.join(vpaths['1.1'],'bin')
     # Font selection changed after 1.0, use 1.1's fc for consistency
 
+
 import sys
-sys.path += vpaths[version]
-sys.path += [sidir]
+sys.path += [os.path.join(vpaths[version],'share\\inkscape\\extensions')]
+sys.path += [os.path.join(vpaths[version],'bin')]
+sys.path += [os.path.join(os.path.split(os.path.split(__file__)[0])[0],'scientific_inkscape')  ]
 os.environ['LINEPROFILE'] = str(lprofile)
 os.environ['USEPANGO']=str(usepango)
 
