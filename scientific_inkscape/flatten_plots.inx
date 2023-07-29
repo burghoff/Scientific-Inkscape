@@ -23,6 +23,7 @@
             <param name="mergenearby"  type="bool" gui-text="Merge nearby text">true</param>
             <param name="fixshattering" type="bool"  gui-text="Remove manual kerning">true</param>
             <param name="mergesubsuper" type="bool"  gui-text="Merge superscripts and subscripts">true</param>
+            <param name="reversions" type="bool"  gui-text="Revert known paths to characters">true</param>
             <param name="justification" type="optiongroup" appearance="combo"
                     gui-text="Final text justification">
                        <option value="1">Centered</option>

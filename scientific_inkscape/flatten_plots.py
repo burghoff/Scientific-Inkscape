@@ -93,6 +93,12 @@ class FlattenPlots(inkex.EffectExtension):
             help="Replace missing fonts",
         )
         pars.add_argument(
+            "--reversions",
+            type=inkex.Boolean,
+            default=True,
+            help="Revert known paths to text",
+        )
+        pars.add_argument(
             "--replacement", type=str, default="Arial", help="Missing font replacement"
         )
         pars.add_argument(
@@ -144,6 +150,7 @@ class FlattenPlots(inkex.EffectExtension):
                 self.options.fixshattering = True
                 self.options.mergesubsuper = True
                 self.options.setreplacement = True
+                self.options.reversions = True
                 self.options.replacement = "sans-serif"
                 self.options.justification = 1
         else:
@@ -154,36 +161,33 @@ class FlattenPlots(inkex.EffectExtension):
         mergesubsuper = self.options.mergesubsuper and self.options.fixtext
         mergenearby = self.options.mergenearby and self.options.fixtext
         setreplacement = self.options.setreplacement and self.options.fixtext
+        reversions = self.options.reversions and self.options.fixtext
 
         sel = [el for el in self.svg.descendants2() if el in sel] # doc order
         seld = [v for el in sel for v in el.descendants2()]
 
         # Move selected defs/clips/mask into global defs
+        defstag = inkex.Defs.ctag
+        clipmask = {inkex.addNS('mask','svg'),inkex.ClipPath.ctag}
         if self.options.deepungroup:
-            seldefs = [el for el in seld if isinstance(el, Defs)]
+            seldefs = [el for el in seld if el.tag == defstag]
             for el in seldefs:
                 self.svg.cdefs.append(el)
                 for d in el.descendants2():
                     if d in seld:
                         seld.remove(d)  # no longer selected
-            selcm = [
-                el for el in seld if isinstance(el, (inkex.ClipPath)) or dh.isMask(el)
-            ]
+            selcm = [el for el in seld if el.tag in clipmask]
             for el in selcm:
                 self.svg.cdefs.append(el)
                 for d in el.descendants2():
                     if d in seld:
                         seld.remove(d)  # no longer selected
-        
-        
-        ignores = (NamedView, Defs, Metadata, ForeignObject)
-        
+
         gtag = inkex.Group.ctag
-        gigtags = dh.tags(ignores+(Group,))
+        gigtags = dh.tags((NamedView, Defs, Metadata, ForeignObject)+(Group,))
         
         gs = [el for el in seld if el.tag==gtag]
         ngs = [el for el in seld if el.tag not in gigtags]
-
         if len(gs) == 0 and len(ngs) == 0:
             inkex.utils.errormsg("No objects selected!")
             return
@@ -208,7 +212,6 @@ class FlattenPlots(inkex.EffectExtension):
             sorted_gs = sorted(gs, key=lambda group: len(list(group)))
             # ascending order of size to reduce number of calls
             for g in sorted_gs:
-                # dh.idebug(g.get_id())
                 ks = g.getchildren()
                 if any([isinstance(k, lxml.etree._Comment) for k in ks]) and all(
                     [
@@ -234,6 +237,47 @@ class FlattenPlots(inkex.EffectExtension):
                     dh.ungroup(g)
             dh.flush_stylesheet_entries(self.svg)
 
+        if self.options.removerectw or reversions:
+            prltag = dh.tags((PathElement, Rectangle, Line))
+            fltag  = dh.tags((FlowPara, FlowRegion, FlowRoot))
+            nones = {None, "none", "None"}
+            wrects = []
+            
+            minusp = inkex.Path('M 106,355 H 732 V 272 H 106 Z') # Matplotlib minus sign
+            for ii, el in enumerate(ngs):
+                if el.tag in prltag:
+                    myp = el.getparent()
+                    if myp is not None and not(myp.tag in fltag) and dh.isrectangle(el,includingtransform=False):
+                        sty = el.cspecified_style
+                        strk = sty.get("stroke", None)
+                        fill = sty.get("fill", None)
+                        if strk in nones and fill not in nones:
+                            sf = dh.get_strokefill(el)
+                            if sf.fill is not None and tuple(sf.fill) == (255, 255, 255, 1):
+                                wrects.append(el)
+                                
+                            if reversions:
+                                dv = el.get('d')
+                                if dv is not None and inkex.Path(dv)[0:3]==minusp[0:3]:
+                                    t0 = el.ccomposed_transform
+                                    if t0.a*t0.d-t0.b*t0.c<0:
+                                        bb = dh.bounding_box2(el,includestroke=False,dotransform=False)
+                                        trl = inkex.Transform('translate({0},{1})'.format(bb.xc,bb.yc))
+                                        scl = inkex.Transform('scale(1,-1)')
+                                        t0 = t0 @ trl @ scl @ (-trl)
+                                    nt = inkex.TextElement()
+                                    nt.set('id',el.get_id())
+                                    myi = list(myp).index(el)
+                                    el.delete()
+                                    myp.insert(myi,nt)
+                                    # self.svg.append(nt)
+                                    nt.text = chr(0x2212)
+                                    nt.ctransform = (-myp.ccomposed_transform) @ t0
+                                    nt.set('x',str(19.3964))
+                                    nt.set('y',str(626.924))
+                                    nt.cstyle='font-size:999.997; font-family:sans-serif; fill:{0};'.format(sf.fill)
+                                    ngs.append(nt)
+                                    
         if self.options.fixtext:
             if setreplacement:
                 repl = self.options.replacement
@@ -243,10 +287,8 @@ class FlattenPlots(inkex.EffectExtension):
                         and el.getparent() is not None
                     ):  # textelements not deleted
                         ff = el.cspecified_style.get("font-family")
-                        # dh.Set_Style_Comp(el, "-inkscape-font-specification", None)
                         el.cstyle["-inkscape-font-specification"]= None
                         if ff == None or ff == "none" or ff == "":
-                            # dh.Set_Style_Comp(el, "font-family", replacement)
                             el.cstyle["font-family"]=repl
                         elif ff == repl:
                             pass
@@ -254,7 +296,6 @@ class FlattenPlots(inkex.EffectExtension):
                             ff = [x.strip("'").strip() for x in ff.split(",")]
                             if not (ff[-1].lower() == repl.lower()):
                                 ff.append(repl)
-                            # dh.Set_Style_Comp(el, "font-family", ",".join(ff))
                             el.cstyle["font-family"]=",".join(ff)
 
             if fixshattering or mergesubsuper or splitdistant or mergenearby:
@@ -270,22 +311,6 @@ class FlattenPlots(inkex.EffectExtension):
                 )
 
         if self.options.removerectw:
-            prltag = dh.tags((PathElement, Rectangle, Line))
-            fltag  = dh.tags((FlowPara, FlowRegion, FlowRoot))
-            nones = {None, "none", "None"}
-            wrects = []
-            for ii, el in enumerate(ngs):
-                if el.tag in prltag:
-                    myp = el.getparent()
-                    if myp is not None and not(myp.tag in fltag) and dh.isrectangle(el,includingtransform=False):
-                        sty = el.cspecified_style
-                        strk = sty.get("stroke", None)
-                        fill = sty.get("fill", None)
-                        if strk in nones and fill not in nones:
-                            sf = dh.get_strokefill(el)
-                            if sf.fill is not None and tuple(sf.fill) == (255, 255, 255, 1):
-                                wrects.append(el)
-                                
             ngset = set(ngs)
             ngs2 = [el for el in self.svg.descendants2() if el in ngset and dh.isdrawn(el)]
             bbs = dh.BB2(self,ngs2,roughpath=True,parsed=True);
@@ -294,12 +319,10 @@ class FlattenPlots(inkex.EffectExtension):
             wriis = [ii for ii,el in enumerate(ngs3) if el in wrects]
             wrbbs = [bbs[ii] for ii in wriis]
             intrscts = dh.bb_intersects(bbs,wrbbs);
-            for jj,ii in enumerate(wriis):                    
+            for jj,ii in enumerate(wriis):       
                 if not any(intrscts[:ii,jj]):
                     dh.deleteup(ngs3[ii])
                     intrscts[ii,:]=False
-
-
 
         # Remove any unused clips we made, unnecessary white space in document
         ds = self.svg.iddict.ds
