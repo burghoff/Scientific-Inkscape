@@ -450,6 +450,7 @@ def isrectangle(el,includingtransform=True):
         if includingtransform:
             pth = pth.transform(el.ctransform)
 
+        
         xs=[]; ys=[]; cnt=0;
         for pt in pth.control_points:
             xs.append(pt.x)
@@ -467,7 +468,7 @@ def isrectangle(el,includingtransform=True):
     # if I am clipped I may not be a rectangle
     if isrect:
         if el.get_link('clip-path',llget=True) is not None:
-            isrect = False
+            isrect = all([isrectangle(k) for k in list(el.get_link('clip-path',llget=True))])
         if el.get_link('mask',llget=True) is not None:
             isrect = False
             

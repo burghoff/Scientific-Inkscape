@@ -99,6 +99,12 @@ class FlattenPlots(inkex.EffectExtension):
             help="Revert known paths to text",
         )
         pars.add_argument(
+            "--revertpaths",
+            type=inkex.Boolean,
+            default=True,
+            help="Revert certain paths to strokes?",
+        )
+        pars.add_argument(
             "--replacement", type=str, default="Arial", help="Missing font replacement"
         )
         pars.add_argument(
@@ -145,6 +151,7 @@ class FlattenPlots(inkex.EffectExtension):
                 self.options.deepungroup = True
                 self.options.fixtext = True
                 self.options.removerectw = True
+                self.options.revertpaths = True
                 self.options.splitdistant = True
                 self.options.mergenearby = True
                 self.options.fixshattering = True
@@ -186,7 +193,7 @@ class FlattenPlots(inkex.EffectExtension):
         gtag = inkex.Group.ctag
         gigtags = dh.tags((NamedView, Defs, Metadata, ForeignObject)+(Group,))
         
-        gs = [el for el in seld if el.tag==gtag]
+        gs  = [el for el in seld if el.tag==gtag]
         ngs = [el for el in seld if el.tag not in gigtags]
         if len(gs) == 0 and len(ngs) == 0:
             inkex.utils.errormsg("No objects selected!")
@@ -209,24 +216,22 @@ class FlattenPlots(inkex.EffectExtension):
             gs = [el for el in seld if el.tag==gtag]
             ngs = [el for el in seld if el.tag not in gigtags]
 
+            commenttag = lxml.etree.Comment
+            commentdefs = {commenttag, defstag}
             sorted_gs = sorted(gs, key=lambda group: len(list(group)))
             # ascending order of size to reduce number of calls
             for g in sorted_gs:
                 ks = g.getchildren()
-                if any([isinstance(k, lxml.etree._Comment) for k in ks]) and all(
+                if any([k.tag==commenttag for k in ks]) and all(
                     [
-                        isinstance(k, (lxml.etree._Comment, Defs))
+                        k.tag in commentdefs
                         or dh.EBget(k,"unlinked_clone") == "True"
                         for k in ks
                     ]
                 ):
                     # Leave Matplotlib text glyphs grouped together
                     cmnt = ";".join(
-                        [
-                            str(k).strip("<!-- ").strip(" -->")
-                            for k in ks
-                            if isinstance(k, lxml.etree._Comment)
-                        ]
+                        [str(k).strip("<!-- ").strip(" -->") for k in ks if k.tag==commenttag]
                     )
                     g.set("mpl_comment", cmnt)
                     [g.remove(k) for k in ks if isinstance(k, lxml.etree._Comment)]
@@ -237,7 +242,7 @@ class FlattenPlots(inkex.EffectExtension):
                     dh.ungroup(g)
             dh.flush_stylesheet_entries(self.svg)
 
-        if self.options.removerectw or reversions:
+        if self.options.removerectw or reversions or self.options.revertpaths:
             prltag = dh.tags((PathElement, Rectangle, Line))
             fltag  = dh.tags((FlowPara, FlowRegion, FlowRoot))
             nones = {None, "none", "None"}
@@ -247,7 +252,8 @@ class FlattenPlots(inkex.EffectExtension):
             for ii, el in enumerate(ngs):
                 if el.tag in prltag:
                     myp = el.getparent()
-                    if myp is not None and not(myp.tag in fltag) and dh.isrectangle(el,includingtransform=False):
+                    # dh.idebug((el.get_id(),dh.isrectangle(el,includingtransform=False)[0]))
+                    if myp is not None and not(myp.tag in fltag) and dh.isrectangle(el,includingtransform=False)[0]:
                         sty = el.cspecified_style
                         strk = sty.get("stroke", None)
                         fill = sty.get("fill", None)
@@ -270,22 +276,40 @@ class FlattenPlots(inkex.EffectExtension):
                                     myi = list(myp).index(el)
                                     el.delete()
                                     myp.insert(myi,nt)
-                                    # self.svg.append(nt)
-                                    nt.text = chr(0x2212)
+                                    nt.text = chr(0x2212) # minus sign
                                     nt.ctransform = (-myp.ccomposed_transform) @ t0
                                     nt.set('x',str(19.3964))
                                     nt.set('y',str(626.924))
                                     nt.cstyle='font-size:999.997; font-family:sans-serif; fill:{0};'.format(sf.fill)
+                                    
                                     ngs.append(nt)
+                                    ngs.remove(el)
+                                    
+                            if self.options.revertpaths:
+                                bb = dh.bounding_box2(el,includestroke=False,dotransform=False)
+                                if bb.w < bb.h*0.1:
+                                    dh.object_to_path(el)
+                                    np = 'm {0},{1} v {2}'.format(bb.xc,bb.y1,bb.h)
+                                    el.set('d',np)
+                                    el.cstyle['stroke']=sf.fill
+                                    el.cstyle['fill']='none'
+                                    el.cstyle['stroke-width']=str(bb.w)
+                                elif bb.h < bb.w*0.1:
+                                    dh.object_to_path(el)
+                                    np = 'm {0},{1} h {2}'.format(bb.x1,bb.yc,bb.w)
+                                    el.set('d',np)
+                                    el.cstyle['stroke']=sf.fill
+                                    el.cstyle['fill']='none'
+                                    el.cstyle['stroke-width']=str(bb.h)
+                                    
                                     
         if self.options.fixtext:
             if setreplacement:
                 repl = self.options.replacement
+                ttags = dh.tags((TextElement, Tspan))
                 for el in ngs:
-                    if (
-                        isinstance(el, (TextElement, Tspan))
-                        and el.getparent() is not None
-                    ):  # textelements not deleted
+                    if el.tag in ttags and el.getparent() is not None:
+                        # textelements not deleted
                         ff = el.cspecified_style.get("font-family")
                         el.cstyle["-inkscape-font-specification"]= None
                         if ff == None or ff == "none" or ff == "":
