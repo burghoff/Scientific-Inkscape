@@ -2874,8 +2874,7 @@ class tchar:
         newspfd = t.cspecified_style
         for a in newspfd:
             if a not in styset and setdefault:
-                styset[a] = dh.default_style_atts[a]
-                # dh.idebug([t.get_id(),a,sty])
+                styset[a] = dh.default_style_atts.get(a)
 
         t.cstyle = styset
         self.sty = styset
