@@ -24,21 +24,9 @@ from inkex import (
     FlowRoot,
     FlowPara,
     Tspan,
-    TextPath,
-    Rectangle,
-    addNS,
     Transform,
-    PathElement,
-    Line,
-    Rectangle,
-    Path,
-    Vector2d,
-    Use,
     Group,
-    FontFace,
     FlowSpan,
-    Image,
-    FlowRegion,
 )
 import os, sys
 
@@ -132,8 +120,19 @@ class Homogenizer(inkex.EffectExtension):
         sel0 = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
         # should work with both v1.0 and v1.1
         sel = [v for el in sel0 for v in el.descendants2()]
-        
-        if self.options.plotaware and any([not isinstance(k, Group) for k in sel0]):
+
+        itag = inkex.Image.ctag
+        if all([el.tag==itag for el in sel]):
+            inkex.utils.errormsg(
+            """Thanks for using Scientific Inkscape!
+            
+It appears that you're attempting to homogenize a raster Image object. Please note that Inkscape is mainly for working with vector images, not raster images. Vector images preserve all of the information used to generate them, whereas raster images do not. Read about the difference here:
+https://en.wikipedia.org/wiki/Vector_graphics
+            
+Unfortunately, this means that there is not much the Homogenizer can do to edit raster images. If you want to edit a raster image, you will need to use a program like Photoshop or GIMP.
+            """)
+            quit()
+        elif self.options.plotaware and any([not isinstance(k, Group) for k in sel0]):
             inkex.utils.errormsg(
                 "Plot-aware scaling requires that every selected object be a grouped plot."
             )
@@ -155,76 +154,7 @@ class Homogenizer(inkex.EffectExtension):
                 bbs = dh.BB2(self,aels,False)
 
         
-        if setfontsize:
-            # Get all font sizes and scale factors
-            # szd = dict()
-            # sfd = dict()
-            # for el in sel:
-            #     actualsize, sf, ct, ang = dh.Get_Composed_Width(
-            #         el, "font-size", nargout=4
-            #     )
-            #     elid = el.get_id()
-            #     szd[elid] = actualsize
-            #     sfd[elid] = sf
-            # # Get font sizes of all root text elements (max size) and convert sub/superscripts to relative size
-            # szs = []
-            # for el in sel:
-            #     if isinstance(el, (TextElement, FlowRoot)):
-            #         maxsz = float("-inf")
-            #         for d in el.descendants2():
-            #             if (d.text is not None and len(d.text) > 0) or (
-            #                 d.tail is not None and len(d.tail) > 0
-            #             ):
-            #                 mysz = szd[d.get_id()]
-            #                 maxsz = max(maxsz, mysz)
-
-            #                 sty = d.ccascaded_style
-            #                 bshift = sty.get("baseline-shift")
-            #                 if bshift in ["sub", "super"]:
-            #                     psz = szd[d.getparent().get_id()]
-            #                     pct = mysz / psz * 100
-            #                     # dh.Set_Style_Comp(d, "font-size", str(pct) + "%")
-            #                     d.cstyle["font-size"] = str(pct) + "%"
-            #         maxsz = maxsz / self.svg.cdocsize.unittouu("1pt")
-            #         szs.append(maxsz)    
-                     
-            # # Determine scale and/or size
-            # fixedscale = False
-            # try:
-            #     if self.options.fontmodes == 3:
-            #         fixedscale = True
-            #     elif self.options.fontmodes == 4:
-            #         fixedscale = True
-            #         fontsize = fontsize / max(szs) * 100
-            #     elif self.options.fontmodes == 5:
-            #         from statistics import mean
-            #         fontsize = mean(szs)
-            #     elif self.options.fontmodes == 6:
-            #         from statistics import median
-    
-            #         fontsize = median(szs)
-            #     elif self.options.fontmodes == 7:
-            #         fontsize = min(szs)
-            #     elif self.options.fontmodes == 8:
-            #         fontsize = max(szs)
-            # except ValueError:
-            #     fontsize = 12;   
-            
-            
-            # # Set the font sizes
-            # for el in sel:
-            #     elid = el.get_id()
-            #     actualsize = szd[elid]
-            #     sf = sfd[elid]
-            #     if not (fixedscale):
-            #         newsize = self.svg.cdocsize.unittouu("1pt") * fontsize
-            #     else:
-            #         newsize = actualsize * (fontsize / 100)
-            #     fs = el.cstyle.get("font-size")
-            #     if fs is None or not ("%" in fs):  # keep sub/superscripts relative size
-            #         el.cstyle["font-size"]= str(newsize / sf) + "px"
-                    
-                    
+        if setfontsize:                  
             # Get all font sizes and scale factors
             onept = self.svg.cdocsize.unittouu("1pt")
             szs = dict()
@@ -291,9 +221,7 @@ class Homogenizer(inkex.EffectExtension):
 
         if setfontfamily:
             for el in reversed(sel):
-                # dh.Set_Style_Comp(el, "font-family", fontfamily)
                 el.cstyle["font-family"] = fontfamily
-                # dh.Set_Style_Comp(el, "-inkscape-font-specification", None)
                 el.cstyle["-inkscape-font-specification"]= None
                 
             from TextParser import Character_Fixer2
@@ -313,7 +241,7 @@ class Homogenizer(inkex.EffectExtension):
                         bb2 = bbs2[el.get_id()]
                         tx = (bb2[0] + bb2[2] / 2) - (bb[0] + bb[2] / 2)
                         ty = (bb2[1] + bb2[3] / 2) - (bb[1] + bb[3] / 2)
-                        trl = Transform("translate(" + str(-tx) + ", " + str(-ty) + ")")
+                        trl = Transform("translate({0}, {1})".format(-tx, -ty))
                         dh.global_transform(el, trl)
             
             else:

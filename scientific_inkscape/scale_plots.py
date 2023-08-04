@@ -197,6 +197,19 @@ class ScalePlots(inkex.EffectExtension):
             if not (isinstance(k, (Tspan, inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.ForeignObject)))
         ]
         # regular selectable objects only
+        
+        itag = inkex.Image.ctag
+        if all([el.tag==itag for el in sel]):
+            inkex.utils.errormsg(
+            """Thanks for using Scientific Inkscape!
+            
+It appears that you're attempting to scale a raster Image object. Please note that Inkscape is mainly for working with vector images, not raster images. Vector images preserve all of the information used to generate them, whereas raster images do not. Read about the difference here:
+https://en.wikipedia.org/wiki/Vector_graphics
+            
+Unfortunately, this means that there is not much Scale Plots can do to edit raster images beyond simple stretching or scaling. If you want to edit a raster image, you will need to use a program like Photoshop or GIMP.
+            """)
+            quit()
+
 
         tickcorrect = self.options.tickcorrect
         tickthr = self.options.tickthreshold / 100
@@ -222,7 +235,6 @@ class ScalePlots(inkex.EffectExtension):
                 
                 return
         else:
-            # inkex.utils.errormsg("Select Scaling, Matching, or Correction mode")
             self.options.marksf = {1:'scale_free',2:'aspect_locked',3:'normal',4:None}[self.options.marksf]
             for el in sel:
                 el.set('inkscape-scientific-scaletype',self.options.marksf)
