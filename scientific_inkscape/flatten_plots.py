@@ -292,6 +292,9 @@ class FlattenPlots(inkex.EffectExtension):
                                     np = 'm {0},{1} v {2}'.format(bb.xc,bb.y1,bb.h)
                                     el.set('d',np)
                                     el.cstyle['stroke']=sf.fill.to_rgb()
+                                    if sf.fill.alpha!=1.0:
+                                        el.cstyle['stroke-opacity']=sf.fill.alpha
+                                        el.cstyle['opacity']=1
                                     el.cstyle['fill']='none'
                                     el.cstyle['stroke-width']=str(bb.w)
                                 elif bb.h < bb.w*0.1:
