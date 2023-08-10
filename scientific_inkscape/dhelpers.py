@@ -1749,6 +1749,7 @@ def Run_SI_Extension(effext,name):
             run_and_cleanup()
         except lxml.etree.XMLSyntaxError:
             try:
+                # Try getting Inkscape to write a new clean copy
                 s = effext;
                 s.parse_arguments(sys.argv[1:])
                 if s.options.input_file is None:
@@ -1767,7 +1768,19 @@ def Run_SI_Extension(effext,name):
                 overwrite_output(s.options.input_file,tmpname);
                 os.remove(s.options.input_file)
                 os.rename(tmpname,s.options.input_file)
-                run_and_cleanup()
+                try:
+                    run_and_cleanup()
+                except lxml.etree.XMLSyntaxError:
+                    # Try removing problematic bytes
+                    with open(s.options.input_file, 'rb') as f:
+                        bytes_content = f.read()
+                    cleaned_content = bytes_content.decode('utf-8', errors='ignore')
+                    nfin = s.options.input_file.strip('.svg')+'_tmp.svg'
+                    with open(nfin, 'w', encoding='utf-8') as f:
+                        f.write(cleaned_content)
+                    os.remove(s.options.input_file)
+                    os.rename(tmpname,s.options.input_file)
+                    run_and_cleanup()
             except:
                 inkex.utils.errormsg(
                     "Error reading file! Extensions can only run on SVG files.\n\nIf this is a file imported from another format, try saving as an SVG and restarting Inkscape. Alternatively, try pasting the contents into a new document."

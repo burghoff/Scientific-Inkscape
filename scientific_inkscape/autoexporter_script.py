@@ -216,9 +216,15 @@ class monitorThread(threading.Thread):
             opts.prints = mprint;
             opts.aeThread = self;
             opts.original_file = self.file;
-            ftd = AutoExporter().export_all(
-                bfn, self.file, self.outtemplate, opts.formats, opts
-            )
+            try:
+                ftd = AutoExporter().export_all(
+                    bfn, self.file, self.outtemplate, opts.formats, opts
+                )
+            except Exception as e:
+                import traceback
+                error_message = f"Exception in {fname}\n"
+                error_message += traceback.format_exc()
+                mprint(error_message)
 
 if guitype=='gtk':   
     import warnings
@@ -323,8 +329,9 @@ if guitype=='gtk':
             
             lns = text.split('\n')
             tor = []
+            exception = text.startswith('Exception')
             for ln in lns:
-                if 'Export formats: ' in ln or 'Rasterization DPI: ' in ln:
+                if 'Export formats: ' in ln or 'Rasterization DPI: ' in ln or exception:
                     continue
                 if ':' in ln and len(ln.split(':'))==2:
                     ln2 = [v.strip(' ') for v in ln.split(':')]

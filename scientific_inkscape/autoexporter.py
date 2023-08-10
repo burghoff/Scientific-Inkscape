@@ -25,7 +25,7 @@ import subprocess
 import inkex
 from inkex import TextElement, Transform, PathElement, Vector2d
 
-import os, sys, time, re
+import os, sys, time, re, lxml
 import numpy as np
 
 sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0])))  # make sure my directory is on the path
@@ -42,7 +42,17 @@ def subprocess_check(inputargs,input_opts):
     if hasattr(input_opts,'aeThread') and input_opts.aeThread.stopped == True:
         delete_quit(input_opts.aeThread.tempdir)
 def get_svg(fin):
-    svg = inkex.load_svg(fin).getroot()
+    try:
+        svg = inkex.load_svg(fin).getroot()
+    except lxml.etree.XMLSyntaxError:
+        # Try removing problematic bytes
+        with open(fin, 'rb') as f:
+            bytes_content = f.read()
+        cleaned_content = bytes_content.decode('utf-8', errors='ignore')
+        nfin = dh.si_tmp(filename='cleaned.svg')
+        with open(nfin, 'w', encoding='utf-8') as f:
+            f.write(cleaned_content)
+        svg = inkex.load_svg(nfin).getroot()
     return svg
 
 def delete_quit(tempdir):
