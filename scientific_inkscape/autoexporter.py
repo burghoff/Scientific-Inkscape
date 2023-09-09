@@ -192,7 +192,7 @@ class AutoExporter(inkex.EffectExtension):
             "--usepsvg", type=inkex.Boolean, default=False, help="Export plain SVG?"
         )
         pars.add_argument("--dpi", default=600, help="Rasterization DPI")
-        pars.add_argument("--dpi_im", default=300, help="Resampling DPI")
+        # pars.add_argument("--dpi_im", default=300, help="Resampling DPI")
         pars.add_argument(
             "--imagemode2", type=inkex.Boolean, default=True, help="Embedded image handling"
         )
@@ -569,8 +569,8 @@ class AutoExporter(inkex.EffectExtension):
         from TextParser import Character_Fixer2
         Character_Fixer2(tels)
                 
-        if not(input_options.reduce_images):
-            input_options.dpi_im = input_options.dpi
+        # if not(input_options.reduce_images):
+        #     input_options.dpi_im = input_options.dpi
                 
         # Strip all sodipodi:role lines from document
         # Conversion to plain SVG does this automatically but poorly
@@ -631,11 +631,20 @@ class AutoExporter(inkex.EffectExtension):
             svg = get_svg(cfile)
             vd = dh.visible_descendants(svg)
             
+            updatefile = False;
             tels = []
             if input_options.texttopath:
                 for el in vd:
                     if isinstance(el, (inkex.TextElement)) and el.get_id() not in excludetxtids:
                         tels.append(el.get_id())
+                        for d in el.descendants2():
+                            # Fuse fill and stroke to account for STP bugs
+                            if 'fill' in d.cspecified_style:
+                                d.cstyle['fill']=d.cspecified_style['fill']
+                                updatefile = True
+                            if 'stroke' in d.cspecified_style:
+                                d.cstyle['stroke']=d.cspecified_style['stroke']
+                                updatefile = True
  
             pels = [];
             if input_options.stroketopath or len(stps)>0:
@@ -646,6 +655,9 @@ class AutoExporter(inkex.EffectExtension):
                     stpels = [el for el in vd if el.get_id() in stps]
                 stpels = [el for el in stpels if el.get_id() not in raster_ids]
                 pels = self.Stroke_to_Path_Fixes(stpels)        
+                updatefile = True
+                
+            if updatefile:
                 dh.overwrite_svg(svg, cfile)
 
             celsj = ",".join(tels+pels)
@@ -676,10 +688,11 @@ class AutoExporter(inkex.EffectExtension):
                     tmpimg2 = temphead+"_imbg_" + elid + "." + imgtype
                     imgs_opqe.append(tmpimg2)
                     
-                    if elid in raster_ids:
-                        mydpi = input_options.dpi
-                    else:
-                        mydpi = input_options.dpi_im
+                    # if elid in raster_ids:
+                    #     mydpi = input_options.dpi
+                    # else:
+                    #     mydpi = input_options.dpi_im
+                    mydpi = input_options.dpi
                     
                     # export item only
                     fmt1 = "export-id:{0}; export-id-only; export-dpi:{1}; "\
