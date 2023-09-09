@@ -13,7 +13,7 @@ It also includes the following utility extensions:
 7. **Combine by Color**: An extension that fuses paths of the same color and style together into a single path. Speeds up operations on plots with thousands of similar elements, like markers. 
 8. **Favorite Markers**: Lets you save certain markers as favorites. 
 
-All were written by [David Burghoff](https://burghoff.org) at the UT Austin. If you find it useful, tell your collegaues! We would also appreciate it if you could give us a star on Github and on [Inkscape's website](https://inkscape.org/gallery/item/30306/). You may also find it helpful to map the extensions to hotkeys (done in the Edit > Preferences > Interface > Keyboard menu).
+All were written by [David Burghoff](https://burghoff.org) at UT Austin. If you find it useful, tell your collegaues! We would also appreciate it if you could give us a star on Github and on [Inkscape's website](https://inkscape.org/gallery/item/30306/). You may also find it helpful to map the extensions to hotkeys (done in the Edit > Preferences > Interface > Keyboard menu).
 
 # Installation
 You must have the latest release version of Inkscape (1.3), and the extensions should be installed using the instructions provided [here](https://inkscape.org/gallery/=extension/). Download all of the files in the scientific_inkscape folder, then copy them into the directory listed at Edit > Preferences > System: User extensions. After a restart of Inkscape, the extensions will be available under Extensions > Scientific.
