@@ -563,6 +563,19 @@ class AutoExporter(inkex.EffectExtension):
             for satt in list(sty.keys()):
                 if satt in dh.urlatts and sty.get(satt).startswith('url') and sty.get_link(satt,svg) is None:
                     el.cstyle[satt]=None
+                    
+            # Prune single-point paths, which Inkscape doesn't show
+            if el.tag in dh.otp_support_tags:
+                pth = dh.get_path2(el)
+                xs=[]; ys=[]; cnt=0;
+                for pt in pth.control_points:
+                    xs.append(pt.x)
+                    ys.append(pt.y)
+                    cnt += 1
+                    if cnt>5: # don't iterate through long paths
+                        break
+                if len(dh.uniquetol(xs, 0)) == 1 and len(dh.uniquetol(ys, 0)) == 1:
+                    dh.deleteup(el)
              
         # Fix Avenir/Whitney
         tels = [el for el in vds if isinstance(el, (inkex.TextElement,inkex.FlowRoot))]
