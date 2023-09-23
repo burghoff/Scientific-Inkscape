@@ -184,7 +184,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             except ValueError:
                 fontsize = 12;
             
-            from TextParser import tchar
+            from text.TextParser import tchar
             for el in szs:
                 for d in reversed(el.descendants2()):
                     sty = d.cspecified_style
@@ -224,7 +224,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                 el.cstyle["font-family"] = fontfamily
                 el.cstyle["-inkscape-font-specification"]= None
                 
-            from TextParser import Character_Fixer2
+            from text.TextParser import Character_Fixer2
             Character_Fixer2(tels)
         
         if setfontfamily or setfontsize or fixtextdistortion:

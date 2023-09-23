@@ -579,7 +579,7 @@ class AutoExporter(inkex.EffectExtension):
              
         # Fix Avenir/Whitney
         tels = [el for el in vds if isinstance(el, (inkex.TextElement,inkex.FlowRoot))]
-        from TextParser import Character_Fixer2
+        from text.TextParser import Character_Fixer2
         Character_Fixer2(tels)
                 
         # if not(input_options.reduce_images):
@@ -590,7 +590,7 @@ class AutoExporter(inkex.EffectExtension):
         excludetxtids = [];
         input_options.duplicatelabels = dict()
         if input_options.usepsvg:  
-            import TextParser # noqa
+            import text.TextParser # noqa
             if len(tels)>0:
                 svg.make_char_table()
                 input_options.ctable = svg.char_table; # store for later
@@ -1344,7 +1344,7 @@ class AutoExporter(inkex.EffectExtension):
                 # split parent
                 myp = d.getparent();
                 if anysubsuper and myp is not None:
-                    from TextParser import split_text
+                    from text.TextParser import split_text
                     ds = split_text(myp)
                     for d in reversed(ds):
                         if len(list(d))==1 and list(d)[0].ccascaded_style.get('baseline-shift')=='0%':
@@ -1366,7 +1366,7 @@ class AutoExporter(inkex.EffectExtension):
         # Sets all font-sizes to 100 px by moving size into transform
         # Office rounds every fonts to the nearest px and then transforms it,
         # so this makes text sizes more accurate
-        from TextParser import ParsedText, tline      
+        from text.TextParser import ParsedText, tline      
         svg = el.croot;
         szs = []
         for d in el.descendants2(): # all Tspan sizes
@@ -1385,7 +1385,7 @@ class AutoExporter(inkex.EffectExtension):
         # Make a dummy group so we can properly compose the transform
         g = dh.group([el],moveTCM=True)
         
-        from TextParser import xyset
+        from text.TextParser import xyset
         for d in reversed(el.descendants2()):
             xv = ParsedText.GetXY(d,'x')
             yv = ParsedText.GetXY(d,'y')

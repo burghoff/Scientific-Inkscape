@@ -40,7 +40,7 @@ SUBSUPER_YTHR = 1 / 3
 # superscripts must be at least 1/3 of the way above the baseline to merge (1/3 below cap for sub)
 
 import inkex
-import TextParser
+from text import TextParser
 
 import os, sys
 

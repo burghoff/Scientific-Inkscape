@@ -33,8 +33,8 @@ import os, warnings, sys, re
 
 # The fontconfig library is used to select a font given its CSS specs
 # This library should work starting with v1.0
-import fontconfig as fc
-from fontconfig import FC
+import text.fontconfig as fc
+from text.fontconfig import FC
 # from collections import OrderedDict
 from inkex import Style
 class FontConfig():
@@ -551,7 +551,8 @@ class PangoRenderer():
                             tlibs = ['fontconfig-2.0.typelib','PangoFc-1.0.typelib','PangoFT2-1.0.typelib','freetype2-2.0.typelib']
                             if any([not(os.path.exists(t)) for t in tlibs]):
                                 # gi looks in the order specified in GI_TYPELIB_PATH
-                                for newpath in [girep,os.path.join(dh.si_dir,'typelibs')]:
+                                current_script_directory = os.path.dirname(os.path.abspath(__file__))
+                                for newpath in [girep,os.path.join(current_script_directory,'typelibs')]:
                                     cval = os.environ.get('GI_TYPELIB_PATH', '');
                                     if cval=='':
                                         os.environ['GI_TYPELIB_PATH'] = newpath

@@ -34,7 +34,7 @@ import Style0
 inkex.Style = Style0.Style0
 
 from inkex import Style
-import speedups, cache  # noqa
+import text.speedups, text.cache  # noqa
 from inkex import Tspan, Transform, Path, PathElement, Group, BaseElement
 from applytransform_mod import fuseTransform
 import lxml, math, re, os, random, sys
@@ -824,7 +824,7 @@ def BB2(slf,els=None,forceupdate=False,roughpath=False,parsed=False):
                     if hasattr(d, "_parsed_text"):
                         delattr(d,'_parsed_text')
             if not hasattr(slf.svg, '_char_table'):
-                import TextParser                    # noqa
+                from text import TextParser                    # noqa
                 slf.svg.make_char_table(els=tels)
                 pts = [TextParser.get_parsed_text(el) for el in tels]
                 TextParser.ParsedTextList(pts).precalcs()
@@ -1698,13 +1698,14 @@ def Run_SI_Extension(effext,name):
             try:
                 from line_profiler import LineProfiler
                 lp = LineProfiler()
-                import TextParser, RemoveKerning
+                from text import TextParser
+                import RemoveKerning
                 from inspect import getmembers, isfunction, isclass, getmodule
                 import pango_renderer
     
                 fns = []
                 for m in [sys.modules[__name__], TextParser, RemoveKerning, Style, pango_renderer,
-                          inkex.transforms, getmodule(effext), speedups]:
+                          inkex.transforms, getmodule(effext), text.speedups]:
                     fns += [v[1] for v in getmembers(m, isfunction)]
                     for c in getmembers(m, isclass):
                         if getmodule(c[1]) is m:
@@ -1720,7 +1721,7 @@ def Run_SI_Extension(effext,name):
                     lp.add_function(fn)
                 lp.add_function(ipx.__wrapped__)
                 lp.add_function(TextParser.Character_Table.true_style.__wrapped__)
-                lp.add_function(speedups.transform_to_matrix.__wrapped__)
+                lp.add_function(text.speedups.transform_to_matrix.__wrapped__)
                    
                 lp(run_and_cleanup)()
                 import io
