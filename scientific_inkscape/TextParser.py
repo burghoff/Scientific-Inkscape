@@ -60,7 +60,7 @@ sys.path.append(
 )  # make sure my directory is on the path
 import dhelpers as dh
 from dhelpers import bbox
-from Style0 import Style0
+from inkex import Style
 
 from pango_renderer import PangoRenderer, FontConfig
 pr = PangoRenderer();
@@ -2870,7 +2870,7 @@ class tchar:
 
         # When the specified style has something new span doesn't, are inheriting and
         # need to explicitly assign the default value
-        styset = Style0(sty)
+        styset = Style(sty)
         newspfd = t.cspecified_style
         for a in newspfd:
             if a not in styset and setdefault:
@@ -3286,8 +3286,8 @@ class Character_Table:
                     pangolocked = True
                     for sty in ct:
                         joinch = ' ';
-                        mystrs = [v[0] for k,v in nbb.items() if type(v[1])==Style0 and v[1]==sty]
-                        myids  = [k    for k,v in nbb.items() if type(v[1])==Style0 and v[1]==sty]
+                        mystrs = [v[0] for k,v in nbb.items() if type(v[1])==Style and v[1]==sty]
+                        myids  = [k    for k,v in nbb.items() if type(v[1])==Style and v[1]==sty]
                         
                         success,fm = pr.Set_Text_Style(str(sty)+';font-size:'+str(TEXTSIZE)+"px")
                         if not(success):
@@ -3407,7 +3407,7 @@ class Character_Table:
     @lru_cache(maxsize=None)
     def reduced_style(sty):
         # Standardize font to kerning-related attributes only
-        sty2 = Style0(Character_Table.dfltatt)
+        sty2 = Style(Character_Table.dfltatt)
         sty2.update({k:v for k,v in sty.items() if k in Character_Table.fontatt})
         sty2['font-family'] = ','.join(["'"+v.strip('"').strip("'")+"'" for v in sty2['font-family'].split(',')])
         return sty2
@@ -3559,7 +3559,7 @@ def Character_Fixer2(els):
                                         gp.insert(pi + 1, t)
                                         # after the parent
                                         t.tail = tafter
-                                    t.cstyle = Style0('font-family:'+fixw+';baseline-shift:0%')
+                                    t.cstyle = Style('font-family:'+fixw+';baseline-shift:0%')
                                 else:
                                     t.text = c+t.text
                                     if tt==TT_TEXT:
@@ -3620,7 +3620,7 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
                             # ts = el.croot.new_element(Tspan,el);
                             ts = Tspan()
                             el.append(ts)
-                            ts.text = w; ts.cstyle=Style0(sty+'font-family:'+newfont)
+                            ts.text = w; ts.cstyle=Style(sty+'font-family:'+newfont)
                             ts.cspecified_style = None; ts.ccomposed_transform = None;
                             lstspan = ts
                     else:

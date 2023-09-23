@@ -47,7 +47,7 @@ sys.path.append(
 import dhelpers as dh
 
 import lxml, os
-import RemoveKerning, Style0
+import RemoveKerning
 
 
 class FlattenPlots(inkex.EffectExtension):

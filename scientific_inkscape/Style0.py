@@ -18,7 +18,6 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import inkex
-# from dhelpers import count_callers
 
 import inspect
 from functools import lru_cache
@@ -225,13 +224,101 @@ class Style0cb(Style0):
         if self.callback is not None:
             self.callback(self)
             
-# Style0 = inkex.Style
-            
-# Replace Style wrapped attr with Style0
-inkex.BaseElement.WRAPPED_ATTRS = (
-    ("transform", inkex.Transform),
-    ("style", Style0),
-    ("classes", "class", inkex.styles.Classes),
-    ("gradientTransform", inkex.Transform),
-    ("patternTransform", inkex.Transform),
-)
+# # We modify Style so that it has two versions: one without the callback
+# # (Style0) and one with (Style0cb). That way, when no callback is needed, 
+# # we do not incur extra overhead by overloading __setitem__, __delitem__, etc.
+# def __new__mod(cls, style=None, callback=None, **kw):
+#     if cls != Style0 and issubclass(cls, Style0):  # Don't treat subclasses' arguments as callback
+#         ret = inkex.OrderedDict.__new__(cls)
+#         ret.callback = None
+#     elif callback is not None:
+#         ret = inkex.OrderedDict.__new__(Style0cb)
+#         ret.__init__(style, callback, **kw)
+#     else:
+#         ret =  inkex.OrderedDict.__new__(cls)
+#         ret.callback = None
+#     return ret
+# inkex.Style.__new__ = __new__mod
+
+
+# def __init__mod(self, style=None, element=None, **kw):
+#     self.element = element
+#     # Either a string style or kwargs (with dashes as underscores).
+#     style = ((k.replace("_", "-"), v) for k, v in kw.items()) if style is None else style
+#     if isinstance(style, str):
+#         style = self.parse_str(style)
+#     # Order raw dictionaries so tests can be made reliable
+#     if isinstance(style, dict) and not isinstance(style, inkex.OrderedDict):
+#         style = [(name, style[name]) for name in sorted(style)]
+#     # Should accept dict, Style, parsed string, list etc.
+#     inkex.OrderedDict.__init__(self,style)
+# inkex.Style.__init__ = __init__mod
+
+# @staticmethod
+# @lru_cache(maxsize=None)
+# def parse_str_mod(style):
+#     """Create a dictionary from the value of an inline style attribute"""
+#     if style is None:
+#         style = ""
+#     ret = []
+#     for directive in style.split(";"):
+#         if ":" in directive:
+#             (name, value) = directive.split(":", 1)
+#             ret.append((name.strip().lower(), value.strip()))
+#             # key = name.strip().lower(); value = value.strip();
+#             # ret.append((key, inkex.properties.BaseStyleValue.factory(attr_name=key, value=value)))
+#     return ret
+# inkex.Style.parse_str = parse_str_mod
+
+# def to_str_mod(self, sep=";"):
+#     """Convert to string using a custom delimiter"""
+#     # return sep.join(["{0}:{1}".format(*seg) for seg in self.items()])
+#     return sep.join([f"{key}:{value}" for key, value in self.items()]) # about 40% faster
+# inkex.Style.to_str = to_str_mod
+
+# def __add__mod(self, other):
+#     """Add two styles together to get a third, composing them"""
+#     ret = self.copy()
+#     if not (isinstance(other, Style0)):
+#         other = Style0(other)
+#     ret.update(other)
+#     return ret
+# inkex.Style.__add__ = __add__mod
+
+# # A shallow copy that does not call __init__
+# def copy_mod(self):
+#     ret = type(self).__new__(type(self))
+#     for k,v in self.items():
+#         inkex.OrderedDict.__setitem__(ret,k,v)
+#     ret.element = self.element
+#     ret.callback = self.callback
+#     return ret
+
+# def get_importance_mod(self, key, default=False):
+#     if key in self:
+#         try:
+#             return inkex.OrderedDict.__getitem__(self,key).important
+#         except AttributeError:
+#             pass
+#     return default
+# inkex.Style.get_importance = get_importance_mod
+
+# def items_mod(self):
+#     """The styles's parsed items
+
+#     .. versionadded:: 1.2"""
+#     for key, value in inkex.OrderedDict.items(self):
+#         try:
+#             yield key, value.value
+#         except AttributeError:
+#             yield key, value
+# inkex.Style.items = items_mod
+
+
+# def copy_mod(self):
+#     ret = Style0({}, element=self.element)
+#     # ret = type(self).__new__(type(self))
+#     for key, value in inkex.OrderedDict.items(self):
+#         ret[key] = value
+#     return ret
+# inkex.Style.copy = copy_mod

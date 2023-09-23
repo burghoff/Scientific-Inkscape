@@ -26,21 +26,25 @@
 
 
 import inkex
-import speedups, cache  # noqa
-from inkex import Tspan, Transform, Use, Path, PathElement, Group, BaseElement
-from applytransform_mod import fuseTransform
-import lxml, math, re, sys, os, random
-from Style0 import Style0
 
+# For SI we override Inkex's Style with a modified version, Style0
+# To do this we import Style0, then replace inkex.Style with it
+# After this, Style always refers to Style0
+import Style0
+inkex.Style = Style0.Style0
+
+from inkex import Style
+import speedups, cache  # noqa
+from inkex import Tspan, Transform, Path, PathElement, Group, BaseElement
+from applytransform_mod import fuseTransform
+import lxml, math, re, os, random, sys
 
 # Returns non-comment children
 def list2(el):
     return [k for k in list(el) if not(k.tag == ctag)]
 
-
 EBget = lxml.etree.ElementBase.get;
 EBset = lxml.etree.ElementBase.set;
-
 
 import inspect
 def count_callers():
@@ -981,7 +985,7 @@ def get_link_fcn(el,typestr,svg=None,llget=False):
         return urlel
     return None
 BaseElement.get_link = get_link_fcn
-Style0.get_link      = get_link_fcn
+Style.get_link      = get_link_fcn
 
 # In the event of a timeout, repeat subprocess call several times
 def subprocess_repeat(argin):
@@ -1115,7 +1119,7 @@ def clean_up_document(svg):
                     xlinks[d.get_id()] = d.attrib[attName][1:]
             elif attName=='style':
                 if 'url' in d.attrib[attName]:
-                    sty = Style0(d.attrib[attName])
+                    sty = Style(d.attrib[attName])
                     for an2 in sty.keys():
                         if an2 in urlatts:
                             if sty[an2].startswith('url'):
@@ -1699,7 +1703,7 @@ def Run_SI_Extension(effext,name):
                 import pango_renderer
     
                 fns = []
-                for m in [sys.modules[__name__], TextParser, RemoveKerning, Style0, pango_renderer,
+                for m in [sys.modules[__name__], TextParser, RemoveKerning, Style, pango_renderer,
                           inkex.transforms, getmodule(effext), speedups]:
                     fns += [v[1] for v in getmembers(m, isfunction)]
                     for c in getmembers(m, isclass):
@@ -1836,7 +1840,7 @@ def to_xpath_func(sty):
         return style_to_xpath(sty)
     else:
         return sty.to_xpath()
-Style0.to_xpath = to_xpath_func
+Style.to_xpath = to_xpath_func
 inkex.Style.to_xpath  = to_xpath_func
 
 

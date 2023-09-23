@@ -37,13 +37,11 @@
 
 
 import inkex
-from Style0 import Style0
+from inkex import Style
 from inkex import BaseElement, SvgDocumentElement
 import lxml, re
 EBget = lxml.etree.ElementBase.get;
 EBset = lxml.etree.ElementBase.set;
-
-
 
 # Adds ctag to the inkex classes, which holds each class's corresponding tag
 # Checking the tag is usually much faster than instance checking, which can
@@ -85,7 +83,7 @@ BaseElement.cspecified_style = property(
 # Cached cascaded style property
 svgpres = {'alignment-baseline', 'baseline-shift', 'clip', 'clip-path', 'clip-rule', 'color', 'color-interpolation', 'color-interpolation-filters', 'color-profile', 'color-rendering', 'cursor', 'direction', 'display', 'dominant-baseline', 'enable-background', 'fill', 'fill-opacity', 'fill-rule', 'filter', 'flood-color', 'flood-opacity', 'font-family', 'font-size', 'font-size-adjust', 'font-stretch', 'font-style', 'font-variant', 'font-weight', 'glyph-orientation-horizontal', 'glyph-orientation-vertical', 'image-rendering', 'kerning', 'letter-spacing', 'lighting-color', 'marker-end', 'marker-mid', 'marker-start', 'mask', 'opacity', 'overflow', 'pointer-events', 'shape-rendering', 'stop-color', 'stop-opacity', 'stroke', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'stroke-opacity', 'stroke-width', 'text-anchor', 'text-decoration', 'text-rendering', 'transform', 'transform-origin', 'unicode-bidi', 'vector-effect', 'visibility', 'word-spacing', 'writing-mode'}
 excludes = {"clip", "clip-path", "mask", "transform", "transform-origin"}
-bstyle = Style0("");
+bstyle = Style("");
 def get_cascaded_style(el):
     # Object's style including any CSS
     # Modified from Inkex's cascaded_style
@@ -100,7 +98,8 @@ def get_cascaded_style(el):
         locsty = el.cstyle
 
         # Add any presentation attributes to local style
-        attsty = Style0.__new__(Style0)
+        # attsty = Style.__new__(Style)
+        attsty = Style()
         for a in el.attrib:
             if (
                 a in svgpres
@@ -128,8 +127,8 @@ BaseElement.ccascaded_style = property(get_cascaded_style, set_ccascaded_style)
 
 # Cached style attribute that invalidates the cached cascaded / specified
 # style whenever the style is changed. Always use this when setting styles.
-class CStyle(Style0):
-    # Modifies Style0 to delete key when value set to None
+class CStyle(Style):
+    # Modifies Style to delete key when value set to None
     def __init__(self,val,el):
         self.el = el
         self.init = True
@@ -327,8 +326,12 @@ def get_iddict(svg):
 inkex.SvgDocumentElement.iddict = property(get_iddict)
 
 # A dict that keeps track of the CSS style for each element
-estyle = Style0()
-estyle2 = inkex.Style()  # still using Inkex's Style here since from stylesheets
+estyle = Style()         # keep separate in case Style was overridden
+# try:
+#     estyle2 = inkex.origStyle()
+# except:
+#     estyle2 = inkex.Style()  # still using Inkex's Style here since from stylesheets
+# estyle2 = inkex.Style()
 class cssdict(inkex.OrderedDict):
     def __init__(self,svg):
         self.svg = svg
@@ -385,16 +388,16 @@ class cssdict(inkex.OrderedDict):
                 try:
                     # els = svg.xpath(style.to_xpath())  # original code
                     xp = style.to_xpath()
-                    style0v = Style0(style)
+                    stylev = Style(style)
                     if xp in knownxpaths:
                         els = knownxpaths[xp]
                     else:
                         els = svg.xpath(xp)
                     for elem in els:
                         elid = elem.get("id", None)
-                        if elid is not None and style != estyle2: 
+                        if elid is not None and style != estyle: 
                             if self.get(elid) is None:
-                                self[elid] = style0v.copy()
+                                self[elid] = stylev.copy()
                             else:
                                 self[elid] += style
                 except (lxml.etree.XPathEvalError, TypeError):

@@ -36,7 +36,7 @@ import os, warnings, sys, re
 import fontconfig as fc
 from fontconfig import FC
 # from collections import OrderedDict
-from Style0 import Style0
+from inkex import Style
 class FontConfig():
     def __init__(self):
         self.truefonts = dict();   # css
@@ -192,7 +192,7 @@ class FontConfig():
         if any([isinstance(v,tuple) for v in [fcfam,fcwgt,fcsln,fcwdt]]):
             return None
         else:
-            return Style0([
+            return Style([
                     ('font-family',"'" + fcfam.strip("'") + "'"),
                     ('font-weight',nearest_val(self.FCWGT_to_CSSWGT,fcwgt)),
                     ('font-style',self.FCSLN_to_CSSSTY[fcsln]),
@@ -256,7 +256,7 @@ class FontConfig():
         firsty = dict()
         for ii,ffc in enumerate(ffcs):
             bb = bbs['text'+str(ii+1)]
-            rs = Character_Table.reduced_style(Style0(ffc[1]))
+            rs = Character_Table.reduced_style(Style(ffc[1]))
             tf = self.get_true_font(rs)
             firsty[tf] = (bb[1]+bb[3])/SIZE
             # dh.idebug((tf,(bb[1]+bb[3])/SIZE))
@@ -712,7 +712,7 @@ class PangoRenderer():
                     s += (('font-weight',cw[0]),)
                 if len(csty)>0:
                     s += (('font-style',csty[0]),)
-                return Style0(s)
+                return Style(s)
             self.pango_to_css = pango_to_css_func;
 
             

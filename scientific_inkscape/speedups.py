@@ -26,12 +26,28 @@
 """ Patches for speeding up native Inkex functions after import """
 import inkex
 from inkex import Transform
-import re, inspect, lxml
-import Style0  # since this modifies inkex.BaseElement.WRAPPED_ATTRS
+import re, lxml
 
+
+""" styles.py """
+# Make sure Style can be hashed
+def __hash__mod(self):
+    return hash(tuple(self.items()))
+inkex.Style.__hash__ = __hash__mod
+       
 """ _base.py """
 # Inkex's get does a lot of namespace adding that can be cached for speed
 # This can be bypassed altogether for known attributes (by using fget instead)
+
+# Wrap gradientTransform and patternTransform
+inkex.BaseElement.WRAPPED_ATTRS = (
+    ("transform", inkex.Transform),
+    ("style", inkex.Style),
+    ("classes", "class", inkex.styles.Classes),
+    ("gradientTransform", inkex.Transform),
+    ("patternTransform", inkex.Transform),
+)
+
 fget = lxml.etree.ElementBase.get;
 fset = lxml.etree.ElementBase.set;
 
