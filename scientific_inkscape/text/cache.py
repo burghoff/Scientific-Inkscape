@@ -25,6 +25,7 @@
 #   Transform: ctransform, ccomposed_transform
 #   Miscellaneous: croot, cdefs, ctag
 # Most are invalidated by setting to None (except ctransform).
+# xpath calls are avoided at all costs
 #
 # Also gives SvgDocumentElements some dictionaries that are used to speed up
 # various lookups:
@@ -328,6 +329,20 @@ def set_croot(el, ri):
     el._croot = ri
 BaseElement.croot = property(get_croot, set_croot)
 
+
+# Cached defs that avoids xpath. Looks for a defs under the svg
+def cdefs_func(svg):
+    if not (hasattr(svg, "_cdefs")):
+        for k in list(svg):
+            if isinstance(k, (inkex.Defs)):
+                svg._cdefs = k
+                return svg._cdefs
+        d = inkex.Defs()
+        svg.insert(0, d)
+        svg._cdefs = d
+    return svg._cdefs
+inkex.SvgDocumentElement.cdefs = property(cdefs_func)
+
 # Version of get_ids that uses iddict
 def get_ids_func(svg):
     """Returns a set of unique document ids"""
@@ -551,7 +566,41 @@ def descendants2(el, return_tails=False):
         return descendants, precedingtails
 BaseElement.descendants2 = descendants2
         
+# Version of ancestors that can stop before/after encountering an element
+def get_ancestors(el, includeme=False, stopbefore=None, stopafter=None):
+    anc = []
+    cel = el if includeme else el.getparent()
+    while cel is not None and cel != stopbefore:
+        anc.append(cel)
+        if cel == stopafter:
+            break
+        cel = cel.getparent()
+    return anc
+BaseElement.ancestors2 = get_ancestors
 
+# Function that references URLs, returning the referenced element
+# Returns None if it does not exist or is invalid
+# Accepts both elements and styles as inputs
+def get_link_fcn(el,typestr,svg=None,llget=False):
+    if llget:
+        tv = EBget(el,typestr); # fine for 'clip-path' & 'mask'
+    else:
+        tv = el.get(typestr);
+    if tv is not None:
+        if svg is None:
+            svg = el.croot   # need to specify svg for Styles but not BaseElements
+            if svg is None:
+                return None
+        if typestr=='xlink:href':
+            urlel = svg.getElementById(tv[1:])
+        elif tv.startswith('url'):
+            urlel = svg.getElementById(tv[5:-1])
+        else:
+            urlel = None
+        return urlel
+    return None
+BaseElement.get_link = get_link_fcn
+Style.get_link       = get_link_fcn
 
 # A modified bounding box class
 class bbox:
@@ -638,30 +687,24 @@ class bbox:
         else:
             return bbox(bb2.sbb)
     
-    # def __deepcopy__(self, memo):
-    #     return bbox([self.x1, self.y1, self.w, self.h])
-    
     def __mul__(self, scl):
         return bbox([self.x1*scl, self.y1*scl, self.w*scl, self.h*scl])
 
 
-    
-    
 # Cached bounding box that requires no command call
 # Uses extents for text
 # dotransform: whether or not we want the element's bbox or its true transformed bbox
 # includestroke: whether or not to add the stroke to the calculation
-# roughpath: use control points for a path's bbox (should be an upper bound)
+# roughpath: use control points for a path's bbox, which is faster and an upper bound for the true bbox
 ttags = tags((inkex.TextElement,inkex.FlowRoot));
-Linetag = inkex.Line.ctag
+line_tag = inkex.Line.ctag
 cpath_support_tags = tags(cpath_support)
-masktag = inkex.addNS('mask','svg')
+mask_tag = inkex.addNS('mask','svg')
 grouplike_tags = tags((inkex.SvgDocumentElement,inkex.Group,inkex.Layer,inkex.ClipPath,inkex.Symbol))
-grouplike_tags.add(masktag)
+grouplike_tags.add(mask_tag)
 def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False,parsed=False):
     if not(hasattr(el,'_cbbox')):
         el._cbbox = dict()
-        
     if (dotransform,includestroke,roughpath,parsed) not in el._cbbox:
         try:
             ret = bbox(None)
@@ -674,7 +717,7 @@ def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False,parsed=
                     if el.cspecified_style.get('stroke') is None or not(includestroke):
                         sw = 0;
                     
-                    if el.tag==Linetag:
+                    if el.tag==line_tag:
                         xs = [ipx(el.get('x1','0')),ipx(el.get('x2','0'))]
                         ys = [ipx(el.get('y1','0')),ipx(el.get('y2','0'))]
                         ret = bbox([min(xs)-sw/2,min(ys)-sw/2,max(xs)-min(xs)+sw,max(ys)-min(ys)+sw])
@@ -734,6 +777,139 @@ inkex.SvgDocumentElement.cbbox = property(bounding_box2,set_cbbox)
 bb2_support = (inkex.TextElement,inkex.FlowRoot,inkex.Image,inkex.Use,
                inkex.SvgDocumentElement,inkex.Group,inkex.Layer) + cpath_support
 bb2_support_tags = tags(bb2_support)
+
+
+# Cached document size function
+def document_size(svg):
+    if not(hasattr(svg, "_cdocsize")):
+        rvb = svg.get_viewbox()
+        wstr = svg.get("width" )
+        hstr = svg.get("height")
+        
+        if rvb == [0, 0, 0, 0]: 
+            vb = [0, 0, ipx(wstr), ipx(hstr)]
+        else:
+            vb = [float(v) for v in rvb]  # just in case
+            
+        # Get document width and height in pixels
+        wn, wu = inkex.units.parse_unit(wstr) if wstr is not None else (vb[2],'px')
+        hn, hu = inkex.units.parse_unit(hstr) if hstr is not None else (vb[3],'px')
+        
+        def parse_preserve_aspect_ratio(pAR):
+            align, meetOrSlice = "xMidYMid" , "meet"  # defaults
+            valigns = ["xMinYMin", "xMidYMin", "xMaxYMin", "xMinYMid", "xMidYMid", "xMaxYMid", "xMinYMax", "xMidYMax", "xMaxYMax", "none"];
+            vmoss   = ["meet", "slice"];
+            if pAR:
+                values = pAR.split(" ")
+                if len(values) == 1:
+                    if values[0] in valigns:
+                        align = values[0]
+                    elif values[0] in vmoss:
+                        meetOrSlice = values[0]
+                elif len(values) == 2:
+                    if values[0] in valigns and values[1] in vmoss:
+                        align = values[0]
+                        meetOrSlice = values[1]
+            return align, meetOrSlice
+        align, meetOrSlice =  parse_preserve_aspect_ratio(svg.get('preserveAspectRatio'))
+        
+        
+        xf = inkex.units.convert_unit(str(wn)+' '+wu, 'px')/vb[2] if wu!='%' else wn/100 # width  of uu in px pre-stretch
+        yf = inkex.units.convert_unit(str(hn)+' '+hu, 'px')/vb[3] if hu!='%' else hn/100 # height of uu in px pre-stretch
+        if align!='none':
+            f = min(xf,yf) if meetOrSlice=='meet' else max(xf,yf)
+            xmf = {"xMin" : 0, "xMid": 0.5, "xMax":1}[align[0:4]]
+            ymf = {"YMin" : 0, "YMid": 0.5, "YMax":1}[align[4:]]
+            vb[0],vb[2] = vb[0]+vb[2]*(1-xf/f)*xmf, vb[2]/f*(xf if wu!='%' else 1)
+            vb[1],vb[3] = vb[1]+vb[3]*(1-yf/f)*ymf, vb[3]/f*(yf if hu!='%' else 1)
+            if wu=='%': wn, wu = vb[2]*f, 'px'
+            if hu=='%': hn, hu = vb[3]*f, 'px'
+        else:
+            if wu=='%': wn, wu, vb[2] = vb[2], 'px', vb[2]/xf
+            if hu=='%': hn, hu, vb[3] = vb[3], 'px', vb[3]/yf
+                
+        wpx = inkex.units.convert_unit(str(wn)+' '+wu, 'px')     # document width  in px
+        hpx = inkex.units.convert_unit(str(hn)+' '+hu, 'px')     # document height in px
+        uuw  = wpx / vb[2]                                       # uu width  in px (px/uu)
+        uuh  = hpx / vb[3]                                       # uu height in px (px/uu)
+        uupx = uuw if abs(uuw-uuh)<0.001 else None               # uu size  in px  (px/uu)
+                                                                 # should match Scale in Document Properties
+                      
+        # Get Pages  
+        nvs = [el for el in list(svg) if isinstance(el,inkex.NamedView)]
+        pgs = [el for nv in nvs for el in list(nv) if el.tag==inkex.addNS('page','inkscape')]
+        for pg in pgs:
+            pg.bbuu = [ipx(pg.get('x')),    ipx(pg.get('y')),
+                       ipx(pg.get('width')),ipx(pg.get('height'))]     
+            pg.bbpx = [pg.bbuu[0]*xf,pg.bbuu[1]*yf,pg.bbuu[2]*xf,pg.bbuu[3]*yf]                      
+                      
+        class DocSize:
+            def __init__(self,rawvb,effvb,uuw,uuh,uupx,wunit,hunit,wpx,hpx,xf,yf,pgs):
+                self.rawvb = rvb;
+                self.effvb = effvb;
+                self.uuw   = uuw
+                self.uuh   = uuh
+                self.uupx  = uupx
+                self.wunit = wunit
+                self.hunit = hunit
+                self.wpx   = wpx;
+                self.hpx   = hpx;
+                self.rawxf = xf; 
+                self.rawyf = yf;
+                self.pgs   = pgs;
+                try:
+                    inkex.Page;
+                    self.inkscapehaspgs = True;
+                except:
+                    self.inkscapehaspgs = False;
+            def uutopx(self,v):  # Converts a bounding box specified in uu to pixels
+                vo = [(v[0]-self.effvb[0])*self.uuw,(v[1]-self.effvb[1])*self.uuh,
+                       v[2]*self.uuw,                v[3]*self.uuh]
+                return vo
+            def pxtouu(self,v):  # Converts a bounding box specified in pixels to uu
+                vo = [v[0]/self.uuw+self.effvb[0],v[1]/self.uuh+self.effvb[1],
+                      v[2]/self.uuw,              v[3]/self.uuh]
+                return vo
+            def unittouu(self,x):
+                # Converts any unit into uu
+                return inkex.units.convert_unit(x,'px')/self.uupx if self.uupx is not None else None
+            def uutopxpgs(self,v): # Version that applies to Pages
+                return [v[0]*self.rawxf,v[1]*self.rawyf,v[2]*self.rawxf,v[3]*self.rawyf]
+            def pxtouupgs(self,v): # Version that applies to Pages
+                return [v[0]/self.rawxf,v[1]/self.rawyf,v[2]/self.rawxf,v[3]/self.rawyf]
+        svg._cdocsize = DocSize(rvb,vb,uuw,uuh,uupx,wu,hu,wpx,hpx,xf,yf,pgs)
+    return svg._cdocsize
+def set_cdocsize(svg, si):
+    if si is None and hasattr(svg, "_cdocsize"):  # invalidate
+        delattr(svg, "_cdocsize")
+inkex.SvgDocumentElement.cdocsize = property(document_size,set_cdocsize)
+
+def set_viewbox_fcn(svg,newvb):
+    # svg.set_viewbox(vb)
+    uuw,uuh,wunit,hunit = svg.cdocsize.uuw,svg.cdocsize.uuh,svg.cdocsize.wunit,svg.cdocsize.hunit
+    svg.set('width', str(inkex.units.convert_unit(str(newvb[2]*uuw)+'px', wunit))+wunit)
+    svg.set('height',str(inkex.units.convert_unit(str(newvb[3]*uuh)+'px', hunit))+hunit)
+    svg.set('viewBox',' '.join([str(v) for v in newvb]))
+    svg.cdocsize = None
+inkex.SvgDocumentElement.set_viewbox = set_viewbox_fcn
+
+def standardize_viewbox(svg):
+    # Converts viewbox to pixels, removing any non-uniform scaling appropriately
+    pgbbs = [pg.bbpx for pg in svg.cdocsize.pgs]
+    svg.set('viewBox',' '.join([str(v) for v in svg.cdocsize.effvb]))
+    svg.set('width', str(svg.cdocsize.wpx))
+    svg.set('height',str(svg.cdocsize.hpx))
+    
+    # Update Pages appropriately
+    svg.cdocsize = None
+    for ii,pg in enumerate(svg.cdocsize.pgs):
+        newbbuu = svg.cdocsize.pxtouupgs(pgbbs[ii])
+        pg.set('x',     str(newbbuu[0]))
+        pg.set('y',     str(newbbuu[1]))
+        pg.set('width', str(newbbuu[2]))
+        pg.set('height',str(newbbuu[3]))
+inkex.SvgDocumentElement.standardize_viewbox = standardize_viewbox
+
 
 ## Bookkeeping functions
 # When BaseElements are deleted, created, or moved, the caches need to be
