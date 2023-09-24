@@ -33,8 +33,8 @@ import os, warnings, sys, re
 
 # The fontconfig library is used to select a font given its CSS specs
 # This library should work starting with v1.0
-import text.fontconfig as fc
-from text.fontconfig import FC
+import inkex.text.fontconfig as fc
+from inkex.text.fontconfig import FC
 # from collections import OrderedDict
 from inkex import Style
 class FontConfig():

@@ -62,7 +62,7 @@ import dhelpers as dh
 from dhelpers import bbox
 from inkex import Style
 
-from text.pango_renderer import PangoRenderer, FontConfig
+from inkex.text.pango_renderer import PangoRenderer, FontConfig
 pr = PangoRenderer();
 fcfg = FontConfig()
 

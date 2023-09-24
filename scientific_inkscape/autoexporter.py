@@ -24,6 +24,7 @@ dispprofile = False
 import subprocess
 import inkex
 from inkex import TextElement, Transform, PathElement, Vector2d
+from inkex.text import TextParser
 
 import os, sys, time, re, lxml
 import numpy as np
@@ -579,8 +580,7 @@ class AutoExporter(inkex.EffectExtension):
              
         # Fix Avenir/Whitney
         tels = [el for el in vds if isinstance(el, (inkex.TextElement,inkex.FlowRoot))]
-        from text.TextParser import Character_Fixer2
-        Character_Fixer2(tels)
+        TextParser.Character_Fixer2(tels)
                 
         # if not(input_options.reduce_images):
         #     input_options.dpi_im = input_options.dpi
@@ -590,7 +590,6 @@ class AutoExporter(inkex.EffectExtension):
         excludetxtids = [];
         input_options.duplicatelabels = dict()
         if input_options.usepsvg:  
-            import text.TextParser # noqa
             if len(tels)>0:
                 svg.make_char_table()
                 input_options.ctable = svg.char_table; # store for later
@@ -1344,8 +1343,7 @@ class AutoExporter(inkex.EffectExtension):
                 # split parent
                 myp = d.getparent();
                 if anysubsuper and myp is not None:
-                    from text.TextParser import split_text
-                    ds = split_text(myp)
+                    ds = TextParser.split_text(myp)
                     for d in reversed(ds):
                         if len(list(d))==1 and list(d)[0].ccascaded_style.get('baseline-shift')=='0%':
                             s = list(d)[0]
@@ -1366,7 +1364,6 @@ class AutoExporter(inkex.EffectExtension):
         # Sets all font-sizes to 100 px by moving size into transform
         # Office rounds every fonts to the nearest px and then transforms it,
         # so this makes text sizes more accurate
-        from text.TextParser import ParsedText, tline      
         svg = el.croot;
         szs = []
         for d in el.descendants2(): # all Tspan sizes
@@ -1385,17 +1382,16 @@ class AutoExporter(inkex.EffectExtension):
         # Make a dummy group so we can properly compose the transform
         g = dh.group([el],moveTCM=True)
         
-        from text.TextParser import xyset
         for d in reversed(el.descendants2()):
-            xv = ParsedText.GetXY(d,'x')
-            yv = ParsedText.GetXY(d,'y')
-            dxv = ParsedText.GetXY(d,'dx')
-            dyv = ParsedText.GetXY(d,'dy')
+            xv = TextParser.ParsedText.GetXY(d,'x')
+            yv = TextParser.ParsedText.GetXY(d,'y')
+            dxv = TextParser.ParsedText.GetXY(d,'dx')
+            dyv = TextParser.ParsedText.GetXY(d,'dy')
             
-            if xv[0] is not None:  xyset(d,'x',[v*s for v in xv])
-            if yv[0] is not None:  xyset(d,'y',[v*s for v in yv])
-            if dxv[0] is not None: xyset(d,'dx',[v*s for v in dxv])
-            if dyv[0] is not None: xyset(d,'dy',[v*s for v in dyv])
+            if xv[0] is not None:  TextParser.xyset(d,'x',[v*s for v in xv])
+            if yv[0] is not None:  TextParser.xyset(d,'y',[v*s for v in yv])
+            if dxv[0] is not None: TextParser.xyset(d,'dx',[v*s for v in dxv])
+            if dyv[0] is not None: TextParser.xyset(d,'dy',[v*s for v in dyv])
                 
             fs,sf,tmp,tmp = dh.Get_Composed_Width(d,'font-size',nargout=4)
             # dh.Set_Style_Comp(d, 'font-size', "{:.3f}".format(fs/sf*s))    
