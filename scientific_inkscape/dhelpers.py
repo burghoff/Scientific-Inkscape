@@ -33,7 +33,7 @@ import inkex
 import Style0
 inkex.Style = Style0.Style0
 
-# Next we make sure we have the text submodule. If not, we add it
+# Next we make sure we have the text submodule. If not, we add it from SI
 import sys
 if not hasattr(inkex,'text'):
     import importlib

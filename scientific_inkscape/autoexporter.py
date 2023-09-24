@@ -24,7 +24,6 @@ dispprofile = False
 import subprocess
 import inkex
 from inkex import TextElement, Transform, PathElement, Vector2d
-from inkex.text import TextParser
 
 import os, sys, time, re, lxml
 import numpy as np
@@ -580,6 +579,7 @@ class AutoExporter(inkex.EffectExtension):
              
         # Fix Avenir/Whitney
         tels = [el for el in vds if isinstance(el, (inkex.TextElement,inkex.FlowRoot))]
+        from inkex.text import TextParser
         TextParser.Character_Fixer2(tels)
                 
         # if not(input_options.reduce_images):
@@ -1343,6 +1343,7 @@ class AutoExporter(inkex.EffectExtension):
                 # split parent
                 myp = d.getparent();
                 if anysubsuper and myp is not None:
+                    from inkex.text import TextParser
                     ds = TextParser.split_text(myp)
                     for d in reversed(ds):
                         if len(list(d))==1 and list(d)[0].ccascaded_style.get('baseline-shift')=='0%':
@@ -1364,6 +1365,7 @@ class AutoExporter(inkex.EffectExtension):
         # Sets all font-sizes to 100 px by moving size into transform
         # Office rounds every fonts to the nearest px and then transforms it,
         # so this makes text sizes more accurate
+        from inkex.text import TextParser
         svg = el.croot;
         szs = []
         for d in el.descendants2(): # all Tspan sizes
