@@ -1,4 +1,5 @@
 # Inkscape Auto-Exporter, by David Burghoff
+# Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
 # Service that checks a folder for changes in svg files, and then exports them
 # automatically to another folder in multiple formats.
 

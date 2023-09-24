@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 #
-# Copyright (C) 2021 David Burghoff, dburghoff@nd.edu
+# Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -51,29 +51,25 @@
 KERN_TABLE = True # generate a fine kerning table for each font?
 TEXTSIZE = 100;   # size of rendered text
 
-import os, sys, itertools
-from functools import lru_cache
-import numpy as np
-
-sys.path.append(
-    os.path.dirname(os.path.realpath(sys.argv[0]))
-)  # make sure my directory is on the path
-import dhelpers as dh
-from dhelpers import bbox
-from inkex import Style
-
+import inkex
+from inkex import (TextElement, Tspan, Transform, Style,
+                   FlowRoot, FlowRegion, FlowPara, FlowSpan)
+from inkex.text.utils import (unique, uniquetol, 
+                              Get_Composed_Width, Get_Composed_LineHeight,
+                              default_style_atts,
+                              otp_support_tags, object_to_path, isrectangle,
+                              Get_Bounding_Boxes)
+from inkex.text.cache import (bbox, ipx, bounding_box2)
 from inkex.text.pango_renderer import PangoRenderer, FontConfig
 pr = PangoRenderer();
 fcfg = FontConfig()
 
-from copy import copy
-import inkex
-from inkex import TextElement, Tspan, Transform
-from inkex import FlowRoot, FlowRegion, FlowPara, FlowSpan
-
-import lxml
+import lxml, os, sys, itertools
 EBget = lxml.etree.ElementBase.get
 EBset = lxml.etree.ElementBase.set
+from functools import lru_cache
+import numpy as np
+from copy import copy
 
 # Add parsed_text property to TextElements
 def get_parsed_text(el):
@@ -261,7 +257,7 @@ class ParsedText:
         self.textel = el
         
         sty = el.cspecified_style
-        self.isflow = el.tag==frtag or sty.get_link('shape-inside',el.croot) is not None or dh.ipx(sty.get('inline-size','0'))!=0
+        self.isflow = el.tag==frtag or sty.get_link('shape-inside',el.croot) is not None or ipx(sty.get('inline-size','0'))!=0
         if self.isflow:
             self.lns = self.Parse_Lines_Flow()
         else:
@@ -353,7 +349,6 @@ class ParsedText:
                 for di in range(ii + 1, dstop):
                     if xs[di][0] is not None or ys[di][0] is not None:
                         if text[di] is not None and text[di] != "":
-                            # dh.debug(text[di])
                             esprl[ii] = False
 
             # Only top-level tspans are sprl
@@ -450,10 +445,10 @@ class ParsedText:
                     # tails get their sty from the parent of the element the tail belongs to
                 sty = sel.cspecified_style
                 ct = sel.ccomposed_transform
-                fs, sf, ct, ang = dh.Get_Composed_Width(sel, "font-size", 4)
+                fs, sf, ct, ang = Get_Composed_Width(sel, "font-size", 4)
 
                 if newsprl:
-                    lh = dh.Get_Composed_LineHeight(sel)
+                    lh = Get_Composed_LineHeight(sel)
                 tsty = Character_Table.true_style(sty)
 
                 # Make a new line if we're sprl or if we have a new x or y
@@ -590,7 +585,7 @@ class ParsedText:
             # For manual kerning removal, assign next and previous words. These can be in different lines
             ys = [ln.y[0] for ln in self.lns if ln.y is not None and len(ln.y) > 0]
             tol = 0.001
-            for uy in dh.uniquetol(ys, tol):
+            for uy in uniquetol(ys, tol):
                 samey = [
                     self.lns[ii]
                     for ii in range(len(self.lns))
@@ -668,7 +663,7 @@ class ParsedText:
         if val is None:
             val = [None]  # None forces inheritance
         else:
-            val = [None if x.lower() == "none" else dh.ipx(x) for x in val.split()]
+            val = [None if x.lower() == "none" else ipx(x) for x in val.split()]
         return val
     
     # Traverse the tree to find where deltas need to be located relative to the top-level text
@@ -770,7 +765,6 @@ class ParsedText:
     def Make_Editable(self):
         el = self.textel
         el.set("xml:space", "preserve")
-        # dh.debug(self.lns[0].tlvlno)
         # if len(self.lns)==1 and self.lns[0].tlvlno==0: # only child, no nesting, not a sub/superscript
         if (
             len(self.lns) == 1
@@ -809,8 +803,6 @@ class ParsedText:
                     # may have deleted spr lines
 
     def Split_Off_Words(self, ws):
-        # newtxt = dh.duplicate(ws[0].ln.pt.textel);
-        # nll = ParsedText(newtxt,self.ctable);
         nll = self.duplicate()
         newtxt = nll.textel
 
@@ -870,7 +862,7 @@ class ParsedText:
         dxl = [c.dx for c in cs]
         dyl = [c.dy for c in cs]
 
-        # dh.idebug(dxl)
+        # inkex.utils.debug(dxl)
 
         fusex = self.lns[il].continuex or ciis[0] > 0 or dxl[0] != 0
         fusey = self.lns[il].continuey or ciis[0] > 0 or dyl[0] != 0
@@ -902,7 +894,7 @@ class ParsedText:
             self.lns[0].change_pos(newx=self.lns[0].x, newy=self.lns[0].y)
             # self.lns[0].disablesodipodi(force=True)
 
-        # dh.idebug([''.join([c.c for c in cs]),dyl,fusey])
+        # inkex.utils.debug([''.join([c.c for c in cs]),dyl,fusey])
         if fusex:
             nln.continuex = False
             nln.change_pos(newx=[oldx])
@@ -997,7 +989,7 @@ class ParsedText:
                 for c in r[1]:
                     c.add_style({'font-family':r[0],
                                  'baseline-shift':'0%'},setdefault=False)
-                    # dh.idebug((c.c,c.tsty))
+                    # inkex.utils.debug((c.c,c.tsty))
                     
     # Convert flowed text into normal text
     def Flow_to_Text(self):
@@ -1083,12 +1075,12 @@ class ParsedText:
                             p1 = c.pts_ut_ink[0]
                             p2 = c.pts_ut_ink[2]
                             if not math.isnan(p1[1]):
-                                exts.append(dh.bbox((p1,p2)))
+                                exts.append(bbox((p1,p2)))
         return exts
     
     def get_full_inkbbox(self):
         # Get the untranformed bounding box of the whole element
-        ext = dh.bbox(None);
+        ext = bbox(None);
         if self.lns is not None and len(self.lns) > 0:
             if self.lns[0].xsrc is not None:
                 for ln in self.lns:
@@ -1096,7 +1088,7 @@ class ParsedText:
                         for c in w.cs:
                             p1 = c.pts_ut_ink[0]
                             p2 = c.pts_ut_ink[2]
-                            ext = ext.union(dh.bbox((p1,p2)))
+                            ext = ext.union(bbox((p1,p2)))
         return ext
     
     # Extent functions
@@ -1112,7 +1104,7 @@ class ParsedText:
                             p1 = c.pts_ut[0]
                             p2 = c.pts_ut[2]
                             if not math.isnan(p1[1]):
-                                exts.append(dh.bbox((p1,p2)))
+                                exts.append(bbox((p1,p2)))
         return exts
     def get_word_extents(self):
         # Get the untranformed extent of each word
@@ -1125,7 +1117,7 @@ class ParsedText:
                         p1 = w.pts_ut[0]
                         p2 = w.pts_ut[2]
                         if not math.isnan(p1[1]):
-                            exts.append(dh.bbox((p1,p2)))
+                            exts.append(bbox((p1,p2)))
         return exts
     def get_line_extents(self):
         # Get the untranformed extent of each line
@@ -1134,12 +1126,12 @@ class ParsedText:
         if self.lns is not None and len(self.lns) > 0:
             if self.lns[0].xsrc is not None:
                 for ln in self.lns:
-                    extln = dh.bbox(None)
+                    extln = bbox(None)
                     for w in ln.ws:
                         p1 = w.pts_ut[0]
                         p2 = w.pts_ut[2]
                         if not math.isnan(p1[1]):
-                            extln = extln.union(dh.bbox((p1,p2)))
+                            extln = extln.union(bbox((p1,p2)))
                     if not(extln.isnull):
                         exts.append(extln)
         return exts
@@ -1147,7 +1139,7 @@ class ParsedText:
         # Get the untranformed extent of the whole element
         # parsed=True gets original prior to any mods
         import math
-        ext = dh.bbox(None);
+        ext = bbox(None);
         if self.lns is not None and len(self.lns) > 0:
             if self.lns[0].xsrc is not None:
                 for ln in self.lns:
@@ -1157,7 +1149,7 @@ class ParsedText:
                             p1 = pts[0]
                             p2 = pts[2]
                             if not math.isnan(p1[1]):
-                                ext = ext.union(dh.bbox((p1,p2)))
+                                ext = ext.union(bbox((p1,p2)))
         return ext
                     
     @property
@@ -1191,7 +1183,7 @@ class ParsedText:
         elif isflowroot:
             for d in self.textel.descendants2():
                 if isinstance(d, FlowRegion):
-                    pths = [p for p in d.descendants2() if isinstance(p,dh.otp_support)]
+                    pths = [p for p in d.descendants2() if p.tag in otp_support_tags]
                     if len(pths)>0:
                         region = pths[0]
         elif isinlinesz:
@@ -1203,23 +1195,23 @@ class ParsedText:
             iszy = self.textel.get('y',ysrc.get('y'))
             r.set('x','0')
             r.set('y','0')
-            r.set('height',dh.ipx(sty.get('inline-size')))
-            r.set('width', dh.ipx(sty.get('inline-size')))
+            r.set('height',ipx(sty.get('inline-size')))
+            r.set('width', ipx(sty.get('inline-size')))
             self.textel.croot.append(r)
             region = r
                         
         
-        padding = dh.ipx(self.textel.cspecified_style.get('shape-padding','0'))
-        isrect, rpth = dh.isrectangle(region,includingtransform=False)
+        padding = ipx(self.textel.cspecified_style.get('shape-padding','0'))
+        isrect, rpth = isrectangle(region,includingtransform=False)
         
-        usesvt = not isrect and isinstance(region, dh.otp_support) and padding==0
+        usesvt = not isrect and region.tag in otp_support_tags and padding==0
         if not isrect and not usesvt:
             # Flow region we cannot yet handle, parse as normal text
             # This works as long as the SVG1.1 fallback is being used
             self.isflow = False
             return self.Parse_Lines()
         if usesvt:
-            dh.object_to_path(region)
+            object_to_path(region)
             current_script_directory = os.path.dirname(os.path.abspath(__file__))
             sys.path += [os.path.join(current_script_directory,'packages')]
             import svgpathtools as spt
@@ -1230,7 +1222,7 @@ class ParsedText:
                 sptregion.append(spt.Line(end, start))
                 sptregion.closed = True
                        
-        bb = dh.bounding_box2(region,dotransform=False,includestroke=False).sbb
+        bb = bounding_box2(region,dotransform=False,includestroke=False).sbb
         if not padding==0:
             bb = [bb[0]+padding,bb[1]+padding,bb[2]-2*padding,bb[3]-2*padding]
         
@@ -1243,10 +1235,10 @@ class ParsedText:
             self.textel.croot._prefixcounter = pctr
             
         def Height_AboveBelow_Baseline(el):
-            lh = dh.Get_Composed_LineHeight(el)
+            lh = Get_Composed_LineHeight(el)
             lsty = Character_Table.true_style(el.cspecified_style)
-            fs, sf, ct, ang = dh.Get_Composed_Width(el, "font-size", 4)
-            # dh.idebug(self.ctable.flowy(lsty))
+            fs, sf, ct, ang = Get_Composed_Width(el, "font-size", 4)
+            # inkex.utils.debug(self.ctable.flowy(lsty))
             
             absp = (0.5000*(lh/fs-1)  +self.ctable.flowy(lsty))*(fs/sf) # spacing above baseline
             bbsp = (0.5000*(lh/fs-1)+1-self.ctable.flowy(lsty))*(fs/sf) # spacing below baseline
@@ -1282,7 +1274,7 @@ class ParsedText:
                 sty = sel.cspecified_style
                 tsty = Character_Table.true_style(sty)
                 ct = sel.ccomposed_transform
-                fs, sf, ct, ang = dh.Get_Composed_Width(sel, "font-size", 4)
+                fs, sf, ct, ang = Get_Composed_Width(sel, "font-size", 4)
                 absp, bbsp, mrfs = Height_AboveBelow_Baseline(sel)
                 lsty = Character_Table.true_style(sel.cspecified_style)
                 fabsp = max(rabsp,absp)
@@ -1303,7 +1295,7 @@ class ParsedText:
                     anch = sty.get("text-anchor","start")
                     if not algn=='start' and anch=='start':
                         anch = {'start':'start','center':'middle','end':'end'}[algn]
-                    # dh.idebug(anch)
+                    # inkex.utils.debug(anch)
                     cln = tline(self,[0],[0],self.textel,self.textel,False,[],
                                 anch,ct,ang,None,sty,False,False)
                     lns.append(cln)
@@ -1476,7 +1468,7 @@ class ParsedText:
                         breakaft = None; hardbreak = False
                         strt = 0 if len(breaks)==0 else breaks[-1]+1
                         csleft = lncs[ii][strt:]
-                        # dh.idebug(''.join([c.c for c in csleft]))
+                        # inkex.utils.debug(''.join([c.c for c in csleft]))
                         for jj,c in enumerate(csleft):
                             if jj==0:
                                 fcrun = c
@@ -1486,22 +1478,22 @@ class ParsedText:
                                 break
                             elif c.pts_ut[3][0] - fcrun.pts_ut[0][0] > xlim[1]:
                                 spcs = [cv for cv in csleft[:jj] if cv.c in breakcs]
-                                # dh.idebug('Break on '+str((c.c,jj)))
+                                # inkex.utils.debug('Break on '+str((c.c,jj)))
                                 if c.c==' ':
                                     breakaft = jj
-                                    # dh.idebug('Break overflow space')
+                                    # inkex.utils.debug('Break overflow space')
                                 elif len(spcs)>0:
                                     breakaft = [kk for kk,cv in enumerate(csleft) if spcs[-1]==cv][0]
-                                    # dh.idebug('Break word')
+                                    # inkex.utils.debug('Break word')
                                 elif xlim[1] > 4*(c.ln.effabsp+c.ln.effbbsp) and jj>0:
                                     # When the flowregion width is > 4*line height, allow intraword break
                                     # https://gitlab.com/inkscape/inkscape/-/blob/master/src/libnrtype/Layout-TNG-Compute.cpp#L1989
                                     breakaft = jj-1
-                                    # dh.idebug('Break intraword')
+                                    # inkex.utils.debug('Break intraword')
                                 else:
                                     # Break whole line and hope that the next line is wider
                                     breakaft = -1
-                                    # dh.idebug('Break whole line')
+                                    # inkex.utils.debug('Break whole line')
                                 break
                         if breakaft is not None:
                             c.ln.broken = True
@@ -1556,9 +1548,9 @@ class ParsedText:
                         af = cln.anchfrac
                         x = xlims[jj][0]*(1-af) + (xlims[jj][0]+xlims[jj][1])*af
                         if ii==0 and isinlinesz and iszy is not None:
-                            y += dh.ipx(iszy) - cln.effabsp
+                            y += ipx(iszy) - cln.effabsp
                         if isinlinesz and iszx is not None:
-                            x += dh.ipx(iszx)
+                            x += ipx(iszx)
                         cln.x = [x]
                         cln.y = [bb[1]+y]
                 y+=maxbbsp
@@ -1576,7 +1568,7 @@ class ParsedText:
             
             ii+=1  
             if ii>1000:
-                # dh.idebug('Infinite loop')
+                # inkex.utils.debug('Infinite loop')
                 break
             
         # # Determine if any FlowParas follow the last character
@@ -1836,12 +1828,10 @@ class tline:
                     # newxv[self.cs.index(w.cs[0])] = newx
                     newxv[w.cs[0].lnindex] = newx
 
-                    # dh.idebug([w.txt(),newx,newxv])
+                    # inkex.utils.debug([w.txt(),newx,newxv])
                     self.change_pos(newxv)
-                    # dh.Set_Style_Comp(w.cs[0].loc.el, "text-anchor", newanch)
                     w.cs[0].loc.el.cstyle["text-anchor"]=newanch
                     alignd = {"start": "start", "middle": "center", "end": "end"}
-                    # dh.Set_Style_Comp(w.cs[0].loc.el, "text-align", alignd[newanch])
                     w.cs[0].loc.el.cstyle["text-align"]=alignd[newanch]
 
                 self.anchor = newanch
@@ -1887,7 +1877,7 @@ class tline:
             oldx = self._x if not self.continuex else self.x
             self._x = newx
             xyset(self.xsrc,"x", newx)
-            # dh.idebug([self.txt(),self.xsrc.get('x')])
+            # inkex.utils.debug([self.txt(),self.xsrc.get('x')])
 
             if len(oldx) > 1 and len(newx) == 1 and len(self.sprlabove)>0:  # would re-enable sprl
                 self.disablesodipodi()
@@ -2147,8 +2137,8 @@ class tword:
             if maxspaces is not None:
                 numsp = min(numsp, maxspaces)
 
-            # dh.idebug([self.txt(),nw.txt(),(bl2.x-br1.x)/(lc.sw/self.sf)])
-            # dh.idebug([self.txt(),nw.txt(),lc.sw,lc.cw])
+            # inkex.utils.debug([self.txt(),nw.txt(),(bl2.x-br1.x)/(lc.sw/self.sf)])
+            # inkex.utils.debug([self.txt(),nw.txt(),lc.sw,lc.cw])
             for ii in range(numsp):
                 self.appendc(" ", lc.ln.pt.ctable.get_prop(' ',lc.tsty), -lc.lsp, 0)
                 # self.appendc(" ", lc.ln.pt.ctable.get_prop(' ',lc.tsty)*lc.tfs, -lc.lsp, 0)
@@ -2158,7 +2148,7 @@ class tword:
             for c in nw.cs:
                 mydx = (c != fc) * c.dx - prevc.lsp * (c == fc)
                 # use dx to remove lsp from the previous c
-                # dh.idebug(ParsedText(self.ln.pt.textel,self.ln.pt.ctable).txt())
+                # inkex.utils.debug(ParsedText(self.ln.pt.textel,self.ln.pt.ctable).txt())
                 c.delc()
 
                 ntype = copy(type)
@@ -2266,10 +2256,8 @@ class tword:
                 ominx * (1 - xf) + omaxx * xf
             )
             # how much the final anchor moved
-            # dh.debug(deltaanch)
             if deltaanch != 0:
                 newx = self.ln.x
-                # newx[self.ln.cs.index(self.cs[0])] -= deltaanch
                 newx[self.cs[0].lnindex] -= deltaanch
                 self.ln.change_pos(newx)
             self.ln.pt.Update_Delta()
@@ -2299,10 +2287,10 @@ class tword:
     #         self._dxeff = [c.dx + d for c, d in zip(self.cs, dxlsp)] + [dxlsp[-1]]
             
     #         if not self._dxeff == self.dxeff2:
-    #             dh.idebug('1: '+str(self._dxeff))
-    #             dh.idebug('2: '+str(self.dxeff2))
-    #             dh.idebug('1: '+str(len(self._dxeff)))
-    #             dh.idebug('2: '+str(len(self.dxeff2)))
+    #             inkex.utils.debug('1: '+str(self._dxeff))
+    #             inkex.utils.debug('2: '+str(self.dxeff2))
+    #             inkex.utils.debug('1: '+str(len(self._dxeff)))
+    #             inkex.utils.debug('2: '+str(len(self.dxeff2)))
     #     return self._dxeff
 
     # @dxeff.setter
@@ -2355,7 +2343,7 @@ class tword:
             if KERN_TABLE:
                 for ii in range(1, self.Ncs):
                     wadj[ii] = self.cs[ii].dkerns(self.cs[ii - 1].c, self.cs[ii].c)
-                    # dh.idebug((self.cs[ii - 1].c, self.cs[ii].c,wadj[ii]))
+                    # inkex.utils.debug((self.cs[ii - 1].c, self.cs[ii].c,wadj[ii]))
                     # default to 0 for chars of different style
                     
             ws = [self.cw[ii] + self.dxeff[ii] + wadj[ii] for ii in range(self.Ncs)]
@@ -2367,7 +2355,7 @@ class tword:
             cstop = np.array(cstop,dtype=float)
 
             ww = cstop[-1]
-            # dh.idebug((self.txt,self.unrenderedspace))
+            # inkex.utils.debug((self.txt,self.unrenderedspace))
             offx = -self.ln.anchfrac * (ww - self.unrenderedspace * self.cs[-1].cw)
             # offset of the left side of the word from the anchor
             wx = self.x
@@ -2517,9 +2505,9 @@ def style_derived(styv,pel,textel):
             fs2 = styv.get("font-size")
             if fs2 is None:
                 fs2 = "12px"
-            lspv = float(lspv.strip("em")) * dh.ipx(fs2)
+            lspv = float(lspv.strip("em")) * ipx(fs2)
         else:
-            lspv = dh.ipx(lspv) or 0
+            lspv = ipx(lspv) or 0
     else:
         lspv = 0
         
@@ -2663,9 +2651,9 @@ class tchar:
                 fs2 = styv.get("font-size")
                 if fs2 is None:
                     fs2 = "12px"
-                lspv = float(lspv.strip("em")) * dh.ipx(fs2)
+                lspv = float(lspv.strip("em")) * ipx(fs2)
             else:
-                lspv = dh.ipx(lspv) or 0
+                lspv = ipx(lspv) or 0
         else:
             lspv = 0
         return lspv
@@ -2735,10 +2723,10 @@ class tchar:
         elif bshft == "sub":
             bshft = "-20%"
         if "%" in bshft:  # relative to parent
-            fs2, sf2, tmp, tmp = dh.Get_Composed_Width(fsel, "font-size", 4)
+            fs2, sf2, tmp, tmp = Get_Composed_Width(fsel, "font-size", 4)
             bshft = fs2 / sf2 * float(bshft.strip("%")) / 100
         else:
-            bshft = dh.ipx(bshft) or 0
+            bshft = ipx(bshft) or 0
         return bshft
 
     def delc(self):
@@ -2874,7 +2862,7 @@ class tchar:
         newspfd = t.cspecified_style
         for a in newspfd:
             if a not in styset and setdefault:
-                styset[a] = dh.default_style_atts.get(a)
+                styset[a] = default_style_atts.get(a)
 
         t.cstyle = styset
         self.sty = styset
@@ -3058,15 +3046,15 @@ class Character_Table:
             return self.ctable[sty][char]
         except:
             if sty not in self.ctable:
-                dh.idebug("No style matches!")
-                dh.idebug("Character: " + char)
-                dh.idebug("Style: " + str(sty))
-                dh.idebug("Existing styles: " + str(list(self.ctable.keys())))
+                inkex.utils.debug("No style matches!")
+                inkex.utils.debug("Character: " + char)
+                inkex.utils.debug("Style: " + str(sty))
+                inkex.utils.debug("Existing styles: " + str(list(self.ctable.keys())))
             else:
-                dh.idebug("No character matches!")
-                dh.idebug("Character: " + char)
-                dh.idebug("Style: " + str(sty))
-                dh.idebug("Existing chars: " + str(list(self.ctable[sty].keys())))
+                inkex.utils.debug("No character matches!")
+                inkex.utils.debug("Character: " + char)
+                inkex.utils.debug("Style: " + str(sty))
+                inkex.utils.debug("Existing chars: " + str(list(self.ctable[sty].keys())))
             raise KeyError
             
     def get_prop_mult(self,char,sty,scl):
@@ -3093,19 +3081,19 @@ class Character_Table:
                         
                         tsty = Character_Table.true_style(sty)
                         rsty = Character_Table.reduced_style(sty)
-                        ctable[tsty] = dh.unique(ctable.get(tsty, []) + list(txt))
-                        rtable[rsty] = dh.unique(rtable.get(rsty, []) + list(txt))
+                        ctable[tsty] = unique(ctable.get(tsty, []) + list(txt))
+                        rtable[rsty] = unique(rtable.get(rsty, []) + list(txt))
                         if tsty not in pctable:
                             pctable[tsty] = inkex.OrderedDict()
                         for jj in range(1, len(txt)):
-                            pctable[tsty][txt[jj]] = dh.unique(pctable[tsty].get(txt[jj], []) + [txt[jj - 1]])
+                            pctable[tsty][txt[jj]] = unique(pctable[tsty].get(txt[jj], []) + [txt[jj - 1]])
                         
         for tsty in ctable:  # make sure they have spaces
-            ctable[tsty] = dh.unique(ctable[tsty] + [" "])
+            ctable[tsty] = unique(ctable[tsty] + [" "])
             for pc in pctable[tsty]:
-                pctable[tsty][pc] = dh.unique(pctable[tsty][pc] + [" "])
+                pctable[tsty][pc] = unique(pctable[tsty][pc] + [" "])
         for rsty in rtable:  # make sure they have spaces
-            rtable[rsty] = dh.unique(rtable[rsty] + [" "])
+            rtable[rsty] = unique(rtable[rsty] + [" "])
         return ctable, pctable, rtable
     
     
@@ -3179,7 +3167,7 @@ class Character_Table:
 
         usepango = pr.haspango and not(forcecommand)
         # usepango = False
-        # dh.idebug(usepango)
+        # inkex.utils.debug(usepango)
         cnt = 0
         if not(usepango):
             # A new document is generated instead of using the existing one. We don't have to parse an entire element tree
@@ -3269,7 +3257,7 @@ class Character_Table:
         if not(usepango):
             f.write((svgtexts + svgstop).encode("utf8"))
             f.close()
-            nbb = dh.Get_Bounding_Boxes(filename=tmpname)
+            nbb = Get_Bounding_Boxes(filename=tmpname)
             import os
             os.remove(tmpname)
         else:
@@ -3402,7 +3390,7 @@ class Character_Table:
     # Reduced style: the style that has been reduced to the four attributes
     # that matter for text shaping
     fontatt = ['font-family','font-weight','font-style','font-stretch']
-    dfltatt = [(k,dh.default_style_atts[k]) for k in fontatt]
+    dfltatt = [(k,default_style_atts[k]) for k in fontatt]
     @staticmethod
     @lru_cache(maxsize=None)
     def reduced_style(sty):
@@ -3424,7 +3412,7 @@ class Character_Table:
                 allcs = set(''.join(self.rtable[s]))
                 tfbc = fcfg.get_true_font_by_char(s,allcs)
                 tfbc = {k:v for k,v in tfbc.items() if v is not None}
-                # dh.idebug((s,allcs,tfbc))
+                # inkex.utils.debug((s,allcs,tfbc))
                 self._ftable[s] = {k:v['font-family'] for k,v in tfbc.items()}
                 
                 for k,v in tfbc.items():
@@ -3465,7 +3453,6 @@ def deleteempty(el):
         el.delete()
         anydeleted = True
         # delete anything empty
-        # dh.debug(el.get_id())
     elif el.tag == TEtag:
 
         if all(

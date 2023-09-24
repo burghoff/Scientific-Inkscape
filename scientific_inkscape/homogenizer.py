@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 #
-# Copyright (C) 2021 David Burghoff, dburghoff@nd.edu
+# Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -34,6 +34,7 @@ sys.path.append(
     os.path.dirname(os.path.realpath(sys.argv[0]))
 )  # make sure my directory is on the path
 import dhelpers as dh
+from inkex.text.utils import otp_support_tags
 
 from applytransform_mod import fuseTransform
 import math
@@ -338,7 +339,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
 
         if self.options.fusetransforms:
             for el in sela:
-                if el.tag in dh.otp_support_tags:
+                if el.tag in otp_support_tags:
                     # Fuse the composed transform onto the path
                     el.ctransform = el.ccomposed_transform
                     fuseTransform(el)

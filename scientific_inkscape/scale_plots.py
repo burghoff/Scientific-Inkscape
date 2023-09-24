@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 #
-# Copyright (C) 2021 David Burghoff, dburghoff@nd.edu
+# Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@ sys.path.append(
 )  # make sure my directory is on the path
 import dhelpers as dh
 from dhelpers import bbox
+from inkex.text.utils import uniquetol
 
 It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
@@ -75,7 +76,7 @@ def Find_Plot_Area(els,gbbs):
                 hl[el.get_id()] = gbb
 
             tol = 1e-3 * max(max(xs) - min(xs), max(ys) - min(ys))
-            if 3 <= len(xs) <= 5 and len(dh.uniquetol(xs, tol)) == 2 and len(dh.uniquetol(ys, tol)) == 2:
+            if 3 <= len(xs) <= 5 and len(uniquetol(xs, tol)) == 2 and len(uniquetol(ys, tol)) == 2:
                 isrect = True
         if isrect or isinstance(el, (Rectangle)):
             sf = dh.get_strokefill(el);

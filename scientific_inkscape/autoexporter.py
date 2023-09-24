@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 #
-# Copyright (C) 2021 David Burghoff, dburghoff@nd.edu
+# Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@ import numpy as np
 sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0])))  # make sure my directory is on the path
 import dhelpers as dh
 import image_helpers as ih
+from inkex.text.utils import (otp_support_tags,default_style_atts,uniquetol)
 
 # Convenience functions
 def joinmod(dirc, f):
@@ -565,8 +566,8 @@ class AutoExporter(inkex.EffectExtension):
                     el.cstyle[satt]=None
                     
             # Prune single-point paths, which Inkscape doesn't show
-            if el.tag in dh.otp_support_tags:
-                pth = dh.get_path2(el)
+            if el.tag in otp_support_tags:
+                pth = el.cpath
                 xs=[]; ys=[]; cnt=0;
                 for pt in pth.control_points:
                     xs.append(pt.x)
@@ -574,7 +575,7 @@ class AutoExporter(inkex.EffectExtension):
                     cnt += 1
                     if cnt>5: # don't iterate through long paths
                         break
-                if len(dh.uniquetol(xs, 0)) == 1 and len(dh.uniquetol(ys, 0)) == 1:
+                if len(uniquetol(xs, 0)) == 1 and len(uniquetol(ys, 0)) == 1:
                     dh.deleteup(el)
              
         # Fix Avenir/Whitney
@@ -675,7 +676,7 @@ class AutoExporter(inkex.EffectExtension):
             celsj = ",".join(tels+pels)
             tmpstp = tempbase+"_stp.svg"
             
-            if (input_options.stroketopath or len(stps)>0) and dh.ivp[0] >= 1 and dh.ivp[1] > 0:
+            if (input_options.stroketopath or len(stps)>0) and inkex.ivp[0] >= 1 and inkex.ivp[1] > 0:
                 act = 'object-stroke-to-path'
             else:
                 act = 'object-to-path'
@@ -1140,7 +1141,7 @@ class AutoExporter(inkex.EffectExtension):
         # The Inkscape PDF renderer removes split commands
         # In general I prefer split, so I do this for everything other than PDF
         for el in svg.descendants2():
-            if isinstance(el, dh.otp_support) and not (isinstance(el, (PathElement))):
+            if el.tag in otp_support_tags and not (isinstance(el, (PathElement))):
                 dh.object_to_path(el)
             d = el.get("d")
             if d is not None and any(
@@ -1212,7 +1213,7 @@ class AutoExporter(inkex.EffectExtension):
                 
     def Bezier_to_Split(self, el):
         # Converts the Bezier TLD to split (for the plain SVG)
-        if isinstance(el, dh.otp_support) and not (isinstance(el, (PathElement))):
+        if el.tag in otp_support_tags and not (isinstance(el, (PathElement))):
             dh.object_to_path(el)
         d = el.get("d")
         if d is not None and any(
@@ -1307,7 +1308,6 @@ class AutoExporter(inkex.EffectExtension):
         # Fuse opacity onto fill and stroke for path-like elements
         # Prevents rasterization-at-PDF for Office products
         sty = el.cspecified_style;
-        # if sty.get('opacity') is not None and isinstance(el,dh.otp_support):
         if sty.get('opacity') is not None and float(sty.get("opacity", 1.0))!=1.0:
             sf = dh.get_strokefill(el) # fuses opacity and stroke-opacity/fill-opacity
             if sf.stroke is not None:
@@ -1374,7 +1374,7 @@ class AutoExporter(inkex.EffectExtension):
             if fs is not None and '%' not in fs:
                 szs.append(dh.ipx(fs))
         if len(szs)==0:
-            maxsz = dh.default_style_atts['font-size']
+            maxsz = default_style_atts['font-size']
             maxsz = {"small": 10, "medium": 12, "large": 14}.get(maxsz, maxsz)
         else:
             maxsz = max(szs)
@@ -1403,7 +1403,7 @@ class AutoExporter(inkex.EffectExtension):
             for oth in otherpx:
                 othv = d.ccascaded_style.get(oth)
                 if othv is None and oth=='stroke-width' and 'stroke' in d.ccascaded_style:
-                    othv = dh.default_style_atts[oth]
+                    othv = default_style_atts[oth]
                 if othv is not None:
                     if ',' not in othv:
                         # dh.Set_Style_Comp(d, oth, str(dh.ipx(othv)*s))
@@ -1615,7 +1615,7 @@ class AutoExporter(inkex.EffectExtension):
                     mv = sty.get_link(m,svg);
                     if mv is not None:
                         dh.ungroup(el)
-            elif isinstance(el,dh.otp_support):
+            elif el.tag in otp_support_tags:
                 sty = el.cspecified_style
                 if 'stroke' in sty and sty['stroke']!='none':
                     sw = sty.get('stroke-width')

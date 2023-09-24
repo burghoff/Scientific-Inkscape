@@ -3,7 +3,7 @@
 # License: GPL2
 # Copyright Mark "Klowner" Riedesel
 # https://github.com/Klowner/inkscape-applytransforms
-# Modified by David Burghoff
+# Modified by David Burghoff <burghoff@utexas.edu>
 
 import inkex
 import math, re
@@ -14,6 +14,7 @@ from inkex import Line, Rectangle, Polygon, Polyline, Ellipse, Circle
 import os, sys
 sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0])))  # make sure my directory is on the path
 import dhelpers as dh
+from inkex.text.utils import otp_support_tags
 
 Itr = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
@@ -91,7 +92,7 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
     # When applytostroke enabled, transform goes onto stroke/dashes, keeping it looking the same
     # Without it, it is applied to the points only
 
-    if el.tag in dh.otp_support_tags:  # supported types
+    if el.tag in otp_support_tags:  # supported types
         # Since transforms apply to an object's clips, before applying the transform
         # we will need to duplicate the clip path and transform it
         transform_clipmask(el, mask=False)

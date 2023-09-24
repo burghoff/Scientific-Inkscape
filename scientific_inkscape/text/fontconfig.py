@@ -70,8 +70,8 @@ else:
         fc = ct.cdll.LoadLibrary(LIBNAME["fontconfig"])
     except FileNotFoundError:
         import os
-        import dhelpers as dh
-        blocdir = os.path.dirname(dh.Get_Binary_Loc())
+        from inkex.text.utils import Get_Binary_Loc
+        blocdir = os.path.dirname(Get_Binary_Loc())
         fpath = os.path.abspath(os.path.join(blocdir,LIBNAME["fontconfig"]))
         fc = ct.cdll.LoadLibrary(fpath)
     # libc = ct.cdll.LoadLibrary("libc.so.6")

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright (c) 2023 David Burghoff <dburghoff@nd.edu>
+# Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
 # Functions modified from Inkex were made by
 #                    Martin Owens <doctormo@gmail.com>
 #                    Sergei Izmailov <sergei.a.izmailov@gmail.com>
@@ -56,6 +56,7 @@ for k,v in lt.items():
         v2.ctag = inkex.addNS(k[1],k[0])
         if issubclass(v2, inkex.ShapeElement):
             shapetags.add(v2.ctag)
+tags = lambda x : set([v.ctag for v in x]) # converts class tuple to set of tags
 
 # Cached specified style property
 cstytags = shapetags | {SvgDocumentElement.ctag}
@@ -200,6 +201,113 @@ def set_ctransform(el, newt):
     el._ctransform = newt
     el.ccomposed_transform = None
 BaseElement.ctransform = property(get_ctransform, set_ctransform)
+
+
+# Parsed Inkex version, with extension back to v0.92.4
+if not hasattr(inkex,'__version__'):
+    try:
+        tmp = BaseElement.unittouu  # introduced in 1.1
+        inkex.__version__ = "1.1.0"
+    except:
+        try:
+            from inkex.paths import Path, CubicSuperPath # noqa
+            inkex.__version__ = "1.0.0"
+        except:
+            inkex.__version__ = "0.92.4"
+inkex.vparse = lambda x : [int(v) for v in x.split(".")]
+inkex.ivp = inkex.vparse(inkex.__version__)
+pre1p2 = inkex.ivp[0] <= 1 and inkex.ivp[1] < 2
+# pre1p1 = ivp[0] <= 1 and ivp[1] < 1
+
+
+# Implicit pixel function
+# For many properties, a size specification of '1px' actually means '1uu'
+# Even if the size explicitly says '1mm' and the user units are mm, this will be
+# first converted to px and then interpreted to mean user units. (So '1mm' would
+# up being bigger than 1 mm). This returns the size as Inkscape will interpret it (in uu).
+#   No unit: Assumes 'px'
+#   Invalid unit: Returns None (used to return 0, changed 2023.04.18)
+from inkex.units import CONVERSIONS, BOTH_MATCH
+conv2 = {k:CONVERSIONS[k]/CONVERSIONS["px"] for k,v in CONVERSIONS.items()}  
+from functools import lru_cache
+@lru_cache(maxsize=None)
+def ipx(strin):
+    try:
+        ret = BOTH_MATCH.match(strin)
+        value = float(ret.groups()[0])
+        from_unit = ret.groups()[-1] or "px"
+        return value * conv2[from_unit]
+    except:
+        return None
+
+
+# Cached get_path, modified to correctly calculate path for rectangles and ellipses
+# Caches Path of an object (delete _cpath to reset)
+def get_path2(el):
+    if not hasattr(el,'_cpath'):
+        # mostly from inkex.elements._polygons
+        if isinstance(el, (inkex.Rectangle)):
+            left   = ipx(el.get("x", "0"))
+            top    = ipx(el.get("y", "0"))
+            width  = ipx(el.get("width", "0"))
+            height = ipx(el.get("height", "0"))
+            rx = ipx(el.get("rx", el.get("ry", "0")))
+            ry = ipx(el.get("ry", el.get("rx", "0")))
+            right = left + width
+            bottom = top + height
+            if rx:
+                return inkex.Path((
+                    "M {lft2},{topv}"
+                    "L {rgt2},{topv}  A {rxv},{ryv} 0 0 1 {rgtv},{top2}"
+                    "L {rgtv},{btm2}  A {rxv},{ryv} 0 0 1 {rgt2},{btmv}"
+                    "L {lft2},{btmv}  A {rxv},{ryv} 0 0 1 {lftv},{btm2}"
+                    "L {lftv},{top2}  A {rxv},{ryv} 0 0 1 {lft2},{topv} z".format(
+                        topv=top, btmv=bottom, lftv=left,rgtv=right, rxv=rx, ryv=ry,
+                        lft2=left+rx, rgt2=right-rx, top2=top+ry, btm2=bottom-ry
+                    ))
+                )
+            ret = inkex.Path("M {lftv},{topv} h {wdtv} v {hgtv} h {wdt2} z".format(
+                topv=top, lftv=left, wdtv=width, hgtv=height,
+                wdt2=-width)
+            )
+        
+        elif isinstance(el, (inkex.Circle, inkex.Ellipse)):
+            cx = ipx(el.get("cx", "0"))
+            cy = ipx(el.get("cy", "0"))
+            if isinstance(el, (inkex.Ellipse)):  # ellipse
+                rx = ipx(el.get("rx", "0"))
+                ry = ipx(el.get("ry", "0"))
+            else:  # circle
+                rx = ipx(el.get("r", "0"))
+                ry = ipx(el.get("r", "0"))
+            ret =  inkex.Path((
+                "M {cx},{y} "
+                "a {rx},{ry} 0 1 0 {rx}, {ry} "
+                "a {rx},{ry} 0 0 0 -{rx}, -{ry} z"
+            ).format(cx=cx, y=cy-ry, rx=rx, ry=ry))
+            
+        elif isinstance(el, inkex.Line): # updated in v1.2
+            x1 = ipx(el.get("x1", "0"))
+            y1 = ipx(el.get("y1", "0"))
+            x2 = ipx(el.get("x2", "0"))
+            y2 = ipx(el.get("y2", "0"))
+            ret = inkex.Path(f"M{x1},{y1} L{x2},{y2}")
+        else:
+            ret = el.get_path()
+            if pre1p2:
+                ret = inkex.Path(ret)
+        el._cpath = ret
+    return el._cpath
+BaseElement.cpath = property(get_path2)
+cpath_support = (
+    inkex.Rectangle,
+    inkex.Ellipse,
+    inkex.Circle,
+    inkex.Polygon,
+    inkex.Polyline,
+    inkex.Line,
+    inkex.PathElement,
+)
 
 
 # Cached root property
@@ -443,6 +551,190 @@ def descendants2(el, return_tails=False):
         return descendants, precedingtails
 BaseElement.descendants2 = descendants2
         
+
+
+# A modified bounding box class
+class bbox:
+    __slots__ = ('isnull', 'x1', 'x2', 'y1', 'y2', 'xc', 'yc', 'w', 'h', 'sbb')
+    def __init__(self, bb):
+        self.isnull = bb is None
+        if not(self.isnull):
+            if len(bb)==2:       # allow tuple of two points ((x1,y1),(x2,y2))
+                bb = [min(bb[0][0],bb[1][0]),min(bb[0][1],bb[1][1]),
+                      abs(bb[0][0]-bb[1][0]),abs(bb[0][1]-bb[1][1])]
+            self.x1 = bb[0]
+            self.x2 = bb[0] + bb[2]
+            self.y1 = bb[1]
+            self.y2 = bb[1] + bb[3]
+            self.xc = (self.x1 + self.x2) / 2
+            self.yc = (self.y1 + self.y2) / 2
+            self.w = bb[2]
+            self.h = bb[3]
+            self.sbb = [self.x1, self.y1, self.w, self.h]  # standard bbox
+            
+    def copy(self):
+        ret = bbox.__new__(bbox)
+        ret.isnull = self.isnull
+        if not self.isnull:
+            ret.x1 = self.x1
+            ret.x2 = self.x2
+            ret.y1 = self.y1
+            ret.y2 = self.y2
+            ret.xc = self.xc
+            ret.yc = self.yc
+            ret.w = self.w
+            ret.h = self.h
+            ret.sbb = self.sbb[:]
+        return ret
+
+    def transform(self, xform):
+        if not(self.isnull) and xform is not None:
+            tr1 = xform.apply_to_point([self.x1, self.y1])
+            tr2 = xform.apply_to_point([self.x2, self.y2])
+            tr3 = xform.apply_to_point([self.x1, self.y2])
+            tr4 = xform.apply_to_point([self.x2, self.y1])
+            return bbox(
+                [
+                    min(tr1[0], tr2[0], tr3[0], tr4[0]),
+                    min(tr1[1], tr2[1], tr3[1], tr4[1]),
+                    max(tr1[0], tr2[0], tr3[0], tr4[0]) - min(tr1[0], tr2[0], tr3[0], tr4[0]),
+                    max(tr1[1], tr2[1], tr3[1], tr4[1]) - min(tr1[1], tr2[1], tr3[1], tr4[1]),
+                ]
+            )
+        else:
+            return bbox(None)
+    
+    def intersect(self, bb2):
+        return (abs(self.xc - bb2.xc) * 2 < (self.w + bb2.w)) and (
+            abs(self.yc - bb2.yc) * 2 < (self.h + bb2.h)
+        )
+    
+    def union(self, bb2):
+        if isinstance(bb2,list):
+            bb2 = bbox(bb2)
+        if not(self.isnull) and not bb2.isnull:
+            minx = min([self.x1, self.x2, bb2.x1, bb2.x2])
+            maxx = max([self.x1, self.x2, bb2.x1, bb2.x2])
+            miny = min([self.y1, self.y2, bb2.y1, bb2.y2])
+            maxy = max([self.y1, self.y2, bb2.y1, bb2.y2])
+            return bbox([minx, miny, abs(maxx - minx), abs(maxy - miny)])
+        elif self.isnull and not bb2.isnull:
+            return bbox(bb2.sbb)
+        elif not self.isnull and bb2.isnull:
+            return bbox(self.sbb)
+        else:
+            return bbox(None)
+                
+        
+    def intersection(self,bb2):
+        if isinstance(bb2,list):
+            bb2 = bbox(bb2)
+        if not(self.isnull):
+            minx = max([self.x1, bb2.x1])
+            maxx = min([self.x2, bb2.x2])
+            miny = max([self.y1, bb2.y1])
+            maxy = min([self.y2, bb2.y2])
+            return bbox([minx, miny, abs(maxx - minx), abs(maxy - miny)])
+        else:
+            return bbox(bb2.sbb)
+    
+    # def __deepcopy__(self, memo):
+    #     return bbox([self.x1, self.y1, self.w, self.h])
+    
+    def __mul__(self, scl):
+        return bbox([self.x1*scl, self.y1*scl, self.w*scl, self.h*scl])
+
+
+    
+    
+# Cached bounding box that requires no command call
+# Uses extents for text
+# dotransform: whether or not we want the element's bbox or its true transformed bbox
+# includestroke: whether or not to add the stroke to the calculation
+# roughpath: use control points for a path's bbox (should be an upper bound)
+ttags = tags((inkex.TextElement,inkex.FlowRoot));
+Linetag = inkex.Line.ctag
+cpath_support_tags = tags(cpath_support)
+masktag = inkex.addNS('mask','svg')
+grouplike_tags = tags((inkex.SvgDocumentElement,inkex.Group,inkex.Layer,inkex.ClipPath,inkex.Symbol))
+grouplike_tags.add(masktag)
+def bounding_box2(el,dotransform=True,includestroke=True,roughpath=False,parsed=False):
+    if not(hasattr(el,'_cbbox')):
+        el._cbbox = dict()
+        
+    if (dotransform,includestroke,roughpath,parsed) not in el._cbbox:
+        try:
+            ret = bbox(None)
+            if el.tag in ttags:
+                ret = el.parsed_text.get_full_extent(parsed=parsed);
+            elif el.tag in cpath_support_tags:
+                pth = el.cpath
+                if len(pth)>0:
+                    sw = ipx(el.cspecified_style.get('stroke-width','0px'))
+                    if el.cspecified_style.get('stroke') is None or not(includestroke):
+                        sw = 0;
+                    
+                    if el.tag==Linetag:
+                        xs = [ipx(el.get('x1','0')),ipx(el.get('x2','0'))]
+                        ys = [ipx(el.get('y1','0')),ipx(el.get('y2','0'))]
+                        ret = bbox([min(xs)-sw/2,min(ys)-sw/2,max(xs)-min(xs)+sw,max(ys)-min(ys)+sw])
+                    elif not roughpath:
+                        bb = pth.bounding_box()
+                        ret = bbox([bb.left-sw/2, bb.top-sw/2,
+                                    bb.width+sw,bb.height+sw])
+                    else:
+                        anyarc = any([s.letter in ['a','A'] for s in pth])
+                        pth = inkex.Path(inkex.CubicSuperPath(pth)) if anyarc else pth;
+                        pts = list(pth.control_points)
+                        xs = [p.x for p in pts]
+                        ys = [p.y for p in pts]
+                        ret = bbox([min(xs)-sw/2,min(ys)-sw/2,max(xs)-min(xs)+sw,max(ys)-min(ys)+sw])
+                    
+            elif el.tag in grouplike_tags:
+                for d in list2(el):
+                    dbb = bounding_box2(d,dotransform=False,includestroke=includestroke,roughpath=roughpath,parsed=parsed);
+                    if not(dbb.isnull):
+                        ret = ret.union(dbb.transform(d.ctransform))
+            elif isinstance(el,(inkex.Image)):
+                ret = bbox([ipx(el.get(v, "0")) for v in ['x',"y","width","height"]]);
+            elif isinstance(el,(inkex.Use,)):
+                lel = el.get_link('xlink:href');
+                if lel is not None:
+                    ret = bounding_box2(lel,dotransform=False,roughpath=roughpath,parsed=parsed)
+                    
+                    # clones have the transform of the link, followed by any xy transform
+                    xyt = inkex.Transform('translate({0},{1})'.format(ipx(el.get('x','0')), ipx(el.get('y','0'))))
+                    ret = ret.transform(xyt @ lel.ctransform) 
+        
+            if not(ret.isnull):
+                for cm in ['clip-path','mask']:
+                    clip = el.get_link(cm,llget=True)
+                    if clip is not None:
+                       cbb = bounding_box2(clip,dotransform=False,includestroke=False,roughpath=roughpath,parsed=parsed)
+                       if not(cbb.isnull):
+                           ret = ret.intersection(cbb)
+                       else:
+                           ret = bbox(None)
+                    
+                if dotransform:
+                    if not(ret.isnull):
+                        ret = ret.transform(el.ccomposed_transform)
+        except:
+            # For some reason errors are occurring silently
+            import traceback
+            inkex.utils.debug(traceback.format_exc())
+        el._cbbox[(dotransform,includestroke,roughpath,parsed)] = ret
+    return el._cbbox[(dotransform,includestroke,roughpath,parsed)]
+def set_cbbox(el,val):
+    if val is None and hasattr(el,'_cbbox'):
+        delattr(el,'_cbbox')
+inkex.BaseElement.cbbox = property(bounding_box2,set_cbbox)
+inkex.SvgDocumentElement.cbbox = property(bounding_box2,set_cbbox)
+
+bb2_support = (inkex.TextElement,inkex.FlowRoot,inkex.Image,inkex.Use,
+               inkex.SvgDocumentElement,inkex.Group,inkex.Layer) + cpath_support
+bb2_support_tags = tags(bb2_support)
+
 ## Bookkeeping functions
 # When BaseElements are deleted, created, or moved, the caches need to be
 # updated or invalidated. These functions do that while preserving the original

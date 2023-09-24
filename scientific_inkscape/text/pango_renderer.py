@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 #
-# Copyright (C) 2021 David Burghoff, dburghoff@nd.edu
+# Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -28,14 +28,13 @@
 #              the same layout for all rendering.
 
 import inkex
-import dhelpers as dh
 import os, warnings, sys, re
 
 # The fontconfig library is used to select a font given its CSS specs
 # This library should work starting with v1.0
 import inkex.text.fontconfig as fc
 from inkex.text.fontconfig import FC
-# from collections import OrderedDict
+from inkex.text.utils import (default_style_atts,Get_Binary_Loc)
 from inkex import Style
 class FontConfig():
     def __init__(self):
@@ -200,7 +199,7 @@ class FontConfig():
         
     # For testing purposes    
     def Flow_Test_Doc(self):
-        dh.tic()
+        # dh.tic()
         SIZE = 10;
         # selected_families = ['Arial']
         selected_families = None
@@ -248,7 +247,8 @@ class FontConfig():
                     svgtexts = ""
     
             f.write((svgtexts + svgstop).encode("utf8"))
-        bbs = dh.Get_Bounding_Boxes(tmpname)
+        from inkex.text.utils import Get_Bounding_Boxes
+        bbs = Get_Bounding_Boxes(tmpname)
         # dh.idebug(tmpname)
         # dh.idebug(bbs)
         
@@ -545,7 +545,7 @@ class PangoRenderer():
                     if platform.system().lower() == "windows":
                         # Windows does not have all of the typelibs needed for PangoFT2
                         # Manually add the missing ones
-                        girep = os.path.join(os.path.dirname(os.path.dirname(dh.Get_Binary_Loc())),
+                        girep = os.path.join(os.path.dirname(os.path.dirname(Get_Binary_Loc())),
                                              'lib','girepository-1.0');
                         if os.path.isdir(girep):
                             tlibs = ['fontconfig-2.0.typelib','PangoFc-1.0.typelib','PangoFT2-1.0.typelib','freetype2-2.0.typelib']
@@ -738,7 +738,7 @@ class PangoRenderer():
     # Search the /etc/fonts/conf.d folder for the default sans-serif font
     # Not currently used
     def Find_Default_Sanserifs(self):
-        bloc = dh.Get_Binary_Loc();    
+        bloc = Get_Binary_Loc();    
         
         import platform
         ikdir = os.path.dirname(os.path.dirname(os.path.abspath(bloc)))
@@ -799,7 +799,7 @@ class PangoRenderer():
         msty = ['font-family','font-weight','font-style','font-variant','font-stretch'] # mandatory style
         for m in msty:
             if m not in sty2:
-                sty2[m]=dh.default_style_atts[m]
+                sty2[m]=default_style_atts[m]
         
         from gi.repository import Pango
             
@@ -1113,7 +1113,7 @@ class PangoRenderer():
 
         f.write((svgtexts + svgstop).encode("utf8"))
         f.close()
-        dh.idebug(tmpname)
+        inkex.utils.debug(tmpname)
         
     
 # For testing purposes    
@@ -1161,7 +1161,7 @@ def Unicode_Test_Doc():
         except:
             pass
         arg2 = [
-            dh.Get_Binary_Loc(),
+            Get_Binary_Loc(),
             "--export-background",
             "#ffffff",
             "--export-background-opacity",
@@ -1170,7 +1170,8 @@ def Unicode_Test_Doc():
             fileout,
             filein,
         ]
-        dh.subprocess_repeat(arg2)
+        from inkex.text.utils import subprocess_repeat
+        subprocess_repeat(arg2)
     
     tmp2 = tmpname.replace('.svg','.pdf');
     tmp3 = tmpname.replace('.svg','_2.svg')
@@ -1260,7 +1261,7 @@ def pango_line_breaks(txt):
     try:
         pango = ct.CDLL(LIBNAME)
     except FileNotFoundError:
-        blocdir = os.path.dirname(dh.Get_Binary_Loc())
+        blocdir = os.path.dirname(Get_Binary_Loc())
         fpath = os.path.abspath(os.path.join(blocdir,LIBNAME))
         pango = ct.CDLL(fpath) # Update this as per your system
     
@@ -1307,4 +1308,4 @@ def pango_line_breaks(txt):
     # dh.idebug([c for ii,c in enumerate(txt) if line_breaks[ii+1]]x)
     
     for ii,c in enumerate(txt):
-        dh.idebug((chr(txt[ii]),line_breaks[ii]))
+        inkex.utils.debug((chr(txt[ii]),line_breaks[ii]))

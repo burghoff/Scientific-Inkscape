@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 #
-# Copyright (C) 2021 David Burghoff, dburghoff@nd.edu
+# Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -45,6 +45,7 @@ sys.path.append(
     os.path.dirname(os.path.realpath(sys.argv[0]))
 )  # make sure my directory is on the path
 import dhelpers as dh
+from inkex.text.utils import isrectangle
 
 import lxml, os
 import RemoveKerning
@@ -252,8 +253,7 @@ class FlattenPlots(inkex.EffectExtension):
             for ii, el in enumerate(ngs):
                 if el.tag in prltag:
                     myp = el.getparent()
-                    # dh.idebug((el.get_id(),dh.isrectangle(el,includingtransform=False)[0]))
-                    if myp is not None and not(myp.tag in fltag) and dh.isrectangle(el,includingtransform=False)[0]:
+                    if myp is not None and not(myp.tag in fltag) and isrectangle(el,includingtransform=False)[0]:
                         sty = el.cspecified_style
                         strk = sty.get("stroke", None)
                         fill = sty.get("fill", None)
@@ -367,7 +367,8 @@ class FlattenPlots(inkex.EffectExtension):
                     dh.deleteup(el)
 
         ttags = dh.tags((Tspan, TextPath, FlowPara, FlowRegion, FlowSpan))
-        ttags2 = dh.tags((StyleElement,TextElement,Tspan,TextPath,)+dh.flow_types)
+        flow_types = (inkex.FlowRoot,inkex.FlowPara,inkex.FlowRegion,inkex.FlowSpan,)
+        ttags2 = dh.tags((StyleElement,TextElement,Tspan,TextPath,)+flow_types)
         for el in reversed(ds):
             if not (el.tag in ttags):
                 if el.tail is not None:
