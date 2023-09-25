@@ -37,16 +37,11 @@
 # el.parse_text.lns[0].cs[0].pts_ut: the untransformed points of the extent of the first character of the first line
 # el.parse_text.lns[0].cs[0].pts_t : the transformed points of the extent of the first character of the first line
 #
-# Before parsing is done, a character table must be generated to determine the properties
-# of all the characters present. This is done automatically by the first invocation of .parsed_text,
-# which automatically analyzes the whole document and adds it to the SVG. If you are only 
-# parsing a few text elements, this can be sped up by calling svg.make_char_table(els).
-# This can occasionally fail: when this happens, a command call is performed instead as a fallback.
-#
-# Known limitations:
-#   When a font has missing characters, command fallback is invoked.
-#   When Pango cannot find the appropriate font, command fallback is invoked.
-#   Ligatures width not exactly correct
+# To check if things are working property, you can run the Make_Highlights() function, 
+# which draws rectangles that tell you where the extents / bboxes are. For example,
+# el.parsed_text.Make_Highlights('char')    : shows the extent of each character
+# el.parsed_text.Make_Highlights('fullink') : shows the bbox of the whole element
+
 
 KERN_TABLE = True # generate a fine kerning table for each font?
 TEXTSIZE = 100;   # size of rendered text
@@ -71,38 +66,7 @@ from functools import lru_cache
 import numpy as np
 from copy import copy
 
-# Add parsed_text property to TextElements
-def get_parsed_text(el):
-    if not (hasattr(el, "_parsed_text")):
-        el._parsed_text = ParsedText(el, el.croot.char_table);
-    return el._parsed_text
-
-def set_parsed_text(el,sv):
-    if hasattr(el, "_parsed_text") and sv is None:
-        delattr(el,"_parsed_text")
-inkex.TextElement.parsed_text = property(get_parsed_text,set_parsed_text)
-inkex.FlowRoot.parsed_text    = property(get_parsed_text,set_parsed_text)
-
-# Add character table property and function to SVG
 tetag, frtag = TextElement.ctag, FlowRoot.ctag
-ttags = {tetag, frtag}
-def make_char_table_fcn(svg,els=None):
-    # Can be called with els argument to examine list of elements only 
-    # (otherwise use entire SVG)
-    if els is None: 
-        tels = [d for d in svg.iddict.ds if d.tag in ttags];
-    else:           
-        tels = [d for d in els              if d.tag in ttags]
-    if not (hasattr(svg, "_char_table")) or any([t not in svg._char_table.els for t in tels]):
-        svg._char_table = Character_Table(tels)
-def get_char_table(svg):
-    if not (hasattr(svg, "_char_table")):
-        svg.make_char_table()
-    return svg._char_table
-inkex.SvgDocumentElement.make_char_table = make_char_table_fcn
-inkex.SvgDocumentElement.char_table = property(get_char_table)
-
-
 class ParsedTextList():
     def __init__(self,pts):
         self.pts = pts
@@ -1174,8 +1138,16 @@ class ParsedText:
             fr = sty.get_link('shape-inside',self.textel.croot)
             pctr = dict(fr.croot._prefixcounter) if hasattr(fr.croot,'_prefixcounter') else dict()
             dfr = fr.duplicate()
-            from applytransform_mod import fuseTransform
-            fuseTransform(dfr)
+
+            # from applytransform_mod import fuseTransform
+            # fuseTransform(dfr)
+            
+            # Fuse transform to path
+            object_to_path(dfr)
+            dfr.set('d',str(dfr.cpath.transform(dfr.ctransform)))
+            dfr.cpath = None
+            dfr.ctransform = None
+            
             # shape transform fused on path (not composed transform though)
             self.textel.append(dfr)
             region = dfr
@@ -1223,6 +1195,8 @@ class ParsedText:
                 sptregion.closed = True
                        
         bb = bounding_box2(region,dotransform=False,includestroke=False).sbb
+        # inkex.utils.debug(region.cpath)
+        # inkex.utils.debug(bb)
         if not padding==0:
             bb = [bb[0]+padding,bb[1]+padding,bb[2]-2*padding,bb[3]-2*padding]
         

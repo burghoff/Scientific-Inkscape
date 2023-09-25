@@ -5,8 +5,7 @@
 DEBUG = False
 WHILESLEEP = 0.25;
 
-import sys, platform, subprocess, os, threading, datetime, time, copy, pickle
-import numpy as np
+import sys, platform, os, threading, time, copy, pickle
 
 import tempfile
 systmpdir = os.path.abspath(tempfile.gettempdir());
@@ -21,13 +20,12 @@ bfn       = input_options.inkscape_bfn
 sys.path += input_options.syspath
 guitype   = input_options.guitype
 
-# print('hello')
-# sys.exit()
-
 import inkex
-import dhelpers as dh
+import dhelpers as dh  # noqa
+import inkex.text.TextParser # needed to prevent GTK crashing
+
 import autoexporter
-from autoexporter import AutoExporter, Delete_Dir
+from autoexporter import AutoExporter
 
 def mprint(*args,**kwargs):
     if guitype=='gtk':
@@ -217,10 +215,10 @@ class monitorThread(threading.Thread):
             opts.aeThread = self;
             opts.original_file = self.file;
             try:
-                ftd = AutoExporter().export_all(
+                AutoExporter().export_all(
                     bfn, self.file, self.outtemplate, opts.formats, opts
                 )
-            except Exception as e:
+            except:
                 import traceback
                 error_message = f"Exception in {fname}\n"
                 error_message += traceback.format_exc()
@@ -246,7 +244,8 @@ if guitype=='gtk':
             self.selected_file_label.set_wrap_mode(Gtk.WrapMode.CHAR)
             self.selected_file_label.get_buffer().set_text('No file selected.')
             
-            buffer = self.selected_file_label.get_buffer()
+            self.selected_file_label.get_buffer()
+            # buffer = self.selected_file_label.get_buffer()
             # buffer.connect('insert-text', self.on_text_buffer_insert_text) # auto-scroll
     
             # Adding a scrolled window to the TextView

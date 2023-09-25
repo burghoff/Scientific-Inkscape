@@ -40,7 +40,7 @@ SUBSUPER_YTHR = 1 / 3
 # superscripts must be at least 1/3 of the way above the baseline to merge (1/3 below cap for sub)
 
 import inkex
-from inkex.text import TextParser
+import inkex.text.TextParser as tp
 
 import os, sys
 
@@ -67,9 +67,9 @@ def remove_kerning(
     else:
         # Do merges first (deciding based on original position)
         tels = [el for el in els if isinstance(el, (inkex.TextElement,))]
-        lls = [TextParser.get_parsed_text(el) for el in tels]
+        lls = [el.parsed_text for el in tels]
         # dh.idebug(len([1 for pt in lls if pt.isflow]))
-        TextParser.ParsedTextList(lls).precalcs()
+        tp.ParsedTextList(lls).precalcs()
         if removemanual:
             tels = Remove_Manual_Kerning(tels, mergesupersub)
         if mergenearby or mergesupersub:
@@ -132,7 +132,7 @@ def Make_All_Editable(els):
 
 def Change_Justification(els, justification):
     if justification is not None:
-        for ll in [TextParser.get_parsed_text(el) for el in els]:
+        for ll in [el.parsed_text for el in els]:
             # ll.Position_Check()
             if not (ll.ismlinkscape) and not (
                 ll.isflow
@@ -151,7 +151,7 @@ def Change_Justification(els, justification):
 # Split different lines
 def Split_Lines(els,ignoreinkscape=True):
     # newlls = []
-    lls = [TextParser.get_parsed_text(el) for el in els];
+    lls = [el.parsed_text for el in els];
     for jj in range(len(lls)):
         ll = lls[jj]
         if (
@@ -171,7 +171,7 @@ def Split_Lines(els,ignoreinkscape=True):
 # Generate splitting of distantly-kerned text
 def Split_Distant_Words(els):
     # newlls = []
-    for ll in [TextParser.get_parsed_text(el) for el in els]:
+    for ll in [el.parsed_text for el in els]:
         if ll.lns is not None:
             for il in reversed(range(len(ll.lns))):
                 ln = ll.lns[il]
@@ -219,7 +219,7 @@ def Split_Distant_Words(els):
 # Generate splitting of distantly-kerned text
 def Split_Distant_Intraword(els):
     # newlls = []
-    for ll in [TextParser.get_parsed_text(el) for el in els]:
+    for ll in [el.parsed_text for el in els]:
         if ll.lns is not None and not (ll.ismlinkscape) and not (ll.isflow):
             for ln in ll.lns:
                 for w in ln.ws:
@@ -355,7 +355,7 @@ import numpy as np
 def External_Merges(els, mergenearby, mergesupersub):
     # Generate list of merges
     ws = []
-    for ll in [TextParser.get_parsed_text(el) for el in els]:
+    for ll in [el.parsed_text for el in els]:
         if ll.lns is not None:
             ws += [w for ln in ll.lns for w in ln.ws]
         # ll.Position_Check()
@@ -364,7 +364,7 @@ def External_Merges(els, mergenearby, mergesupersub):
             NUM_SPACES + XTOLEXT
         )  # a big bounding box that includes the extra space
         if w.parsed_bb is not None:
-            w.bb_big = TextParser.bbox(
+            w.bb_big = tp.bbox(
                 [
                     w.parsed_bb.x1 - dx,
                     w.parsed_bb.y1 - dx,
@@ -373,7 +373,7 @@ def External_Merges(els, mergenearby, mergesupersub):
                 ]
             )
         else:
-            w.bb_big = TextParser.bbox(
+            w.bb_big = tp.bbox(
                 [w.bb.x1 - dx, w.bb.y1 - dx, w.bb.w + 2 * dx, w.bb.h + 2 * dx]
             )
         w.mw = []

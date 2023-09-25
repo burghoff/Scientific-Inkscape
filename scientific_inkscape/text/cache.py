@@ -24,7 +24,7 @@
 #   Style: cstyle, cspecified_style, ccascaded_style
 #   Transform: ctransform, ccomposed_transform
 #   Miscellaneous: croot, cdefs, ctag
-# Most are invalidated by setting to None (except ctransform).
+# Most are invalidated by setting to None (except ctransform, which is set to identity).
 # xpath calls are avoided at all costs
 #
 # Also gives SvgDocumentElements some dictionaries that are used to speed up
@@ -243,11 +243,17 @@ def ipx(strin):
 
 
 # Cached get_path, modified to correctly calculate path for rectangles and ellipses
-# Caches Path of an object (delete _cpath to reset)
+# Caches Path of an object (set el.cpath to None to reset)
+rect_tag = inkex.Rectangle.ctag
+round_tags = tags((inkex.Circle, inkex.Ellipse))
+line_tag = inkex.Line.ctag
+path_tag = inkex.PathElement.ctag
 def get_path2(el):
     if not hasattr(el,'_cpath'):
         # mostly from inkex.elements._polygons
-        if isinstance(el, (inkex.Rectangle)):
+        if el.tag == path_tag:
+            ret = inkex.Path(el.get('d'))
+        elif el.tag == rect_tag:
             left   = ipx(el.get("x", "0"))
             top    = ipx(el.get("y", "0"))
             width  = ipx(el.get("width", "0"))
@@ -272,7 +278,7 @@ def get_path2(el):
                 wdt2=-width)
             )
         
-        elif isinstance(el, (inkex.Circle, inkex.Ellipse)):
+        elif el.tag in round_tags:
             cx = ipx(el.get("cx", "0"))
             cy = ipx(el.get("cy", "0"))
             if isinstance(el, (inkex.Ellipse)):  # ellipse
@@ -287,7 +293,7 @@ def get_path2(el):
                 "a {rx},{ry} 0 0 0 -{rx}, -{ry} z"
             ).format(cx=cx, y=cy-ry, rx=rx, ry=ry))
             
-        elif isinstance(el, inkex.Line): # updated in v1.2
+        elif el.tag == line_tag: # updated in v1.2
             x1 = ipx(el.get("x1", "0"))
             y1 = ipx(el.get("y1", "0"))
             x2 = ipx(el.get("x2", "0"))
@@ -295,11 +301,16 @@ def get_path2(el):
             ret = inkex.Path(f"M{x1},{y1} L{x2},{y2}")
         else:
             ret = el.get_path()
-            if pre1p2:
+            # inkex.utils.debug(el.tag)
+            if isinstance(ret,str):
                 ret = inkex.Path(ret)
         el._cpath = ret
+    
     return el._cpath
-BaseElement.cpath = property(get_path2)
+def set_cpath_fcn(el,sv):
+    if sv is None and hasattr(el, "_cpath"):
+        delattr(el, "_cpath")  # invalidate
+BaseElement.cpath = property(get_path2,set_cpath_fcn)
 cpath_support = (
     inkex.Rectangle,
     inkex.Ellipse,

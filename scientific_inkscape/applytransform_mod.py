@@ -6,13 +6,11 @@
 # Modified by David Burghoff <burghoff@utexas.edu>
 
 import inkex
-import math, re
 from inkex.paths import CubicSuperPath, Path
 from inkex.transforms import Transform
 from inkex import Line, Rectangle, Polygon, Polyline, Ellipse, Circle
 
-import os, sys
-sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0])))  # make sure my directory is on the path
+import math
 import dhelpers as dh
 from inkex.text.utils import otp_support_tags
 
@@ -86,6 +84,11 @@ def transform_clipmask(el, mask=False):
                 else:
                     tr = el.ctransform
                 k.ctransform = tr
+                
+poly_tags = {inkex.Polygon.ctag, inkex.Polyline.ctag}
+round_tags = {inkex.Ellipse.ctag, inkex.Circle.ctag}
+line_tag = inkex.Line.ctag
+rect_tag = inkex.Rectangle.ctag
              
 def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
     # Fuses an object's transform to its path, adding the additional transformation transf
@@ -110,34 +113,7 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
 
         if not(transf == Itr and irange is None and trange is None):
             # Don't do anything if there is effectively no transform applied
-            if "d" in el.attrib:
-                d = el.get("d")
-                try:
-                    p = CubicSuperPath(d)
-                except ZeroDivisionError:
-                    p = Path(d)
-                if irange is None:
-                    p = Path(p).to_absolute().transform(transf, True)
-                if irange is not None:
-                    p = Path(p).to_absolute()
-                    pnew = []
-                    for ii in range(len(irange)):
-                        xf = (
-                            trange[ii] @ el.ctransform
-                        )  # Transform(el.get("transform", None))
-                        pnew += Path(p[irange[ii][0] : irange[ii][1]]).transform(
-                            xf, True
-                        )
-                    p = pnew
-                
-                try:
-                    p2 = str(Path(CubicSuperPath(p).to_path()))
-                except ZeroDivisionError:
-                    p2 = str(Path(p))
-                el.set("d",p2)
-            elif isinstance(
-                el, (Polygon, Polyline)
-            ):  # el.tag in [inkex.addNS('polygon', 'svg'), inkex.addNS('polyline', 'svg')]:
+            if el.tag in poly_tags:
                 points = el.get("points")
                 points = points.strip().split(" ")
                 for k, p in enumerate(points):
@@ -150,13 +126,9 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
                         points[k] = p
                 points = " ".join(points)
                 el.set("points", points)
-            elif isinstance(
-                el, (Ellipse, Circle)
-            ):  # el.tag in [inkex.addNS("ellipse", "svg"), inkex.addNS("circle", "svg")]:
-
+            elif el.tag in round_tags:  
                 def isequal(a, b):
                     return abs(a - b) <= transf.absolute_tolerance
-
                 if el.tag == inkex.addNS('ellipse','svg'): #"{http://www.w3.org/2000/svg}ellipse":
                     rx = dh.ipx(el.get("rx"))
                     ry = dh.ipx(el.get("ry"))
@@ -183,18 +155,16 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
                 )
 
                 if isequal(edgex, edgey):
-                    el.tag = inkex.addNS('circle','svg') #"{http://www.w3.org/2000/svg}circle"
+                    el.tag = inkex.addNS('circle','svg') 
                     el.set("rx", None)
                     el.set("ry", None)
                     el.set("r", edgex / 2)
                 else:
-                    el.tag = inkex.addNS('ellipse','svg') #"{http://www.w3.org/2000/svg}ellipse"
+                    el.tag = inkex.addNS('ellipse','svg') 
                     el.set("rx", edgex / 2)
                     el.set("ry", edgey / 2)
                     el.set("r", None)
-
-            # Modficiations by David Burghoff: Added support for lines, rectangles, polylines
-            elif isinstance(el, Line):
+            elif el.tag in line_tag:
                 x1 = dh.ipx(el.get("x1"))
                 x2 = dh.ipx(el.get("x2"))
                 y1 = dh.ipx(el.get("y1"))
@@ -206,7 +176,7 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
                 el.set("x2", str(p2[0]))
                 el.set("y2", str(p2[1]))
 
-            elif isinstance(el, Rectangle):
+            elif el.tag in rect_tag:
                 x = dh.ipx(el.get("x"))
                 y = dh.ipx(el.get("y"))
                 w = dh.ipx(el.get("width"))
@@ -222,6 +192,37 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
                 el.set("y", str(min(ys)))
                 el.set("width", str(max(xs) - min(xs)))
                 el.set("height", str(max(ys) - min(ys)))
+            else:
+                if "d" in el.attrib:
+                    # inkex.utils.debug(el.get('d'))
+                    d = el.get("d")
+                    try:
+                        p = CubicSuperPath(d)
+                    except ZeroDivisionError:
+                        p = Path(d)
+                    if irange is None:
+                        p = Path(p).to_absolute().transform(transf, True)
+                    if irange is not None:
+                        p = Path(p).to_absolute()
+                        pnew = []
+                        for ii in range(len(irange)):
+                            xf = (
+                                trange[ii] @ el.ctransform
+                            )  # Transform(el.get("transform", None))
+                            pnew += Path(p[irange[ii][0] : irange[ii][1]]).transform(
+                                xf, True
+                            )
+                        p = pnew
+                    
+                    try:
+                        p2 = str(Path(CubicSuperPath(p).to_path()))
+                    except ZeroDivisionError:
+                        p2 = str(Path(p))
+                    el.set("d",p2)
+                    # inkex.utils.debug(el.get('d'))
+
+            el.cpath = None
+            # inkex.utils.debug(el.cpath)
 
             if applytostroke:
                 applyToStrokes(el, transf)

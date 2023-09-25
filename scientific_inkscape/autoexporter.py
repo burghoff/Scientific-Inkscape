@@ -32,6 +32,7 @@ sys.path.append(os.path.dirname(os.path.realpath(sys.argv[0])))  # make sure my 
 import dhelpers as dh
 import image_helpers as ih
 from inkex.text.utils import (otp_support_tags,default_style_atts,uniquetol)
+import inkex.text.TextParser # needed to prevent GTK crashing
 
 # Convenience functions
 def joinmod(dirc, f):
@@ -314,14 +315,7 @@ class AutoExporter(inkex.EffectExtension):
                     warnings.simplefilter('ignore') 
                     import gi
                     gi.require_version('Gtk', '3.0')
-                    
-                    # GTk warning suppression from Martin Owens
-                    # Can sometimes suppress Inkex debug output also
-                    from gi.repository import GLib
-                    def _nope(*args, **kwargs): #
-                        return GLib.LogWriterOutput.HANDLED
-                    GLib.log_set_writer_func(_nope, None)
-                    from gi.repository import Gtk
+                    from gi.repository import Gtk   # noqa
                 guitype = 'gtk'
             except:
                 guitype = 'terminal'
@@ -392,7 +386,7 @@ class AutoExporter(inkex.EffectExtension):
 
     def export_all(self, bfn, fin, outtemplate, exp_fmts, input_options):
         # Make a temp directory
-        import tempfile
+        # import tempfile
         # tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
         tempdir = dh.si_tmp(dirbase='ae');
         if input_options.debug:
@@ -878,7 +872,7 @@ class AutoExporter(inkex.EffectExtension):
     def export_file(self, bfn, fin, fout, fformat, ppoutput, input_options,tempbase):
         import os, time, copy
     
-        original_file = fin;
+        # original_file = fin;
         myoutput = fout[0:-4] + "." + fformat
         if input_options.prints:
             fname = os.path.split(input_options.input_file)[1];
@@ -1272,7 +1266,8 @@ class AutoExporter(inkex.EffectExtension):
             url = sty[m][5:-1]
             mkrel = svg.getElementById(url)
             if mkrel is not None:
-                sf = dh.get_strokefill(el)
+                dh.get_strokefill(el)
+                # sf = dh.get_strokefill(el)
                 # if sf.stroke is None:
                 #     # Clear marker on blank stroke
                 #     dh.Set_Style_Comp(el, m, None)

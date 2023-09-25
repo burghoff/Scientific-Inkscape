@@ -117,8 +117,8 @@ otp_support_tags = tags(cpath_support)
 ptag = inkex.PathElement.ctag
 def object_to_path(el):
     if el.tag in otp_support_tags and not el.tag==ptag:
-        el.tag = ptag; # "{http://www.w3.org/2000/svg}path"
-        el.set("d", str(el.cpath))
+        el.set("d", str(el.cpath))  # do this first so cpath is correct
+        el.tag = ptag; 
         
 # Determines if an element is rectangle-like
 # If it is one, also return Path

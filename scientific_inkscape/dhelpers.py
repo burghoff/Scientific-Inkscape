@@ -33,14 +33,9 @@ import Style0
 inkex.Style = Style0.Style0
 
 # Next we make sure we have the text submodule. If not, we add it from SI
-import sys
-if not hasattr(inkex,'text'):
-    import importlib
-    sys.modules['inkex.text'] = importlib.import_module('text')
-    
+import text    # noqa
 
 from inkex import Style
-import inkex.text.speedups, inkex.text.cache  # noqa
 from inkex.text.cache import tags, grouplike_tags, bb2_support_tags, bounding_box2, bbox, ipx
 from inkex.text.utils import (Get_Composed_Width,
                               unique, object_to_path,isrectangle,
@@ -49,7 +44,7 @@ from inkex.text.utils import (Get_Composed_Width,
 
 from inkex import Tspan, Transform, Path, PathElement, BaseElement
 from applytransform_mod import fuseTransform
-import lxml, math, re, os, random
+import lxml, math, re, os, random, sys
 from functools import lru_cache
 
 # Returns non-comment children
@@ -494,16 +489,14 @@ def BB2(slf,els=None,forceupdate=False,roughpath=False,parsed=False):
         
         if len(tels)>0:
             if forceupdate:
-                if hasattr(slf.svg, '_char_table'):
-                    delattr(slf.svg,'_char_table')
+                slf.svg.char_table = None
                 for d in els:
                     d.cbbox = None
-                    if hasattr(d, "_parsed_text"):
-                        delattr(d,'_parsed_text')
+                    d.parsed_text = None
             if not hasattr(slf.svg, '_char_table'):
                 from inkex.text import TextParser                    # noqa
                 slf.svg.make_char_table(els=tels)
-                pts = [TextParser.get_parsed_text(el) for el in tels]
+                pts = [el.parsed_text for el in tels]
                 TextParser.ParsedTextList(pts).precalcs()
         ret = inkex.OrderedDict()
         for d in els:
