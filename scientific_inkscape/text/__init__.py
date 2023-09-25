@@ -43,12 +43,18 @@ if not hasattr(inkex,'text'):
     sys.modules['inkex.text'] = importlib.import_module(mymodname)
     
 # Patches inkex functions for faster operation
-import inkex.text.speedups  # noqa
+# This is optional
+import inkex.text.speedups  
 
 # Gives inkex elements some additional cached attributes, for further speedups
+# This is not optional
 import inkex.text.cache
 
-# import inkex.text.TextParser
+
+# Make sure Style can be hashed
+def __hash__mod(self):
+    return hash(tuple(self.items()))
+inkex.Style.__hash__ = __hash__mod
 
 # Add parsed_text property to text, which is used to get the properties of text
 def get_parsed_text(el):

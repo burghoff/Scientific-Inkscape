@@ -294,6 +294,7 @@ def mod_xmldiff(data_a,data_b):
     # print(diff_xml)
     toremove = []
     for x, (value_a, value_b) in enumerate(delta):
+        print( (value_a, value_b))
         if value_a is not None and value_b is not None and len(value_a)>0 and len(value_b)>0 and \
            ((value_a[0]=='x' and value_b[0]=='x') or (value_a[0]=='y' and value_b[0]=='y')):
             try:
@@ -310,6 +311,9 @@ def mod_xmldiff(data_a,data_b):
                     toremove.append((value_a, value_b))
             except:
                 pass
+        elif (value_a is None and value_b==('transform', 'matrix(1 0 0 1 0 0)')) or \
+             (value_b is None and value_a==('transform', 'matrix(1 0 0 1 0 0)')):
+            toremove.append((value_a, value_b))
     for r in toremove:
         delta.remove(r)
     return diff_xml, delta

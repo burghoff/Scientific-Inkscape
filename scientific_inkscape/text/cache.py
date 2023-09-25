@@ -921,7 +921,6 @@ def standardize_viewbox(svg):
         pg.set('height',str(newbbuu[3]))
 inkex.SvgDocumentElement.standardize_viewbox = standardize_viewbox
 
-
 ## Bookkeeping functions
 # When BaseElements are deleted, created, or moved, the caches need to be
 # updated or invalidated. These functions do that while preserving the original

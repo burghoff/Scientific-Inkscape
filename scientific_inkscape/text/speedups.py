@@ -28,12 +28,6 @@ import inkex
 from inkex import Transform
 import re, lxml
 
-
-""" styles.py """
-# Make sure Style can be hashed
-def __hash__mod(self):
-    return hash(tuple(self.items()))
-inkex.Style.__hash__ = __hash__mod
        
 """ _base.py """
 # Inkex's get does a lot of namespace adding that can be cached for speed
