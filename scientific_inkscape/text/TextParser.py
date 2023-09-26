@@ -55,8 +55,7 @@ from inkex.text.utils import (unique, uniquetol,
                               otp_support_tags, object_to_path, isrectangle,
                               Get_Bounding_Boxes)
 from inkex.text.cache import (bbox, ipx, bounding_box2)
-from inkex.text.pango_renderer import PangoRenderer, FontConfig
-pr = PangoRenderer();
+from inkex.text.pango_renderer import PangoRenderer, FontConfig, haspango
 fcfg = FontConfig()
 
 import lxml, os, sys, itertools
@@ -2994,7 +2993,7 @@ class Character_Table:
         self.root = els[0].croot if len(els)>0 else None
         ct, pct, self.rtable = self.find_characters(els)
         
-        if pr.haspango:
+        if haspango:
             # Prefer to measure with Pango if we have it (faster, more accurate)
             self.ctable  = self.measure_characters(ct, pct, self.rtable)
         else:
@@ -3139,7 +3138,7 @@ class Character_Table:
         # We add pI as test characters because p gives the font's descender (how much the tail descends)
         # and I gives its cap height (how tall capital letters are).
 
-        usepango = pr.haspango and not(forcecommand)
+        usepango = haspango and not(forcecommand)
         # usepango = False
         # inkex.utils.debug(usepango)
         cnt = 0
@@ -3246,6 +3245,7 @@ class Character_Table:
                     time.sleep(random.uniform(0.010, 0.020))
                 else:
                     pangolocked = True
+                    pr = PangoRenderer();
                     for sty in ct:
                         joinch = ' ';
                         mystrs = [v[0] for k,v in nbb.items() if type(v[1])==Style and v[1]==sty]
