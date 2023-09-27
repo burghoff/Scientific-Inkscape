@@ -111,6 +111,18 @@ class FontConfig():
             FC.WIDTH_EXTRAEXPANDED: 'extra-expanded',
             FC.WIDTH_ULTRAEXPANDED: 'ultra-expanded'
         }
+        self.disable_lcctype()
+        
+    
+    # MacOS can throw a warning if LC_CTYPE not disabled 
+    def disable_lcctype(self):
+        self.lcctype = os.environ.get('LC_CTYPE');
+        if self.lcctype is not None and sys.platform=='darwin':    
+            del os.environ['LC_CTYPE'] # suppress Mac warning
+    # Not actually needed since env vars won't persist
+    def enable_lcctype(self):
+        if self.lcctype is not None and sys.platform=='darwin':
+            os.environ['LC_CTYPE'] = self.lcctype;
         
     # Use fontconfig to get the true font that most text will be rendered as
     def get_true_font(self,reducedsty):
@@ -603,7 +615,6 @@ class PangoRenderer():
         # Disabled 2023.09.26 because was causing crashing after refactoring
         # I believe this is fine since haspangoFT2 always true now
 
-        self.disable_lcctype();
         if haspangoFT2:
             # dh.idebug('PangoFT2')
             self.ctx = Pango.Context.new();
@@ -902,15 +913,6 @@ class PangoRenderer():
             
         numunknown = self.pangolayout.get_unknown_glyphs_count()
         return ws, numunknown
-
-    
-    def disable_lcctype(self):
-        self.lcctype = os.environ.get('LC_CTYPE');
-        if self.lcctype is not None and sys.platform=='darwin':
-            del os.environ['LC_CTYPE'] # suppress Mac warning
-    def enable_lcctype(self):
-        if self.lcctype is not None and sys.platform=='darwin':
-            os.environ['LC_CTYPE'] = self.lcctype;
     
     # For testing purposes    
     def Font_Test_Doc(self):
