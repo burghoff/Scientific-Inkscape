@@ -55,13 +55,11 @@ from inkex.text.utils import (unique, uniquetol,
                               otp_support_tags, object_to_path, isrectangle,
                               Get_Bounding_Boxes)
 from inkex.text.cache import (bbox, ipx, bounding_box2)
-from inkex.text.pango_renderer import PangoRenderer, FontConfig, haspango
-fcfg = FontConfig()
+from inkex.text.font_properties import PangoRenderer, haspango, fcfg, font_style, true_style
 
 import lxml, os, sys, itertools
 EBget = lxml.etree.ElementBase.get
 EBset = lxml.etree.ElementBase.set
-from functools import lru_cache
 import numpy as np
 from copy import copy
 
@@ -412,7 +410,7 @@ class ParsedText:
 
                 if newsprl:
                     lh = Get_Composed_LineHeight(sel)
-                tsty = Character_Table.true_style(sty)
+                tsty = true_style(sty)
 
                 # Make a new line if we're sprl or if we have a new x or y
                 if len(lns) == 0 or (
@@ -905,8 +903,8 @@ class ParsedText:
         for ln in self.lns:
             for c in ln.cs:
                 newfam = (c.sty.get('font-family'),c,c.loc.sel)
-                if c.c in ft[c.rsty] and newfam[0]!=ft[c.rsty][c.c]:
-                    newfam = (ft[c.rsty][c.c],c,c.loc.sel)
+                if c.c in ft[c.fsty] and newfam[0]!=ft[c.fsty][c.c]:
+                    newfam = (ft[c.fsty][c.c],c,c.loc.sel)
                     
                 newfams.append(newfam)
                
@@ -945,8 +943,8 @@ class ParsedText:
                 el.cstyle['-inkscape-font-specification'] = None
                 for c in rlst[0][1]:
                     c.sty = el.cstyle
-                    c.tsty = Character_Table.true_style(el.cstyle)
-                    c.rsty = Character_Table.reduced_style(el.cstyle)
+                    c.tsty = true_style(el.cstyle)
+                    c.fsty = font_style(el.cstyle)
             # For less common, need to wrap in a new Tspan
             for r in rlst[1:]:
                 for c in r[1]:
@@ -1209,7 +1207,7 @@ class ParsedText:
             
         def Height_AboveBelow_Baseline(el):
             lh = Get_Composed_LineHeight(el)
-            lsty = Character_Table.true_style(el.cspecified_style)
+            lsty = true_style(el.cspecified_style)
             fs, sf, ct, ang = Get_Composed_Width(el, "font-size", 4)
             # inkex.utils.debug(self.ctable.flowy(lsty))
             
@@ -1245,11 +1243,11 @@ class ParsedText:
                 # Determine above- and below-baseline lineheight
                 # sel = tel if tt==TT_TEXT else tel.getparent()
                 sty = sel.cspecified_style
-                tsty = Character_Table.true_style(sty)
+                tsty = true_style(sty)
                 ct = sel.ccomposed_transform
                 fs, sf, ct, ang = Get_Composed_Width(sel, "font-size", 4)
                 absp, bbsp, mrfs = Height_AboveBelow_Baseline(sel)
-                lsty = Character_Table.true_style(sel.cspecified_style)
+                lsty = true_style(sel.cspecified_style)
                 fabsp = max(rabsp,absp)
                 fbbsp = max(rbbsp,bbsp)
                 
@@ -2497,7 +2495,7 @@ def style_derived(styv,pel,textel):
 
 # A single character and its style
 class tchar:
-    __slots__ = ('c', 'tfs', 'utfs', 'sf', 'prop', 'cw', '_sty', 'tsty', 'rsty','loc', 'ch', 'sw', 'ln', 'lnindex', 'w', 'windex', 'type', '_dx', '_dy', 'deltanum', 'dkerns', 'parsed_pts_t', 'parsed_pts_ut', '_lsp', '_bshft','lhs')
+    __slots__ = ('c', 'tfs', 'utfs', 'sf', 'prop', 'cw', '_sty', 'tsty', 'fsty','loc', 'ch', 'sw', 'ln', 'lnindex', 'w', 'windex', 'type', '_dx', '_dy', 'deltanum', 'dkerns', 'parsed_pts_t', 'parsed_pts_ut', '_lsp', '_bshft','lhs')
     def __init__(self, c, tfs, sf, prop, sty, tsty, loc,ln):
         self.c = c
         self.tfs = tfs
@@ -2514,9 +2512,9 @@ class tchar:
         self._sty = sty
         # actual style
         self.tsty = tsty
-        # true style
-        self.rsty = Character_Table.reduced_style(sty)
-        # true style
+        # true font style
+        self.fsty = font_style(sty)
+        # font style
         self.loc = loc
         # true location: [parent, TT_TEXT or TT_TAIL, index]
         self.ch = prop.caph * utfs
@@ -2558,7 +2556,7 @@ class tchar:
         ret.cw = self.cw
         ret._sty = self._sty
         ret.tsty = self.tsty
-        ret.rsty = self.rsty
+        ret.fsty = self.fsty
         ret.ch = self.ch
         ret.sw = self.sw
         ret.lnindex = self.lnindex
@@ -2839,8 +2837,8 @@ class tchar:
 
         t.cstyle = styset
         self.sty = styset
-        self.tsty = Character_Table.true_style(styset)
-        self.rsty = Character_Table.reduced_style(styset)
+        self.tsty = true_style(styset)
+        self.fsty = font_style(styset)
 
     def makesubsuper(self, sz=65):
         if self.type == "super":
@@ -2991,7 +2989,7 @@ class Character_Table:
     def __init__(self, els):
         self.els = els
         self.root = els[0].croot if len(els)>0 else None
-        ct, pct, self.rtable = self.find_characters(els)
+        ct, pct, self.rtable = self.collect_characters(els)
         
         if haspango:
             # Prefer to measure with Pango if we have it (faster, more accurate)
@@ -3037,7 +3035,8 @@ class Character_Table:
             self.mults[(char,sty,scl)] = self.get_prop(char,sty) * scl
             return self.mults[(char,sty,scl)]
 
-    def find_characters(self, els):
+    # Find all the characters in a list of elements
+    def collect_characters(self, els):
         ctable = inkex.OrderedDict()
         pctable = inkex.OrderedDict()   # a dictionary of preceding characters in the same style
         rtable = inkex.OrderedDict()
@@ -3052,10 +3051,10 @@ class Character_Table:
                             # tails get their sty from the parent of the element the tail belongs to
                         sty = sel.cspecified_style
                         
-                        tsty = Character_Table.true_style(sty)
-                        rsty = Character_Table.reduced_style(sty)
+                        tsty = true_style(sty)
+                        fsty = font_style(sty)
                         ctable[tsty] = unique(ctable.get(tsty, []) + list(txt))
-                        rtable[rsty] = unique(rtable.get(rsty, []) + list(txt))
+                        rtable[fsty] = unique(rtable.get(fsty, []) + list(txt))
                         if tsty not in pctable:
                             pctable[tsty] = inkex.OrderedDict()
                         for jj in range(1, len(txt)):
@@ -3065,8 +3064,8 @@ class Character_Table:
             ctable[tsty] = unique(ctable[tsty] + [" "])
             for pc in pctable[tsty]:
                 pctable[tsty][pc] = unique(pctable[tsty][pc] + [" "])
-        for rsty in rtable:  # make sure they have spaces
-            rtable[rsty] = unique(rtable[rsty] + [" "])
+        for fsty in rtable:  # make sure they have spaces
+            rtable[fsty] = unique(rtable[fsty] + [" "])
         return ctable, pctable, rtable
     
     
@@ -3100,7 +3099,7 @@ class Character_Table:
                         c = fntcs[chrfnt][ii]
                         cw = advs[c]
                         ch = fnt.cap_height
-                        dr = 0
+                        # dr = 0
                         inkbb = inkbbs[c]
                         ct2[ts][c] = cprop(c,cw,None,ch,dkern,inkbb)
                 spc = ct2[ts][' ']
@@ -3126,7 +3125,7 @@ class Character_Table:
         if forcecommand:
             # Examine the whole document if using command
             ctels = [d for d in self.root.iddict.ds if isinstance(d,(TextElement,FlowRoot))];
-            ct, pct, self.rtable = self.find_characters(ctels)
+            ct, pct, self.rtable = self.collect_characters(ctels)
 
         prefix = 'I='
         suffix = '=I'
@@ -3350,29 +3349,7 @@ class Character_Table:
                 )
         return ct
 
-    # For generating test characters, we want to normalize the style so that we don't waste time
-    # measuring a bunch of identical characters that will render the same way.
-    # True style: the actual style that font config selects based on the reduced style
-    @staticmethod
-    @lru_cache(maxsize=None)
-    def true_style(sty):
-        # Actual rendered font, determined using fontconfig
-        sty2 = Character_Table.reduced_style(sty)
-        tf = fcfg.get_true_font(sty2)
-        return tf
-    
-    # Reduced style: the style that has been reduced to the four attributes
-    # that matter for text shaping
-    fontatt = ['font-family','font-weight','font-style','font-stretch']
-    dfltatt = [(k,default_style_atts[k]) for k in fontatt]
-    @staticmethod
-    @lru_cache(maxsize=None)
-    def reduced_style(sty):
-        # Standardize font to kerning-related attributes only
-        sty2 = Style(Character_Table.dfltatt)
-        sty2.update({k:v for k,v in sty.items() if k in Character_Table.fontatt})
-        sty2['font-family'] = ','.join(["'"+v.strip('"').strip("'")+"'" for v in sty2['font-family'].split(',')])
-        return sty2
+
 
     # Make a table of the effective font-family for each character in tsty,
     # for when a family does not have a character and a default is used
@@ -3382,7 +3359,7 @@ class Character_Table:
             ctable2 = dict()
             self._ftable = inkex.OrderedDict();
             for s in self.rtable:
-                tsty = Character_Table.true_style(s);
+                tsty = true_style(s);
                 allcs = set(''.join(self.rtable[s]))
                 tfbc = fcfg.get_true_font_by_char(s,allcs)
                 tfbc = {k:v for k,v in tfbc.items() if v is not None}

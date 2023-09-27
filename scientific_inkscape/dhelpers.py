@@ -971,10 +971,10 @@ def Run_SI_Extension(effext,name):
                 from inkex.text import TextParser
                 import RemoveKerning
                 from inspect import getmembers, isfunction, isclass, getmodule
-                import pango_renderer
+                import font_properties
     
                 fns = []
-                for m in [sys.modules[__name__], TextParser, RemoveKerning, Style, pango_renderer,
+                for m in [sys.modules[__name__], TextParser, RemoveKerning, Style, font_properties,
                           inkex.transforms, getmodule(effext), inkex.text.speedups]:
                     fns += [v[1] for v in getmembers(m, isfunction)]
                     for c in getmembers(m, isclass):
