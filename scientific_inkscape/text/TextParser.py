@@ -3045,14 +3045,14 @@ class Character_Table:
             tree = txttree(el)
             for di, tt, tel, sel, txt in tree.dgenerator():
                     if txt is not None and len(txt) > 0:
-                        # sel = tel
-                        # if tt==TT_TAIL:
-                        #     sel = tree.pdict[tel]
-                            # tails get their sty from the parent of the element the tail belongs to
                         sty = sel.cspecified_style
-                        
                         tsty = true_style(sty)
                         fsty = font_style(sty)
+                        
+                        # inkex.utils.debug(sty)
+                        # inkex.utils.debug(fsty)
+                        # inkex.utils.debug(tsty)
+                        
                         ctable[tsty] = unique(ctable.get(tsty, []) + list(txt))
                         rtable[fsty] = unique(rtable.get(fsty, []) + list(txt))
                         if tsty not in pctable:

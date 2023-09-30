@@ -227,6 +227,9 @@ fcfg = FontConfig()
 @lru_cache(maxsize=None)
 def true_style(sty):
     sty2 = font_style(sty)
+    
+    sty2['font-weight'] = sty2['font-weight'] if sty2['font-weight'] in lu.VALID_CSSWGT else 'normal'
+    
     tf = fcfg.get_true_font(sty2)
     return tf
 
@@ -579,7 +582,7 @@ class PangoRenderer():
         
         
         def css_to_pango_func(sty,key):
-            val = sty.get(key).lower();
+            val = sty.get(key);
             if key=='font-weight':
                 return lu.CSSWGT_to_PWGT.get(val,Pango.Weight.NORMAL)
             elif key=='font-style':
@@ -600,7 +603,8 @@ class PangoRenderer():
             return fcwidth,fcweight,fcslant
         self.pango_to_fc = pango_to_fc_func;
 
-        def pango_to_css_func(pfamily,pstretch,pweight,pstyle):
+        def pango_to_css_func(pfnt):
+            fd = pfnt.describe()
             def isnumeric(s):
                 try:
                     float(s)
@@ -608,11 +612,11 @@ class PangoRenderer():
                 except:
                     isnum = False
                 return isnum
-            cs  = [k for k,v in lu.CSSSTR_to_PSTR.items() if v==pstretch]
-            cw  = [k for k,v in lu.CSSWGT_to_PWGT.items() if v==pweight and isnumeric(k)]
-            csty= [k for k,v in lu.CSSSTY_to_PSTY.items() if v==pstyle]
+            cs  = [k for k,v in lu.CSSSTR_to_PSTR.items() if v==fd.get_stretch()]
+            cw  = [k for k,v in lu.CSSWGT_to_PWGT.items() if v==fd.get_weight() and isnumeric(k)]
+            csty= [k for k,v in lu.CSSSTY_to_PSTY.items() if v==fd.get_style()]
             
-            s = (('font-family',pfamily),)
+            s = (('font-family',fd.get_family()),)
             if len(cs)>0:
                 s += (('font-stretch',cs[0]),)
             if len(cw)>0:
@@ -1142,6 +1146,15 @@ class FontAttributeLookups:
             FC.WIDTH_EXPANDED: 'expanded',
             FC.WIDTH_EXTRAEXPANDED: 'extra-expanded',
             FC.WIDTH_ULTRAEXPANDED: 'ultra-expanded'
+        }
+        
+        # Weights Inkscape treats as valid (others ignored)
+        # Book, Semi-Light, and Ultra-Heavy ignored
+        # See https://gitlab.com/inkscape/inkscape/-/blob/master/src/libnrtype/font-factory.cpp
+        self.VALID_CSSWGT = {
+            'thin', 'ultralight', 'light', 'normal', 'medium', 'semibold', 
+            'bold', 'ultrabold', 'heavy', '100', '200', 
+            '300', '400', '500', '600', '700', '800', '900'
         }
         
         if haspango:                
