@@ -3017,13 +3017,19 @@ class Character_Table:
             return self.ctable[sty][char]
         except:
             if sty not in self.ctable:
-                inkex.utils.debug("No style matches!")
-                inkex.utils.debug("Character: " + char)
+                inkex.utils.debug("No style matches found!")
+                inkex.utils.debug("This probably means that new text was generated and the SVG's character table is outdated. Reset it by setting")
+                inkex.utils.debug("     self.svg.char_table = None")
+                inkex.utils.debug("(This can take a long time, so best practice is to do this as few times as is possible.)")
+                inkex.utils.debug("\nCharacter: " + char)
                 inkex.utils.debug("Style: " + str(sty))
                 inkex.utils.debug("Existing styles: " + str(list(self.ctable.keys())))
             else:
                 inkex.utils.debug("No character matches!")
-                inkex.utils.debug("Character: " + char)
+                inkex.utils.debug("This probably means that new text was generated and the SVG's character table is outdated. Reset it by setting")
+                inkex.utils.debug("     self.svg.char_table = None")
+                inkex.utils.debug("(This can take a long time, so best practice is to do this as few times as is possible.)")
+                inkex.utils.debug("\nCharacter: " + char)
                 inkex.utils.debug("Style: " + str(sty))
                 inkex.utils.debug("Existing chars: " + str(list(self.ctable[sty].keys())))
             raise KeyError
