@@ -125,7 +125,7 @@ class FontConfig():
         pat.add(fc.PROP.SLANT,  lu.CSSSTY_to_FCSLN.get(sty.get('font-style'),   FC.SLANT_ROMAN))
         return pat
     
-    # Convert a found fc object to a style dictionary
+    # Convert a found fc object to a Style
     def fcfound_to_css(self,f):
         # For CSS, enclose font family in single quotes
         # Needed for fonts like Modern No. 20 with periods in the family
@@ -210,6 +210,7 @@ class FontConfig():
 # Font style: given a CSS style, return a style that has the four attributes
 # that matter for font selection
 # Note that Inkscape may not draw this font if it is not present on the system.
+# The family can have multiple comma-separated values, used for fallback
 fontatt = ['font-family','font-weight','font-style','font-stretch']
 dfltatt = [(k,default_style_atts[k]) for k in fontatt]
 from functools import lru_cache
@@ -221,19 +222,15 @@ def font_style(sty):
     return sty2
 
 # True style: given a CSS style, return a style with the actual font that
-# fontconfig selected
+# fontconfig selected.
 # This is the actual font that Inkscape will draw
 fcfg = FontConfig()
 @lru_cache(maxsize=None)
 def true_style(sty):
     sty2 = font_style(sty)
-    
-    sty2['font-weight'] = sty2['font-weight'] if sty2['font-weight'] in lu.VALID_CSSWGT else 'normal'
-    
     tf = fcfg.get_true_font(sty2)
     return tf
 
- 
 # For dicts whose keys are numerical values, return the value corresponding to 
 # the closest one
 def nearest_val(dictv, width_value):
@@ -592,7 +589,23 @@ class PangoRenderer():
             elif key=='font-variant':
                 return lu.CSSVAR_to_PVAR.get(val,Pango.Variant.NORMAL)
             return None
-        self.css_to_pango = css_to_pango_func;
+        # self.css_to_pango = css_to_pango_func;
+        
+        
+        def css_to_pango_description_fcn(sty):
+            from gi.repository import Pango
+            fd = Pango.FontDescription(sty['font-family'].strip("'")+',');
+            # The comma above is very important for font-families like Rockwell Condensed.
+            # Without it, Pango will interpret it as the Condensed font-stretch of the Rockwell font-family,
+            # rather than the Rockwell Condensed font-family.
+            fd.set_weight( lu.CSSWGT_to_PWGT.get(sty.get('font-weight'), Pango.Weight.NORMAL ))
+            fd.set_variant(lu.CSSVAR_to_PVAR.get(sty.get('font-variant'),Pango.Variant.NORMAL))
+            fd.set_style(  lu.CSSSTY_to_PSTY.get(sty.get('font-style'),  Pango.Style.NORMAL  ))
+            fd.set_stretch(lu.CSSSTR_to_PSTR.get(sty.get('font-stretch'),Pango.Stretch.NORMAL))
+            return fd
+        self.css_to_pango_description = css_to_pango_description_fcn;
+        
+        
 
         
         
@@ -710,48 +723,19 @@ class PangoRenderer():
         for m in msty:
             if m not in sty2:
                 sty2[m]=default_style_atts[m]
-        
-        from gi.repository import Pango
-            
-        fd = Pango.FontDescription(sty2['font-family'].strip("'")+',');
-        # The comma above is very important for font-families like Rockwell Condensed.
-        # Without it, Pango will interpret it as the Condensed font-stretch of the Rockwell font-family,
-        # rather than the Rockwell Condensed font-family.
-        fd.set_weight( self.css_to_pango(sty2,'font-weight'))
-        fd.set_variant(self.css_to_pango(sty2,'font-variant'))
-        fd.set_style(  self.css_to_pango(sty2,'font-style'))
-        fd.set_stretch(self.css_to_pango(sty2,'font-stretch'))
+
+        fd = self.css_to_pango_description(sty2)
         fd.set_absolute_size(self.pufd(self.PANGOSIZE))
-        
         global numerrlogs
         logsbefore = numerrlogs
         fnt = self.ctx.get_font_map().load_font(self.ctx,fd)
-        
-        # (fnt.describe().to_string())
-        
-        
-        # Get the font description of the loaded font
-        # font_description = fnt.describe()
-        
-        # # Print the font properties using dh.idebug()
-        # dh.idebug("Font Family: " + str(font_description.get_family()))
-        # dh.idebug("Font Weight: " + str(font_description.get_weight()))
-        # dh.idebug("Font Variant: " + str(font_description.get_variant()))
-        # dh.idebug("Font Style: " + str(font_description.get_style()))
-        # dh.idebug("Font Stretch: " + str(font_description.get_stretch()))
-        # dh.idebug("Font Size: " + str(font_description.get_size()))
 
-        
         if not(haspangoFT2):
             success = numerrlogs==logsbefore and fnt is not None
         else:
             success = fnt is not None
             # PangoFT2 sometimes gives mysterious errors that are actually fine
                         
-        # dh.idebug(success)
-        # dh.idebug(self.PWGT_to_FCWGT[lu.CSSWGT_to_PWGT[  sty2['font-weight']]])
-        # dh.idebug(FC.WEIGHT_EXTRABOLD)
-        # dh.idebug((fcname,fd.to_string()))
         if success:
             self.pangolayout.set_font_description(fd);
             fm = fnt.get_metrics();
@@ -1078,154 +1062,188 @@ class FontAttributeLookups:
     # CSS:        font-weight, font-style, font-stretch
     # FontConfig: weight,      slant,      width
     # Pango:      weight,      style,      stretch
+    #
+    # Inkscape conventions in libnrtype/font-factory.cpp
+    # https://gitlab.com/inkscape/inkscape/-/blob/master/src/libnrtype/font-factory.cpp
+    
     def __init__(self):
         # CSS to fontconfig
-        self.CSSWGT_to_FCWGT = {'thin': FC.WEIGHT_THIN,
-                              'ultralight': FC.WEIGHT_EXTRALIGHT, 
-                              'light': FC.WEIGHT_LIGHT, 
-                              'semilight': FC.WEIGHT_SEMILIGHT, 
-                              'book': FC.WEIGHT_BOOK, 
-                              'normal': FC.WEIGHT_NORMAL, 
-                              'medium': FC.WEIGHT_MEDIUM, 
-                              'semibold': FC.WEIGHT_SEMIBOLD, 
-                              'bold': FC.WEIGHT_BOLD, 
-                              'ultrabold': FC.WEIGHT_ULTRABOLD, 
-                              'heavy': FC.WEIGHT_HEAVY, 
-                              'ultraheavy': FC.WEIGHT_ULTRABLACK, 
-                              '100': FC.WEIGHT_THIN, 
-                              '200': FC.WEIGHT_EXTRALIGHT, 
-                              '300': FC.WEIGHT_LIGHT, 
-                              '350': FC.WEIGHT_SEMILIGHT, 
-                              '380': FC.WEIGHT_BOOK, 
-                              '400': FC.WEIGHT_NORMAL, 
-                              '500': FC.WEIGHT_MEDIUM, 
-                              '600': FC.WEIGHT_SEMIBOLD, 
-                              '700': FC.WEIGHT_BOLD, 
-                              '800': FC.WEIGHT_ULTRABOLD, 
-                              '900': FC.WEIGHT_HEAVY, 
-                              '1000': FC.WEIGHT_ULTRABLACK}
-        self.CSSSTY_to_FCSLN = {'normal': FC.SLANT_ROMAN, 
-                              'italic': FC.SLANT_ITALIC, 
-                              'oblique': FC.SLANT_OBLIQUE}
-        self.CSSSTR_to_FCWDT = {'ultra-condensed': FC.WIDTH_ULTRACONDENSED, 
-                              'extra-condensed': FC.WIDTH_EXTRACONDENSED, 
-                              'condensed': FC.WIDTH_CONDENSED, 
-                              'semi-condensed': FC.WIDTH_SEMICONDENSED, 
-                              'normal': FC.WIDTH_NORMAL, 
-                              'semi-expanded': FC.WIDTH_SEMIEXPANDED, 
-                              'expanded': FC.WIDTH_EXPANDED, 
-                              'extra-expanded': FC.WIDTH_EXTRAEXPANDED, 
-                              'ultra-expanded': FC.WIDTH_ULTRAEXPANDED}
+        # For weights, Inkscape ignores anything commented out below
+        # See ink_font_description_from_style in libnrtype/font-factory.cpp
+        self.CSSWGT_to_FCWGT = {
+            # 'thin'      : FC.WEIGHT_THIN,
+            # 'ultralight': FC.WEIGHT_EXTRALIGHT,
+            # 'light'     : FC.WEIGHT_LIGHT,
+            # 'semilight' : FC.WEIGHT_SEMILIGHT,
+            # 'book'      : FC.WEIGHT_BOOK,
+              'normal'    : FC.WEIGHT_NORMAL,
+            # 'medium'    : FC.WEIGHT_MEDIUM,
+            # 'semibold'  : FC.WEIGHT_SEMIBOLD,
+              'bold'      : FC.WEIGHT_BOLD,
+            # 'ultrabold' : FC.WEIGHT_ULTRABOLD,
+            # 'heavy'     : FC.WEIGHT_HEAVY,
+            # 'ultraheavy': FC.WEIGHT_ULTRABLACK,
+              '100'       : FC.WEIGHT_THIN,
+              '200'       : FC.WEIGHT_EXTRALIGHT,
+              '300'       : FC.WEIGHT_LIGHT,
+            # '350'       : FC.WEIGHT_SEMILIGHT,
+            # '380'       : FC.WEIGHT_BOOK,
+              '400'       : FC.WEIGHT_NORMAL,
+              '500'       : FC.WEIGHT_MEDIUM,
+              '600'       : FC.WEIGHT_SEMIBOLD,
+              '700'       : FC.WEIGHT_BOLD,
+              '800'       : FC.WEIGHT_ULTRABOLD,
+              '900'       : FC.WEIGHT_HEAVY,
+            # '1000'      : FC.WEIGHT_ULTRABLACK
+        }
         
+        self.CSSSTY_to_FCSLN = {
+            'normal'  : FC.SLANT_ROMAN,
+            'italic'  : FC.SLANT_ITALIC,
+            'oblique' : FC.SLANT_OBLIQUE
+        }
+        
+        self.CSSSTR_to_FCWDT = {
+            'ultra-condensed' : FC.WIDTH_ULTRACONDENSED,
+            'extra-condensed' : FC.WIDTH_EXTRACONDENSED,
+            'condensed'       : FC.WIDTH_CONDENSED,
+            'semi-condensed'  : FC.WIDTH_SEMICONDENSED,
+            'normal'          : FC.WIDTH_NORMAL,
+            'semi-expanded'   : FC.WIDTH_SEMIEXPANDED,
+            'expanded'        : FC.WIDTH_EXPANDED,
+            'extra-expanded'  : FC.WIDTH_EXTRAEXPANDED,
+            'ultra-expanded'  : FC.WIDTH_ULTRAEXPANDED
+        }
+
         # Fontconfig to CSS
-        self.FCWGT_to_CSSWGT = {FC.WEIGHT_THIN: '100',
-                        FC.WEIGHT_EXTRALIGHT: '200',
-                        FC.WEIGHT_LIGHT: '300',
-                        FC.WEIGHT_SEMILIGHT: '350',
-                        FC.WEIGHT_BOOK: '380',
-                        FC.WEIGHT_NORMAL: '400',
-                        FC.WEIGHT_MEDIUM: '500',
-                        FC.WEIGHT_SEMIBOLD: '600',
-                        FC.WEIGHT_BOLD: '700',
-                        FC.WEIGHT_ULTRABOLD: '800',
-                        FC.WEIGHT_HEAVY: '900',
-                        FC.WEIGHT_ULTRABLACK: '1000'}
+        # Semi-Light, Book, and Ultra-Black are mapped to Light, Normal, Heavy
+        # See FontFactory::GetUIStyles in libnrtype/font-factory.cpp
+        self.FCWGT_to_CSSWGT = {
+              FC.WEIGHT_THIN       : '100',
+              FC.WEIGHT_EXTRALIGHT : '200',
+              FC.WEIGHT_LIGHT      : '300',
+            # FC.WEIGHT_SEMILIGHT  : '350',
+              FC.WEIGHT_SEMILIGHT  : '300',
+            # FC.WEIGHT_BOOK       : '380',
+              FC.WEIGHT_BOOK       : '400',
+              FC.WEIGHT_NORMAL     : '400',
+              FC.WEIGHT_MEDIUM     : '500',
+              FC.WEIGHT_SEMIBOLD   : '600',
+              FC.WEIGHT_BOLD       : '700',
+              FC.WEIGHT_ULTRABOLD  : '800',
+              FC.WEIGHT_HEAVY      : '900',
+            # FC.WEIGHT_ULTRABLACK : '1000',
+              FC.WEIGHT_ULTRABLACK : '900',
+        }
         
         self.FCSLN_to_CSSSTY = {
-            FC.SLANT_ROMAN: 'normal',
-            FC.SLANT_ITALIC: 'italic',
-            FC.SLANT_OBLIQUE: 'oblique'
+              FC.SLANT_ROMAN   : 'normal',
+              FC.SLANT_ITALIC  : 'italic',
+              FC.SLANT_OBLIQUE : 'oblique'
         }
+        
         self.FCWDT_to_CSSSTR = {
-            FC.WIDTH_ULTRACONDENSED: 'ultra-condensed',
-            FC.WIDTH_EXTRACONDENSED: 'extra-condensed',
-            FC.WIDTH_CONDENSED: 'condensed',
-            FC.WIDTH_SEMICONDENSED: 'semi-condensed',
-            FC.WIDTH_NORMAL: 'normal',
-            FC.WIDTH_SEMIEXPANDED: 'semi-expanded',
-            FC.WIDTH_EXPANDED: 'expanded',
-            FC.WIDTH_EXTRAEXPANDED: 'extra-expanded',
-            FC.WIDTH_ULTRAEXPANDED: 'ultra-expanded'
+              FC.WIDTH_ULTRACONDENSED  : 'ultra-condensed',
+              FC.WIDTH_EXTRACONDENSED  : 'extra-condensed',
+              FC.WIDTH_CONDENSED       : 'condensed',
+              FC.WIDTH_SEMICONDENSED   : 'semi-condensed',
+              FC.WIDTH_NORMAL          : 'normal',
+              FC.WIDTH_SEMIEXPANDED    : 'semi-expanded',
+              FC.WIDTH_EXPANDED        : 'expanded',
+              FC.WIDTH_EXTRAEXPANDED   : 'extra-expanded',
+              FC.WIDTH_ULTRAEXPANDED   : 'ultra-expanded'
         }
-        
-        # Weights Inkscape treats as valid (others ignored)
-        # Book, Semi-Light, and Ultra-Heavy ignored
-        # See https://gitlab.com/inkscape/inkscape/-/blob/master/src/libnrtype/font-factory.cpp
-        self.VALID_CSSWGT = {
-            'thin', 'ultralight', 'light', 'normal', 'medium', 'semibold', 
-            'bold', 'ultrabold', 'heavy', '100', '200', 
-            '300', '400', '500', '600', '700', '800', '900'
-        }
-        
+
         if haspango:                
             # Pango to fontconfig
-            self.PWGT_to_FCWGT = {Pango.Weight.THIN:FC.WEIGHT_THIN,
-                                  Pango.Weight.ULTRALIGHT:FC.WEIGHT_ULTRALIGHT,
-                                  Pango.Weight.ULTRALIGHT:FC.WEIGHT_EXTRALIGHT,
-                                  Pango.Weight.LIGHT:FC.WEIGHT_LIGHT,
-                                  Pango.Weight.SEMILIGHT:FC.WEIGHT_DEMILIGHT,
-                                  Pango.Weight.SEMILIGHT:FC.WEIGHT_SEMILIGHT,
-                                  Pango.Weight.BOOK:FC.WEIGHT_BOOK,
-                                  Pango.Weight.NORMAL:FC.WEIGHT_REGULAR,
-                                  Pango.Weight.NORMAL:FC.WEIGHT_NORMAL,
-                                  Pango.Weight.MEDIUM:FC.WEIGHT_MEDIUM,
-                                  Pango.Weight.SEMIBOLD:FC.WEIGHT_DEMIBOLD,
-                                  Pango.Weight.SEMIBOLD:FC.WEIGHT_SEMIBOLD,
-                                  Pango.Weight.BOLD:FC.WEIGHT_BOLD,
-                                  Pango.Weight.ULTRABOLD:FC.WEIGHT_EXTRABOLD,
-                                  Pango.Weight.ULTRABOLD:FC.WEIGHT_ULTRABOLD,
-                                  Pango.Weight.HEAVY:FC.WEIGHT_BLACK,
-                                  Pango.Weight.HEAVY:FC.WEIGHT_HEAVY,
-                                  Pango.Weight.ULTRAHEAVY:FC.WEIGHT_EXTRABLACK,
-                                  Pango.Weight.ULTRAHEAVY:FC.WEIGHT_ULTRABLACK}
+            self.PWGT_to_FCWGT = {
+                  Pango.Weight.THIN         : FC.WEIGHT_THIN,
+                  Pango.Weight.ULTRALIGHT   : FC.WEIGHT_ULTRALIGHT,
+                  Pango.Weight.ULTRALIGHT   : FC.WEIGHT_EXTRALIGHT,
+                  Pango.Weight.LIGHT        : FC.WEIGHT_LIGHT,
+                  Pango.Weight.SEMILIGHT    : FC.WEIGHT_DEMILIGHT,
+                  Pango.Weight.SEMILIGHT    : FC.WEIGHT_SEMILIGHT,
+                  Pango.Weight.BOOK         : FC.WEIGHT_BOOK,
+                  Pango.Weight.NORMAL       : FC.WEIGHT_REGULAR,
+                  Pango.Weight.NORMAL       : FC.WEIGHT_NORMAL,
+                  Pango.Weight.MEDIUM       : FC.WEIGHT_MEDIUM,
+                  Pango.Weight.SEMIBOLD     : FC.WEIGHT_DEMIBOLD,
+                  Pango.Weight.SEMIBOLD     : FC.WEIGHT_SEMIBOLD,
+                  Pango.Weight.BOLD         : FC.WEIGHT_BOLD,
+                  Pango.Weight.ULTRABOLD    : FC.WEIGHT_EXTRABOLD,
+                  Pango.Weight.ULTRABOLD    : FC.WEIGHT_ULTRABOLD,
+                  Pango.Weight.HEAVY        : FC.WEIGHT_BLACK,
+                  Pango.Weight.HEAVY        : FC.WEIGHT_HEAVY,
+                  Pango.Weight.ULTRAHEAVY   : FC.WEIGHT_EXTRABLACK,
+                  Pango.Weight.ULTRAHEAVY   : FC.WEIGHT_ULTRABLACK
+            }
             
-            self.PSTY_to_FCSLN = {Pango.Style.NORMAL:FC.SLANT_ROMAN,
-                                  Pango.Style.ITALIC:FC.SLANT_ITALIC,
-                                  Pango.Style.OBLIQUE:FC.SLANT_OBLIQUE}
-    
-            self.PSTR_to_FCWDT = {Pango.Stretch.ULTRA_CONDENSED:FC.WIDTH_ULTRACONDENSED,
-                                  Pango.Stretch.EXTRA_CONDENSED:FC.WIDTH_EXTRACONDENSED,
-                                  Pango.Stretch.CONDENSED:FC.WIDTH_CONDENSED,
-                                  Pango.Stretch.SEMI_CONDENSED:FC.WIDTH_SEMICONDENSED,
-                                  Pango.Stretch.NORMAL:FC.WIDTH_NORMAL,
-                                  Pango.Stretch.SEMI_EXPANDED:FC.WIDTH_SEMIEXPANDED,
-                                  Pango.Stretch.EXPANDED:FC.WIDTH_EXPANDED,
-                                  Pango.Stretch.EXTRA_EXPANDED:FC.WIDTH_EXTRAEXPANDED,
-                                  Pango.Stretch.ULTRA_EXPANDED:FC.WIDTH_ULTRAEXPANDED}
+            self.PSTY_to_FCSLN = {
+                  Pango.Style.NORMAL   : FC.SLANT_ROMAN,
+                  Pango.Style.ITALIC   : FC.SLANT_ITALIC,
+                  Pango.Style.OBLIQUE  : FC.SLANT_OBLIQUE
+            }
             
+            self.PSTR_to_FCWDT = {
+                  Pango.Stretch.ULTRA_CONDENSED   : FC.WIDTH_ULTRACONDENSED,
+                  Pango.Stretch.EXTRA_CONDENSED   : FC.WIDTH_EXTRACONDENSED,
+                  Pango.Stretch.CONDENSED         : FC.WIDTH_CONDENSED,
+                  Pango.Stretch.SEMI_CONDENSED    : FC.WIDTH_SEMICONDENSED,
+                  Pango.Stretch.NORMAL            : FC.WIDTH_NORMAL,
+                  Pango.Stretch.SEMI_EXPANDED     : FC.WIDTH_SEMIEXPANDED,
+                  Pango.Stretch.EXPANDED          : FC.WIDTH_EXPANDED,
+                  Pango.Stretch.EXTRA_EXPANDED    : FC.WIDTH_EXTRAEXPANDED,
+                  Pango.Stretch.ULTRA_EXPANDED    : FC.WIDTH_ULTRAEXPANDED
+            }
             # CSS to Pango
             self.CSSVAR_to_PVAR = {
-                'normal': Pango.Variant.NORMAL,
-                'small-caps': Pango.Variant.SMALL_CAPS,
+                  'normal'     : Pango.Variant.NORMAL,
+                  'small-caps' : Pango.Variant.SMALL_CAPS,
             }
+            
             self.CSSSTY_to_PSTY = {
-                'normal': Pango.Style.NORMAL,
-                'italic': Pango.Style.ITALIC,
-                'oblique': Pango.Style.OBLIQUE,
+                  'normal'  : Pango.Style.NORMAL,
+                  'italic'  : Pango.Style.ITALIC,
+                  'oblique' : Pango.Style.OBLIQUE,
             }
+            # For weights, Inkscape ignores anything commented out below
+            # See ink_font_description_from_style in libnrtype/font-factory.cpp
             self.CSSWGT_to_PWGT = {
-                'thin':   Pango.Weight.THIN,   'ultralight': Pango.Weight.ULTRALIGHT,
-                'light':  Pango.Weight.LIGHT,  'semilight':  Pango.Weight.SEMILIGHT,
-                'book':   Pango.Weight.BOOK,   'normal':     Pango.Weight.NORMAL,
-                'medium': Pango.Weight.MEDIUM, 'semibold':   Pango.Weight.SEMIBOLD,
-                'bold':   Pango.Weight.BOLD,   'ultrabold':  Pango.Weight.ULTRABOLD,
-                'heavy':  Pango.Weight.HEAVY,  'ultraheavy': Pango.Weight.ULTRAHEAVY,
-                '100':    Pango.Weight.THIN,   '200':        Pango.Weight.ULTRALIGHT,
-                '300':    Pango.Weight.LIGHT,  '350':        Pango.Weight.SEMILIGHT,
-                '380':    Pango.Weight.BOOK,   '400':        Pango.Weight.NORMAL,
-                '500':    Pango.Weight.MEDIUM, '600':        Pango.Weight.SEMIBOLD,
-                '700':    Pango.Weight.BOLD,   '800':        Pango.Weight.ULTRABOLD,
-                '900':    Pango.Weight.HEAVY,  '1000':       Pango.Weight.ULTRAHEAVY
+                # 'thin'       : Pango.Weight.THIN,
+                # 'ultralight' : Pango.Weight.ULTRALIGHT,
+                # 'light'      : Pango.Weight.LIGHT,
+                # 'semilight'  : Pango.Weight.SEMILIGHT,
+                # 'book'       : Pango.Weight.BOOK,
+                  'normal'     : Pango.Weight.NORMAL,
+                # 'medium'     : Pango.Weight.MEDIUM,
+                # 'semibold'   : Pango.Weight.SEMIBOLD,
+                  'bold'       : Pango.Weight.BOLD,
+                # 'ultrabold'  : Pango.Weight.ULTRABOLD,
+                # 'heavy'      : Pango.Weight.HEAVY,
+                # 'ultraheavy' : Pango.Weight.ULTRAHEAVY,
+                  '100'        : Pango.Weight.THIN,
+                  '200'        : Pango.Weight.ULTRALIGHT,
+                  '300'        : Pango.Weight.LIGHT,
+                # '350'        : Pango.Weight.SEMILIGHT,
+                # '380'        : Pango.Weight.BOOK,
+                  '400'        : Pango.Weight.NORMAL,
+                  '500'        : Pango.Weight.MEDIUM,
+                  '600'        : Pango.Weight.SEMIBOLD,
+                  '700'        : Pango.Weight.BOLD,
+                  '800'        : Pango.Weight.ULTRABOLD,
+                  '900'        : Pango.Weight.HEAVY,
+                # '1000'       : Pango.Weight.ULTRAHEAVY
             }
             self.CSSSTR_to_PSTR = {
-                'ultra-condensed': Pango.Stretch.ULTRA_CONDENSED,
-                'extra-condensed': Pango.Stretch.EXTRA_CONDENSED,
-                'condensed':       Pango.Stretch.CONDENSED,
-                'semi-condensed':  Pango.Stretch.SEMI_CONDENSED,
-                'normal':          Pango.Stretch.NORMAL,
-                'semi-expanded':   Pango.Stretch.SEMI_EXPANDED,
-                'expanded':        Pango.Stretch.EXPANDED,
-                'extra-expanded':  Pango.Stretch.EXTRA_EXPANDED,
-                'ultra-expanded':  Pango.Stretch.ULTRA_EXPANDED
+                  'ultra-condensed'  : Pango.Stretch.ULTRA_CONDENSED,
+                  'extra-condensed'  : Pango.Stretch.EXTRA_CONDENSED,
+                  'condensed'        : Pango.Stretch.CONDENSED,
+                  'semi-condensed'   : Pango.Stretch.SEMI_CONDENSED,
+                  'normal'           : Pango.Stretch.NORMAL,
+                  'semi-expanded'    : Pango.Stretch.SEMI_EXPANDED,
+                  'expanded'         : Pango.Stretch.EXPANDED,
+                  'extra-expanded'   : Pango.Stretch.EXTRA_EXPANDED,
+                  'ultra-expanded'   : Pango.Stretch.ULTRA_EXPANDED
             }
+
 lu = FontAttributeLookups();
