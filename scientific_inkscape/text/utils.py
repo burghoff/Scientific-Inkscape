@@ -204,23 +204,12 @@ def Get_Bounding_Boxes(filename, inkscape_binary=None,extra_args=[], svg=None):
         bbs[k] = ds.pxtouu(bbs[k])
     return bbs
 
-# Gets the location of the Inkscape binary
-# Functions copied from command.py
-# Copyright (C) 2019 Martin Owens
+# Gets the location of the Inkscape binary, checking path if necessary
 global bloc
 bloc = None
 def Get_Binary_Loc():
     global bloc
     if bloc is None:
-        INKSCAPE_EXECUTABLE_NAME = os.environ.get("INKSCAPE_COMMAND")
-        if INKSCAPE_EXECUTABLE_NAME == None:
-            if sys.platform == "win32":
-                # prefer inkscape.exe over inkscape.com which spawns a command window
-                INKSCAPE_EXECUTABLE_NAME = "inkscape.exe"
-            else:
-                INKSCAPE_EXECUTABLE_NAME = "inkscape"
-        class CommandNotFound(IOError):
-            pass
         def which2(program):
             try:
                 return inkex.command.which(program)
@@ -235,8 +224,8 @@ def Get_Binary_Loc():
                                 return prog
                 except ImportError:
                     pass
-                raise CommandNotFound(f"Can not find the command: '{program}'")
-        bloc = which2(INKSCAPE_EXECUTABLE_NAME)
+                raise inkex.command.CommandNotFound(f"Can not find the command: '{program}'")
+        bloc = which2(inkex.command.INKSCAPE_EXECUTABLE_NAME)
     return bloc
 
 # In the event of a timeout, repeat subprocess call several times
