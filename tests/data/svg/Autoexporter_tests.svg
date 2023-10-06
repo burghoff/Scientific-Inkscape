@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
    xml:space="preserve"
-   inkscape:version="1.3-beta (cedbd6c6ff, 2023-05-28)"
+   inkscape:version="1.3 (0e150ed6c4, 2023-07-21)"
    id="svg26"
    version="1.1"
    viewBox="0 0 140.43673 135.50807"
@@ -980,9 +980,9 @@
      inkscape:document-rotation="0"
      inkscape:current-layer="layer1"
      inkscape:document-units="mm"
-     inkscape:cy="256.07824"
-     inkscape:cx="265.43554"
-     inkscape:zoom="1.6030257"
+     inkscape:cy="228.93483"
+     inkscape:cx="300.39426"
+     inkscape:zoom="1.1335103"
      inkscape:pageshadow="2"
      inkscape:pageopacity="0.0"
      borderopacity="1.0"
@@ -2705,4 +2705,13 @@
          id="tspan1"
          x="46.245087"
          y="199.13701"
-         style="font-size:13.3333px">All superscript:</tspan></text></g></svg>
+         style="font-size:13.3333px">All superscript:</tspan></text><rect
+       style="font-variation-settings:normal;display:inline;fill:#808080;fill-opacity:1;stroke:none;stroke-width:0;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;stop-color:#000000"
+       id="rect19184"
+       width="31.257298"
+       height="0.39687496"
+       x="121.49676"
+       y="18.929995"
+       rx="6.3499999"
+       ry="6.3499999"
+       transform="translate(-9.7275471,70.803553)" /></g></svg>

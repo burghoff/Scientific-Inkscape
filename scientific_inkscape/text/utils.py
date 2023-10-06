@@ -210,6 +210,16 @@ bloc = None
 def Get_Binary_Loc():
     global bloc
     if bloc is None:
+        try:
+            import inkex.command
+        except:
+            # Import of inkex.command not working before v1.2
+            import importlib.util
+            module_path = os.path.join(os.path.split(os.path.abspath(inkex.__file__))[0],'command.py')
+            spec = importlib.util.spec_from_file_location('inkex.command', module_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            inkex.command = module
         def which2(program):
             try:
                 return inkex.command.which(program)

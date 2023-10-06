@@ -262,20 +262,42 @@ def get_path2(el):
             ry = ipx(el.get("ry", el.get("rx", "0")))
             right = left + width
             bottom = top + height
-            if rx:
-                return inkex.Path((
-                    "M {lft2},{topv}"
-                    "L {rgt2},{topv}  A {rxv},{ryv} 0 0 1 {rgtv},{top2}"
-                    "L {rgtv},{btm2}  A {rxv},{ryv} 0 0 1 {rgt2},{btmv}"
-                    "L {lft2},{btmv}  A {rxv},{ryv} 0 0 1 {lftv},{btm2}"
-                    "L {lftv},{top2}  A {rxv},{ryv} 0 0 1 {lft2},{topv} z".format(
-                        topv=top, btmv=bottom, lftv=left,rgtv=right, rxv=rx, ryv=ry,
-                        lft2=left+rx, rgt2=right-rx, top2=top+ry, btm2=bottom-ry
-                    ))
+            # if rx:
+            #     return inkex.Path((
+            #         "M {lft2},{topv}"
+            #         "L {rgt2},{topv}  A {rxv},{ryv} 0 0 1 {rgtv},{top2}"
+            #         "L {rgtv},{btm2}  A {rxv},{ryv} 0 0 1 {rgt2},{btmv}"
+            #         "L {lft2},{btmv}  A {rxv},{ryv} 0 0 1 {lftv},{btm2}"
+            #         "L {lftv},{top2}  A {rxv},{ryv} 0 0 1 {lft2},{topv} z".format(
+            #             topv=top, btmv=bottom, lftv=left,rgtv=right, rxv=rx, ryv=ry,
+            #             lft2=left+rx, rgt2=right-rx, top2=top+ry, btm2=bottom-ry
+            #         ))
+            #     )
+            # ret = inkex.Path("M {lftv},{topv} h {wdtv} v {hgtv} h {wdt2} z".format(
+            #     topv=top, lftv=left, wdtv=width, hgtv=height,
+            #     wdt2=-width)
+            # )
+            
+            """Calculate the path as the box around the rect"""
+            if rx or ry:
+                # pylint: disable=invalid-name
+                rx = min(rx if rx > 0 else ry, width / 2)
+                ry = min(ry if ry > 0 else rx, height / 2)
+                cpts = [left + rx, right - rx, top + ry, bottom - ry]
+                return inkex.Path(
+                    f"M {cpts[0]},{top}"
+                    f"L {cpts[1]},{top}    "
+                    f"A {rx},{ry} 0 0 1 {right},{cpts[2]}"
+                    f"L {right},{cpts[3]}  "
+                    f"A {rx},{ry} 0 0 1 {cpts[1]},{bottom}"
+                    f"L {cpts[0]},{bottom} "
+                    f"A {rx},{ry} 0 0 1 {left},{cpts[3]}"
+                    f"L {left},{cpts[2]}   "
+                    f"A {rx},{ry} 0 0 1 {cpts[0]},{top} z"
                 )
-            ret = inkex.Path("M {lftv},{topv} h {wdtv} v {hgtv} h {wdt2} z".format(
-                topv=top, lftv=left, wdtv=width, hgtv=height,
-                wdt2=-width)
+        
+            return inkex.Path(
+                f"M {left},{top} h{width}v{height}h{-width} z"
             )
         
         elif el.tag in round_tags:

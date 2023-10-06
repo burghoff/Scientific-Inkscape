@@ -535,6 +535,8 @@ class AutoExporter(inkex.EffectExtension):
             # Fix opacity bug for Office PDF saving
             self.Opacity_Fix(el)
 
+            # Disable connectors
+            el.set('inkscape:connector-type',None)
             
             # Find out which objects need to be rasterized
             sty = el.cstyle;                          # only want the object with the filter
