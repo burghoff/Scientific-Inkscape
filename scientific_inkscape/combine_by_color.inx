@@ -16,8 +16,10 @@
             <label>If the stroke Lightness is less than the Lightness threshold, combining will not occur. This can be used to exclude axes and ticks, which are usually black.</label>
             <param name="lightnessth" type="float" precision="0" min="0" max="100" gui-text="Lightness threshold (%)">15</param>
 
-            <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Texas at Austin</label> 
+            <spacer/>
+            <label>Scientific Inkscape v1.3.2</label>
+            <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+            <label>David Burghoff, University of Texas at Austin</label>
         </page>
     </param>
     <effect needs-live-preview="false">

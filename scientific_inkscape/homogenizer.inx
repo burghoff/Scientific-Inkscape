@@ -43,10 +43,11 @@
                        <option value="8">Max selected</option>
             </param>                
             <param name="setstrokew" type="float" precision="2" min="0" max="10000" gui-text="Stroke width value (if applicable)">1</param>     
-            
 
-            <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Texas at Austin</label> 
+            <spacer/>
+            <label>Scientific Inkscape v1.3.2</label>
+            <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+            <label>David Burghoff, University of Texas at Austin</label>
         </page>
     </param>
     <effect needs-live-preview="false">

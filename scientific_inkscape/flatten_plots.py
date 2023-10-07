@@ -76,7 +76,7 @@ class FlattenPlots(inkex.EffectExtension):
             "--mergenearby", type=inkex.Boolean, default=True, help="Merge nearby text"
         )
         pars.add_argument(
-            "--fixshattering",
+            "--removemanualkerning",
             type=inkex.Boolean,
             default=True,
             help="Fix text shattering",
@@ -110,6 +110,9 @@ class FlattenPlots(inkex.EffectExtension):
         )
         pars.add_argument(
             "--justification", type=int, default=1, help="Text justification"
+        )
+        pars.add_argument(
+            "--markexc", type=int, default=1, help="Exclude objects"
         )
         pars.add_argument(
             "--testmode", type=inkex.Boolean, default=False, help="Test mode"
@@ -155,7 +158,7 @@ class FlattenPlots(inkex.EffectExtension):
                 self.options.revertpaths = True
                 self.options.splitdistant = True
                 self.options.mergenearby = True
-                self.options.fixshattering = True
+                self.options.removemanualkerning = True
                 self.options.mergesubsuper = True
                 self.options.setreplacement = True
                 self.options.reversions = True
@@ -165,14 +168,29 @@ class FlattenPlots(inkex.EffectExtension):
             sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
         
         splitdistant = self.options.splitdistant and self.options.fixtext
-        fixshattering = self.options.fixshattering and self.options.fixtext
+        removemanualkerning = self.options.removemanualkerning and self.options.fixtext
         mergesubsuper = self.options.mergesubsuper and self.options.fixtext
         mergenearby = self.options.mergenearby and self.options.fixtext
         setreplacement = self.options.setreplacement and self.options.fixtext
         reversions = self.options.reversions and self.options.fixtext
 
         sel = [el for el in self.svg.descendants2() if el in sel] # doc order
+        for el in sel:
+            if el.get('inkscape-scientific-flattenexclude'):
+                sel.remove(el)
         seld = [v for el in sel for v in el.descendants2()]
+        for el in seld:
+            if el.get('inkscape-scientific-flattenexclude'):
+                seld.remove(el)
+        
+        if self.options.tab == "Exclusions":
+            self.options.markexc = {1:True,2:False}[self.options.markexc]
+            for el in sel:
+                if self.options.markexc:
+                    el.set('inkscape-scientific-flattenexclude',self.options.markexc)
+                else:
+                    el.set('inkscape-scientific-flattenexclude',None)
+            return
 
         # Move selected defs/clips/mask into global defs
         defstag = inkex.Defs.ctag
@@ -325,12 +343,12 @@ class FlattenPlots(inkex.EffectExtension):
                                 ff.append(repl)
                             el.cstyle["font-family"]=",".join(ff)
 
-            if fixshattering or mergesubsuper or splitdistant or mergenearby:
+            if removemanualkerning or mergesubsuper or splitdistant or mergenearby:
                 jdict = {1: "middle", 2: "start", 3: "end", 4: None}
                 justification = jdict[self.options.justification]
                 ngs = RemoveKerning.remove_kerning(
                     ngs,
-                    fixshattering,
+                    removemanualkerning,
                     mergesubsuper,
                     splitdistant,
                     mergenearby,
