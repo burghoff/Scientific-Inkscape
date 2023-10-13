@@ -635,7 +635,11 @@ class ContextHelper(object):
                     r.BacktrackGlyphCount,
                     r.InputGlyphCount,
                     r.LookAheadGlyphCount,
-                ) = (len(d[0]), len(d[1]) + 1, len(d[2]))
+                ) = (
+                    len(d[0]),
+                    len(d[1]) + 1,
+                    len(d[2]),
+                )
 
         elif Format == 2:
             Coverage = lambda r: r.Coverage
@@ -666,7 +670,11 @@ class ContextHelper(object):
                     r.BacktrackGlyphCount,
                     r.InputGlyphCount,
                     r.LookAheadGlyphCount,
-                ) = (len(d[0]), len(d[1]) + 1, len(d[2]))
+                ) = (
+                    len(d[0]),
+                    len(d[1]) + 1,
+                    len(d[2]),
+                )
 
         elif Format == 3:
             Coverage = lambda r: r.Coverage[0]

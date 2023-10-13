@@ -43,11 +43,11 @@ _encodingMap = {
         35: "mac_turkish",
         37: "mac_iceland",
     },
-    2: {  # ISO
+    2: {
         0: "ascii",
         1: "utf_16_be",
         2: "latin1",
-    },
+    },  # ISO
     3: {  # Microsoft
         0: "utf_16_be",
         1: "utf_16_be",

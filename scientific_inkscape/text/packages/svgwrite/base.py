@@ -1,5 +1,5 @@
 ﻿#!/usr/bin/env python
-#coding:utf-8
+# coding:utf-8
 # Author:  mozman
 # Purpose: svg base element
 # Created: 08.09.2010
@@ -24,7 +24,8 @@ class BaseElement(object):
     **elements**.
 
     """
-    elementname = 'baseElement'
+
+    elementname = "baseElement"
 
     def __init__(self, **extra):
         """
@@ -47,7 +48,7 @@ class BaseElement(object):
 
         """
         # the keyword 'factory' specifies the object creator
-        factory = extra.pop('factory', None)
+        factory = extra.pop("factory", None)
         if factory is not None:
             # take parameter from 'factory'
             self._parameter = factory._parameter
@@ -56,12 +57,12 @@ class BaseElement(object):
             self._parameter = Parameter()
 
         # override debug setting
-        debug = extra.pop('debug', None)
+        debug = extra.pop("debug", None)
         if debug is not None:
             self._parameter.debug = debug
 
         # override profile setting
-        profile = extra.pop('profile', None)
+        profile = extra.pop("profile", None)
         if profile is not None:
             self._parameter.profile = profile
 
@@ -70,7 +71,7 @@ class BaseElement(object):
         self.elements = list()
 
     def update(self, attribs):
-        """ Update SVG Attributes from `dict` attribs.
+        """Update SVG Attributes from `dict` attribs.
 
         Rules for keys:
 
@@ -81,15 +82,15 @@ class BaseElement(object):
         for key, value in attribs.items():
             # remove trailing underscores
             # and replace inner underscores
-            key = key.rstrip('_').replace('_', '-')
+            key = key.rstrip("_").replace("_", "-")
             self.__setitem__(key, value)
 
     def copy(self):
         newobj = copy.copy(self)  # shallow copy of object
         newobj.attribs = copy.copy(self.attribs)  # shallow copy of attributes
         newobj.elements = copy.copy(self.elements)  # shallow copy of subelements
-        if 'id' in newobj.attribs:  # create a new 'id'
-            newobj['id'] = newobj.next_id()
+        if "id" in newobj.attribs:  # create a new 'id'
+            newobj["id"] = newobj.next_id()
         return newobj
 
     @property
@@ -119,14 +120,14 @@ class BaseElement(object):
         return AutoID.next_id(value)
 
     def get_id(self):
-        """ Get the object `id` string, if the object does not have an `id`,
+        """Get the object `id` string, if the object does not have an `id`,
         a new `id` will be created.
 
         :returns: `string`
         """
-        if 'id' not in self.attribs:
-            self.attribs['id'] = self.next_id()
-        return self.attribs['id']
+        if "id" not in self.attribs:
+            self.attribs["id"] = self.next_id()
+        return self.attribs["id"]
 
     def get_iri(self):
         """
@@ -145,7 +146,7 @@ class BaseElement(object):
         return "url(%s)" % self.get_iri()
 
     def __getitem__(self, key):
-        """ Get SVG attribute by `key`.
+        """Get SVG attribute by `key`.
 
         :param string key: SVG attribute name
         :return: SVG attribute value
@@ -154,7 +155,7 @@ class BaseElement(object):
         return self.attribs[key]
 
     def __setitem__(self, key, value):
-        """ Set SVG attribute by `key` to `value`.
+        """Set SVG attribute by `key` to `value`.
 
         :param string key: SVG attribute name
         :param object value: SVG attribute value
@@ -167,7 +168,7 @@ class BaseElement(object):
         self.attribs[key] = value
 
     def add(self, element):
-        """ Add an SVG element as subelement.
+        """Add an SVG element as subelement.
 
         :param element: append this SVG element
         :returns: the added element
@@ -179,19 +180,19 @@ class BaseElement(object):
         return element
 
     def tostring(self):
-        """ Get the XML representation as unicode `string`.
+        """Get the XML representation as unicode `string`.
 
         :return: unicode XML string of this object and all its subelements
 
         """
         xml = self.get_xml()
         # required for Python 2 support
-        xml_utf8_str = etree.tostring(xml, encoding='utf-8')
-        return xml_utf8_str.decode('utf-8')
+        xml_utf8_str = etree.tostring(xml, encoding="utf-8")
+        return xml_utf8_str.decode("utf-8")
         # just Python 3: return etree.tostring(xml, encoding='unicode')
-    
+
     def _repr_svg_(self):
-        """ Show SVG in IPython, Jupyter Notebook, and Jupyter Lab
+        """Show SVG in IPython, Jupyter Notebook, and Jupyter Lab
 
         :return: unicode XML string of this object and all its subelements
 
@@ -199,14 +200,16 @@ class BaseElement(object):
         return self.tostring()
 
     def get_xml(self):
-        """ Get the XML representation as `ElementTree` object.
+        """Get the XML representation as `ElementTree` object.
 
         :return: XML `ElementTree` of this object and all its subelements
 
         """
         xml = etree.Element(self.elementname)
         if self.debug:
-            self.validator.check_all_svg_attribute_values(self.elementname, self.attribs)
+            self.validator.check_all_svg_attribute_values(
+                self.elementname, self.attribs
+            )
         for attribute, value in sorted(self.attribs.items()):
             # filter 'None' values
             if value is not None:
@@ -226,14 +229,13 @@ class BaseElement(object):
         """
         if isinstance(value, (int, float)):
             if self.debug:
-                self.validator.check_svg_type(value, 'number')
-            if isinstance(value, float) and self.profile == 'tiny':
+                self.validator.check_svg_type(value, "number")
+            if isinstance(value, float) and self.profile == "tiny":
                 value = round(value, 4)
         return str(value)
 
     def set_desc(self, title=None, desc=None):
-        """ Insert a **title** and/or a **desc** element as first subelement.
-        """
+        """Insert a **title** and/or a **desc** element as first subelement."""
         if desc is not None:
             self.elements.insert(0, Desc(desc))
         if title is not None:
@@ -248,19 +250,19 @@ class BaseElement(object):
             self.elements.append(metadata)
         else:
             pos = 0
-            while self.elements[pos].elementname in ('title', 'desc'):
+            while self.elements[pos].elementname in ("title", "desc"):
                 pos += 1
                 if pos == len(self.elements):
                     self.elements.append(metadata)
                     return
-            if self.elements[pos].elementname == 'metadata':
+            if self.elements[pos].elementname == "metadata":
                 self.elements[pos].xml.append(xmldata)
             else:
                 self.elements.insert(pos, metadata)
 
 
 class Title(object):
-    elementname = 'title'
+    elementname = "title"
 
     def __init__(self, text):
         self.xml = etree.Element(self.elementname)
@@ -271,15 +273,15 @@ class Title(object):
 
 
 class Desc(Title):
-    elementname = 'desc'
+    elementname = "desc"
 
 
 class Metadata(Title):
-    elementname = 'metadata'
+    elementname = "metadata"
 
     def __init__(self, xmldata):
         """
         :param xmldata: an xml.etree.ElementTree - Element() object.
         """
-        self.xml = etree.Element('metadata')
+        self.xml = etree.Element("metadata")
         self.xml.append(xmldata)

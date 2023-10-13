@@ -49,7 +49,7 @@ def rational_limit(f, g, t0):
     assert isinstance(f, np.poly1d) and isinstance(g, np.poly1d)
     assert g != np.poly1d([0])
     if g(t0) != 0:
-        return f(t0)/g(t0)
+        return f(t0) / g(t0)
     elif f(t0) == 0:
         return rational_limit(f.deriv(), g.deriv(), t0)
     else:

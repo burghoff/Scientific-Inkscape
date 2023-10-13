@@ -1090,7 +1090,6 @@ class T1OutlineExtractor(T2OutlineExtractor):
 
 
 class T2CharString(object):
-
     operandEncoding = t2OperandEncoding
     operators, opcodes = buildOperatorDict(t2Operators)
     decompilerClass = SimpleT2Decompiler
@@ -1311,7 +1310,6 @@ class T2CharString(object):
 
 
 class T1CharString(T2CharString):
-
     operandEncoding = t1OperandEncoding
     operators, opcodes = buildOperatorDict(t1Operators)
 
@@ -1345,7 +1343,6 @@ class T1CharString(T2CharString):
 
 
 class DictDecompiler(object):
-
     operandEncoding = cffDictOperandEncoding
 
     def __init__(self, strings, parent=None):

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#coding:utf-8
+# coding:utf-8
 # Author:  mozman <me@mozman.at>
 # Purpose: svg shapes
 # Created: 08.09.2010
@@ -11,10 +11,11 @@ from svgwrite.mixins import Presentation, Markers, Transform
 
 
 class Line(BaseElement, Transform, Presentation, Markers):
-    """ The **line** element defines a line segment that starts at one point
+    """The **line** element defines a line segment that starts at one point
     and ends at another.
     """
-    elementname = 'line'
+
+    elementname = "line"
 
     def __init__(self, start=(0, 0), end=(0, 0), **extra):
         """
@@ -26,18 +27,19 @@ class Line(BaseElement, Transform, Presentation, Markers):
         super(Line, self).__init__(**extra)
         x1, y1 = start
         x2, y2 = end
-        self['x1'] = x1
-        self['y1'] = y1
-        self['x2'] = x2
-        self['y2'] = y2
+        self["x1"] = x1
+        self["y1"] = y1
+        self["x2"] = x2
+        self["y2"] = y2
 
 
 class Rect(BaseElement, Transform, Presentation):
-    """ The **rect** element defines a rectangle which is axis-aligned with the current
+    """The **rect** element defines a rectangle which is axis-aligned with the current
     user coordinate system. Rounded rectangles can be achieved by setting appropriate
     values for attributes **rx** and **ry**.
     """
-    elementname = 'rect'
+
+    elementname = "rect"
 
     def __init__(self, insert=(0, 0), size=(1, 1), rx=None, ry=None, **extra):
         """
@@ -51,20 +53,20 @@ class Rect(BaseElement, Transform, Presentation):
         super(Rect, self).__init__(**extra)
         x, y = insert
         width, height = size
-        self['x'] = x
-        self['y'] = y
-        self['width'] = width
-        self['height'] = height
+        self["x"] = x
+        self["y"] = y
+        self["width"] = width
+        self["height"] = height
         if rx is not None:
-            self['rx'] = rx
+            self["rx"] = rx
         if ry is not None:
-            self['ry'] = ry
+            self["ry"] = ry
 
 
 class Circle(BaseElement, Transform, Presentation):
-    """ The **circle** element defines a circle based on a center point and a radius.
-    """
-    elementname = 'circle'
+    """The **circle** element defines a circle based on a center point and a radius."""
+
+    elementname = "circle"
 
     def __init__(self, center=(0, 0), r=1, **extra):
         """
@@ -75,16 +77,17 @@ class Circle(BaseElement, Transform, Presentation):
         """
         super(Circle, self).__init__(**extra)
         cx, cy = center
-        self['cx'] = cx
-        self['cy'] = cy
-        self['r'] = r
+        self["cx"] = cx
+        self["cy"] = cy
+        self["r"] = r
 
 
 class Ellipse(BaseElement, Transform, Presentation):
-    """ The **ellipse** element defines an ellipse which is axis-aligned with the
+    """The **ellipse** element defines an ellipse which is axis-aligned with the
     current user coordinate system based on a center point and two radii.
     """
-    elementname = 'ellipse'
+
+    elementname = "ellipse"
 
     def __init__(self, center=(0, 0), r=(1, 1), **extra):
         """
@@ -96,17 +99,18 @@ class Ellipse(BaseElement, Transform, Presentation):
         super(Ellipse, self).__init__(**extra)
         cx, cy = center
         rx, ry = r
-        self['cx'] = cx
-        self['cy'] = cy
-        self['rx'] = rx
-        self['ry'] = ry
+        self["cx"] = cx
+        self["cy"] = cy
+        self["rx"] = rx
+        self["ry"] = ry
 
 
 class Polyline(BaseElement, Transform, Presentation, Markers):
-    """ The **polyline** element defines a set of connected straight line
+    """The **polyline** element defines a set of connected straight line
     segments. Typically, **polyline** elements define open shapes.
     """
-    elementname = 'polyline'
+
+    elementname = "polyline"
 
     def __init__(self, points=[], **extra):
         """
@@ -119,11 +123,11 @@ class Polyline(BaseElement, Transform, Presentation, Markers):
         if self.debug:
             for point in self.points:
                 x, y = point
-                self.validator.check_svg_type(x, 'coordinate')
-                self.validator.check_svg_type(y, 'coordinate')
+                self.validator.check_svg_type(x, "coordinate")
+                self.validator.check_svg_type(y, "coordinate")
 
     def get_xml(self):
-        self.attribs['points'] = self.points_to_string(self.points)
+        self.attribs["points"] = self.points_to_string(self.points)
         return super(Polyline, self).get_xml()
 
     def points_to_string(self, points):
@@ -134,26 +138,26 @@ class Polyline(BaseElement, Transform, Presentation, Markers):
         strings = []
         for point in points:
             if len(point) != 2:
-                raise TypeError('got %s values, but expected 2 values.' % len(point))
+                raise TypeError("got %s values, but expected 2 values." % len(point))
             x, y = point
             if self.debug:
-                self.validator.check_svg_type(x, 'coordinate')
-                self.validator.check_svg_type(y, 'coordinate')
-            if self.profile == 'tiny':
+                self.validator.check_svg_type(x, "coordinate")
+                self.validator.check_svg_type(y, "coordinate")
+            if self.profile == "tiny":
                 if isinstance(x, float):
                     x = round(x, 4)
                 if isinstance(y, float):
                     y = round(y, 4)
             point = "%s,%s" % (x, y)
             strings.append(point)
-        return ' '.join(strings)
+        return " ".join(strings)
 
 
 class Polygon(Polyline):
-    """ The **polygon** element defines a closed shape consisting of a set of
+    """The **polygon** element defines a closed shape consisting of a set of
     connected straight line segments.
 
     Same as :class:`~svgwrite.shapes.Polyline` but closed.
     """
-    elementname = 'polygon'
 
+    elementname = "polygon"

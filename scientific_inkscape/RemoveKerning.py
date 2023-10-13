@@ -77,9 +77,9 @@ def remove_kerning(
         # Then do splits (deciding based on current position, not original position,
         # since merges intentionally change position)
         if splitdistant:
-            tels = Split_Distant_Words(tels)
+            tels = Split_Distant_Chunks(tels)
         if splitdistant:
-            tels = Split_Distant_Intraword(tels)
+            tels = Split_Distant_Intrachunk(tels)
         if splitdistant:
             tels = Split_Lines(tels)
         # Final tweaks
@@ -169,7 +169,7 @@ def Split_Lines(els,ignoreinkscape=True):
 
 
 # Generate splitting of distantly-kerned text
-def Split_Distant_Words(els):
+def Split_Distant_Chunks(els):
     # newlls = []
     for ll in [el.parsed_text for el in els]:
         if ll.lns is not None:
@@ -180,7 +180,7 @@ def Split_Distant_Words(els):
                     for _, x in sorted(
                         zip([w.x for w in ln.ws], ln.ws), key=lambda pair: pair[0]
                     )
-                ]  # words sorted in ascending x
+                ]  # chunks sorted in ascending x
                 splits = []
                 for ii in range(1, len(ln.ws)):
                     w = sws[ii - 1]
@@ -209,7 +209,7 @@ def Split_Distant_Words(els):
                         else:
                             sstop = len(ln.ws)
 
-                        newtxt = ll.Split_Off_Words(sws[sstart:sstop])
+                        newtxt = ll.Split_Off_Chunks(sws[sstart:sstop])
                         els.append(newtxt)
                         # newlls.append(newtxt.parsed_text)
     # lls += newlls
@@ -217,7 +217,7 @@ def Split_Distant_Words(els):
 
 
 # Generate splitting of distantly-kerned text
-def Split_Distant_Intraword(els):
+def Split_Distant_Intrachunk(els):
     # newlls = []
     for ll in [el.parsed_text for el in els]:
         if ll.lns is not None and not (ll.ismlinkscape) and not (ll.isflow):
@@ -324,12 +324,12 @@ def Remove_Manual_Kerning(els, mergesupersub):
 
     Perform_Merges(ws, mk=True)
 
-    # Following manual kerning removal, lines with multiple words need to be split out into new text els
+    # Following manual kerning removal, lines with multiple chunks need to be split out into new text els
     newlls = []
     for ll in lls:
         for ln in ll.lns:
             while len(ln.ws) > 1:
-                newtxt = ll.Split_Off_Words([ln.ws[-1]])
+                newtxt = ll.Split_Off_Chunks([ln.ws[-1]])
                 els.append(newtxt)
                 newlls.append(newtxt.parsed_text)
     # lls += newlls
@@ -706,7 +706,7 @@ def twospaces(w1, w2):
             )
             or (w2txt is not None and len(w2txt) > 1 and w2txt[:1] == "  ")
         ):
-            return True  # resultant word has two spaces
+            return True  # resultant chunk has two spaces
     return False
 
 

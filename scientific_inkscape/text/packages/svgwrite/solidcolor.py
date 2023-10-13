@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#coding:utf-8
+# coding:utf-8
 # Author:  mozman --<mozman@gmx.at>
 # Purpose: solidColor paint serve (Tiny 1.2 profile)
 # Created: 26.10.2016
@@ -18,7 +18,8 @@ class SolidColor(BaseElement, XLink):
     The keyword ``"currentColor"`` can be specified in the same manner as within a <paint> specification for the `fill`
     and `stroke` properties. The `opacity` parameter defines the opacity of the `solidColor`.
     """
-    elementname = 'solidColor'
+
+    elementname = "solidColor"
 
     def __init__(self, color="currentColor", opacity=None, **extra):
         """
@@ -27,15 +28,17 @@ class SolidColor(BaseElement, XLink):
 
         """
         super(SolidColor, self).__init__(**extra)
-        if self.profile != 'tiny':
+        if self.profile != "tiny":
             raise TypeError("Paint server 'solidColor' requires the Tiny SVG profile.")
-        self['solid-color'] = color
+        self["solid-color"] = color
         if opacity is not None:
-            self['solid-opacity'] = opacity
+            self["solid-opacity"] = opacity
 
         if self.debug:
-            self.validator.check_all_svg_attribute_values(self.elementname, self.attribs)
+            self.validator.check_all_svg_attribute_values(
+                self.elementname, self.attribs
+            )
 
-    def get_paint_server(self, default='none'):
-        """ Returns the <FuncIRI> of the gradient. """
+    def get_paint_server(self, default="none"):
+        """Returns the <FuncIRI> of the gradient."""
         return "%s %s" % (self.get_funciri(), default)

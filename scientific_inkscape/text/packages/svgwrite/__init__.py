@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#coding:utf-8
+# coding:utf-8
 # Author:  mozman
 # Purpose: package definition file
 # Created: 08.09.2010
@@ -41,13 +41,14 @@ You can only create two types of SVG drawings:
 
 """
 from .version import __version__, version
+
 VERSION = __version__
 
 __author__ = "mozman <me@mozman.at>"
 
-AUTHOR_NAME = 'Manfred Moitzi'
-AUTHOR_EMAIL = 'me@mozman.at'
-CYEAR = '2014-2019'
+AUTHOR_NAME = "Manfred Moitzi"
+AUTHOR_EMAIL = "me@mozman.at"
+CYEAR = "2014-2019"
 
 
 from svgwrite.drawing import Drawing
@@ -55,39 +56,39 @@ from svgwrite.utils import rgb
 
 
 class Unit(object):
-    """ Add units to values.
-    """
-    def __init__(self, unit='cm'):
-        """ Unit constructor
+    """Add units to values."""
+
+    def __init__(self, unit="cm"):
+        """Unit constructor
 
         :param str unit: specify the unit string
         """
         self._unit = unit
 
     def __rmul__(self, other):
-        """ add unit-string to 'other'. (e.g. 5*cm => '5cm') """
+        """add unit-string to 'other'. (e.g. 5*cm => '5cm')"""
         return "%s%s" % (other, self._unit)
 
     def __call__(self, *args):
-        """ Add unit-strings to all arguments.
+        """Add unit-strings to all arguments.
 
         :param args: list of values
             e.g.: cm(1,2,3) => '1cm,2cm,3cm'
         """
-        return ','.join(["%s%s" % (arg, self._unit) for arg in args])
+        return ",".join(["%s%s" % (arg, self._unit) for arg in args])
 
 
-cm = Unit('cm')
-mm = Unit('mm')
-em = Unit('em')
-ex = Unit('ex')
-px = Unit('px')
-inch = Unit('in')
-pc = Unit('pc')
-pt = Unit('pt')
-percent = Unit('%')
-deg = Unit('deg')
-grad = Unit('grad')
-rad = Unit('rad')
-Hz = Unit('Hz')
-kHz = Unit('kHz')
+cm = Unit("cm")
+mm = Unit("mm")
+em = Unit("em")
+ex = Unit("ex")
+px = Unit("px")
+inch = Unit("in")
+pc = Unit("pc")
+pt = Unit("pt")
+percent = Unit("%")
+deg = Unit("deg")
+grad = Unit("grad")
+rad = Unit("rad")
+Hz = Unit("Hz")
+kHz = Unit("kHz")

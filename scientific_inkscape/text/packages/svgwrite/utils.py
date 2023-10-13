@@ -33,7 +33,7 @@ def is_string(value):
     return isinstance(value, str)
 
 
-def rgb(r=0, g=0, b=0, mode='RGB'):
+def rgb(r=0, g=0, b=0, mode="RGB"):
     """
     Convert **r**, **g**, **b** values to a `string`.
 
@@ -61,7 +61,7 @@ def rgb(r=0, g=0, b=0, mode='RGB'):
             value = 100
         return value
 
-    if mode.upper() == 'RGB':
+    if mode.upper() == "RGB":
         return "rgb(%d,%d,%d)" % (int(r) & 255, int(g) & 255, int(b) & 255)
     elif mode == "%":
         # see http://www.w3.org/TR/SVG11/types.html#DataTypeColor
@@ -95,7 +95,9 @@ def strlist(values, seperator=","):
     if is_string(values):
         return values
     else:
-        return seperator.join([str(value) for value in iterflatlist(values) if value is not None])
+        return seperator.join(
+            [str(value) for value in iterflatlist(values) if value is not None]
+        )
 
 
 def get_unit(coordinate):
@@ -148,7 +150,7 @@ def split_angle(angle):
         raise ValueError("Invalid format: '%s'" % angle)
 
 
-def rect_top_left_corner(insert, size, pos='top-left'):
+def rect_top_left_corner(insert, size, pos="top-left"):
     """
     Calculate top-left corner of a rectangle.
 
@@ -167,7 +169,7 @@ def rect_top_left_corner(insert, size, pos='top-left'):
     **horiz**  ``'left'|'center'|'right'``
     ========== ==============================
     """
-    vert, horiz = pos.lower().split('-')
+    vert, horiz = pos.lower().split("-")
     x, xunit = split_coordinate(insert[0])
     y, yunit = split_coordinate(insert[1])
     width, wunit = split_coordinate(size[0])
@@ -178,18 +180,18 @@ def rect_top_left_corner(insert, size, pos='top-left'):
     if yunit != hunit:
         raise ValueError("y-coordinate and height has to have the same unit")
 
-    if horiz == 'center':
-        x = x - width / 2.
-    elif horiz == 'right':
+    if horiz == "center":
+        x = x - width / 2.0
+    elif horiz == "right":
         x = x - width
-    elif horiz != 'left':
+    elif horiz != "left":
         raise ValueError("Invalid horizontal position: '%s'" % horiz)
 
-    if vert == 'middle':
-        y = y - height / 2.
-    elif vert == 'bottom':
+    if vert == "middle":
+        y = y - height / 2.0
+    elif vert == "bottom":
         y = y - height
-    elif vert != 'top':
+    elif vert != "top":
         raise ValueError("Invalid vertical position: '%s'" % vert)
 
     if xunit:
@@ -233,18 +235,18 @@ def pretty_xml(xml_string, indent=2):
     if len(xml_string) < 20 and xml_string.strip() == "":
         return ""
     xml_tree = minidom.parseString(xml_string)
-    lines = xml_tree.toprettyxml(indent=' ' * indent).split('\n')
+    lines = xml_tree.toprettyxml(indent=" " * indent).split("\n")
     # remove 1. line = xml declaration
-    return '\n'.join(lines[1:])
+    return "\n".join(lines[1:])
 
 
 FONT_MIMETYPES = {
-    'ttf': "application/x-font-ttf",
-    'otf': "application/x-font-opentype",
-    'woff': "application/font-woff",
-    'woff2': "application/font-woff2",
-    'eot': "application/vnd.ms-fontobject",
-    'sfnt': "application/font-sfnt",
+    "ttf": "application/x-font-ttf",
+    "otf": "application/x-font-opentype",
+    "woff": "application/font-woff",
+    "woff2": "application/font-woff2",
+    "eot": "application/vnd.ms-fontobject",
+    "sfnt": "application/font-sfnt",
 }
 
 
@@ -254,11 +256,14 @@ def font_mimetype(name):
 
 def base64_data(data, mimetype):
     data = base64.b64encode(data).decode()
-    return "data:{mimetype};charset=utf-8;base64,{data}".format(mimetype=mimetype, data=data)
+    return "data:{mimetype};charset=utf-8;base64,{data}".format(
+        mimetype=mimetype, data=data
+    )
 
 
 def find_first_url(text):
     import re
+
     result = re.findall(r"url\((.*?)\)", text)
     if result:
         return result[0]

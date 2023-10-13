@@ -18,30 +18,38 @@ def parse_path(pathdef, current_pos=0j, tree_element=None):
 def _check_num_parsed_values(values, allowed):
     if not any(num == len(values) for num in allowed):
         if len(allowed) > 1:
-            warnings.warn('Expected one of the following number of values {0}, but found {1} values instead: {2}'
-                          .format(allowed, len(values), values))
+            warnings.warn(
+                "Expected one of the following number of values {0}, but found {1} values instead: {2}".format(
+                    allowed, len(values), values
+                )
+            )
         elif allowed[0] != 1:
-            warnings.warn('Expected {0} values, found {1}: {2}'.format(allowed[0], len(values), values))
+            warnings.warn(
+                "Expected {0} values, found {1}: {2}".format(
+                    allowed[0], len(values), values
+                )
+            )
         else:
-            warnings.warn('Expected 1 value, found {0}: {1}'.format(len(values), values))
+            warnings.warn(
+                "Expected 1 value, found {0}: {1}".format(len(values), values)
+            )
         return False
     return True
 
 
 def _parse_transform_substr(transform_substr):
-
-    type_str, value_str = transform_substr.split('(')
-    value_str = value_str.replace(',', ' ')
-    values = list(map(float, filter(None, value_str.split(' '))))
+    type_str, value_str = transform_substr.split("(")
+    value_str = value_str.replace(",", " ")
+    values = list(map(float, filter(None, value_str.split(" "))))
 
     transform = np.identity(3)
-    if 'matrix' in type_str:
+    if "matrix" in type_str:
         if not _check_num_parsed_values(values, [6]):
             return transform
 
         transform[0:2, 0:3] = np.array([values[0:6:2], values[1:6:2]])
 
-    elif 'translate' in transform_substr:
+    elif "translate" in transform_substr:
         if not _check_num_parsed_values(values, [1, 2]):
             return transform
 
@@ -49,7 +57,7 @@ def _parse_transform_substr(transform_substr):
         if len(values) > 1:
             transform[1, 2] = values[1]
 
-    elif 'scale' in transform_substr:
+    elif "scale" in transform_substr:
         if not _check_num_parsed_values(values, [1, 2]):
             return transform
 
@@ -58,7 +66,7 @@ def _parse_transform_substr(transform_substr):
         transform[0, 0] = x_scale
         transform[1, 1] = y_scale
 
-    elif 'rotate' in transform_substr:
+    elif "rotate" in transform_substr:
         if not _check_num_parsed_values(values, [1, 3]):
             return transform
 
@@ -70,26 +78,28 @@ def _parse_transform_substr(transform_substr):
         tf_offset = np.identity(3)
         tf_offset[0:2, 2:3] = np.array([[offset[0]], [offset[1]]])
         tf_rotate = np.identity(3)
-        tf_rotate[0:2, 0:2] = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+        tf_rotate[0:2, 0:2] = np.array(
+            [[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]]
+        )
         tf_offset_neg = np.identity(3)
         tf_offset_neg[0:2, 2:3] = np.array([[-offset[0]], [-offset[1]]])
 
         transform = tf_offset.dot(tf_rotate).dot(tf_offset_neg)
 
-    elif 'skewX' in transform_substr:
+    elif "skewX" in transform_substr:
         if not _check_num_parsed_values(values, [1]):
             return transform
 
         transform[0, 1] = np.tan(values[0] * np.pi / 180.0)
 
-    elif 'skewY' in transform_substr:
+    elif "skewY" in transform_substr:
         if not _check_num_parsed_values(values, [1]):
             return transform
 
         transform[1, 0] = np.tan(values[0] * np.pi / 180.0)
     else:
         # Return an identity matrix if the type of transform is unknown, and warn the user
-        warnings.warn('Unknown SVG transform type: {0}'.format(type_str))
+        warnings.warn("Unknown SVG transform type: {0}".format(type_str))
 
     return transform
 
@@ -100,10 +110,12 @@ def parse_transform(transform_str):
     if not transform_str:
         return np.identity(3)
     elif not isinstance(transform_str, str):
-        raise TypeError('Must provide a string to parse')
+        raise TypeError("Must provide a string to parse")
 
     total_transform = np.identity(3)
-    transform_substrs = transform_str.split(')')[:-1]  # Skip the last element, because it should be empty
+    transform_substrs = transform_str.split(")")[
+        :-1
+    ]  # Skip the last element, because it should be empty
     for substr in transform_substrs:
         total_transform = total_transform.dot(_parse_transform_substr(substr))
 

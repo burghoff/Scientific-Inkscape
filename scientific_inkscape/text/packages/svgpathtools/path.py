@@ -5,6 +5,7 @@ Arc."""
 # External dependencies
 from __future__ import division, absolute_import, print_function
 import re
+
 try:
     from collections.abc import MutableSequence  # noqa
 except ImportError:
@@ -17,20 +18,37 @@ from functools import reduce
 
 # these imports were originally from math and cmath, now are from numpy
 # in order to encourage code that generalizes to vector inputs
-from numpy import sqrt, cos, sin, tan, arccos as acos, arcsin as asin, \
-    degrees, radians, log, pi, ceil
+from numpy import (
+    sqrt,
+    cos,
+    sin,
+    tan,
+    arccos as acos,
+    arcsin as asin,
+    degrees,
+    radians,
+    log,
+    pi,
+    ceil,
+)
 from numpy import exp, sqrt as csqrt, angle as phase, isnan
 
 try:
     from scipy.integrate import quad
+
     _quad_available = True
 except:
     _quad_available = False
 
 # Internal dependencies
-from .bezier import (bezier_intersections, bezier_bounding_box, split_bezier,
-                     bezier_by_line_intersections, polynomial2bezier,
-                     bezier2polynomial)
+from .bezier import (
+    bezier_intersections,
+    bezier_bounding_box,
+    split_bezier,
+    bezier_by_line_intersections,
+    polynomial2bezier,
+    bezier2polynomial,
+)
 from .misctools import BugException
 from .polytools import rational_limit, polyroots, polyroots01, imag, real
 
@@ -40,8 +58,8 @@ try:
 except NameError:
     pass
 
-COMMANDS = set('MmZzLlHhVvCcSsQqTtAa')
-UPPERCASE = set('MZLHVCSQTA')
+COMMANDS = set("MmZzLlHhVvCcSsQqTtAa")
+UPPERCASE = set("MZLHVCSQTA")
 
 COMMAND_RE = re.compile(r"([MmZzLlHhVvCcSsQqTtAa])")
 FLOAT_RE = re.compile(r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
@@ -61,22 +79,25 @@ ILENGTH_MAXITS = 10000
 
 # compatibility/implementation related warnings and parameters
 CLOSED_WARNING_ON = True
-_NotImplemented4ArcException = \
-    Exception("This method has not yet been implemented for Arc objects.")
+_NotImplemented4ArcException = Exception(
+    "This method has not yet been implemented for Arc objects."
+)
 # _NotImplemented4QuadraticException = \
 #     Exception("This method has not yet been implemented for QuadraticBezier "
 #               "objects.")
-_is_smooth_from_warning = \
-    ("The name of this method is somewhat misleading (yet kept for "
-     "compatibility with scripts created using svg.path 2.0).  This method "
-     "is meant only for d-string creation and should NOT be used to check "
-     "for kinks.  To check a segment for differentiability, use the "
-     "joins_smoothly_with() method instead or the kinks() function (in "
-     "smoothing.py).\nTo turn off this warning, set "
-     "warning_on=False.")
+_is_smooth_from_warning = (
+    "The name of this method is somewhat misleading (yet kept for "
+    "compatibility with scripts created using svg.path 2.0).  This method "
+    "is meant only for d-string creation and should NOT be used to check "
+    "for kinks.  To check a segment for differentiability, use the "
+    "joins_smoothly_with() method instead or the kinks() function (in "
+    "smoothing.py).\nTo turn off this warning, set "
+    "warning_on=False."
+)
 
 
 # Miscellaneous ###############################################################
+
 
 def bezier_segment(*bpoints):
     if len(bpoints) == 2:
@@ -93,9 +114,11 @@ def bezier_segment(*bpoints):
 
 
 def is_bezier_segment(seg):
-    return (isinstance(seg, Line) or
-            isinstance(seg, QuadraticBezier) or
-            isinstance(seg, CubicBezier))
+    return (
+        isinstance(seg, Line)
+        or isinstance(seg, QuadraticBezier)
+        or isinstance(seg, CubicBezier)
+    )
 
 
 def is_path_segment(seg):
@@ -116,29 +139,30 @@ def concatpaths(list_of_paths):
 
 def bbox2path(xmin, xmax, ymin, ymax):
     """Converts a bounding box 4-tuple to a Path object."""
-    b = Line(xmin + 1j*ymin, xmax + 1j*ymin)
-    t = Line(xmin + 1j*ymax, xmax + 1j*ymax)
-    r = Line(xmax + 1j*ymin, xmax + 1j*ymax)
-    l = Line(xmin + 1j*ymin, xmin + 1j*ymax)
+    b = Line(xmin + 1j * ymin, xmax + 1j * ymin)
+    t = Line(xmin + 1j * ymax, xmax + 1j * ymax)
+    r = Line(xmax + 1j * ymin, xmax + 1j * ymax)
+    l = Line(xmin + 1j * ymin, xmin + 1j * ymax)
     return Path(b, r, t.reversed(), l.reversed())
 
 
 def polyline(*points):
-    """Converts a list of points to a Path composed of lines connecting those 
+    """Converts a list of points to a Path composed of lines connecting those
     points (i.e. a linear spline or polyline).  See also `polygon()`."""
-    return Path(*[Line(points[i], points[i+1])
-                  for i in range(len(points) - 1)])
+    return Path(*[Line(points[i], points[i + 1]) for i in range(len(points) - 1)])
 
 
 def polygon(*points):
-    """Converts a list of points to a Path composed of lines connecting those 
-    points, then closes the path by connecting the last point to the first.  
+    """Converts a list of points to a Path composed of lines connecting those
+    points, then closes the path by connecting the last point to the first.
     See also `polyline()`."""
-    return Path(*[Line(points[i], points[(i + 1) % len(points)])
-                  for i in range(len(points))])
+    return Path(
+        *[Line(points[i], points[(i + 1) % len(points)]) for i in range(len(points))]
+    )
 
 
 # Conversion###################################################################
+
 
 def bpoints2bezier(bpoints):
     """Converts a list of length 2, 3, or 4 to a CubicBezier, QuadraticBezier,
@@ -180,9 +204,9 @@ def bez2poly(bez, numpy_ordering=True, return_poly1d=False):
     with all bezier segment classes."""
     if is_bezier_segment(bez):
         bez = bez.bpoints()
-    return bezier2polynomial(bez,
-                             numpy_ordering=numpy_ordering,
-                             return_poly1d=return_poly1d)
+    return bezier2polynomial(
+        bez, numpy_ordering=numpy_ordering, return_poly1d=return_poly1d
+    )
 
 
 # Geometric####################################################################
@@ -201,8 +225,9 @@ def rotate(curve, degs, origin=None):
     (a complex number).  By default origin is either `curve.point(0.5)`, or in
     the case that curve is an Arc object, `origin` defaults to `curve.center`.
     """
+
     def rotate_point(z):
-        return exp(1j*radians(degs))*(z - origin) + origin
+        return exp(1j * radians(degs)) * (z - origin) + origin
 
     if origin is None:
         if isinstance(curve, Arc):
@@ -219,11 +244,19 @@ def rotate(curve, degs, origin=None):
         new_start = rotate_point(curve.start)
         new_end = rotate_point(curve.end)
         new_rotation = curve.rotation + degs
-        return Arc(new_start, radius=curve.radius, rotation=new_rotation,
-                   large_arc=curve.large_arc, sweep=curve.sweep, end=new_end)
+        return Arc(
+            new_start,
+            radius=curve.radius,
+            rotation=new_rotation,
+            large_arc=curve.large_arc,
+            sweep=curve.sweep,
+            end=new_end,
+        )
     else:
-        raise TypeError("Input `curve` should be a Path, Line, "
-                        "QuadraticBezier, CubicBezier, or Arc object.")
+        raise TypeError(
+            "Input `curve` should be a Path, Line, "
+            "QuadraticBezier, CubicBezier, or Arc object."
+        )
 
 
 def translate(curve, z0):
@@ -237,11 +270,19 @@ def translate(curve, z0):
     elif isinstance(curve, Arc):
         new_start = curve.start + z0
         new_end = curve.end + z0
-        return Arc(new_start, radius=curve.radius, rotation=curve.rotation,
-                   large_arc=curve.large_arc, sweep=curve.sweep, end=new_end)
+        return Arc(
+            new_start,
+            radius=curve.radius,
+            rotation=curve.rotation,
+            large_arc=curve.large_arc,
+            sweep=curve.sweep,
+            end=new_end,
+        )
     else:
-        raise TypeError("Input `curve` should be a Path, Line, "
-                        "QuadraticBezier, CubicBezier, or Arc object.")
+        raise TypeError(
+            "Input `curve` should be a Path, Line, "
+            "QuadraticBezier, CubicBezier, or Arc object."
+        )
 
 
 def scale(curve, sx, sy=None, origin=0j):
@@ -249,22 +290,22 @@ def scale(curve, sx, sy=None, origin=0j):
 
     Notes:
     ------
-    * If `sy` is not specified, it is assumed to be equal to `sx` and 
+    * If `sy` is not specified, it is assumed to be equal to `sx` and
     a scalar transformation of `curve` about `origin` will be returned.
     I.e.
-        scale(curve, sx, origin).point(t) == 
+        scale(curve, sx, origin).point(t) ==
             ((curve.point(t) - origin) * sx) + origin
     """
 
     if sy is None:
-        isy = 1j*sx
+        isy = 1j * sx
     else:
-        isy = 1j*sy
+        isy = 1j * sy
 
     def _scale(z):
         if sy is None:
-            return sx*z
-        return sx*z.real + isy*z.imag          
+            return sx * z
+        return sx * z.real + isy * z.imag
 
     def scale_bezier(bez):
         p = [_scale(c) for c in bez2poly(bez)]
@@ -278,18 +319,24 @@ def scale(curve, sx, sy=None, origin=0j):
         return scale_bezier(curve)
     elif isinstance(curve, Arc):
         if sy is None or sy == sx:
-            return Arc(start=sx*(curve.start - origin) + origin,
-                       radius=sx*curve.radius,
-                       rotation=curve.rotation, 
-                       large_arc=curve.large_arc, 
-                       sweep=curve.sweep, 
-                       end=sx*(curve.end - origin) + origin)
+            return Arc(
+                start=sx * (curve.start - origin) + origin,
+                radius=sx * curve.radius,
+                rotation=curve.rotation,
+                large_arc=curve.large_arc,
+                sweep=curve.sweep,
+                end=sx * (curve.end - origin) + origin,
+            )
         else:
-            raise Exception("\nFor `Arc` objects, only scale transforms "
-                            "with sx==sy are implemented.\n")
+            raise Exception(
+                "\nFor `Arc` objects, only scale transforms "
+                "with sx==sy are implemented.\n"
+            )
     else:
-        raise TypeError("Input `curve` should be a Path, Line, "
-                        "QuadraticBezier, CubicBezier, or Arc object.")
+        raise TypeError(
+            "Input `curve` should be a Path, Line, "
+            "QuadraticBezier, CubicBezier, or Arc object."
+        )
 
 
 def transform(curve, tf):
@@ -312,18 +359,19 @@ def transform(curve, tf):
         return transform_segments_together(curve, transformation)
 
     elif is_bezier_segment(curve):
-        return bpoints2bezier([to_complex(tf.dot(to_point(p)))
-                               for p in curve.bpoints()])
+        return bpoints2bezier(
+            [to_complex(tf.dot(to_point(p))) for p in curve.bpoints()]
+        )
     elif isinstance(curve, Arc):
         new_start = to_complex(tf.dot(to_point(curve.start)))
         new_end = to_complex(tf.dot(to_point(curve.end)))
-        
-        # Based on https://math.stackexchange.com/questions/2349726/
-        rx2 = curve.radius.real ** 2
-        ry2 = curve.radius.imag ** 2
 
-        Q = np.array([[1/rx2, 0], [0, 1/ry2]])
-        invT = np.linalg.inv(tf[:2,:2])
+        # Based on https://math.stackexchange.com/questions/2349726/
+        rx2 = curve.radius.real**2
+        ry2 = curve.radius.imag**2
+
+        Q = np.array([[1 / rx2, 0], [0, 1 / ry2]])
+        invT = np.linalg.inv(tf[:2, :2])
         D = reduce(np.matmul, [invT.T, Q, invT])
 
         eigvals, eigvecs = np.linalg.eig(D)
@@ -336,20 +384,28 @@ def transform(curve, tf):
         xeigvec = eigvecs[:, 0]
         rot = np.degrees(np.arccos(xeigvec[0]))
 
-        if new_radius.real == 0 or new_radius.imag == 0 :
+        if new_radius.real == 0 or new_radius.imag == 0:
             return Line(new_start, new_end)
         else:
             if tf[0][0] * tf[1][1] >= 0.0:
                 new_sweep = curve.sweep
             else:
                 new_sweep = not curve.sweep
-            return Arc(new_start, radius=new_radius, rotation=curve.rotation + rot,
-                       large_arc=curve.large_arc, sweep=new_sweep, end=new_end,
-                       autoscale_radius=True)
+            return Arc(
+                new_start,
+                radius=new_radius,
+                rotation=curve.rotation + rot,
+                large_arc=curve.large_arc,
+                sweep=new_sweep,
+                end=new_end,
+                autoscale_radius=True,
+            )
 
     else:
-        raise TypeError("Input `curve` should be a Path, Line, "
-                        "QuadraticBezier, CubicBezier, or Arc object.")
+        raise TypeError(
+            "Input `curve` should be a Path, Line, "
+            "QuadraticBezier, CubicBezier, or Arc object."
+        )
 
 
 def bezier_unit_tangent(seg, t):
@@ -368,24 +424,27 @@ def bezier_unit_tangent(seg, t):
 
     # Note: dseg might be numpy value, use np.seterr(invalid='raise')
     try:
-        unit_tangent = dseg/abs(dseg)
+        unit_tangent = dseg / abs(dseg)
     except (ZeroDivisionError, FloatingPointError):
         # This may be a removable singularity, if so we just need to compute
         # the limit.
         # Note: limit{{dseg / abs(dseg)} = sqrt(limit{dseg**2 / abs(dseg)**2})
         dseg_poly = seg.poly().deriv()
-        dseg_abs_squared_poly = (real(dseg_poly) ** 2 +
-                                 imag(dseg_poly) ** 2)
+        dseg_abs_squared_poly = real(dseg_poly) ** 2 + imag(dseg_poly) ** 2
         try:
-            unit_tangent = csqrt(rational_limit(dseg_poly**2,
-                                            dseg_abs_squared_poly, t))
+            unit_tangent = csqrt(
+                rational_limit(dseg_poly**2, dseg_abs_squared_poly, t)
+            )
         except ValueError:
             bef = seg.poly().deriv()(t - 1e-4)
             aft = seg.poly().deriv()(t + 1e-4)
-            mes = ("Unit tangent appears to not be well-defined at "
-                   "t = {}, \n".format(t) +
-                   "seg.poly().deriv()(t - 1e-4) = {}\n".format(bef) +
-                   "seg.poly().deriv()(t + 1e-4) = {}".format(aft))
+            mes = "Unit tangent appears to not be well-defined at " "t = {}, \n".format(
+                t
+            ) + "seg.poly().deriv()(t - 1e-4) = {}\n".format(
+                bef
+            ) + "seg.poly().deriv()(t + 1e-4) = {}".format(
+                aft
+            )
             raise ValueError(mes)
     return unit_tangent
 
@@ -405,9 +464,9 @@ def segment_curvature(self, t, use_inf=False):
     ddz = self.derivative(t, n=2)
     dx, dy = dz.real, dz.imag
     ddx, ddy = ddz.real, ddz.imag
-    old_np_seterr = np.seterr(invalid='raise')
+    old_np_seterr = np.seterr(invalid="raise")
     try:
-        kappa = abs(dx*ddy - dy*ddx)/sqrt(dx*dx + dy*dy)**3
+        kappa = abs(dx * ddy - dy * ddx) / sqrt(dx * dx + dy * dy) ** 3
     except (ZeroDivisionError, FloatingPointError):
         # tangent vector is zero at t, use polytools to find limit
         p = self.poly()
@@ -415,8 +474,8 @@ def segment_curvature(self, t, use_inf=False):
         ddp = dp.deriv()
         dx, dy = real(dp), imag(dp)
         ddx, ddy = real(ddp), imag(ddp)
-        f2 = (dx*ddy - dy*ddx)**2
-        g2 = (dx*dx + dy*dy)**3
+        f2 = (dx * ddy - dy * ddx) ** 2
+        g2 = (dx * dx + dy * dy) ** 3
         lim2 = rational_limit(f2, g2, t)
         if lim2 < 0:  # impossible, must be numerical error
             return 0
@@ -437,8 +496,7 @@ def bezier_radialrange(seg, origin, return_all_global_extrema=False):
         return abs(seg.point(tau) - origin)
 
     shifted_seg_poly = seg.poly() - origin
-    r_squared = real(shifted_seg_poly) ** 2 + \
-                imag(shifted_seg_poly) ** 2
+    r_squared = real(shifted_seg_poly) ** 2 + imag(shifted_seg_poly) ** 2
     extremizers = [0, 1] + polyroots01(r_squared.deriv())
     extrema = [(_radius(t), t) for t in extremizers]
 
@@ -483,10 +541,18 @@ def path_encloses_pt(pt, opt, path):
         return False
 
 
-def segment_length(curve, start, end, start_point, end_point,
-                   error=LENGTH_ERROR, min_depth=LENGTH_MIN_DEPTH, depth=0):
+def segment_length(
+    curve,
+    start,
+    end,
+    start_point,
+    end_point,
+    error=LENGTH_ERROR,
+    min_depth=LENGTH_MIN_DEPTH,
+    depth=0,
+):
     """Recursively approximates the length by straight lines"""
-    mid = (start + end)/2
+    mid = (start + end) / 2
     mid_point = curve.point(mid)
     length = abs(end_point - start_point)
     first_half = abs(mid_point - start_point)
@@ -496,16 +562,23 @@ def segment_length(curve, start, end, start_point, end_point,
     if (length2 - length > error) or (depth < min_depth):
         # Calculate the length of each segment:
         depth += 1
-        return (segment_length(curve, start, mid, start_point, mid_point,
-                               error, min_depth, depth) +
-                segment_length(curve, mid, end, mid_point, end_point,
-                               error, min_depth, depth))
+        return segment_length(
+            curve, start, mid, start_point, mid_point, error, min_depth, depth
+        ) + segment_length(
+            curve, mid, end, mid_point, end_point, error, min_depth, depth
+        )
     # This is accurate enough.
     return length2
 
 
-def inv_arclength(curve, s, s_tol=ILENGTH_S_TOL, maxits=ILENGTH_MAXITS,
-                  error=ILENGTH_ERROR, min_depth=ILENGTH_MIN_DEPTH):
+def inv_arclength(
+    curve,
+    s,
+    s_tol=ILENGTH_S_TOL,
+    maxits=ILENGTH_MAXITS,
+    error=ILENGTH_ERROR,
+    min_depth=ILENGTH_MIN_DEPTH,
+):
     """INPUT: curve should be a CubicBezier, Line, of Path of CubicBezier
     and/or Line objects.
     OUTPUT: Returns a float, t, such that the arc length of curve from 0 to
@@ -529,15 +602,19 @@ def inv_arclength(curve, s, s_tol=ILENGTH_S_TOL, maxits=ILENGTH_MAXITS,
         return 1
 
     if isinstance(curve, Path):
-        seg_lengths = [seg.length(error=error, min_depth=min_depth)
-                       for seg in curve]
+        seg_lengths = [seg.length(error=error, min_depth=min_depth) for seg in curve]
         lsum = 0
         # Find which segment the point we search for is located on
         for k, len_k in enumerate(seg_lengths):
             if lsum <= s <= lsum + len_k:
-                t = inv_arclength(curve[k], s - lsum, s_tol=s_tol,
-                                  maxits=maxits, error=error,
-                                  min_depth=min_depth)
+                t = inv_arclength(
+                    curve[k],
+                    s - lsum,
+                    s_tol=s_tol,
+                    maxits=maxits,
+                    error=error,
+                    min_depth=min_depth,
+                )
                 return curve.t2T(k, t)
             lsum += len_k
         return 1
@@ -545,15 +622,17 @@ def inv_arclength(curve, s, s_tol=ILENGTH_S_TOL, maxits=ILENGTH_MAXITS,
     elif isinstance(curve, Line):
         return s / curve.length(error=error, min_depth=min_depth)
 
-    elif (isinstance(curve, QuadraticBezier) or
-          isinstance(curve, CubicBezier) or
-          isinstance(curve, Arc)):
+    elif (
+        isinstance(curve, QuadraticBezier)
+        or isinstance(curve, CubicBezier)
+        or isinstance(curve, Arc)
+    ):
         t_upper = 1
         t_lower = 0
         iteration = 0
         while iteration < maxits:
             iteration += 1
-            t = (t_lower + t_upper)/2
+            t = (t_lower + t_upper) / 2
             s_t = curve.length(t1=t, error=error, min_depth=min_depth)
             if abs(s_t - s) < s_tol:
                 return t
@@ -562,14 +641,20 @@ def inv_arclength(curve, s, s_tol=ILENGTH_S_TOL, maxits=ILENGTH_MAXITS,
             else:  # s < s_t, t too big
                 t_upper = t
             if t_upper == t_lower:
-                warn("t is as close as a float can be to the correct value, "
-                     "but |s(t) - s| = {} > s_tol".format(abs(s_t-s)))
+                warn(
+                    "t is as close as a float can be to the correct value, "
+                    "but |s(t) - s| = {} > s_tol".format(abs(s_t - s))
+                )
                 return t
-        raise Exception("Maximum iterations reached with s(t) - s = {}."
-                        "".format(s_t - s))
+        raise Exception(
+            "Maximum iterations reached with s(t) - s = {}." "".format(s_t - s)
+        )
     else:
-        raise TypeError("First argument must be a Line, QuadraticBezier, "
-                        "CubicBezier, Arc, or Path object.")
+        raise TypeError(
+            "First argument must be a Line, QuadraticBezier, "
+            "CubicBezier, Arc, or Path object."
+        )
+
 
 # Operations###################################################################
 
@@ -606,7 +691,7 @@ class Line(object):
         return hash((self.start, self.end))
 
     def __repr__(self):
-        return 'Line(start=%s, end=%s)' % (self.start, self.end)
+        return "Line(start=%s, end=%s)" % (self.start, self.end)
 
     def __eq__(self, other):
         if not isinstance(other, Line):
@@ -632,15 +717,17 @@ class Line(object):
         wrt_parameterization=True."""
         if wrt_parameterization:
             return self.start == previous.end and np.isclose(
-                self.derivative(0), previous.derivative(1))
+                self.derivative(0), previous.derivative(1)
+            )
         else:
             return self.start == previous.end and np.isclose(
-                self.unit_tangent(0), previous.unit_tangent(1))
+                self.unit_tangent(0), previous.unit_tangent(1)
+            )
 
     def point(self, t):
         """returns the coordinates of the Bezier curve evaluated at t."""
         distance = self.end - self.start
-        return self.start + distance*t
+        return self.start + distance * t
 
     def points(self, ts):
         """Faster than running Path.point many times."""
@@ -648,14 +735,21 @@ class Line(object):
 
     def length(self, t0=0, t1=1, error=None, min_depth=None):
         """returns the length of the line segment between t0 and t1."""
-        return abs(self.end - self.start)*(t1-t0)
+        return abs(self.end - self.start) * (t1 - t0)
 
-    def ilength(self, s, s_tol=ILENGTH_S_TOL, maxits=ILENGTH_MAXITS,
-                error=ILENGTH_ERROR, min_depth=ILENGTH_MIN_DEPTH):
+    def ilength(
+        self,
+        s,
+        s_tol=ILENGTH_S_TOL,
+        maxits=ILENGTH_MAXITS,
+        error=ILENGTH_ERROR,
+        min_depth=ILENGTH_MIN_DEPTH,
+    ):
         """Returns a float, t, such that self.length(0, t) is approximately s.
         See the inv_arclength() docstring for more details."""
-        return inv_arclength(self, s, s_tol=s_tol, maxits=maxits, error=error,
-                             min_depth=min_depth)
+        return inv_arclength(
+            self, s, s_tol=s_tol, maxits=maxits, error=error, min_depth=min_depth
+        )
 
     def bpoints(self):
         """returns the Bezier control points of the segment."""
@@ -664,7 +758,7 @@ class Line(object):
     def poly(self, return_coeffs=False):
         """returns the line as a Polynomial object."""
         p = self.bpoints()
-        coeffs = ([p[1] - p[0], p[0]])
+        coeffs = [p[1] - p[0], p[0]]
         if return_coeffs:
             return coeffs
         else:
@@ -684,11 +778,11 @@ class Line(object):
         """returns the unit tangent of the segment at t."""
         assert self.end != self.start
         dseg = self.end - self.start
-        return dseg/abs(dseg)
+        return dseg / abs(dseg)
 
     def normal(self, t=None):
         """returns the (right hand rule) unit normal vector to self at t."""
-        return -1j*self.unit_tangent(t)
+        return -1j * self.unit_tangent(t)
 
     def curvature(self, t):
         """returns the curvature of the line, which is always zero."""
@@ -737,16 +831,16 @@ class Line(object):
             b = (self.start.imag, self.end.imag)
             c = (other_seg.start.real, other_seg.end.real)
             d = (other_seg.start.imag, other_seg.end.imag)
-            denom = ((a[1] - a[0])*(d[0] - d[1]) -
-                     (b[1] - b[0])*(c[0] - c[1]))
+            denom = (a[1] - a[0]) * (d[0] - d[1]) - (b[1] - b[0]) * (c[0] - c[1])
             if np.isclose(denom, 0):
                 return []
-            t1 = (c[0]*(b[0] - d[1]) -
-                  c[1]*(b[0] - d[0]) -
-                  a[0]*(d[0] - d[1]))/denom
-            t2 = -(a[1]*(b[0] - d[0]) -
-                   a[0]*(b[1] - d[0]) -
-                   c[0]*(b[0] - b[1]))/denom
+            t1 = (
+                c[0] * (b[0] - d[1]) - c[1] * (b[0] - d[0]) - a[0] * (d[0] - d[1])
+            ) / denom
+            t2 = (
+                -(a[1] * (b[0] - d[0]) - a[0] * (b[1] - d[0]) - c[0] * (b[0] - b[1]))
+                / denom
+            )
             if 0 <= t1 <= 1 and 0 <= t2 <= 1:
                 return [(t1, t2)]
             return []
@@ -762,7 +856,8 @@ class Line(object):
         elif isinstance(other_seg, Path):
             raise TypeError(
                 "other_seg must be a path segment, not a Path object, use "
-                "Path.intersect().")
+                "Path.intersect()."
+            )
         else:
             raise TypeError("other_seg must be a path segment.")
 
@@ -833,7 +928,7 @@ class Line(object):
             d0, d1, dt = (
                 abs(p0 - origin),
                 abs(p1 - origin),
-                abs(self.point(t) - origin)
+                abs(self.point(t) - origin),
             )
             if d0 < d1:
                 return (dt, t), (d1, 1)
@@ -864,7 +959,7 @@ class Line(object):
 
 class QuadraticBezier(object):
     # For compatibility with old pickle files.
-    _length_info = {'length': None, 'bpoints': None}
+    _length_info = {"length": None, "bpoints": None}
 
     def __init__(self, start, control, end):
         self.start = start
@@ -872,20 +967,26 @@ class QuadraticBezier(object):
         self.control = control
 
         # used to know if self._length needs to be updated
-        self._length_info = {'length': None, 'bpoints': None}
+        self._length_info = {"length": None, "bpoints": None}
 
     def __hash__(self):
         return hash((self.start, self.control, self.end))
 
     def __repr__(self):
-        return 'QuadraticBezier(start=%s, control=%s, end=%s)' % (
-            self.start, self.control, self.end)
+        return "QuadraticBezier(start=%s, control=%s, end=%s)" % (
+            self.start,
+            self.control,
+            self.end,
+        )
 
     def __eq__(self, other):
         if not isinstance(other, QuadraticBezier):
             return NotImplemented
-        return self.start == other.start and self.end == other.end \
+        return (
+            self.start == other.start
+            and self.end == other.end
             and self.control == other.control
+        )
 
     def __ne__(self, other):
         if not isinstance(other, QuadraticBezier):
@@ -907,30 +1008,33 @@ class QuadraticBezier(object):
         if warning_on:
             warn(_is_smooth_from_warning)
         if isinstance(previous, QuadraticBezier):
-            return (self.start == previous.end and
-                    (self.control - self.start) == (
-                        previous.end - previous.control))
+            return self.start == previous.end and (self.control - self.start) == (
+                previous.end - previous.control
+            )
         else:
             return self.control == self.start
 
-    def joins_smoothly_with(self, previous, wrt_parameterization=False,
-                            error=0):
+    def joins_smoothly_with(self, previous, wrt_parameterization=False, error=0):
         """Checks if this segment joins smoothly with previous segment.  By
         default, this only checks that this segment starts moving (at t=0) in
         the same direction (and from the same positive) as previous stopped
         moving (at t=1).  To check if the tangent magnitudes also match, set
         wrt_parameterization=True."""
         if wrt_parameterization:
-            return self.start == previous.end and abs(
-                self.derivative(0) - previous.derivative(1)) <= error
+            return (
+                self.start == previous.end
+                and abs(self.derivative(0) - previous.derivative(1)) <= error
+            )
         else:
-            return self.start == previous.end and abs(
-                self.unit_tangent(0) - previous.unit_tangent(1)) <= error
+            return (
+                self.start == previous.end
+                and abs(self.unit_tangent(0) - previous.unit_tangent(1)) <= error
+            )
 
     def point(self, t):
         """returns the coordinates of the Bezier curve evaluated at t."""
         tc = 1 - t
-        return tc*tc*self.start + 2*tc*t*self.control + t*t*self.end
+        return tc * tc * self.start + 2 * tc * t * self.control + t * t * self.end
 
     def points(self, ts):
         """Faster than running Path.point many times."""
@@ -938,52 +1042,66 @@ class QuadraticBezier(object):
 
     def length(self, t0=0, t1=1, error=None, min_depth=None):
         if t0 == 1 and t1 == 0:
-            if self._length_info['bpoints'] == self.bpoints():
-                return self._length_info['length']
-        a = self.start - 2*self.control + self.end
-        b = 2*(self.control - self.start)
-        a_dot_b = a.real*b.real + a.imag*b.imag
+            if self._length_info["bpoints"] == self.bpoints():
+                return self._length_info["length"]
+        a = self.start - 2 * self.control + self.end
+        b = 2 * (self.control - self.start)
+        a_dot_b = a.real * b.real + a.imag * b.imag
 
         if abs(a) < 1e-12:
-            s = abs(b)*(t1 - t0)
+            s = abs(b) * (t1 - t0)
         else:
-            c2 = 4 * (a.real ** 2 + a.imag ** 2)
+            c2 = 4 * (a.real**2 + a.imag**2)
             c1 = 4 * a_dot_b
-            c0 = b.real ** 2 + b.imag ** 2
+            c0 = b.real**2 + b.imag**2
 
             beta = c1 / (2 * c2)
-            gamma = c0 / c2 - beta ** 2
+            gamma = c0 / c2 - beta**2
 
-            dq1_mag = sqrt(c2 * t1 ** 2 + c1 * t1 + c0)
-            dq0_mag = sqrt(c2 * t0 ** 2 + c1 * t0 + c0)
-            logarand = (sqrt(c2) * (t1 + beta) + dq1_mag) / \
-                       (sqrt(c2) * (t0 + beta) + dq0_mag)
-            s = (t1 + beta) * dq1_mag - (t0 + beta) * dq0_mag + \
-                gamma * sqrt(c2) * log(logarand)
+            dq1_mag = sqrt(c2 * t1**2 + c1 * t1 + c0)
+            dq0_mag = sqrt(c2 * t0**2 + c1 * t0 + c0)
+            logarand = (sqrt(c2) * (t1 + beta) + dq1_mag) / (
+                sqrt(c2) * (t0 + beta) + dq0_mag
+            )
+            s = (
+                (t1 + beta) * dq1_mag
+                - (t0 + beta) * dq0_mag
+                + gamma * sqrt(c2) * log(logarand)
+            )
             s /= 2
             if isnan(s):
                 tstar = abs(b) / (2 * abs(a))
                 if t1 < tstar:
-                    return abs(a) * (t0 ** 2 - t1 ** 2) - abs(b) * (t0 - t1)
+                    return abs(a) * (t0**2 - t1**2) - abs(b) * (t0 - t1)
                 elif tstar < t0:
-                    return abs(a) * (t1 ** 2 - t0 ** 2) - abs(b) * (t1 - t0)
+                    return abs(a) * (t1**2 - t0**2) - abs(b) * (t1 - t0)
                 else:
-                    return abs(a) * (t1 ** 2 + t0 ** 2) - abs(b) * (t1 + t0) + \
-                           abs(b) ** 2 / (2 * abs(a))
+                    return (
+                        abs(a) * (t1**2 + t0**2)
+                        - abs(b) * (t1 + t0)
+                        + abs(b) ** 2 / (2 * abs(a))
+                    )
 
         if t0 == 1 and t1 == 0:
-            self._length_info['length'] = s
-            self._length_info['bpoints'] = self.bpoints()
-            return self._length_info['length']
+            self._length_info["length"] = s
+            self._length_info["bpoints"] = self.bpoints()
+            return self._length_info["length"]
         else:
             return s
 
-    def ilength(self, s, s_tol=ILENGTH_S_TOL, maxits=ILENGTH_MAXITS,
-                error=ILENGTH_ERROR, min_depth=ILENGTH_MIN_DEPTH):
+    def ilength(
+        self,
+        s,
+        s_tol=ILENGTH_S_TOL,
+        maxits=ILENGTH_MAXITS,
+        error=ILENGTH_ERROR,
+        min_depth=ILENGTH_MIN_DEPTH,
+    ):
         """Returns a float, t, such that self.length(0, t) is approximately s.
         See the inv_arclength() docstring for more details."""
-        return inv_arclength(self, s, s_tol=s_tol, maxits=maxits, error=error,
-                             min_depth=min_depth)
+        return inv_arclength(
+            self, s, s_tol=s_tol, maxits=maxits, error=error, min_depth=min_depth
+        )
 
     def bpoints(self):
         """returns the Bezier control points of the segment."""
@@ -992,7 +1110,7 @@ class QuadraticBezier(object):
     def poly(self, return_coeffs=False):
         """returns the quadratic as a Polynomial object."""
         p = self.bpoints()
-        coeffs = (p[0] - 2*p[1] + p[2], 2*(p[1] - p[0]), p[0])
+        coeffs = (p[0] - 2 * p[1] + p[2], 2 * (p[1] - p[0]), p[0])
         if return_coeffs:
             return coeffs
         else:
@@ -1005,9 +1123,9 @@ class QuadraticBezier(object):
         method instead."""
         p = self.bpoints()
         if n == 1:
-            return 2*((p[1] - p[0])*(1 - t) + (p[2] - p[1])*t)
+            return 2 * ((p[1] - p[0]) * (1 - t) + (p[2] - p[1]) * t)
         elif n == 2:
-            return 2*(p[2] - 2*p[1] + p[0])
+            return 2 * (p[2] - 2 * p[1] + p[0])
         elif n > 2:
             return 0
         else:
@@ -1022,7 +1140,7 @@ class QuadraticBezier(object):
 
     def normal(self, t):
         """returns the (right hand rule) unit normal vector to self at t."""
-        return -1j*self.unit_tangent(t)
+        return -1j * self.unit_tangent(t)
 
     def curvature(self, t):
         """returns the curvature of the segment at t."""
@@ -1043,10 +1161,9 @@ class QuadraticBezier(object):
         """returns a copy of the QuadraticBezier object with its orientation
         reversed."""
         new_quad = QuadraticBezier(self.end, self.control, self.start)
-        if self._length_info['length']:
+        if self._length_info["length"]:
             new_quad._length_info = self._length_info
-            new_quad._length_info['bpoints'] = (
-                self.end, self.control, self.start)
+            new_quad._length_info["bpoints"] = (self.end, self.control, self.start)
         return new_quad
 
     def intersect(self, other_seg, tol=1e-12):
@@ -1073,21 +1190,22 @@ class QuadraticBezier(object):
         elif isinstance(other_seg, QuadraticBezier):
             assert self != other_seg
             longer_length = max(self.length(), other_seg.length())
-            return bezier_intersections(self, other_seg,
-                                        longer_length=longer_length,
-                                        tol=tol, tol_deC=tol)
+            return bezier_intersections(
+                self, other_seg, longer_length=longer_length, tol=tol, tol_deC=tol
+            )
         elif isinstance(other_seg, CubicBezier):
             longer_length = max(self.length(), other_seg.length())
-            return bezier_intersections(self, other_seg,
-                                        longer_length=longer_length,
-                                        tol=tol, tol_deC=tol)
+            return bezier_intersections(
+                self, other_seg, longer_length=longer_length, tol=tol, tol_deC=tol
+            )
         elif isinstance(other_seg, Arc):
             t2t1s = other_seg.intersect(self)
             return [(t1, t2) for t2, t1 in t2t1s]
         elif isinstance(other_seg, Path):
             raise TypeError(
                 "other_seg must be a path segment, not a Path object, use "
-                "Path.intersect().")
+                "Path.intersect()."
+            )
         else:
             raise TypeError("other_seg must be a path segment.")
 
@@ -1110,8 +1228,9 @@ class QuadraticBezier(object):
     def radialrange(self, origin, return_all_global_extrema=False):
         """returns the tuples (d_min, t_min) and (d_max, t_max) which minimize
         and maximize, respectively, the distance d = |self.point(t)-origin|."""
-        return bezier_radialrange(self, origin,
-                return_all_global_extrema=return_all_global_extrema)
+        return bezier_radialrange(
+            self, origin, return_all_global_extrema=return_all_global_extrema
+        )
 
     def rotated(self, degs, origin=None):
         """Returns a copy of self rotated by `degs` degrees (CCW) around the
@@ -1132,8 +1251,7 @@ class QuadraticBezier(object):
 
 class CubicBezier(object):
     # For compatibility with old pickle files.
-    _length_info = {'length': None, 'bpoints': None, 'error': None,
-                    'min_depth': None}
+    _length_info = {"length": None, "bpoints": None, "error": None, "min_depth": None}
 
     def __init__(self, start, control1, control2, end):
         self.start = start
@@ -1142,22 +1260,33 @@ class CubicBezier(object):
         self.end = end
 
         # used to know if self._length needs to be updated
-        self._length_info = {'length': None, 'bpoints': None, 'error': None,
-                             'min_depth': None}
+        self._length_info = {
+            "length": None,
+            "bpoints": None,
+            "error": None,
+            "min_depth": None,
+        }
 
     def __hash__(self):
         return hash((self.start, self.control1, self.control2, self.end))
 
     def __repr__(self):
-        return 'CubicBezier(start=%s, control1=%s, control2=%s, end=%s)' % (
-            self.start, self.control1, self.control2, self.end)
+        return "CubicBezier(start=%s, control1=%s, control2=%s, end=%s)" % (
+            self.start,
+            self.control1,
+            self.control2,
+            self.end,
+        )
 
     def __eq__(self, other):
         if not isinstance(other, CubicBezier):
             return NotImplemented
-        return self.start == other.start and self.end == other.end \
-            and self.control1 == other.control1 \
+        return (
+            self.start == other.start
+            and self.end == other.end
+            and self.control1 == other.control1
             and self.control2 == other.control2
+        )
 
     def __ne__(self, other):
         if not isinstance(other, CubicBezier):
@@ -1179,9 +1308,9 @@ class CubicBezier(object):
         if warning_on:
             warn(_is_smooth_from_warning)
         if isinstance(previous, CubicBezier):
-            return (self.start == previous.end and
-                    (self.control1 - self.start) == (
-                        previous.end - previous.control2))
+            return self.start == previous.end and (self.control1 - self.start) == (
+                previous.end - previous.control2
+            )
         else:
             return self.control1 == self.start
 
@@ -1193,21 +1322,27 @@ class CubicBezier(object):
         wrt_parameterization=True."""
         if wrt_parameterization:
             return self.start == previous.end and np.isclose(
-                self.derivative(0), previous.derivative(1))
+                self.derivative(0), previous.derivative(1)
+            )
         else:
             return self.start == previous.end and np.isclose(
-                self.unit_tangent(0), previous.unit_tangent(1))
+                self.unit_tangent(0), previous.unit_tangent(1)
+            )
 
     def point(self, t):
         """Evaluate the cubic Bezier curve at t using Horner's rule."""
         # algebraically equivalent to
         # P0*(1-t)**3 + 3*P1*t*(1-t)**2 + 3*P2*(1-t)*t**2 + P3*t**3
         # for (P0, P1, P2, P3) = self.bpoints()
-        return self.start + t*(
-            3*(self.control1 - self.start) + t*(
-                3*(self.start + self.control2) - 6*self.control1 + t*(
-                    -self.start + 3*(self.control1 - self.control2) + self.end
-                )))
+        return self.start + t * (
+            3 * (self.control1 - self.start)
+            + t
+            * (
+                3 * (self.start + self.control2)
+                - 6 * self.control1
+                + t * (-self.start + 3 * (self.control1 - self.control2) + self.end)
+            )
+        )
 
     def points(self, ts):
         """Faster than running Path.point many times."""
@@ -1216,34 +1351,45 @@ class CubicBezier(object):
     def length(self, t0=0, t1=1, error=LENGTH_ERROR, min_depth=LENGTH_MIN_DEPTH):
         """Calculate the length of the path up to a certain position"""
         if t0 == 0 and t1 == 1:
-            if self._length_info['bpoints'] == self.bpoints() \
-                    and self._length_info['error'] >= error \
-                    and self._length_info['min_depth'] >= min_depth:
-                return self._length_info['length']
+            if (
+                self._length_info["bpoints"] == self.bpoints()
+                and self._length_info["error"] >= error
+                and self._length_info["min_depth"] >= min_depth
+            ):
+                return self._length_info["length"]
 
         # using scipy.integrate.quad is quick
         if _quad_available:
-            s = quad(lambda tau: abs(self.derivative(tau)), t0, t1,
-                            epsabs=error, limit=1000)[0]
+            s = quad(
+                lambda tau: abs(self.derivative(tau)), t0, t1, epsabs=error, limit=1000
+            )[0]
         else:
-            s = segment_length(self, t0, t1, self.point(t0), self.point(t1),
-                               error, min_depth, 0)
+            s = segment_length(
+                self, t0, t1, self.point(t0), self.point(t1), error, min_depth, 0
+            )
 
         if t0 == 0 and t1 == 1:
-            self._length_info['length'] = s
-            self._length_info['bpoints'] = self.bpoints()
-            self._length_info['error'] = error
-            self._length_info['min_depth'] = min_depth
-            return self._length_info['length']
+            self._length_info["length"] = s
+            self._length_info["bpoints"] = self.bpoints()
+            self._length_info["error"] = error
+            self._length_info["min_depth"] = min_depth
+            return self._length_info["length"]
         else:
             return s
 
-    def ilength(self, s, s_tol=ILENGTH_S_TOL, maxits=ILENGTH_MAXITS,
-                error=ILENGTH_ERROR, min_depth=ILENGTH_MIN_DEPTH):
+    def ilength(
+        self,
+        s,
+        s_tol=ILENGTH_S_TOL,
+        maxits=ILENGTH_MAXITS,
+        error=ILENGTH_ERROR,
+        min_depth=ILENGTH_MIN_DEPTH,
+    ):
         """Returns a float, t, such that self.length(0, t) is approximately s.
         See the inv_arclength() docstring for more details."""
-        return inv_arclength(self, s, s_tol=s_tol, maxits=maxits, error=error,
-                             min_depth=min_depth)
+        return inv_arclength(
+            self, s, s_tol=s_tol, maxits=maxits, error=error, min_depth=min_depth
+        )
 
     def bpoints(self):
         """returns the Bezier control points of the segment."""
@@ -1252,10 +1398,12 @@ class CubicBezier(object):
     def poly(self, return_coeffs=False):
         """Returns a the cubic as a Polynomial object."""
         p = self.bpoints()
-        coeffs = (-p[0] + 3*(p[1] - p[2]) + p[3],
-                  3*(p[0] - 2*p[1] + p[2]),
-                  3*(-p[0] + p[1]),
-                  p[0])
+        coeffs = (
+            -p[0] + 3 * (p[1] - p[2]) + p[3],
+            3 * (p[0] - 2 * p[1] + p[2]),
+            3 * (-p[0] + p[1]),
+            p[0],
+        )
         if return_coeffs:
             return coeffs
         else:
@@ -1268,13 +1416,17 @@ class CubicBezier(object):
         method instead."""
         p = self.bpoints()
         if n == 1:
-            return 3*(p[1] - p[0])*(1 - t)**2 + 6*(p[2] - p[1])*(1 - t)*t + 3*(
-                p[3] - p[2])*t**2
+            return (
+                3 * (p[1] - p[0]) * (1 - t) ** 2
+                + 6 * (p[2] - p[1]) * (1 - t) * t
+                + 3 * (p[3] - p[2]) * t**2
+            )
         elif n == 2:
-            return 6*(
-                (1 - t)*(p[2] - 2*p[1] + p[0]) + t*(p[3] - 2*p[2] + p[1]))
+            return 6 * (
+                (1 - t) * (p[2] - 2 * p[1] + p[0]) + t * (p[3] - 2 * p[2] + p[1])
+            )
         elif n == 3:
-            return 6*(p[3] - 3*(p[2] - p[1]) - p[0])
+            return 6 * (p[3] - 3 * (p[2] - p[1]) - p[0])
         elif n > 3:
             return 0
         else:
@@ -1309,12 +1461,15 @@ class CubicBezier(object):
     def reversed(self):
         """returns a copy of the CubicBezier object with its orientation
         reversed."""
-        new_cub = CubicBezier(self.end, self.control2, self.control1,
-                              self.start)
-        if self._length_info['length']:
+        new_cub = CubicBezier(self.end, self.control2, self.control1, self.start)
+        if self._length_info["length"]:
             new_cub._length_info = self._length_info
-            new_cub._length_info['bpoints'] = (
-                self.end, self.control2, self.control1, self.start)
+            new_cub._length_info["bpoints"] = (
+                self.end,
+                self.control2,
+                self.control1,
+                self.start,
+            )
         return new_cub
 
     def intersect(self, other_seg, tol=1e-12):
@@ -1343,8 +1498,9 @@ class CubicBezier(object):
                 return []
         if isinstance(other_seg, Line):
             return bezier_by_line_intersections(self, other_seg)
-        elif (isinstance(other_seg, QuadraticBezier) or
-              isinstance(other_seg, CubicBezier)):
+        elif isinstance(other_seg, QuadraticBezier) or isinstance(
+            other_seg, CubicBezier
+        ):
             assert self != other_seg
             longer_length = max(self.length(), other_seg.length())
             return bezier_intersections(
@@ -1353,8 +1509,10 @@ class CubicBezier(object):
         elif isinstance(other_seg, Arc):
             return [(t1, t2) for t2, t1 in other_seg.intersect(self)]
         elif isinstance(other_seg, Path):
-            raise TypeError("`other_seg` must be a path segment, not a "
-                            "`Path` object, use `Path.intersect()`.")
+            raise TypeError(
+                "`other_seg` must be a path segment, not a "
+                "`Path` object, use `Path.intersect()`."
+            )
         else:
             raise TypeError("`other_seg` must be a path segment.")
 
@@ -1376,7 +1534,8 @@ class CubicBezier(object):
         """returns the tuples (d_min, t_min) and (d_max, t_max) which minimize
         and maximize, respectively, the distance d = |self.point(t)-origin|."""
         return bezier_radialrange(
-            self, origin, return_all_global_extrema=return_all_global_extrema)
+            self, origin, return_all_global_extrema=return_all_global_extrema
+        )
 
     def rotated(self, degs, origin=None):
         """Returns a copy of self rotated by `degs` degrees (CCW) around the
@@ -1396,8 +1555,9 @@ class CubicBezier(object):
 
 
 class Arc(object):
-    def __init__(self, start, radius, rotation, large_arc, sweep, end,
-                 autoscale_radius=True):
+    def __init__(
+        self, start, radius, rotation, large_arc, sweep, end, autoscale_radius=True
+    ):
         r"""
         This should be thought of as a part of an ellipse connecting two
         points on that ellipse, start and end.
@@ -1476,7 +1636,7 @@ class Arc(object):
         assert radius.real != 0 and radius.imag != 0
 
         self.start = start
-        self.radius = abs(radius.real) + 1j*abs(radius.imag)
+        self.radius = abs(radius.real) + 1j * abs(radius.imag)
         self.rotation = rotation
         self.large_arc = bool(large_arc)
         self.sweep = bool(sweep)
@@ -1488,27 +1648,48 @@ class Arc(object):
 
         # Convenience parameters
         self.phi = radians(self.rotation)
-        self.rot_matrix = exp(1j*self.phi)
+        self.rot_matrix = exp(1j * self.phi)
 
         # Derive derived parameters
         self._parameterize()
 
     def __hash__(self):
-        return hash((self.start, self.radius, self.rotation, self.large_arc, self.sweep, self.end))
+        return hash(
+            (
+                self.start,
+                self.radius,
+                self.rotation,
+                self.large_arc,
+                self.sweep,
+                self.end,
+            )
+        )
 
     def __repr__(self):
-        params = (self.start, self.radius, self.rotation,
-                  self.large_arc, self.sweep, self.end)
-        return ("Arc(start={}, radius={}, rotation={}, "
-                "large_arc={}, sweep={}, end={})".format(*params))
+        params = (
+            self.start,
+            self.radius,
+            self.rotation,
+            self.large_arc,
+            self.sweep,
+            self.end,
+        )
+        return (
+            "Arc(start={}, radius={}, rotation={}, "
+            "large_arc={}, sweep={}, end={})".format(*params)
+        )
 
     def __eq__(self, other):
         if not isinstance(other, Arc):
             return NotImplemented
-        return self.start == other.start and self.end == other.end \
-            and self.radius == other.radius \
-            and self.rotation == other.rotation \
-            and self.large_arc == other.large_arc and self.sweep == other.sweep
+        return (
+            self.start == other.start
+            and self.end == other.end
+            and self.radius == other.radius
+            and self.rotation == other.rotation
+            and self.large_arc == other.large_arc
+            and self.sweep == other.sweep
+        )
 
     def __ne__(self, other):
         if not isinstance(other, Arc):
@@ -1520,8 +1701,8 @@ class Arc(object):
         # my notation roughly follows theirs
         rx = self.radius.real
         ry = self.radius.imag
-        rx_sqd = rx*rx
-        ry_sqd = ry*ry
+        rx_sqd = rx * rx
+        ry_sqd = ry * ry
 
         # Transform z-> z' = x' + 1j*y'
         # = self.rot_matrix**(-1)*(z - (end+start)/2)
@@ -1529,22 +1710,22 @@ class Arc(object):
         # between self.end and self.start lies on the origin and rotates
         # the ellipse so that the its axes align with the xy-coordinate axes.
         # Note:  This sends self.end to -self.start
-        zp1 = (1/self.rot_matrix)*(self.start - self.end)/2
+        zp1 = (1 / self.rot_matrix) * (self.start - self.end) / 2
         x1p, y1p = zp1.real, zp1.imag
-        x1p_sqd = x1p*x1p
-        y1p_sqd = y1p*y1p
+        x1p_sqd = x1p * x1p
+        y1p_sqd = y1p * y1p
 
         # Correct out of range radii
         # Note: an ellipse going through start and end with radius and phi
         # exists if and only if radius_check is true
-        radius_check = (x1p_sqd/rx_sqd) + (y1p_sqd/ry_sqd)
+        radius_check = (x1p_sqd / rx_sqd) + (y1p_sqd / ry_sqd)
         if radius_check > 1:
             if self.autoscale_radius:
                 rx *= sqrt(radius_check)
                 ry *= sqrt(radius_check)
-                self.radius = rx + 1j*ry
-                rx_sqd = rx*rx
-                ry_sqd = ry*ry
+                self.radius = rx + 1j * ry
+                rx_sqd = rx * rx
+                ry_sqd = ry * ry
             else:
                 raise ValueError("No such elliptic arc exists.")
 
@@ -1554,27 +1735,27 @@ class Arc(object):
         # (x'-c_x')**2 / r_x**2 + (y'-c_y')**2 / r_y**2 = 1,
         # we can find c' by solving the system of two quadratics given by
         # plugging our transformed endpoints (x_1', y_1') and (x_2', y_2')
-        tmp = rx_sqd*y1p_sqd + ry_sqd*x1p_sqd
-        radicand = (rx_sqd*ry_sqd - tmp) / tmp
+        tmp = rx_sqd * y1p_sqd + ry_sqd * x1p_sqd
+        radicand = (rx_sqd * ry_sqd - tmp) / tmp
         radical = 0 if np.isclose(radicand, 0) else sqrt(radicand)
 
         if self.large_arc == self.sweep:
-            cp = -radical*(rx*y1p/ry - 1j*ry*x1p/rx)
+            cp = -radical * (rx * y1p / ry - 1j * ry * x1p / rx)
         else:
-            cp = radical*(rx*y1p/ry - 1j*ry*x1p/rx)
+            cp = radical * (rx * y1p / ry - 1j * ry * x1p / rx)
 
         # The center in (x,y) coordinates is easy to find knowing c'
-        self.center = exp(1j*self.phi)*cp + (self.start + self.end)/2
+        self.center = exp(1j * self.phi) * cp + (self.start + self.end) / 2
 
         # Now we do a second transformation, from (x', y') to (u_x, u_y)
         # coordinates, which is a translation moving the center of the
         # ellipse to the origin and a dilation stretching the ellipse to be
         # the unit circle
-        u1 = (x1p - cp.real)/rx + 1j*(y1p - cp.imag)/ry  # transformed start
-        u2 = (-x1p - cp.real)/rx + 1j*(-y1p - cp.imag)/ry  # transformed end
+        u1 = (x1p - cp.real) / rx + 1j * (y1p - cp.imag) / ry  # transformed start
+        u2 = (-x1p - cp.real) / rx + 1j * (-y1p - cp.imag) / ry  # transformed end
 
         # clip in case of floating point error
-        u1 = np.clip(u1.real, -1, 1) + 1j*np.clip(u1.imag, -1, 1)
+        u1 = np.clip(u1.real, -1, 1) + 1j * np.clip(u1.imag, -1, 1)
         u2 = np.clip(u2.real, -1, 1) + 1j * np.clip(u2.imag, -1, 1)
 
         # Now compute theta and delta (we'll define them as we go)
@@ -1594,17 +1775,17 @@ class Arc(object):
                 # where theta is set to 0 in this case.
                 self.theta = 180
 
-        det_uv = u1.real*u2.imag - u1.imag*u2.real
+        det_uv = u1.real * u2.imag - u1.imag * u2.real
 
-        acosand = u1.real*u2.real + u1.imag*u2.imag
+        acosand = u1.real * u2.real + u1.imag * u2.imag
         acosand = np.clip(acosand.real, -1, 1) + np.clip(acosand.imag, -1, 1)
-        
+
         if det_uv > 0:
             self.delta = degrees(acos(acosand))
         elif det_uv < 0:
             self.delta = -degrees(acos(acosand))
         else:
-            if u1.real*u2.real + u1.imag*u2.imag > 0:
+            if u1.real * u2.real + u1.imag * u2.imag > 0:
                 # u1 == u2
                 self.delta = 0
             else:
@@ -1620,16 +1801,15 @@ class Arc(object):
             self.delta += 360
 
     def point(self, t):
-
-        angle = (self.theta + t*self.delta)*pi/180
+        angle = (self.theta + t * self.delta) * pi / 180
         cosphi = self.rot_matrix.real
         sinphi = self.rot_matrix.imag
         rx = self.radius.real
         ry = self.radius.imag
 
-        x = rx*cosphi*cos(angle) - ry*sinphi*sin(angle) + self.center.real
-        y = rx*sinphi*cos(angle) + ry*cosphi*sin(angle) + self.center.imag
-        return x + y*1j
+        x = rx * cosphi * cos(angle) - ry * sinphi * sin(angle) + self.center.real
+        y = rx * sinphi * cos(angle) + ry * cosphi * sin(angle) + self.center.imag
+        return x + y * 1j
 
     def point_to_t(self, point):
         """If the point lies on the Arc, returns its `t` parameter.
@@ -1653,9 +1833,13 @@ class Arc(object):
         distance_from_center = sqrt((v.real * v.real) + (v.imag * v.imag))
         min_radius = min(self.radius.real, self.radius.imag)
         max_radius = max(self.radius.real, self.radius.imag)
-        if (distance_from_center < min_radius) and not np.isclose(distance_from_center, min_radius):
+        if (distance_from_center < min_radius) and not np.isclose(
+            distance_from_center, min_radius
+        ):
             return None
-        if (distance_from_center > max_radius) and not np.isclose(distance_from_center, max_radius):
+        if (distance_from_center > max_radius) and not np.isclose(
+            distance_from_center, max_radius
+        ):
             return None
 
         # x = center_x + radius_x cos(radians(theta + t delta))
@@ -1769,24 +1953,24 @@ class Arc(object):
                 where f is the above described isometry of the xy-plane (i.e.
                 the one-dimensional complex plane).
         """
-        return (1/self.rot_matrix)*(z - self.center)
+        return (1 / self.rot_matrix) * (z - self.center)
 
     def icenteriso(self, zeta):
         """The inverse of the `centeriso()` method."""
-        return self.rot_matrix*zeta + self.center
+        return self.rot_matrix * zeta + self.center
 
     def u1transform(self, z):
         """Similar to the `centeriso()` method, but maps to the unit circle."""
         zeta = self.centeriso(z)
         x, y = real(zeta), imag(zeta)
-        return x/self.radius.real + 1j*y/self.radius.imag
+        return x / self.radius.real + 1j * y / self.radius.imag
 
     def iu1transform(self, zeta):
         """The inverse of the `u1transform()` method."""
         x = real(zeta)
         y = imag(zeta)
-        z = x*self.radius.real + y*self.radius.imag
-        return self.rot_matrix*z + self.center
+        z = x * self.radius.real + y * self.radius.imag
+        return self.rot_matrix * z + self.center
 
     def length(self, t0=0, t1=1, error=LENGTH_ERROR, min_depth=LENGTH_MIN_DEPTH):
         """Computes the length of the Arc segment, `self`, from t0 to t1.
@@ -1803,22 +1987,43 @@ class Arc(object):
             if self.segment_length_hash is None or self.segment_length_hash != h:
                 self.segment_length_hash = h
                 if _quad_available:
-                    self.segment_length = quad(lambda tau: abs(self.derivative(tau)),
-                                               t0, t1, epsabs=error, limit=1000)[0]
+                    self.segment_length = quad(
+                        lambda tau: abs(self.derivative(tau)),
+                        t0,
+                        t1,
+                        epsabs=error,
+                        limit=1000,
+                    )[0]
                 else:
-                    self.segment_length = segment_length(self, t0, t1, self.point(t0),
-                                                         self.point(t1), error, min_depth, 0)
+                    self.segment_length = segment_length(
+                        self,
+                        t0,
+                        t1,
+                        self.point(t0),
+                        self.point(t1),
+                        error,
+                        min_depth,
+                        0,
+                    )
             return self.segment_length
 
         if _quad_available:
-            return quad(lambda tau: abs(self.derivative(tau)), t0, t1,
-                        epsabs=error, limit=1000)[0]
+            return quad(
+                lambda tau: abs(self.derivative(tau)), t0, t1, epsabs=error, limit=1000
+            )[0]
         else:
-            return segment_length(self, t0, t1, self.point(t0), self.point(t1),
-                                  error, min_depth, 0)
+            return segment_length(
+                self, t0, t1, self.point(t0), self.point(t1), error, min_depth, 0
+            )
 
-    def ilength(self, s, s_tol=ILENGTH_S_TOL, maxits=ILENGTH_MAXITS,
-                error=ILENGTH_ERROR, min_depth=ILENGTH_MIN_DEPTH):
+    def ilength(
+        self,
+        s,
+        s_tol=ILENGTH_S_TOL,
+        maxits=ILENGTH_MAXITS,
+        error=ILENGTH_ERROR,
+        min_depth=ILENGTH_MIN_DEPTH,
+    ):
         """Approximates the unique `t` such that self.length(0, t) = s.
 
         Args:
@@ -1830,43 +2035,59 @@ class Arc(object):
         For more info:
             See the inv_arclength() docstring.
         """
-        return inv_arclength(self, s, s_tol=s_tol, maxits=maxits, error=error,
-                             min_depth=min_depth)
+        return inv_arclength(
+            self, s, s_tol=s_tol, maxits=maxits, error=error, min_depth=min_depth
+        )
 
-    def joins_smoothly_with(self, previous, wrt_parameterization=False,
-                            error=0):
+    def joins_smoothly_with(self, previous, wrt_parameterization=False, error=0):
         """Checks if this segment joins smoothly with previous segment.  By
         default, this only checks that this segment starts moving (at t=0) in
         the same direction (and from the same positive) as previous stopped
         moving (at t=1).  To check if the tangent magnitudes also match, set
         wrt_parameterization=True."""
         if wrt_parameterization:
-            return self.start == previous.end and abs(
-                self.derivative(0) - previous.derivative(1)) <= error
+            return (
+                self.start == previous.end
+                and abs(self.derivative(0) - previous.derivative(1)) <= error
+            )
         else:
-            return self.start == previous.end and abs(
-                self.unit_tangent(0) - previous.unit_tangent(1)) <= error
+            return (
+                self.start == previous.end
+                and abs(self.unit_tangent(0) - previous.unit_tangent(1)) <= error
+            )
 
     def derivative(self, t, n=1):
         """returns the nth derivative of the segment at t."""
-        angle = radians(self.theta + t*self.delta)
+        angle = radians(self.theta + t * self.delta)
         phi = radians(self.rotation)
         rx = self.radius.real
         ry = self.radius.imag
-        k = (self.delta*pi/180)**n  # ((d/dt)angle)**n
+        k = (self.delta * pi / 180) ** n  # ((d/dt)angle)**n
 
         if n % 4 == 0 and n > 0:
-            return rx*cos(phi)*cos(angle) - ry*sin(phi)*sin(angle) + 1j*(
-                rx*sin(phi)*cos(angle) + ry*cos(phi)*sin(angle))
+            return (
+                rx * cos(phi) * cos(angle)
+                - ry * sin(phi) * sin(angle)
+                + 1j * (rx * sin(phi) * cos(angle) + ry * cos(phi) * sin(angle))
+            )
         elif n % 4 == 1:
-            return k*(-rx*cos(phi)*sin(angle) - ry*sin(phi)*cos(angle) + 1j*(
-                -rx*sin(phi)*sin(angle) + ry*cos(phi)*cos(angle)))
+            return k * (
+                -rx * cos(phi) * sin(angle)
+                - ry * sin(phi) * cos(angle)
+                + 1j * (-rx * sin(phi) * sin(angle) + ry * cos(phi) * cos(angle))
+            )
         elif n % 4 == 2:
-            return k*(-rx*cos(phi)*cos(angle) + ry*sin(phi)*sin(angle) + 1j*(
-                -rx*sin(phi)*cos(angle) - ry*cos(phi)*sin(angle)))
+            return k * (
+                -rx * cos(phi) * cos(angle)
+                + ry * sin(phi) * sin(angle)
+                + 1j * (-rx * sin(phi) * cos(angle) - ry * cos(phi) * sin(angle))
+            )
         elif n % 4 == 3:
-            return k*(rx*cos(phi)*sin(angle) + ry*sin(phi)*cos(angle) + 1j*(
-                rx*sin(phi)*sin(angle) - ry*cos(phi)*cos(angle)))
+            return k * (
+                rx * cos(phi) * sin(angle)
+                + ry * sin(phi) * cos(angle)
+                + 1j * (rx * sin(phi) * sin(angle) - ry * cos(phi) * cos(angle))
+            )
         else:
             raise ValueError("n should be a positive integer.")
 
@@ -1874,11 +2095,11 @@ class Arc(object):
         """returns the unit tangent vector of the segment at t (centered at
         the origin and expressed as a complex number)."""
         dseg = self.derivative(t)
-        return dseg/abs(dseg)
+        return dseg / abs(dseg)
 
     def normal(self, t):
         """returns the (right hand rule) unit normal vector to self at t."""
-        return -1j*self.unit_tangent(t)
+        return -1j * self.unit_tangent(t)
 
     def curvature(self, t):
         """returns the curvature of the segment at t."""
@@ -1920,11 +2141,16 @@ class Arc(object):
     #
     #     return [t for t in ts if 0<=t<=1]
 
-
     def reversed(self):
         """returns a copy of the Arc object with its orientation reversed."""
-        return Arc(self.end, self.radius, self.rotation, self.large_arc,
-                   not self.sweep, self.start)
+        return Arc(
+            self.end,
+            self.radius,
+            self.rotation,
+            self.large_arc,
+            not self.sweep,
+            self.start,
+        )
 
     def phase2t(self, psi):
         """Converts phase to t-value.
@@ -1940,9 +2166,10 @@ class Arc(object):
             (float): the corresponding t-value.
 
         """
+
         def _deg(rads, domain_lower_limit):
             # Convert rads to degrees in [0, 360) domain
-            degs = degrees(rads % (2*pi))
+            degs = degrees(rads % (2 * pi))
 
             # Convert to [domain_lower_limit, domain_lower_limit + 360) domain
             k = domain_lower_limit // 360
@@ -1955,7 +2182,7 @@ class Arc(object):
             degs = _deg(psi, domain_lower_limit=self.theta)
         else:
             degs = _deg(psi, domain_lower_limit=self.theta)
-        return (degs - self.theta)/self.delta
+        return (degs - self.theta) / self.delta
 
     def intersect(self, other_seg, tol=1e-12):
         """NOT FULLY IMPLEMENTED.  Finds the intersections of two segments.
@@ -1976,7 +2203,9 @@ class Arc(object):
 
             # Ignore the ellipse's center point (to pretend that it's
             # centered at the origin), and translate the Line to match.
-            l = Line(start=(other_seg.start-self.center), end=(other_seg.end-self.center))
+            l = Line(
+                start=(other_seg.start - self.center), end=(other_seg.end - self.center)
+            )
 
             # This gives us the translated Line as a parametric equation.
             # s = p1 t + p0
@@ -1996,7 +2225,7 @@ class Arc(object):
                 # y^2 = b^2(1 - c^2/a^2)
                 # y = +-b sqrt(1 - c^2/a^2)
 
-                discriminant = 1 - (c * c)/(a * a)
+                discriminant = 1 - (c * c) / (a * a)
                 if discriminant < 0:
                     return []
                 elif discriminant == 0:
@@ -2059,8 +2288,8 @@ class Arc(object):
                     return []
 
                 x_sqrt = a * b * sqrt(discriminant)
-                x1 = (-(a * a * m * c) + x_sqrt) / denominator 
-                x2 = (-(a * a * m * c) - x_sqrt) / denominator 
+                x1 = (-(a * a * m * c) + x_sqrt) / denominator
+                x2 = (-(a * a * m * c) - x_sqrt) / denominator
                 x_values = [x1]
                 if x1 != x2:
                     x_values.append(x2)
@@ -2094,7 +2323,7 @@ class Arc(object):
             # Moreoever, the t-values that the intersection happen at will
             # be unchanged by the isometry.
             u1poly = np.poly1d(self.u1transform(other_seg.poly()))
-            u1poly_mag2 = real(u1poly)**2 + imag(u1poly)**2
+            u1poly_mag2 = real(u1poly) ** 2 + imag(u1poly) ** 2
             t2s = [t for t in polyroots01(u1poly_mag2 - 1) if 0 <= t <= 1]
             t1s = [self.phase2t(phase(u1poly(t2))) for t2 in t2s]
 
@@ -2111,7 +2340,12 @@ class Arc(object):
             # It's easy to find the intersections of two circles, so
             # compute that and see if any of those
             # intersection points are on the arcs.
-            if (self.rotation == 0) and (self.radius.real == self.radius.imag) and (other_seg.rotation == 0) and (other_seg.radius.real == other_seg.radius.imag):
+            if (
+                (self.rotation == 0)
+                and (self.radius.real == self.radius.imag)
+                and (other_seg.rotation == 0)
+                and (other_seg.radius.real == other_seg.radius.imag)
+            ):
                 r0 = self.radius.real
                 r1 = other_seg.radius.real
                 p0 = self.center
@@ -2129,15 +2363,19 @@ class Arc(object):
                     # large circle: no intersections possible.
                     pass
 
-                elif (np.isclose(d, 0, rtol=0.0, atol=1e-6)) and (np.isclose(r0, r1, rtol=0.0, atol=1e-6)):
+                elif (np.isclose(d, 0, rtol=0.0, atol=1e-6)) and (
+                    np.isclose(r0, r1, rtol=0.0, atol=1e-6)
+                ):
                     # The Arcs lie on the same circle: they have the
                     # same center and are of equal radius.
 
                     def point_in_seg_interior(point, seg):
                         t = seg.point_to_t(point)
-                        if (not t or
-                                np.isclose(t, 0.0, rtol=0.0, atol=1e-6) or
-                                np.isclose(t, 1.0, rtol=0.0, atol=1e-6)):
+                        if (
+                            not t
+                            or np.isclose(t, 0.0, rtol=0.0, atol=1e-6)
+                            or np.isclose(t, 1.0, rtol=0.0, atol=1e-6)
+                        ):
                             return False
                         return True
 
@@ -2146,10 +2384,10 @@ class Arc(object):
                     # in an infinite number of points, and we return
                     # "no intersections".
                     if (
-                            point_in_seg_interior(self.start, other_seg) or
-                            point_in_seg_interior(self.end, other_seg) or
-                            point_in_seg_interior(other_seg.start, self) or
-                            point_in_seg_interior(other_seg.end, self)
+                        point_in_seg_interior(self.start, other_seg)
+                        or point_in_seg_interior(self.end, other_seg)
+                        or point_in_seg_interior(other_seg.start, self)
+                        or point_in_seg_interior(other_seg.end, self)
                     ):
                         return []
 
@@ -2157,13 +2395,19 @@ class Arc(object):
                     # in "overlapping directions", then we accept that
                     # as intersections.
 
-                    if (self.start == other_seg.start) and (self.sweep != other_seg.sweep):
+                    if (self.start == other_seg.start) and (
+                        self.sweep != other_seg.sweep
+                    ):
                         possible_inters.append((0.0, 0.0))
 
-                    if (self.start == other_seg.end) and (self.sweep == other_seg.sweep):
+                    if (self.start == other_seg.end) and (
+                        self.sweep == other_seg.sweep
+                    ):
                         possible_inters.append((0.0, 1.0))
 
-                    if (self.end == other_seg.start) and (self.sweep == other_seg.sweep):
+                    if (self.end == other_seg.start) and (
+                        self.sweep == other_seg.sweep
+                    ):
                         possible_inters.append((1.0, 0.0))
 
                     if (self.end == other_seg.end) and (self.sweep != other_seg.sweep):
@@ -2174,8 +2418,10 @@ class Arc(object):
                     # at exactly one point.  The circles lie outside
                     # each other.
                     l = Line(start=p0, end=p1)
-                    p = l.point(r0/d)
-                    possible_inters.append((self.point_to_t(p), other_seg.point_to_t(p)))
+                    p = l.point(r0 / d)
+                    possible_inters.append(
+                        (self.point_to_t(p), other_seg.point_to_t(p))
+                    )
 
                 elif np.isclose(d, abs(r0 - r1), rtol=0.0, atol=1e-6):
                     # The circles are tangent, so the Arcs may touch
@@ -2189,8 +2435,10 @@ class Arc(object):
                     if r0 > r1:
                         l = Line(start=p1, end=p0)
                         little_r = r1
-                    p = l.point(-little_r/d)
-                    possible_inters.append((self.point_to_t(p), other_seg.point_to_t(p)))
+                    p = l.point(-little_r / d)
+                    possible_inters.append(
+                        (self.point_to_t(p), other_seg.point_to_t(p))
+                    )
 
                 else:
                     a = (pow(r0, 2.0) - pow(r1, 2.0) + pow(d, 2.0)) / (2.0 * d)
@@ -2206,16 +2454,27 @@ class Arc(object):
                     p30 = complex(x30, y30)
                     p31 = complex(x31, y31)
 
-                    possible_inters.append((self.point_to_t(p30), other_seg.point_to_t(p30)))
-                    possible_inters.append((self.point_to_t(p31), other_seg.point_to_t(p31)))
+                    possible_inters.append(
+                        (self.point_to_t(p30), other_seg.point_to_t(p30))
+                    )
+                    possible_inters.append(
+                        (self.point_to_t(p31), other_seg.point_to_t(p31))
+                    )
 
                 inters = []
                 for p in possible_inters:
                     self_t = p[0]
-                    if (self_t is None) or (self_t < 0.0) or (self_t > 1.0): continue
+                    if (self_t is None) or (self_t < 0.0) or (self_t > 1.0):
+                        continue
                     other_t = p[1]
-                    if (other_t is None) or (other_t < 0.0) or (other_t > 1.0): continue
-                    assert(np.isclose(self.point(self_t), other_seg.point(other_t), rtol=0.0, atol=1e-6))
+                    if (other_t is None) or (other_t < 0.0) or (other_t > 1.0):
+                        continue
+                    assert np.isclose(
+                        self.point(self_t),
+                        other_seg.point(other_t),
+                        rtol=0.0,
+                        atol=1e-6,
+                    )
                     i = (self_t, other_t)
                     inters.append(i)
 
@@ -2223,27 +2482,32 @@ class Arc(object):
 
             # This could be made explicit to increase efficiency
             longer_length = max(self.length(), other_seg.length())
-            inters = bezier_intersections(self, other_seg,
-                                          longer_length=longer_length,
-                                          tol=tol, tol_deC=tol)
+            inters = bezier_intersections(
+                self, other_seg, longer_length=longer_length, tol=tol, tol_deC=tol
+            )
 
             # ad hoc fix for redundant solutions
             if len(inters) > 2:
+
                 def keyfcn(tpair):
                     t1, t2 = tpair
                     return abs(self.point(t1) - other_seg.point(t2))
+
                 inters.sort(key=keyfcn)
-                for idx in range(1, len(inters)-1):
-                    if (abs(inters[idx][0] - inters[idx + 1][0])
-                            <  abs(inters[idx][0] - inters[0][0])):
+                for idx in range(1, len(inters) - 1):
+                    if abs(inters[idx][0] - inters[idx + 1][0]) < abs(
+                        inters[idx][0] - inters[0][0]
+                    ):
                         return [inters[0], inters[idx]]
                 else:
                     return [inters[0], inters[-1]]
             return inters
 
         else:
-            raise TypeError("other_seg should be a Arc, Line, "
-                            "QuadraticBezier, or CubicBezier object.")
+            raise TypeError(
+                "other_seg should be a Arc, Line, "
+                "QuadraticBezier, or CubicBezier object."
+            )
 
     def bbox(self):
         """returns a bounding box for the segment in the form
@@ -2267,18 +2531,18 @@ class Arc(object):
         from math import atan, tan
 
         if cos(self.phi) == 0:
-            atan_x = pi/2
+            atan_x = pi / 2
             atan_y = 0
         elif sin(self.phi) == 0:
             atan_x = 0
-            atan_y = pi/2
+            atan_y = pi / 2
         else:
             rx, ry = self.radius.real, self.radius.imag
-            atan_x = atan(-(ry/rx)*tan(self.phi))
-            atan_y = atan((ry/rx)/tan(self.phi))
+            atan_x = atan(-(ry / rx) * tan(self.phi))
+            atan_y = atan((ry / rx) / tan(self.phi))
 
         def angle_inv(ang, k):  # inverse of angle from Arc.derivative()
-            return ((ang + pi*k)*(360/(2*pi)) - self.theta)/self.delta
+            return ((ang + pi * k) * (360 / (2 * pi)) - self.theta) / self.delta
 
         xtrema = [self.start.real, self.end.real]
         ytrema = [self.start.imag, self.end.imag]
@@ -2301,13 +2565,19 @@ class Arc(object):
     def cropped(self, t0, t1):
         """returns a cropped copy of this segment which starts at
         self.point(t0) and ends at self.point(t1)."""
-        if abs(self.delta*(t1 - t0)) <= 180:
+        if abs(self.delta * (t1 - t0)) <= 180:
             new_large_arc = 0
         else:
             new_large_arc = 1
-        return Arc(self.point(t0), radius=self.radius, rotation=self.rotation,
-                   large_arc=new_large_arc, sweep=self.sweep,
-                   end=self.point(t1), autoscale_radius=self.autoscale_radius)
+        return Arc(
+            self.point(t0),
+            radius=self.radius,
+            rotation=self.rotation,
+            large_arc=new_large_arc,
+            sweep=self.sweep,
+            end=self.point(t1),
+            autoscale_radius=self.autoscale_radius,
+        )
 
     def radialrange(self, origin, return_all_global_extrema=False):
         """returns the tuples (d_min, t_min) and (d_max, t_max) which minimize
@@ -2378,8 +2648,8 @@ class Arc(object):
         slice_t = radians(self.delta) / float(curves)
 
         current_t = radians(self.theta)
-        rx = self.radius.real # * self.radius_scale
-        ry = self.radius.imag # * self.radius_scale
+        rx = self.radius.real  # * self.radius_scale
+        ry = self.radius.imag  # * self.radius_scale
         p_start = self.start
 
         theta = radians(self.rotation)
@@ -2391,7 +2661,9 @@ class Arc(object):
         for i in range(curves):
             next_t = current_t + slice_t
 
-            alpha = sin(slice_t) * (sqrt(4 + 3 * pow(tan((slice_t) / 2.0), 2)) - 1) / 3.0
+            alpha = (
+                sin(slice_t) * (sqrt(4 + 3 * pow(tan((slice_t) / 2.0), 2)) - 1) / 3.0
+            )
 
             cos_start_t = cos(current_t)
             sin_start_t = sin(current_t)
@@ -2411,8 +2683,12 @@ class Arc(object):
             ePrimen2x = -rx * cos_theta * sin_end_t - ry * sin_theta * cos_end_t
             ePrimen2y = -rx * sin_theta * sin_end_t + ry * cos_theta * cos_end_t
 
-            p_c1 = (p_start.real + alpha * ePrimen1x) + (p_start.imag + alpha * ePrimen1y) * 1j
-            p_c2 = (p_end.real - alpha * ePrimen2x) + (p_end.imag - alpha * ePrimen2y) * 1j
+            p_c1 = (p_start.real + alpha * ePrimen1x) + (
+                p_start.imag + alpha * ePrimen1y
+            ) * 1j
+            p_c2 = (p_end.real - alpha * ePrimen2x) + (
+                p_end.imag - alpha * ePrimen2y
+            ) * 1j
 
             yield CubicBezier(p_start, p_c1, p_c2, p_end)
             p_start = p_end
@@ -2468,14 +2744,14 @@ class Path(MutableSequence):
     def __init__(self, *segments, **kw):
         self._length = None
         self._lengths = None
-        if 'closed' in kw:
-            self.closed = kw['closed']  # DEPRECATED
+        if "closed" in kw:
+            self.closed = kw["closed"]  # DEPRECATED
         if len(segments) >= 1:
             if isinstance(segments[0], str):
                 if len(segments) >= 2:
                     current_pos = segments[1]
-                elif 'current_pos' in kw:
-                    current_pos = kw['current_pos']
+                elif "current_pos" in kw:
+                    current_pos = kw["current_pos"]
                 else:
                     current_pos = 0j
                 self._segments = list()
@@ -2491,8 +2767,8 @@ class Path(MutableSequence):
             self._start = None
             self._end = None
 
-        if 'tree_element' in kw:
-            self._tree_element = kw['tree_element']
+        if "tree_element" in kw:
+            self._tree_element = kw["tree_element"]
 
     def __hash__(self):
         return hash((tuple(self._segments), self._closed))
@@ -2538,8 +2814,7 @@ class Path(MutableSequence):
         return len(self._segments)
 
     def __repr__(self):
-        return "Path({})".format(
-            ",\n     ".join(repr(x) for x in self._segments))
+        return "Path({})".format(",\n     ".join(repr(x) for x in self._segments))
 
     def __eq__(self, other):
         if not isinstance(other, Path):
@@ -2560,8 +2835,9 @@ class Path(MutableSequence):
         if self._length is not None:
             return
 
-        lengths = [each.length(error=error, min_depth=min_depth) for each in
-                   self._segments]
+        lengths = [
+            each.length(error=error, min_depth=min_depth) for each in self._segments
+        ]
         self._length = sum(lengths)
         if self._length == 0:
             self._lengths = lengths  # all lengths are 0.
@@ -2569,7 +2845,6 @@ class Path(MutableSequence):
             self._lengths = [each / self._length for each in lengths]
 
     def point(self, pos):
-
         # Shortcuts
         if len(self._segments) == 0:
             raise ValueError("This path contains no segments!")
@@ -2585,11 +2860,14 @@ class Path(MutableSequence):
             segment_end = segment_start + self._lengths[index]
             if segment_end >= pos:
                 # This is the segment! How far in on the segment is the point?
-                segment_pos = (pos - segment_start)/(
-                    segment_end - segment_start)
+                segment_pos = (pos - segment_start) / (segment_end - segment_start)
                 return segment.point(segment_pos)
             segment_start = segment_end
-        raise RuntimeError("Something has gone wrong.  Could not compute Path.point({}) for path {}".format(pos, self))
+        raise RuntimeError(
+            "Something has gone wrong.  Could not compute Path.point({}) for path {}".format(
+                pos, self
+            )
+        )
 
     def length(self, T0=0, T1=1, error=LENGTH_ERROR, min_depth=LENGTH_MIN_DEPTH):
         self._calc_lengths(error=error, min_depth=min_depth)
@@ -2602,21 +2880,30 @@ class Path(MutableSequence):
             idx1, t1 = self.T2t(T1)
             if idx0 == idx1:
                 return self[idx0].length(t0=t0, t1=t1)
-            return (self[idx0].length(t0=t0) +
-                    sum(self[idx].length() for idx in range(idx0 + 1, idx1)) +
-                    self[idx1].length(t1=t1))
+            return (
+                self[idx0].length(t0=t0)
+                + sum(self[idx].length() for idx in range(idx0 + 1, idx1))
+                + self[idx1].length(t1=t1)
+            )
 
-    def ilength(self, s, s_tol=ILENGTH_S_TOL, maxits=ILENGTH_MAXITS,
-                error=ILENGTH_ERROR, min_depth=ILENGTH_MIN_DEPTH):
+    def ilength(
+        self,
+        s,
+        s_tol=ILENGTH_S_TOL,
+        maxits=ILENGTH_MAXITS,
+        error=ILENGTH_ERROR,
+        min_depth=ILENGTH_MIN_DEPTH,
+    ):
         """Returns a float, t, such that self.length(0, t) is approximately s.
         See the inv_arclength() docstring for more details."""
-        return inv_arclength(self, s, s_tol=s_tol, maxits=maxits, error=error,
-                             min_depth=min_depth)
+        return inv_arclength(
+            self, s, s_tol=s_tol, maxits=maxits, error=error, min_depth=min_depth
+        )
 
     def iscontinuous(self):
         """Checks if a path is continuous with respect to its
         parameterization."""
-        return all(self[i].end == self[i+1].start for i in range(len(self) - 1))
+        return all(self[i].end == self[i + 1].start for i in range(len(self) - 1))
 
     def continuous_subpaths(self):
         """Breaks self into its continuous components, returning a list of
@@ -2629,10 +2916,10 @@ class Path(MutableSequence):
         subpaths = []
         subpath_start = 0
         for i in range(len(self) - 1):
-            if self[i].end != self[(i+1) % len(self)].start:
-                subpaths.append(Path(*self[subpath_start: i+1]))
-                subpath_start = i+1
-        subpaths.append(Path(*self[subpath_start: len(self)]))
+            if self[i].end != self[(i + 1) % len(self)].start:
+                subpaths.append(Path(*self[subpath_start : i + 1]))
+                subpath_start = i + 1
+        subpaths.append(Path(*self[subpath_start : len(self)]))
         return subpaths
 
     def isclosed(self):
@@ -2659,11 +2946,13 @@ class Path(MutableSequence):
     def closed(self, warning_on=CLOSED_WARNING_ON):
         """The closed attribute is deprecated, please use the isclosed()
         method instead.  See _closed_warning for more information."""
-        mes = ("This attribute is deprecated, consider using isclosed() "
-               "method instead.\n\nThis attribute is kept for compatibility "
-               "with scripts created using svg.path (v2.0). You can prevent "
-               "this warning in the future by setting "
-               "CLOSED_WARNING_ON=False.")
+        mes = (
+            "This attribute is deprecated, consider using isclosed() "
+            "method instead.\n\nThis attribute is kept for compatibility "
+            "with scripts created using svg.path (v2.0). You can prevent "
+            "this warning in the future by setting "
+            "CLOSED_WARNING_ON=False."
+        )
         if warning_on:
             warn(mes)
         return self._closed and self._is_closable()
@@ -2677,26 +2966,26 @@ class Path(MutableSequence):
 
     @property
     def start(self):
-        if not self._start and len(self._segments)>0:
+        if not self._start and len(self._segments) > 0:
             self._start = self._segments[0].start
         return self._start
 
     @start.setter
     def start(self, pt):
         self._start = pt
-        if len(self._segments)>0:
+        if len(self._segments) > 0:
             self._segments[0].start = pt
 
     @property
     def end(self):
-        if not self._end and len(self._segments)>0:
+        if not self._end and len(self._segments) > 0:
             self._end = self._segments[-1].end
         return self._end
 
     @end.setter
     def end(self, pt):
         self._end = pt
-        if len(self._segments)>0:
+        if len(self._segments) > 0:
             self._segments[-1].end = pt
 
     def d(self, useSandT=False, use_closed_attrib=False, rel=False):
@@ -2704,7 +2993,7 @@ class Path(MutableSequence):
         For an explanation of useSandT and use_closed_attrib, see the
         compatibility notes in the README."""
         if len(self) == 0:
-            return ''
+            return ""
         if use_closed_attrib:
             self_closed = self.iscontinuous() and self.isclosed()
             if self_closed:
@@ -2714,43 +3003,53 @@ class Path(MutableSequence):
         else:
             self_closed = False
             segments = self[:]
-    
+
         current_pos = None
         parts = []
         previous_segment = None
         end = self[-1].end
-    
+
         for segment in segments:
             seg_start = segment.start
             # If the start of this segment does not coincide with the end of
             # the last segment or if this segment is actually the close point
             # of a closed path, then we should start a new subpath here.
-            if current_pos != seg_start or \
-                    (self_closed and seg_start == end and use_closed_attrib):
+            if current_pos != seg_start or (
+                self_closed and seg_start == end and use_closed_attrib
+            ):
                 if rel:
-                    _seg_start = seg_start - current_pos if current_pos is not None else seg_start
+                    _seg_start = (
+                        seg_start - current_pos
+                        if current_pos is not None
+                        else seg_start
+                    )
                 else:
                     _seg_start = seg_start
-                parts.append('M {},{}'.format(_seg_start.real, _seg_start.imag))
-    
+                parts.append("M {},{}".format(_seg_start.real, _seg_start.imag))
+
             if isinstance(segment, Line):
                 if rel:
                     _seg_end = segment.end - seg_start
                 else:
                     _seg_end = segment.end
-                parts.append('L {},{}'.format(_seg_end.real, _seg_end.imag))
+                parts.append("L {},{}".format(_seg_end.real, _seg_end.imag))
             elif isinstance(segment, CubicBezier):
-                if useSandT and segment.is_smooth_from(previous_segment,
-                                                       warning_on=False):
+                if useSandT and segment.is_smooth_from(
+                    previous_segment, warning_on=False
+                ):
                     if rel:
                         _seg_control2 = segment.control2 - seg_start
                         _seg_end = segment.end - seg_start
                     else:
                         _seg_control2 = segment.control2
                         _seg_end = segment.end
-                    args = (_seg_control2.real, _seg_control2.imag,
-                            _seg_end.real, _seg_end.imag)
-                    parts.append('S {},{} {},{}'.format(*args))
+                    args = (
+                        _seg_control2.real,
+                        _seg_control2.imag,
+                        _seg_end.real,
+                        _seg_end.imag,
+                    )
+                    parts.append("S {},{} {},{}".format(*args))
                 else:
                     if rel:
                         _seg_control1 = segment.control1 - seg_start
@@ -2760,19 +3059,25 @@ class Path(MutableSequence):
                         _seg_control1 = segment.control1
                         _seg_control2 = segment.control2
                         _seg_end = segment.end
-                    args = (_seg_control1.real, _seg_control1.imag,
-                            _seg_control2.real, _seg_control2.imag,
-                            _seg_end.real, _seg_end.imag)
-                    parts.append('C {},{} {},{} {},{}'.format(*args))
+                    args = (
+                        _seg_control1.real,
+                        _seg_control1.imag,
+                        _seg_control2.real,
+                        _seg_control2.imag,
+                        _seg_end.real,
+                        _seg_end.imag,
+                    )
+                    parts.append("C {},{} {},{} {},{}".format(*args))
             elif isinstance(segment, QuadraticBezier):
-                if useSandT and segment.is_smooth_from(previous_segment,
-                                                       warning_on=False):
+                if useSandT and segment.is_smooth_from(
+                    previous_segment, warning_on=False
+                ):
                     if rel:
                         _seg_end = segment.end - seg_start
                     else:
                         _seg_end = segment.end
                     args = _seg_end.real, _seg_end.imag
-                    parts.append('T {},{}'.format(*args))
+                    parts.append("T {},{}".format(*args))
                 else:
                     if rel:
                         _seg_control = segment.control - seg_start
@@ -2780,26 +3085,36 @@ class Path(MutableSequence):
                     else:
                         _seg_control = segment.control
                         _seg_end = segment.end
-                    args = (_seg_control.real, _seg_control.imag,
-                            _seg_end.real, _seg_end.imag)
-                    parts.append('Q {},{} {},{}'.format(*args))
-    
+                    args = (
+                        _seg_control.real,
+                        _seg_control.imag,
+                        _seg_end.real,
+                        _seg_end.imag,
+                    )
+                    parts.append("Q {},{} {},{}".format(*args))
+
             elif isinstance(segment, Arc):
                 if rel:
                     _seg_end = segment.end - seg_start
                 else:
                     _seg_end = segment.end
-                args = (segment.radius.real, segment.radius.imag,
-                        segment.rotation,int(segment.large_arc),
-                        int(segment.sweep),_seg_end.real, _seg_end.imag)
-                parts.append('A {},{} {} {:d},{:d} {},{}'.format(*args))
+                args = (
+                    segment.radius.real,
+                    segment.radius.imag,
+                    segment.rotation,
+                    int(segment.large_arc),
+                    int(segment.sweep),
+                    _seg_end.real,
+                    _seg_end.imag,
+                )
+                parts.append("A {},{} {} {:d},{:d} {},{}".format(*args))
             current_pos = segment.end
             previous_segment = segment
-    
+
         if self_closed:
-            parts.append('Z')
-    
-        s = ' '.join(parts)
+            parts.append("Z")
+
+        s = " ".join(parts)
         return s if not rel else s.lower()
 
     def joins_smoothly_with(self, previous, wrt_parameterization=False):
@@ -2810,17 +3125,19 @@ class Path(MutableSequence):
         also match, set wrt_parameterization=True."""
         if wrt_parameterization:
             return self[0].start == previous.end and self.derivative(
-                0) == previous.derivative(1)
+                0
+            ) == previous.derivative(1)
         else:
             return self[0].start == previous.end and self.unit_tangent(
-                0) == previous.unit_tangent(1)
+                0
+            ) == previous.unit_tangent(1)
 
     def T2t(self, T):
         """returns the segment index, `seg_idx`, and segment parameter, `t`,
         corresponding to the path parameter `T`.  In other words, this is the
         inverse of the `Path.t2T()` method."""
         if T == 1:
-            return len(self)-1, 1
+            return len(self) - 1, 1
         if T == 0:
             return 0, 0
         self._calc_lengths()
@@ -2830,7 +3147,7 @@ class Path(MutableSequence):
             T1 = T0 + seg_length  # the T-value the current segment ends on
             if T1 >= T:
                 # This is the segment!
-                t = (T - T0)/seg_length
+                t = (T - T0) / seg_length
                 return seg_idx, t
             T0 = T1
 
@@ -2858,7 +3175,7 @@ class Path(MutableSequence):
 
         segment_start = sum(self._lengths[:seg_idx])
         segment_end = segment_start + self._lengths[seg_idx]
-        T = (segment_end - segment_start)*t + segment_start
+        T = (segment_end - segment_start) * t + segment_start
         return T
 
     def derivative(self, T, n=1):
@@ -2869,7 +3186,7 @@ class Path(MutableSequence):
         method instead."""
         seg_idx, t = self.T2t(T)
         seg = self._segments[seg_idx]
-        return seg.derivative(t, n=n)/seg.length()**n
+        return seg.derivative(t, n=n) / seg.length() ** n
 
     def unit_tangent(self, T):
         """returns the unit tangent vector of the Path at T (centered at the
@@ -2881,29 +3198,26 @@ class Path(MutableSequence):
 
     def normal(self, t):
         """returns the (right hand rule) unit normal vector to self at t."""
-        return -1j*self.unit_tangent(t)
+        return -1j * self.unit_tangent(t)
 
     def curvature(self, T):
         """returns the curvature of this Path object at T and outputs
         float('inf') if not differentiable at T."""
         seg_idx, t = self.T2t(T)
         seg = self[seg_idx]
-        if np.isclose(t, 0) and (seg_idx != 0 or self.end==self.start):
-            previous_seg_in_path = self._segments[
-                (seg_idx - 1) % len(self._segments)]
+        if np.isclose(t, 0) and (seg_idx != 0 or self.end == self.start):
+            previous_seg_in_path = self._segments[(seg_idx - 1) % len(self._segments)]
             if not seg.joins_smoothly_with(previous_seg_in_path):
-                return float('inf')
-        elif np.isclose(t, 1) and (seg_idx != len(self) - 1 or
-                                   self.end == self.start):
-            next_seg_in_path = self._segments[
-                (seg_idx + 1) % len(self._segments)]
+                return float("inf")
+        elif np.isclose(t, 1) and (seg_idx != len(self) - 1 or self.end == self.start):
+            next_seg_in_path = self._segments[(seg_idx + 1) % len(self._segments)]
             if not next_seg_in_path.joins_smoothly_with(seg):
-                return float('inf')
+                return float("inf")
         dz = self.derivative(T)
         ddz = self.derivative(T, n=2)
         dx, dy = dz.real, dz.imag
         ddx, ddy = ddz.real, ddz.imag
-        return abs(dx*ddy - dy*ddx)/(dx*dx + dy*dy)**1.5
+        return abs(dx * ddy - dy * ddx) / (dx * dx + dy * dy) ** 1.5
 
     # def icurvature(self, kappa):
     #     """returns a list of T-values such that 0 <= T <= 1 and
@@ -2917,23 +3231,23 @@ class Path(MutableSequence):
 
     def area(self, chord_length=1e-4):
         """Find area enclosed by path.
-        
+
         Approximates any Arc segments in the Path with lines
         approximately `chord_length` long, and returns the area enclosed
         by the approximated Path.  Default chord length is 0.01.  If Arc
         segments are included in path, to ensure accurate results, make
         sure this `chord_length` is set to a reasonable value (e.g. by
         checking curvature).
-                
+
         Notes
         -----
         * Negative area results from clockwise (as opposed to
         counter-clockwise) parameterization of the input Path.
-        
+
         To Contributors
         ---------------
-        This is one of many parts of `svgpathtools` that could be 
-        improved by a noble soul implementing a piecewise-linear 
+        This is one of many parts of `svgpathtools` that could be
+        improved by a noble soul implementing a piecewise-linear
         approximation scheme for paths (one with controls to guarantee a
         desired accuracy).
         """
@@ -2943,7 +3257,7 @@ class Path(MutableSequence):
             for seg in path:
                 x = real(seg.poly())
                 dy = imag(seg.poly()).deriv()
-                integrand = x*dy
+                integrand = x * dy
                 integral = integrand.integ()
                 area_enclosed += integral(1) - integral(0)
             return area_enclosed
@@ -2951,8 +3265,8 @@ class Path(MutableSequence):
         def seg2lines(seg_):
             """Find piecewise-linear approximation of `seg`."""
             num_lines = int(ceil(seg_.length() / chord_length))
-            pts = [seg_.point(t) for t in np.linspace(0, 1, num_lines+1)]
-            return [Line(pts[i], pts[i+1]) for i in range(num_lines)]
+            pts = [seg_.point(t) for t in np.linspace(0, 1, num_lines + 1)]
+            return [Line(pts[i], pts[i + 1]) for i in range(num_lines)]
 
         assert self.isclosed()
 
@@ -3006,16 +3320,20 @@ class Path(MutableSequence):
         # redundant intersection.  This code block checks for and removes said
         # redundancies.
         if intersection_list:
-            pts = [_seg1.point(_t1) for _T1, _seg1, _t1 in list(zip(*intersection_list))[0]]
+            pts = [
+                _seg1.point(_t1) for _T1, _seg1, _t1 in list(zip(*intersection_list))[0]
+            ]
             indices2remove = []
             for ind1 in range(len(pts)):
                 for ind2 in range(ind1 + 1, len(pts)):
                     if abs(pts[ind1] - pts[ind2]) < tol:
                         # then there's a redundancy. Remove it.
                         indices2remove.append(ind2)
-            intersection_list = [inter for ind, inter in
-                                 enumerate(intersection_list) if
-                                 ind not in indices2remove]
+            intersection_list = [
+                inter
+                for ind, inter in enumerate(intersection_list)
+                if ind not in indices2remove
+            ]
         return intersection_list
 
     def bbox(self):
@@ -3030,7 +3348,7 @@ class Path(MutableSequence):
 
     def cropped(self, T0, T1):
         """returns a cropped copy of the path."""
-        assert 0 <= T0 <= 1 and 0 <= T1<= 1
+        assert 0 <= T0 <= 1 and 0 <= T1 <= 1
         assert T0 != T1
         assert not (T0 == 1 and T1 == 0)
 
@@ -3072,8 +3390,9 @@ class Path(MutableSequence):
             # T1<T0 must cross discontinuity case
             if T1 < T0:
                 if not self.isclosed():
-                    raise ValueError("This path is not closed, thus T0 must "
-                                     "be less than T1.")
+                    raise ValueError(
+                        "This path is not closed, thus T0 must " "be less than T1."
+                    )
                 else:
                     for i in range(i0 + 1, len(self)):
                         new_path.append(self[i])
@@ -3138,7 +3457,7 @@ class Path(MutableSequence):
         if not pt_in_bbox:
             return False
 
-        opt = complex(xmin-1, ymin-1)
+        opt = complex(xmin - 1, ymin - 1)
         return path_encloses_pt(pt, opt, other)
 
     def approximate_arcs_with_cubics(self, error=0.1):
@@ -3147,12 +3466,12 @@ class Path(MutableSequence):
         """
         tau = pi * 2
         sweep_limit = degrees(tau * error)
-        for s in range(len(self)-1, -1, -1):
+        for s in range(len(self) - 1, -1, -1):
             segment = self[s]
             if not isinstance(segment, Arc):
                 continue
             arc_required = int(ceil(abs(segment.delta) / sweep_limit))
-            self[s:s+1] = list(segment.as_cubic_curves(arc_required))
+            self[s : s + 1] = list(segment.as_cubic_curves(arc_required))
 
     def approximate_arcs_with_quads(self, error=0.1):
         """
@@ -3160,17 +3479,17 @@ class Path(MutableSequence):
         """
         tau = pi * 2
         sweep_limit = degrees(tau * error)
-        for s in range(len(self)-1, -1, -1):
+        for s in range(len(self) - 1, -1, -1):
             segment = self[s]
             if not isinstance(segment, Arc):
                 continue
             arc_required = int(ceil(abs(segment.delta) / sweep_limit))
-            self[s:s+1] = list(segment.as_quad_curves(arc_required))
+            self[s : s + 1] = list(segment.as_quad_curves(arc_required))
 
     def joints(self):
-        """returns generator of segment joints 
-        
-        I.e. Path(s0, s1, s2, ..., sn).joints() returns generator 
+        """returns generator of segment joints
+
+        I.e. Path(s0, s1, s2, ..., sn).joints() returns generator
             (s0, s1), (s1, s2), ..., (sn, s0)
 
         credit: https://docs.python.org/3/library/itertools.html#recipes
@@ -3201,7 +3520,6 @@ class Path(MutableSequence):
         command = None
 
         while elements:
-
             if elements[-1] in COMMANDS:
                 # New command.
                 last_command = command  # Used by S and T
@@ -3212,11 +3530,13 @@ class Path(MutableSequence):
                 # If this element starts with numbers, it is an implicit command
                 # and we don't change the command. Check that it's allowed:
                 if command is None:
-                    raise ValueError("Unallowed implicit command in %s, position %s" % (
-                        pathdef, len(pathdef.split()) - len(elements)))
+                    raise ValueError(
+                        "Unallowed implicit command in %s, position %s"
+                        % (pathdef, len(pathdef.split()) - len(elements))
+                    )
                 last_command = command  # Used by S and T
 
-            if command == 'M':
+            if command == "M":
                 # Moveto command.
                 x = elements.pop()
                 y = elements.pop()
@@ -3234,9 +3554,9 @@ class Path(MutableSequence):
                 # Implicit moveto commands are treated as lineto commands.
                 # So we set command to lineto here, in case there are
                 # further implicit commands after this moveto.
-                command = 'L'
+                command = "L"
 
-            elif command == 'Z':
+            elif command == "Z":
                 # Close path
                 if not (current_pos == start_pos):
                     segments.append(Line(current_pos, start_pos))
@@ -3244,7 +3564,7 @@ class Path(MutableSequence):
                 current_pos = start_pos
                 command = None
 
-            elif command == 'L':
+            elif command == "L":
                 x = elements.pop()
                 y = elements.pop()
                 pos = float(x) + float(y) * 1j
@@ -3253,7 +3573,7 @@ class Path(MutableSequence):
                 segments.append(Line(current_pos, pos))
                 current_pos = pos
 
-            elif command == 'H':
+            elif command == "H":
                 x = elements.pop()
                 pos = float(x) + current_pos.imag * 1j
                 if not absolute:
@@ -3261,7 +3581,7 @@ class Path(MutableSequence):
                 segments.append(Line(current_pos, pos))
                 current_pos = pos
 
-            elif command == 'V':
+            elif command == "V":
                 y = elements.pop()
                 pos = current_pos.real + float(y) * 1j
                 if not absolute:
@@ -3269,7 +3589,7 @@ class Path(MutableSequence):
                 segments.append(Line(current_pos, pos))
                 current_pos = pos
 
-            elif command == 'C':
+            elif command == "C":
                 control1 = float(elements.pop()) + float(elements.pop()) * 1j
                 control2 = float(elements.pop()) + float(elements.pop()) * 1j
                 end = float(elements.pop()) + float(elements.pop()) * 1j
@@ -3282,11 +3602,11 @@ class Path(MutableSequence):
                 segments.append(CubicBezier(current_pos, control1, control2, end))
                 current_pos = end
 
-            elif command == 'S':
+            elif command == "S":
                 # Smooth curve. First control point is the "reflection" of
                 # the second control point in the previous path.
 
-                if last_command not in 'CS':
+                if last_command not in "CS":
                     # If there is no previous command or if the previous command
                     # was not an C, c, S or s, assume the first control point is
                     # coincident with the current point.
@@ -3307,7 +3627,7 @@ class Path(MutableSequence):
                 segments.append(CubicBezier(current_pos, control1, control2, end))
                 current_pos = end
 
-            elif command == 'Q':
+            elif command == "Q":
                 control = float(elements.pop()) + float(elements.pop()) * 1j
                 end = float(elements.pop()) + float(elements.pop()) * 1j
 
@@ -3318,11 +3638,11 @@ class Path(MutableSequence):
                 segments.append(QuadraticBezier(current_pos, control, end))
                 current_pos = end
 
-            elif command == 'T':
+            elif command == "T":
                 # Smooth curve. Control point is the "reflection" of
                 # the second control point in the previous path.
 
-                if last_command not in 'QT':
+                if last_command not in "QT":
                     # If there is no previous command or if the previous command
                     # was not an Q, q, T or t, assume the first control point is
                     # coincident with the current point.
@@ -3341,8 +3661,7 @@ class Path(MutableSequence):
                 segments.append(QuadraticBezier(current_pos, control, end))
                 current_pos = end
 
-            elif command == 'A':
-
+            elif command == "A":
                 radius = float(elements.pop()) + float(elements.pop()) * 1j
                 rotation = float(elements.pop())
                 arc = float(elements.pop())
@@ -3356,16 +3675,18 @@ class Path(MutableSequence):
                     # Note: In browsers AFAIK, zero radius arcs are displayed
                     # as lines (see "examples/zero-radius-arcs.svg").
                     # Thus zero radius arcs are substituted for lines here.
-                    warn('Replacing degenerate (zero radius) Arc with a Line: '
-                         'Arc(start={}, radius={}, rotation={}, large_arc={}, '
-                         'sweep={}, end={})'.format(
-                        current_pos, radius, rotation, arc, sweep, end) +
-                         ' --> Line(start={}, end={})'
-                         ''.format(current_pos, end))
+                    warn(
+                        "Replacing degenerate (zero radius) Arc with a Line: "
+                        "Arc(start={}, radius={}, rotation={}, large_arc={}, "
+                        "sweep={}, end={})".format(
+                            current_pos, radius, rotation, arc, sweep, end
+                        )
+                        + " --> Line(start={}, end={})"
+                        "".format(current_pos, end)
+                    )
                     segments.append(Line(current_pos, end))
                 else:
-                    segments.append(
-                        Arc(current_pos, radius, rotation, arc, sweep, end))
+                    segments.append(Arc(current_pos, radius, rotation, arc, sweep, end))
                 current_pos = end
 
         return segments

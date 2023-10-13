@@ -720,7 +720,6 @@ class StructWithLength(Struct):
 
 
 class Table(Struct):
-
     staticSize = 2
 
     def readOffset(self, reader):
@@ -755,7 +754,6 @@ class Table(Struct):
 
 
 class LTable(Table):
-
     staticSize = 4
 
     def readOffset(self, reader):
@@ -767,7 +765,6 @@ class LTable(Table):
 
 # Table pointed to by a 24-bit, 3-byte long offset
 class Table24(Table):
-
     staticSize = 3
 
     def readOffset(self, reader):

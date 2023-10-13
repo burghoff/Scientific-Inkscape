@@ -38,7 +38,6 @@ class StatisticsPen(MomentsPen):
         self.slant = 0
 
     def __update(self):
-
         area = self.area
         if not area:
             self.__zero()

@@ -6,7 +6,7 @@ Extension to create and manipulate shapes
 import math
 
 
-def ngon(num_corners, edge_length=None, radius=None, rotation=0.):
+def ngon(num_corners, edge_length=None, radius=None, rotation=0.0):
     """
     Returns the corners of a regular polygon as iterable of (x, y) tuples. The polygon size is determined by the
     `edge_length` or the `radius` argument. If both are given `edge_length` will be taken.
@@ -21,14 +21,14 @@ def ngon(num_corners, edge_length=None, radius=None, rotation=0.):
 
     """
     if num_corners < 3:
-        raise ValueError('Argument `num_corners` has to be greater than 2.')
+        raise ValueError("Argument `num_corners` has to be greater than 2.")
     if edge_length is not None:
         radius = edge_length / 2 / math.sin(math.pi / num_corners)
     elif radius is not None:
-        if radius <= 0.:
-            raise ValueError('Argument `radius` has to be greater than 0.')
+        if radius <= 0.0:
+            raise ValueError("Argument `radius` has to be greater than 0.")
     else:
-        raise ValueError('Argument `edge_length` or `radius` required.')
+        raise ValueError("Argument `edge_length` or `radius` required.")
 
     delta = 2 * math.pi / num_corners
     angle = rotation
@@ -37,7 +37,7 @@ def ngon(num_corners, edge_length=None, radius=None, rotation=0.):
         angle += delta
 
 
-def star(spikes, r1, r2, rotation=0.):
+def star(spikes, r1, r2, rotation=0.0):
     """
     Create a star shape as iterable of (x, y) vertices.
 
@@ -54,14 +54,14 @@ def star(spikes, r1, r2, rotation=0.):
 
     """
     if spikes < 3:
-        raise ValueError('Argument `spikes` has to be greater than 2.')
-    if r1 <= 0.:
-        raise ValueError('Argument `r1` has to be greater than 0.')
-    if r2 <= 0.:
-        raise ValueError('Argument `r2` has to be greater than 0.')
+        raise ValueError("Argument `spikes` has to be greater than 2.")
+    if r1 <= 0.0:
+        raise ValueError("Argument `r1` has to be greater than 0.")
+    if r2 <= 0.0:
+        raise ValueError("Argument `r2` has to be greater than 0.")
 
     corners1 = ngon(spikes, radius=r1, rotation=rotation)
-    corners2 = ngon(spikes, radius=r2, rotation=math.pi/spikes+rotation)
+    corners2 = ngon(spikes, radius=r2, rotation=math.pi / spikes + rotation)
     for s1, s2 in zip(corners1, corners2):
         yield s1
         yield s2

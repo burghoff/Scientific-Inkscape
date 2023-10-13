@@ -927,7 +927,6 @@ def instantiateAvar(varfont, axisLimits):
             )
             newMapping = {}
             for fromCoord, toCoord in mapping.items():
-
                 if fromCoord < axisRange.minimum or fromCoord > axisRange.maximum:
                     continue
                 fromCoord = normalizeValue(fromCoord, axisRange)

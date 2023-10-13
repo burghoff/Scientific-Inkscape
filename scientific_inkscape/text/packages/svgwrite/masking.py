@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#coding:utf-8
+# coding:utf-8
 # Author:  mozman --<mozman@gmx.at>
 # Purpose: masking module
 # Created: 30.10.2010
@@ -26,7 +26,8 @@ class ClipPath(BaseElement, Transform):
     **path**, **text** or basic shape elements. Indirect references are an
     error.
     """
-    elementname = 'clipPath'
+
+    elementname = "clipPath"
 
 
 class Mask(BaseElement):
@@ -38,13 +39,14 @@ class Mask(BaseElement):
     A **mask** can contain any graphical elements or container elements such
     as a **g**.
     """
-    elementname = 'mask'
+
+    elementname = "mask"
 
     def __init__(self, start=None, size=None, **extra):
         super(Mask, self).__init__(**extra)
         if start is not None:
-            self['x'] = start[0]
-            self['y'] = start[1]
+            self["x"] = start[0]
+            self["y"] = start[1]
         if size is not None:
-            self['width'] = size[0]
-            self['height'] = size[1]
+            self["width"] = size[0]
+            self["height"] = size[1]

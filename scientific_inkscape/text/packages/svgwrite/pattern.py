@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#coding:utf-8
+# coding:utf-8
 # Author:  mozman --<mozman@gmx.at>
 # Purpose: pattern module
 # Created: 29.10.2010
@@ -10,6 +10,7 @@ from svgwrite.base import BaseElement
 from svgwrite.mixins import XLink, ViewBox, Transform, Presentation
 from svgwrite.utils import is_string
 
+
 class Pattern(BaseElement, XLink, ViewBox, Transform, Presentation):
     """
     A pattern is used to fill or stroke an object using a pre-defined graphic
@@ -19,8 +20,9 @@ class Pattern(BaseElement, XLink, ViewBox, Transform, Presentation):
     element to indicate that the given element shall be filled or stroked with
     the referenced pattern.
     """
-    elementname = 'pattern'
-    transformname = 'patternTransform'
+
+    elementname = "pattern"
+    transformname = "patternTransform"
 
     def __init__(self, insert=None, size=None, inherit=None, **extra):
         """
@@ -31,11 +33,11 @@ class Pattern(BaseElement, XLink, ViewBox, Transform, Presentation):
         """
         super(Pattern, self).__init__(**extra)
         if insert is not None:
-            self['x'] = insert[0]
-            self['y'] = insert[1]
+            self["x"] = insert[0]
+            self["y"] = insert[1]
         if size is not None:
-            self['width'] = size[0]
-            self['height'] = size[1]
+            self["width"] = size[0]
+            self["height"] = size[1]
         if inherit is not None:
             if is_string(inherit):
                 self.set_href(inherit)
@@ -43,8 +45,10 @@ class Pattern(BaseElement, XLink, ViewBox, Transform, Presentation):
                 self.set_href(inherit.get_iri())
 
         if self.debug:
-            self.validator.check_all_svg_attribute_values(self.elementname, self.attribs)
+            self.validator.check_all_svg_attribute_values(
+                self.elementname, self.attribs
+            )
 
-    def get_paint_server(self, default='none'):
-        """ Returns the <FuncIRI> of the gradient. """
+    def get_paint_server(self, default="none"):
+        """Returns the <FuncIRI> of the gradient."""
         return "%s %s" % (self.get_funciri(), default)

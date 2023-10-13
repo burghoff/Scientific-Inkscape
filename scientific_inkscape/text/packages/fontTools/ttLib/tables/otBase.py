@@ -1376,7 +1376,6 @@ class ValueRecordFactory(object):
 
 
 class ValueRecord(object):
-
     # see ValueRecordFactory
 
     def __init__(self, valueFormat=None, src=None):

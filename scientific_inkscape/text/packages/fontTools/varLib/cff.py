@@ -373,7 +373,6 @@ def _add_new_vsindex(
 
 
 def merge_charstrings(glyphOrder, num_masters, top_dicts, masterModel):
-
     vsindex_dict = {}
     vsindex_by_key = {}
     varDataList = []

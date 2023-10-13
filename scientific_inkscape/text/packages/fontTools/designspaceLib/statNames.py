@@ -246,7 +246,10 @@ def _getRibbiStyle(
                 italic = True
                 break
 
-    return BOLD_ITALIC_TO_RIBBI_STYLE[bold, italic], {
-        **userLocation,
-        **regularUserLocation,
-    }
+    return (
+        BOLD_ITALIC_TO_RIBBI_STYLE[bold, italic],
+        {
+            **userLocation,
+            **regularUserLocation,
+        },
+    )

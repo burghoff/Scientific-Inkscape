@@ -17,9 +17,9 @@ def hex2rgb(value):
     >>> hex2rgb('#0000FF')
     (0, 0, 255)
     """
-    value = value.lstrip('#')
+    value = value.lstrip("#")
     lv = len(value)
-    return tuple(int(value[i:i+lv//3], 16) for i in range(0, lv, lv//3))
+    return tuple(int(value[i : i + lv // 3], 16) for i in range(0, lv, lv // 3))
 
 
 # stackoverflow.com/questions/214359/converting-hex-color-to-rgb-and-vice-versa
@@ -31,7 +31,7 @@ def rgb2hex(rgb):
     >>> rgb2hex((0,0,255))
     '#0000FF'
     """
-    return ('#%02x%02x%02x' % tuple(rgb)).upper()
+    return ("#%02x%02x%02x" % tuple(rgb)).upper()
 
 
 def isclose(a, b, rtol=1e-5, atol=1e-8):
@@ -52,13 +52,15 @@ def open_in_browser(file_location):
 
     #  For some reason OSX requires this adjustment (tested on 10.10.4)
     if sys.platform == "darwin":
-        file_location = "file:///"+file_location
+        file_location = "file:///" + file_location
 
     new = 2  # open in a new tab, if possible
     webbrowser.get().open(file_location, new=new)
 
 
-BugException = Exception("This code should never be reached.  You've found a "
-                         "bug.  Please submit an issue to \n"
-                         "https://github.com/mathandy/svgpathtools/issues"
-                         "\nwith an easily reproducible example.")
+BugException = Exception(
+    "This code should never be reached.  You've found a "
+    "bug.  Please submit an issue to \n"
+    "https://github.com/mathandy/svgpathtools/issues"
+    "\nwith an easily reproducible example."
+)

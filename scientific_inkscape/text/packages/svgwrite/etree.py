@@ -1,5 +1,5 @@
 ﻿#!/usr/bin/env python
-#coding:utf-8
+# coding:utf-8
 # Author:  mozman
 # Purpose: a hack to generate XML containing CDATA by ElementTree
 # Created: 26.05.2012
@@ -17,6 +17,7 @@
 
 
 import sys
+
 PY3 = sys.version_info[0] > 2
 
 import xml.etree.ElementTree as etree
@@ -30,20 +31,25 @@ def CDATA(text):
     element.text = text
     return element
 
+
 original_serialize_xml = etree._serialize_xml
 
 if PY3:
+
     def _serialize_xml_with_CDATA_support(write, elem, qnames, namespaces, **kwargs):
         if elem.tag == CDATA_TAG:
             write(CDATA_TPL % elem.text)
         else:
             original_serialize_xml(write, elem, qnames, namespaces, **kwargs)
+
 else:
+
     def _serialize_xml_with_CDATA_support(write, elem, encoding, qnames, namespaces):
         if elem.tag == CDATA_TAG:
             write(CDATA_TPL % elem.text.encode(encoding))
         else:
             original_serialize_xml(write, elem, encoding, qnames, namespaces)
+
 
 # ugly, ugly, ugly patching
 etree._serialize_xml = _serialize_xml_with_CDATA_support

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#coding:utf-8
+# coding:utf-8
 # Author:  mozman
 # Purpose: drawing
 # Created: 10.09.2010
@@ -31,7 +31,7 @@ from svgwrite.utils import pretty_xml
 
 
 class Drawing(SVG, ElementFactory):
-    """ This is the SVG drawing represented by the top level *svg* element.
+    """This is the SVG drawing represented by the top level *svg* element.
 
     A drawing consists of any number of SVG elements contained within the drawing
     element, stored in the *elements* attribute.
@@ -40,7 +40,8 @@ class Drawing(SVG, ElementFactory):
     to a very simple drawing containing a single SVG element such as a *rect*,
     to a complex, deeply nested collection of container elements and graphics elements.
     """
-    def __init__(self, filename="noname.svg", size=('100%', '100%'), **extra):
+
+    def __init__(self, filename="noname.svg", size=("100%", "100%"), **extra):
         """
         :param string filename: filesystem filename valid for :func:`open`
         :param 2-tuple size: width, height
@@ -57,23 +58,23 @@ class Drawing(SVG, ElementFactory):
         self._stylesheets = []  # list of stylesheets appended
 
     def get_xml(self):
-        """ Get the XML representation as `ElementTree` object.
+        """Get the XML representation as `ElementTree` object.
 
         :return: XML `ElementTree` of this object and all its subelements
 
         """
         profile = self.profile
         version = self.version
-        self.attribs['xmlns'] = "http://www.w3.org/2000/svg"
-        self.attribs['xmlns:xlink'] = "http://www.w3.org/1999/xlink"
-        self.attribs['xmlns:ev'] = "http://www.w3.org/2001/xml-events"
+        self.attribs["xmlns"] = "http://www.w3.org/2000/svg"
+        self.attribs["xmlns:xlink"] = "http://www.w3.org/1999/xlink"
+        self.attribs["xmlns:ev"] = "http://www.w3.org/2001/xml-events"
 
-        self.attribs['baseProfile'] = profile
-        self.attribs['version'] = version
+        self.attribs["baseProfile"] = profile
+        self.attribs["version"] = version
         return super(Drawing, self).get_xml()
 
     def add_stylesheet(self, href, title, alternate="no", media="screen"):
-        """ Add a stylesheet reference.
+        """Add a stylesheet reference.
 
         :param string href: link to stylesheet <URI>
         :param string title: name of stylesheet
@@ -84,7 +85,7 @@ class Drawing(SVG, ElementFactory):
         self._stylesheets.append((href, title, alternate, media))
 
     def write(self, fileobj, pretty=False, indent=2):
-        """ Write XML string to `fileobj`.
+        """Write XML string to `fileobj`.
 
         :param fileobj: a file-like object
         :param pretty: True for easy readable output
@@ -100,8 +101,10 @@ class Drawing(SVG, ElementFactory):
         # don't use DOCTYPE. It's useless. see also:
         # http://tech.groups.yahoo.com/group/svg-developers/message/48562
         # write stylesheets
-        stylesheet_template = '<?xml-stylesheet href="%s" type="text/css" ' \
+        stylesheet_template = (
+            '<?xml-stylesheet href="%s" type="text/css" '
             'title="%s" alternate="%s" media="%s"?>\n'
+        )
         # removed map(), does not work with Python 3
         for stylesheet in self._stylesheets:
             fileobj.write(stylesheet_template % stylesheet)
@@ -112,17 +115,17 @@ class Drawing(SVG, ElementFactory):
         fileobj.write(xml_string)
 
     def save(self, pretty=False, indent=2):
-        """ Write the XML string to `self.filename`.
+        """Write the XML string to `self.filename`.
 
         :param pretty: True for easy readable output
         :param indent: how much to indent if pretty is enabled, by default 2 spaces
         """
-        fileobj = io.open(self.filename, mode='w', encoding='utf-8')
+        fileobj = io.open(self.filename, mode="w", encoding="utf-8")
         self.write(fileobj, pretty=pretty, indent=indent)
         fileobj.close()
 
     def saveas(self, filename, pretty=False, indent=2):
-        """ Write the XML string to `filename`.
+        """Write the XML string to `filename`.
 
         :param string filename: filesystem filename valid for :func:`open`
         :param pretty: True for easy readable output
@@ -132,7 +135,7 @@ class Drawing(SVG, ElementFactory):
         self.save(pretty=pretty, indent=indent)
 
     def _repr_svg_(self):
-        """ Show SVG in IPython, Jupyter Notebook, and Jupyter Lab
+        """Show SVG in IPython, Jupyter Notebook, and Jupyter Lab
 
         :return: unicode XML string of this object and all its subelements
 

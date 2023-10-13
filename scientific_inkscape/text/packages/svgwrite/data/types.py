@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#coding:utf-8
+# coding:utf-8
 # Author:  mozman --<mozman@gmx.at>
 # Purpose: svg types
 # Created: 30.09.2010
@@ -17,13 +17,13 @@ class SVGAttribute(object):
     # 'elementname' is ignored, but necessary because of the signatures of
     # the SVGMultiAttribute class methods get_...()
 
-    def get_anim(self, elementname='*'):
+    def get_anim(self, elementname="*"):
         return self._anim
 
-    def get_types(self, elementname='*'):
+    def get_types(self, elementname="*"):
         return self._types
 
-    def get_const(self, elementname='*'):
+    def get_const(self, elementname="*"):
         return self._const
 
 
@@ -44,30 +44,32 @@ class SVGMultiAttribute(object):
                 if not self.name:
                     self.name = attribute.name
                 elif self.name != attribute.name:
-                    raise ValueError("Different attribute-names for SVGMultiAttribute "\
-                                     "(%s != %s)." % (self.name, attribute.name))
+                    raise ValueError(
+                        "Different attribute-names for SVGMultiAttribute "
+                        "(%s != %s)." % (self.name, attribute.name)
+                    )
 
-        if '*' not in self._attributes and len(self._attributes):
+        if "*" not in self._attributes and len(self._attributes):
             # if no default attribute definition were given
             # set the first attribute definition as the default attribute definition
             firstkey = sorted(self._attributes.keys())[0]
-            self._attributes['*'] = self._attributes[firstkey]
+            self._attributes["*"] = self._attributes[firstkey]
 
     def get_attribute(self, elementname):
         if elementname in self._attributes:
             return self._attributes[elementname]
         else:
-            return self._attributes['*']
+            return self._attributes["*"]
 
-    def get_anim(self, elementname='*'):
+    def get_anim(self, elementname="*"):
         attribute = self.get_attribute(elementname)
         return attribute.get_anim()
 
-    def get_types(self, elementname='*'):
+    def get_types(self, elementname="*"):
         attribute = self.get_attribute(elementname)
         return attribute.get_types()
 
-    def get_const(self, elementname='*'):
+    def get_const(self, elementname="*"):
         attribute = self.get_attribute(elementname)
         return attribute.get_const()
 

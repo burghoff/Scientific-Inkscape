@@ -1120,9 +1120,12 @@ def fontLibValidator(value):
         return False, _bogusLibFormatMessage % reason
     for key, value in value.items():
         if not isinstance(key, str):
-            return False, (
-                "The lib key is not properly formatted: expected str, found %s: %r"
-                % (type(key).__name__, key)
+            return (
+                False,
+                (
+                    "The lib key is not properly formatted: expected str, found %s: %r"
+                    % (type(key).__name__, key)
+                ),
             )
         # public.glyphOrder
         if key == "public.glyphOrder":

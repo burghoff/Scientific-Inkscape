@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#coding:utf-8
+# coding:utf-8
 # Author:  mozman
 # Purpose: svgwrite package parameter
 # Created: 10.09.2010
@@ -28,14 +28,15 @@ class Parameter(object):
 
        name of the SVG profile, valid profiles are: ``'full|basic|tiny'``
     """
-    __slots__ = ['_debug', 'validator', '_profile']
 
-    def __init__(self, debug=True, profile='full'):
+    __slots__ = ["_debug", "validator", "_profile"]
+
+    def __init__(self, debug=True, profile="full"):
         self._debug = debug
         self.profile = profile
 
     def _init_validator(self):
-        self.validator = get_validator(self.profile,  self.debug)
+        self.validator = get_validator(self.profile, self.debug)
 
     @property
     def debug(self):
@@ -47,10 +48,10 @@ class Parameter(object):
         self._init_validator()
 
     def get_version(self):
-        if self._profile == 'tiny':
-            return '1.2'
+        if self._profile == "tiny":
+            return "1.2"
         else:
-            return '1.1'
+            return "1.1"
 
     @property
     def profile(self):
@@ -64,7 +65,7 @@ class Parameter(object):
 
         """
         profile = profile.lower()
-        if profile in ('tiny', 'basic', 'full'):
+        if profile in ("tiny", "basic", "full"):
             self._profile = profile
             self._init_validator()
         else:

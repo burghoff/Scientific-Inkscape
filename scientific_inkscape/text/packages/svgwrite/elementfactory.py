@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#coding:utf-8
+# coding:utf-8
 # Author:  mozman --<mozman@gmx.at>
 # Purpose: element factory
 # Created: 15.10.2010
@@ -19,40 +19,40 @@ from svgwrite import filters
 from svgwrite import solidcolor
 
 factoryelements = {
-    'g': container.Group,
-    'svg': container.SVG,
-    'defs': container.Defs,
-    'symbol': container.Symbol,
-    'marker': container.Marker,
-    'use': container.Use,
-    'a': container.Hyperlink,
-    'script': container.Script,
-    'style': container.Style,
-    'line': shapes.Line,
-    'rect': shapes.Rect,
-    'circle': shapes.Circle,
-    'ellipse': shapes.Ellipse,
-    'polyline': shapes.Polyline,
-    'polygon': shapes.Polygon,
-    'path': path.Path,
-    'image': image.Image,
-    'text': text.Text,
-    'tspan': text.TSpan,
-    'tref': text.TRef,
-    'textPath': text.TextPath,
-    'textArea': text.TextArea,
-    'linearGradient': gradients.LinearGradient,
-    'radialGradient': gradients.RadialGradient,
-    'pattern': pattern.Pattern,
-    'solidColor': solidcolor.SolidColor,
-    'clipPath': masking.ClipPath,
-    'mask': masking.Mask,
-    'animate': animate.Animate,
-    'set': animate.Set,
-    'animateColor': animate.AnimateColor,
-    'animateMotion': animate.AnimateMotion,
-    'animateTransform': animate.AnimateTransform,
-    'filter': filters.Filter,
+    "g": container.Group,
+    "svg": container.SVG,
+    "defs": container.Defs,
+    "symbol": container.Symbol,
+    "marker": container.Marker,
+    "use": container.Use,
+    "a": container.Hyperlink,
+    "script": container.Script,
+    "style": container.Style,
+    "line": shapes.Line,
+    "rect": shapes.Rect,
+    "circle": shapes.Circle,
+    "ellipse": shapes.Ellipse,
+    "polyline": shapes.Polyline,
+    "polygon": shapes.Polygon,
+    "path": path.Path,
+    "image": image.Image,
+    "text": text.Text,
+    "tspan": text.TSpan,
+    "tref": text.TRef,
+    "textPath": text.TextPath,
+    "textArea": text.TextArea,
+    "linearGradient": gradients.LinearGradient,
+    "radialGradient": gradients.RadialGradient,
+    "pattern": pattern.Pattern,
+    "solidColor": solidcolor.SolidColor,
+    "clipPath": masking.ClipPath,
+    "mask": masking.Mask,
+    "animate": animate.Animate,
+    "set": animate.Set,
+    "animateColor": animate.AnimateColor,
+    "animateMotion": animate.AnimateMotion,
+    "animateTransform": animate.AnimateTransform,
+    "filter": filters.Filter,
 }
 
 
@@ -63,7 +63,7 @@ class ElementBuilder(object):
 
     def __call__(self, *args, **kwargs):
         # inject creator object - inherit _parameter from factory
-        kwargs['factory'] = self.factory
+        kwargs["factory"] = self.factory
         # create an object of type 'cls'
         return self.cls(*args, **kwargs)
 
@@ -73,4 +73,6 @@ class ElementFactory(object):
         if name in factoryelements:
             return ElementBuilder(factoryelements[name], self)
         else:
-            raise AttributeError("'%s' has no attribute '%s'" % (self.__class__.__name__, name))
+            raise AttributeError(
+                "'%s' has no attribute '%s'" % (self.__class__.__name__, name)
+            )

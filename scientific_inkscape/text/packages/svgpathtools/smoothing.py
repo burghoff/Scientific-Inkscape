@@ -12,9 +12,9 @@ from .paths2svg import disvg
 
 def is_differentiable(path, tol=1e-8):
     for idx in range(len(path)):
-        u = path[(idx-1) % len(path)].unit_tangent(1)
+        u = path[(idx - 1) % len(path)].unit_tangent(1)
         v = path[idx].unit_tangent(0)
-        u_dot_v = u.real*v.real + u.imag*v.imag
+        u_dot_v = u.real * v.real + u.imag * v.imag
         if abs(u_dot_v - 1) > tol:
             return False
     return True
@@ -29,7 +29,7 @@ def kinks(path, tol=1e-8):
         try:
             u = path[(idx - 1) % len(path)].unit_tangent(1)
             v = path[idx].unit_tangent(0)
-            u_dot_v = u.real*v.real + u.imag*v.imag
+            u_dot_v = u.real * v.real + u.imag * v.imag
             flag = False
         except ValueError:
             flag = True
@@ -40,17 +40,19 @@ def kinks(path, tol=1e-8):
 
 
 def _report_unfixable_kinks(_path, _kink_list):
-    mes = ("\n%s kinks have been detected at that cannot be smoothed.\n"
-           "To ignore these kinks and fix all others, run this function "
-           "again with the second argument 'ignore_unfixable_kinks=True' "
-           "The locations of the unfixable kinks are at the beginnings of "
-           "segments: %s" % (len(_kink_list), _kink_list))
+    mes = (
+        "\n%s kinks have been detected at that cannot be smoothed.\n"
+        "To ignore these kinks and fix all others, run this function "
+        "again with the second argument 'ignore_unfixable_kinks=True' "
+        "The locations of the unfixable kinks are at the beginnings of "
+        "segments: %s" % (len(_kink_list), _kink_list)
+    )
     disvg(_path, nodes=[_path[idx].start for idx in _kink_list])
     raise Exception(mes)
 
 
 def smoothed_joint(seg0, seg1, maxjointsize=3, tightness=1.99):
-    """ See Andy's notes on
+    """See Andy's notes on
     Smoothing Bezier Paths for an explanation of the method.
     Input: two segments seg0, seg1 such that seg0.end==seg1.start, and
     jointsize, a positive number
@@ -62,18 +64,22 @@ def smoothed_joint(seg0, seg1, maxjointsize=3, tightness=1.99):
     assert seg0.end == seg1.start
     assert 0 < maxjointsize
     assert 0 < tightness < 2
-#    sgn = lambda x:x/abs(x)
+    #    sgn = lambda x:x/abs(x)
     q = seg0.end
 
-    try: v = seg0.unit_tangent(1)
-    except: v = seg0.unit_tangent(1 - 1e-4)
-    try: w = seg1.unit_tangent(0)
-    except: w = seg1.unit_tangent(1e-4)
+    try:
+        v = seg0.unit_tangent(1)
+    except:
+        v = seg0.unit_tangent(1 - 1e-4)
+    try:
+        w = seg1.unit_tangent(0)
+    except:
+        w = seg1.unit_tangent(1e-4)
 
     max_a = maxjointsize / 2
     a = min(max_a, min(seg1.length(), seg0.length()) / 20)
     if isinstance(seg0, Line) and isinstance(seg1, Line):
-        '''
+        """
         Note: Letting
             c(t) = elbow.point(t), v= the unit tangent of seg0 at 1, w = the
             unit tangent vector of seg1 at 0,
@@ -82,27 +88,29 @@ def smoothed_joint(seg0, seg1, maxjointsize=3, tightness=1.99):
             c(0)= Q-av, c(1)=Q+aw, c'(0) = bv, and c'(1) = bw
             where a and b are derived above/below from tightness and
             maxjointsize.
-        '''
-#        det = v.imag*w.real-v.real*w.imag
+        """
+        #        det = v.imag*w.real-v.real*w.imag
         # Note:
         # If det is negative, the curvature of elbow is negative for all
         # real t if and only if b/a > 6
         # If det is positive, the curvature of elbow is negative for all
         # real t if and only if b/a < 2
 
-#        if det < 0:
-#            b = (6+tightness)*a
-#        elif det > 0:
-#            b = (2-tightness)*a
-#        else:
-#            raise Exception("seg0 and seg1 are parallel lines.")
-        b = (2 - tightness)*a
-        elbow = CubicBezier(q - a*v, q - (a - b/3)*v, q + (a - b/3)*w, q + a*w)
+        #        if det < 0:
+        #            b = (6+tightness)*a
+        #        elif det > 0:
+        #            b = (2-tightness)*a
+        #        else:
+        #            raise Exception("seg0 and seg1 are parallel lines.")
+        b = (2 - tightness) * a
+        elbow = CubicBezier(
+            q - a * v, q - (a - b / 3) * v, q + (a - b / 3) * w, q + a * w
+        )
         seg0_trimmed = Line(seg0.start, elbow.start)
         seg1_trimmed = Line(elbow.end, seg1.end)
         return seg0_trimmed, [elbow], seg1_trimmed
     elif isinstance(seg0, Line):
-        '''
+        """
         Note: Letting
             c(t) = elbow.point(t), v= the unit tangent of seg0 at 1,
             w = the unit tangent vector of seg1 at 0,
@@ -111,13 +119,13 @@ def smoothed_joint(seg0, seg1, maxjointsize=3, tightness=1.99):
             c(0)= Q-av, c(1)=Q, c'(0) = bv, and c'(1) = bw
             where a and b are derived above/below from tightness and
             maxjointsize.
-        '''
-#        det = v.imag*w.real-v.real*w.imag
+        """
+        #        det = v.imag*w.real-v.real*w.imag
         # Note: If g has the same sign as det, then the curvature of elbow is
         # negative for all real t if and only if b/a < 4
-        b = (4 - tightness)*a
-#        g = sgn(det)*b
-        elbow = CubicBezier(q - a*v, q + (b/3 - a)*v, q - b/3*w, q)
+        b = (4 - tightness) * a
+        #        g = sgn(det)*b
+        elbow = CubicBezier(q - a * v, q + (b / 3 - a) * v, q - b / 3 * w, q)
         seg0_trimmed = Line(seg0.start, elbow.start)
         return seg0_trimmed, [elbow], seg1
     elif isinstance(seg1, Line):
@@ -128,8 +136,8 @@ def smoothed_joint(seg0, seg1, maxjointsize=3, tightness=1.99):
     else:
         # find a point on each seg that is about a/2 away from joint.  Make
         # line between them.
-        t0 = seg0.ilength(seg0.length() - a/2)
-        t1 = seg1.ilength(a/2)
+        t0 = seg0.ilength(seg0.length() - a / 2)
+        t1 = seg1.ilength(a / 2)
         seg0_trimmed = seg0.cropped(0, t0)
         seg1_trimmed = seg1.cropped(t1, 1)
         seg0_line = Line(seg0_trimmed.end, q)
@@ -158,7 +166,7 @@ def smoothed_path(path, maxjointsize=3, tightness=1.99, ignore_unfixable_kinks=F
     sharp_kinks = []
     new_path = [path[0]]
     for idx in range(len(path)):
-        if idx == len(path)-1:
+        if idx == len(path) - 1:
             if not path.isclosed():
                 continue
             else:
@@ -174,8 +182,10 @@ def smoothed_path(path, maxjointsize=3, tightness=1.99, ignore_unfixable_kinks=F
         except ValueError:
             flag = True  # unit tangent not well-defined
 
-        if not flag and isclose(unit_tangent0, unit_tangent1):  # joint is already smooth
-            if idx != len(path)-1:
+        if not flag and isclose(
+            unit_tangent0, unit_tangent1
+        ):  # joint is already smooth
+            if idx != len(path) - 1:
                 new_path.append(seg1)
             continue
         else:

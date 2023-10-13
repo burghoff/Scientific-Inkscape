@@ -415,7 +415,6 @@ class table__g_l_y_f(DefaultTable.DefaultTable):
             controls = []
 
             for component in glyph.components:
-
                 (
                     componentCoords,
                     componentControls,
@@ -1925,7 +1924,6 @@ VAR_COMPONENT_TRANSFORM_MAPPING = {
 
 
 class GlyphVarComponent(object):
-
     MIN_SIZE = 5
 
     def __init__(self):
@@ -2161,7 +2159,6 @@ class GlyphVarComponent(object):
         return count
 
     def getCoordinatesAndControls(self):
-
         coords = []
         controls = []
 
@@ -2223,9 +2220,10 @@ class GlyphVarComponent(object):
         if self.flags & (
             VarComponentFlags.HAVE_SCALE_X | VarComponentFlags.HAVE_SCALE_Y
         ):
-            self.transform.scaleX, self.transform.scaleY = fi2fl(
-                coords[i][0], 10
-            ), fi2fl(coords[i][1], 10)
+            self.transform.scaleX, self.transform.scaleY = (
+                fi2fl(coords[i][0], 10),
+                fi2fl(coords[i][1], 10),
+            )
             i += 1
         if self.flags & (VarComponentFlags.HAVE_SKEW_X | VarComponentFlags.HAVE_SKEW_Y):
             self.transform.skewX, self.transform.skewY = (

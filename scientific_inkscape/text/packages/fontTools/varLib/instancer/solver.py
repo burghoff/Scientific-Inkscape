@@ -98,7 +98,6 @@ def _solve(tent, axisLimit, negative=False):
     #                           |
     #                      crossing
     if gain > outGain:
-
         # Crossing point on the axis.
         crossing = peak + ((1 - gain) * (upper - peak) / (1 - outGain))
 
@@ -175,7 +174,6 @@ def _solve(tent, axisLimit, negative=False):
     #          axisDef          axisMax
     #
     elif axisDef + (axisMax - axisDef) * 2 >= upper:
-
         if not negative and axisDef + (axisMax - axisDef) * MAX_F2DOT14 < upper:
             # we clamp +2.0 to the max F2Dot14 (~1.99994) for convenience
             upper = axisDef + (axisMax - axisDef) * MAX_F2DOT14
@@ -214,7 +212,6 @@ def _solve(tent, axisLimit, negative=False):
     #          axisDef  axisMax
     #
     else:
-
         loc1 = (max(axisDef, lower), peak, axisMax)
         scalar1 = 1
 

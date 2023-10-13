@@ -802,7 +802,7 @@ def inferRegion_(peak):
     intermediateEndTuple fields.
     """
     start, end = {}, {}
-    for (axis, value) in peak.items():
+    for axis, value in peak.items():
         start[axis] = min(value, 0.0)  # -0.3 --> -0.3; 0.7 --> 0.0
         end[axis] = max(value, 0.0)  # -0.3 -->  0.0; 0.7 --> 0.7
     return (start, end)
