@@ -41,8 +41,15 @@ import inkex, sys, os
 if not hasattr(inkex, "text"):
     import importlib
 
-    mymodname = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
-    sys.modules["inkex.text"] = importlib.import_module(mymodname)
+    # mymodname = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
+    # sys.modules["inkex.text"] = importlib.import_module(mymodname)
+
+    mydir = os.path.dirname(os.path.abspath(__file__))
+    myloc, myname = os.path.split(mydir)
+    oldpath = sys.path
+    sys.path.append(myloc)
+    sys.modules["inkex.text"] = importlib.import_module(myname)
+    sys.path = oldpath
 
 # Patches inkex functions for faster operation
 # This is optional

@@ -1080,6 +1080,10 @@ class ParsedText:
             exts = self.get_chunk_extents()
         elif htype == "line":
             exts = self.get_line_extents()
+        elif htype == "chunkink":
+            exts = self.get_chunk_ink()
+        elif htype == "lineink":
+            exts = self.get_line_ink()
         else:  # 'all'
             exts = [self.get_full_extent()]
         for ii, ext in enumerate(exts):
@@ -1175,6 +1179,39 @@ class ParsedText:
                             extln = extln.union(bbox((p1, p2)))
                     if not (extln.isnull):
                         exts.append(extln)
+        return exts
+
+    def get_chunk_ink(self):
+        # Get the untranformed extent of each chunk
+        import math
+
+        exts = []
+        if self.lns is not None and len(self.lns) > 0:
+            if self.lns[0].xsrc is not None:
+                for ln in self.lns:
+                    for w in ln.ws:
+                        ext = bbox(None)
+                        for c in w.cs:
+                            p1 = c.pts_ut_ink[0]
+                            p2 = c.pts_ut_ink[2]
+                            ext = ext.union(bbox((p1, p2)))
+                        exts.append(ext)
+        return exts
+
+    def get_line_ink(self):
+        # Get the untranformed extent of each line
+        import math
+
+        exts = []
+        if self.lns is not None and len(self.lns) > 0:
+            if self.lns[0].xsrc is not None:
+                for ln in self.lns:
+                    ext = bbox(None)
+                    for c in ln.cs:
+                        p1 = c.pts_ut_ink[0]
+                        p2 = c.pts_ut_ink[2]
+                        ext = ext.union(bbox((p1, p2)))
+                    exts.append(ext)
         return exts
 
     def get_full_extent(self, parsed=False):
