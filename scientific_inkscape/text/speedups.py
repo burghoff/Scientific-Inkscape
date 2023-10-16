@@ -221,8 +221,9 @@ def fast_proxy_iterator(self):
             prev_prev = list(seg.control_points(first, previous, prev_prev))[-2]
         previous = seg.end_point(first, previous)
 
-
-inkex.paths.Path.proxy_iterator = fast_proxy_iterator  # type: ignore
+if not hasattr(inkex.transforms.ImmutableVector2d,'c2t'):
+    # The new complex implementation of vector2ds is fast
+    inkex.paths.Path.proxy_iterator = fast_proxy_iterator  # type: ignore
 
 
 def fast_control_points(self):
@@ -294,14 +295,14 @@ inkex.paths.horz.control_points = fast_control_points_horz  # type: ignore
 
 # Optimize Path's init to avoid calls to append and reduce instance checks
 # About 50% faster
-ipcspth, ipln = inkex.paths.CubicSuperPath, inkex.paths.Line
+ipcspth, ipln, ipmv = inkex.paths.CubicSuperPath, inkex.paths.Line, inkex.paths.Move
 ipPC = inkex.paths.PathCommand
 letter_to_class = ipPC._letter_to_class
 PCsubs = set(letter_to_class.values())
 
 
 # precache all types that are instances of PathCommand
-def process_items(items):
+def process_items(items,slf):
     for item in items:
         # if isinstance(item, ipPC):
         itemtype = type(item)
@@ -311,7 +312,10 @@ def process_items(items):
             if isinstance(item[1], (list, tuple)):
                 yield ipPC.letter_to_class(item[0])(*item[1])
             else:
-                yield ipln(*item)
+                if len(slf)==0:
+                    yield ipmv(*item)
+                else:
+                    yield ipln(*item)
         else:
             raise TypeError(
                 f"Bad path type: {type(items).__name__}"
@@ -326,14 +330,11 @@ from functools import lru_cache
 def fast_init(self, path_d=None):
     list.__init__(self)
     if isinstance(path_d, str):
-        # Returns a generator returning PathCommand objects
-        # path_d = self.parse_string(path_d)
-        # self.extend(path_d)
         self.extend(cached_parse_string(path_d))
     else:
         if isinstance(path_d, ipcspth):
             path_d = path_d.to_path()
-        self.extend(process_items(path_d or ()))
+        self.extend(process_items(path_d or (),self))
 
 
 inkex.paths.Path.__init__ = fast_init  # type: ignore
@@ -364,7 +365,7 @@ except:
 nargs_cache = {cmd: cmd.nargs for cmd in letter_to_class.values()}
 next_command_cache = {cmd: cmd.next_command for cmd in letter_to_class.values()}
 
-
+# Generator version
 def fast_parse_string(cls, path_d):
     for cmd, numbers in LEX_REX.findall(path_d):
         args = [float(val) for val in NUMBER_REX.findall(numbers)]
@@ -396,7 +397,7 @@ def cached_parse_string(path_d):
         args_len = len(args)
         while i < args_len or cmd_nargs == 0:
             if args_len < i + cmd_nargs:
-                return
+                return ret
             seg = cmd(*args[i : i + cmd_nargs])
             i += cmd_nargs
             cmd = next_command_cache[type(seg)]
@@ -410,7 +411,13 @@ def cached_parse_string(path_d):
 
 # Faster apply_to_point that gets rid of property calls
 def apply_to_point_mod(obj, pt):
-    ptx, pty = pt if isinstance(pt, (tuple, list)) else (pt.x, pt.y)
+    try:
+        ptx, pty = pt
+    except:
+        try:
+            ptx, pty = (pt.x, pt.y)
+        except:
+            raise ValueError
     x = obj.matrix[0][0] * ptx + obj.matrix[0][1] * pty + obj.matrix[0][2]
     y = obj.matrix[1][0] * ptx + obj.matrix[1][1] * pty + obj.matrix[1][2]
     return Vector2da(x, y)
@@ -511,7 +518,10 @@ def IV2d_init(self, *args, fallback=None):
             if len(args) == 0:
                 x, y = 0.0, 0.0
             elif len(args) == 1:
-                x, y = self._parse(args[0])
+                try:
+                    x, y = self._parse(args[0])
+                except:
+                    x, y = float(args[0]),float(args[0])
             else:
                 raise ValueError("too many arguments")
         except (ValueError, TypeError) as error:

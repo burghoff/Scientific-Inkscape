@@ -45,6 +45,7 @@ vpaths = {'1.0' : 'D:\\Inkscapes\\inkscape-1.0.2-2-x64',
           '1.1' : 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64',
           '1.2' : 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64', 
           '1.3' : 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64',
+          '1.3e': 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64_extensions',
           '1.4' : 'D:\\Inkscapes\\inkscape-1.4-dev_2023-09-22_79074f2-x64'}
 
 if 'TESTMAINVERSION' in os.environ:
@@ -58,6 +59,7 @@ import sys
 sys.path += [os.path.join(vpaths[version],'share\\inkscape\\extensions')]
 sys.path += [os.path.join(vpaths[version],'bin')]
 sys.path += [os.path.join(os.path.split(os.path.split(__file__)[0])[0],'scientific_inkscape')  ]
+sys.path += [os.path.join(vpaths[version],'lib\\python3.10')]
 os.environ['LINEPROFILE'] = str(lprofile)
 os.environ['USEPANGO']=str(usepango)
 
@@ -288,13 +290,22 @@ class CompareImages(Compare):
     
 
 # For x values, due to kerning measurement differences we allow for up to 1 pixel
-from inkex.tester.xmldiff import xmldiff
+from inkex.tester.xmldiff import xmldiff, to_xml, DeltaLogger, _xmldiff,xml
+try:
+    from inkex.tester.xmldiff import order_ids
+    hasorder_ids = True
+except:
+    hasorder_ids = False
+    
 def mod_xmldiff(data_a,data_b):
-    diff_xml, delta = xmldiff(data_a, data_b)
-    # print(diff_xml)
+    if not hasorder_ids:
+        diff_xml, delta = xmldiff_orderid(data_a, data_b)
+    else:
+        diff_xml, delta = xmldiff(data_a, data_b)
+        
     toremove = []
     for x, (value_a, value_b) in enumerate(delta):
-        print( (value_a, value_b))
+        # print( (value_a, value_b))
         if value_a is not None and value_b is not None and len(value_a)>0 and len(value_b)>0 and \
            ((value_a[0]=='x' and value_b[0]=='x') or (value_a[0]=='y' and value_b[0]=='y')):
             try:
@@ -319,7 +330,95 @@ def mod_xmldiff(data_a,data_b):
     return diff_xml, delta
 inkex.tester.xmldiff = mod_xmldiff
         
-    
+def xmldiff_orderid(data1, data2):
+    """Create an xml difference, will modify the first xml structure with a diff"""
+    xml1, xml2 = to_xml(data1), to_xml(data2)
+    order_ids(xml1)
+    order_ids(xml2)
+    delta = DeltaLogger()
+    _xmldiff(xml1, xml2, delta)
+    return xml.tostring(xml1).decode("utf-8"), delta
+
+def order_ids(svg): # noqa
+    count = 0
+    els = [el for el in svg.iter()]
+    import re
+    urlpat = r'url\(#[^\)]*\)'
+    classpat = r"\.(.*?)\{"
+    xlinkatts = ['{http://www.w3.org/1999/xlink}href', 'href']
+    bareids = {'{http://www.inkscape.org/namespaces/inkscape}stockid','class'}
+    styletag  = '{http://www.w3.org/2000/svg}style'
+    repl_ids = dict()
+    tidformat = 'testId{0}';
+    # Collect all ids present in document in order and decide replacement avlues
+    for el in els:
+        oldid = el.get('id')
+        print(oldid)
+        if oldid is None:
+            # No ids: assign one
+            newid = tidformat.format(count); count+=1;
+            el.set('id',newid)
+        elif not(oldid.startswith('testId')) and oldid not in repl_ids:
+            # Id not already replaced: decide replacement
+            repl_ids[oldid] = tidformat.format(count); count+=1;
+        for n, v in el.attrib.items():
+            # ids in xlink:href values
+            if v.startswith('#') and n in xlinkatts:
+                oldid = v[1:]
+                if oldid not in repl_ids:
+                    repl_ids[oldid] = tidformat.format(count); count+=1;
+            elif n in bareids:
+                oldid = v
+                if oldid not in repl_ids:
+                    repl_ids[oldid] = tidformat.format(count); count+=1;
+            # ids in url(#)'s
+            elif v is not None and len(re.findall(urlpat, v))>0:
+                ms = re.findall(urlpat, v)
+                for m in ms:
+                    oldid = m[5:-1]
+                    if oldid not in repl_ids:
+                        repl_ids[oldid] = tidformat.format(count); count+=1;
+        if el.tag==styletag:
+            # ids in css style text url(#)'s
+            if el.text is not None and len(re.findall(urlpat, el.text))>0:
+                ms = re.findall(urlpat, el.text)
+                for m in ms:
+                    oldid = m[5:-1]
+                    if oldid not in repl_ids:
+                        repl_ids[oldid] = tidformat.format(count); count+=1;
+            
+            # class ids in css style text .id{
+            if el.text is not None and len(re.findall(classpat, el.text))>0:
+                ms = re.findall(classpat, el.text)
+                for m in ms:
+                    oldid = m.strip()
+                    if oldid not in repl_ids:
+                        repl_ids[oldid] = tidformat.format(count); count+=1;
+
+    # Make all replacements
+    oldids2 = {'#'+v for v in repl_ids.keys()}           # oldids with #
+    oldids3 = {'url(#'+v+')' for v in repl_ids.keys()}   # oldids with url(#...)
+    for el in svg.iter():
+        for n, v in el.attrib.items():
+            if n=='id' and v in repl_ids:
+                el.attrib[n] = repl_ids[v]
+            elif v in oldids2 and n in xlinkatts:
+                el.attrib[n] = '#'+repl_ids[v[1:]]
+            elif n in bareids:
+                el.attrib[n] = repl_ids[v]
+            elif 'url(#' in v: # precheck for speed
+                if any([w in v for w in oldids3]):
+                    for w in [oi3 for oi3 in oldids3 if oi3 in v]:
+                        el.attrib[n] = el.attrib[n].replace('url(#'+w[5:-1]+')','url(#'+repl_ids[w[5:-1]]+')') 
+        if el.tag==styletag:
+            if el.text is not None:
+                for w in [oi3 for oi3 in oldids3 if oi3 in el.text]:
+                    el.text = el.text.replace('url(#'+w[5:-1]+')','url(#'+repl_ids[w[5:-1]]+')') 
+                
+                ms = re.findall(classpat, el.text)
+                for m in ms:
+                    if m.strip() in repl_ids:
+                        el.text = el.text.replace(m,repl_ids[m.strip()])+' '    
 
 
 if testflattentext:
@@ -414,7 +513,7 @@ if testscalefixed:
 if testghoster:
     class TestGhoster(ComparisonMixin, TestCase):
         effect_class = TextGhoster
-        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds(),CompareURLs()]
+        compare_filters = [CompareNumericFuzzy2(),CompareURLs(),CompareWithoutIds()]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=text28136",)
@@ -441,7 +540,7 @@ if testfm:
 if testhomogenizer:
     class TestHomogenizer(ComparisonMixin, TestCase):
         effect_class = Homogenizer
-        compare_filters = [CompareNumericFuzzy2(),CompareWithoutIds()]
+        compare_filters = [CompareNumericFuzzy2(),]
         compare_file = ['svg/'+fname]
         comparisons = [
             ("--id=layer1","--fontsize=7","--setfontsize=True","--fixtextdistortion=True","--fontmodes=2", \
