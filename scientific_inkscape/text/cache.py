@@ -498,19 +498,12 @@ inkex.SvgDocumentElement.cdefs = property(cdefs_func)
 # Version of get_ids that uses iddict
 def get_ids_func(svg):
     """Returns a set of unique document ids"""
-    if not svg.ids:
-        if hasattr(svg, "_iddict"):  # don't use iddict, get_iddict calls this
-            svg.ids = set(svg._iddict.keys())
-        else:
-            svg.ids = set(svg.xpath("//@id"))
-    return svg.ids
-
+    return set(svg.iddict.keys())
 
 inkex.SvgDocumentElement.get_ids = get_ids_func  # type: ignore
 
 # Version of get_unique_id that removes randomness by keeping a running count
 from typing import Optional, List
-
 
 def get_unique_id_fcn(
     svg,
@@ -518,24 +511,18 @@ def get_unique_id_fcn(
     size: Optional[int] = None,
     blacklist: Optional[List[str]] = None,
 ):
-    ids = svg.get_ids()
-    if blacklist is not None:
-        ids.update(blacklist)
     new_id = None
-    if not hasattr(svg, "_prefixcounter"):
-        svg._prefixcounter = dict()
-    cnt = svg._prefixcounter.get(prefix, 0)
-    while new_id is None or new_id in ids:
-        new_id = prefix + str(cnt)
-        cnt += 1
-    svg._prefixcounter[prefix] = cnt
-    try:
-        svg.ids.add(new_id)
-    except:
-        svg.ids[new_id] = None
+    cnt = svg.iddict.prefixcounter.get(prefix, 0)
+    if blacklist is None:
+        while new_id is None or new_id in svg.iddict:
+            new_id = prefix + str(cnt)
+            cnt += 1
+    else:
+        while new_id is None or new_id in svg.iddict or new_id in blacklist:
+            new_id = prefix + str(cnt)
+            cnt += 1
+    svg.iddict.prefixcounter[prefix] = cnt
     return new_id
-
-
 inkex.SvgDocumentElement.get_unique_id = get_unique_id_fcn  # type: ignore
 
 
@@ -589,6 +576,7 @@ inkex.SvgDocumentElement.getElementById = getElementById_func  # type: ignore
 class iddict(inkex.OrderedDict):
     def __init__(self, svg):
         self.svg = svg
+        self.prefixcounter = dict()
         toassign = []
         for el in svg.descendants2():
             if "id" in el.attrib:
@@ -597,8 +585,17 @@ class iddict(inkex.OrderedDict):
                 toassign.append(el)
             el.croot = svg  # do now to speed up later
         for el in toassign:
-            el.set_random_id(el.TAG)
+            # Reduced version of get_unique_id_fcn
+            # Cannot call it since it relies on iddict
+            prefix = el.TAG
+            new_id = None
+            cnt = self.prefixcounter.get(prefix, 0)
+            while new_id is None or new_id in self:
+                new_id = prefix + str(cnt)
+                cnt += 1
+            self.prefixcounter[prefix] = cnt
             self[EBget(el, "id")] = el
+            inkex_set_id(el,new_id)
 
     def add(self, el):
         elid = el.get_id()  # fine since el should have a croot to get called here
@@ -625,6 +622,16 @@ def get_iddict(svg):
 
 
 inkex.SvgDocumentElement.iddict = property(get_iddict)
+
+inkex_set_id = inkex.BaseElement.set_id
+def set_id_mod(self, new_id, backlinks=False):
+    """Set the id and update backlinks to xlink and style urls if needed"""
+    self.croot.iddict[new_id] = self
+    inkex_set_id(self,new_id,backlinks=backlinks)
+    old_id = self.get('id')
+    if old_id is not None and old_id in self.croot.iddict:
+        del self.croot.iddict[old_id]
+inkex.BaseElement.set_id = set_id_mod   # type:ignore
 
 # A dict that keeps track of the CSS style for each element
 estyle = Style()  # keep separate in case Style was overridden

@@ -353,7 +353,6 @@ def order_ids(svg): # noqa
     # Collect all ids present in document in order and decide replacement avlues
     for el in els:
         oldid = el.get('id')
-        print(oldid)
         if oldid is None:
             # No ids: assign one
             newid = tidformat.format(count); count+=1;
