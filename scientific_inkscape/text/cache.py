@@ -500,10 +500,12 @@ def get_ids_func(svg):
     """Returns a set of unique document ids"""
     return set(svg.iddict.keys())
 
+
 inkex.SvgDocumentElement.get_ids = get_ids_func  # type: ignore
 
 # Version of get_unique_id that removes randomness by keeping a running count
 from typing import Optional, List
+
 
 def get_unique_id_fcn(
     svg,
@@ -523,6 +525,8 @@ def get_unique_id_fcn(
             cnt += 1
     svg.iddict.prefixcounter[prefix] = cnt
     return new_id
+
+
 inkex.SvgDocumentElement.get_unique_id = get_unique_id_fcn  # type: ignore
 
 
@@ -594,8 +598,9 @@ class iddict(inkex.OrderedDict):
                 new_id = prefix + str(cnt)
                 cnt += 1
             self.prefixcounter[prefix] = cnt
-            self[EBget(el, "id")] = el
-            inkex_set_id(el,new_id)
+            # Reduced version of set_id
+            self[new_id] = el
+            inkex_set_id(el, new_id)
 
     def add(self, el):
         elid = el.get_id()  # fine since el should have a croot to get called here
@@ -624,14 +629,19 @@ def get_iddict(svg):
 inkex.SvgDocumentElement.iddict = property(get_iddict)
 
 inkex_set_id = inkex.BaseElement.set_id
+
+
 def set_id_mod(self, new_id, backlinks=False):
     """Set the id and update backlinks to xlink and style urls if needed"""
     self.croot.iddict[new_id] = self
-    inkex_set_id(self,new_id,backlinks=backlinks)
-    old_id = self.get('id')
-    if old_id is not None and old_id in self.croot.iddict:
-        del self.croot.iddict[old_id]
-inkex.BaseElement.set_id = set_id_mod   # type:ignore
+    # old_id = self.get('id')
+    inkex_set_id(self, new_id, backlinks=backlinks)
+    # Deleting the old value doesn't currently work properly (abandoned references?)
+    # if old_id is not None and old_id in self.croot.iddict:
+    #     del self.croot.iddict[old_id]
+
+
+inkex.BaseElement.set_id = set_id_mod  # type:ignore
 
 # A dict that keeps track of the CSS style for each element
 estyle = Style()  # keep separate in case Style was overridden

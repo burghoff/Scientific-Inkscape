@@ -51,14 +51,13 @@ wrapped_attrs = {row[-2]: (row[0], row[-1]) for row in inkex.BaseElement.WRAPPED
 wrapped_attrs_keys = set(wrapped_attrs.keys())
 from typing import Dict
 
-NSatts: Dict[str, str] = dict()
 wrprops: Dict[str, str] = dict()
 inkexget = inkex.BaseElement.get
 
 
 def fast_get(self, attr, default=None):
     try:
-        return fget(self, NSatts[attr], default)
+        return fget(self, inkex.addNS(attr), default)
     except:
         try:
             value = getattr(self, wrprops[attr], None)
@@ -67,8 +66,6 @@ def fast_get(self, attr, default=None):
         except:
             if attr in wrapped_attrs_keys:
                 (wrprops[attr], _) = wrapped_attrs[attr]
-            else:
-                NSatts[attr] = inkex.addNS(attr)
             return inkexget(self, attr, default)
 
 
@@ -84,11 +81,8 @@ def fast_set(self, attr, value):
         value = getattr(self, prop)
         if not value:
             return
-    try:
-        NSattr = NSatts[attr]
-    except:
-        NSatts[attr] = inkex.addNS(attr)
-        NSattr = NSatts[attr]
+
+    NSattr = inkex.addNS(attr)
 
     if value is None:
         self.attrib.pop(NSattr, None)  # pylint: disable=no-member
@@ -221,7 +215,8 @@ def fast_proxy_iterator(self):
             prev_prev = list(seg.control_points(first, previous, prev_prev))[-2]
         previous = seg.end_point(first, previous)
 
-if not hasattr(inkex.transforms.ImmutableVector2d,'c2t'):
+
+if not hasattr(inkex.transforms.ImmutableVector2d, "c2t"):
     # The new complex implementation of vector2ds is fast
     inkex.paths.Path.proxy_iterator = fast_proxy_iterator  # type: ignore
 
@@ -302,7 +297,7 @@ PCsubs = set(letter_to_class.values())
 
 
 # precache all types that are instances of PathCommand
-def process_items(items,slf):
+def process_items(items, slf):
     for item in items:
         # if isinstance(item, ipPC):
         itemtype = type(item)
@@ -312,7 +307,7 @@ def process_items(items,slf):
             if isinstance(item[1], (list, tuple)):
                 yield ipPC.letter_to_class(item[0])(*item[1])
             else:
-                if len(slf)==0:
+                if len(slf) == 0:
                     yield ipmv(*item)
                 else:
                     yield ipln(*item)
@@ -334,7 +329,7 @@ def fast_init(self, path_d=None):
     else:
         if isinstance(path_d, ipcspth):
             path_d = path_d.to_path()
-        self.extend(process_items(path_d or (),self))
+        self.extend(process_items(path_d or (), self))
 
 
 inkex.paths.Path.__init__ = fast_init  # type: ignore
@@ -364,6 +359,7 @@ except:
     )
 nargs_cache = {cmd: cmd.nargs for cmd in letter_to_class.values()}
 next_command_cache = {cmd: cmd.next_command for cmd in letter_to_class.values()}
+
 
 # Generator version
 def fast_parse_string(cls, path_d):
@@ -443,10 +439,22 @@ inkex.Transform.applyI_to_point = applyI_to_point  # type: ignore
 
 # Built-in bool initializes multiple Transforms
 Itmat = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+atol = inkex.Transform.absolute_tolerance
+natol = -atol
+atp1 = atol + 1
+natp1 = -atol + 1
 
 
 def Tbool(obj):
-    return obj.matrix != Itmat  # exact, not within tolerance. I think this is fine
+    # return obj.matrix != Itmat  # exact, not within tolerance. I think this is fine
+    return not (
+        natp1 < obj.matrix[0][0] < atp1
+        and natol < obj.matrix[0][1] < atol
+        and natol < obj.matrix[0][2] < atol
+        and natol < obj.matrix[1][0] < atol
+        and natp1 < obj.matrix[1][1] < atp1
+        and natol < obj.matrix[1][2] < atol
+    )
 
 
 inkex.Transform.__bool__ = Tbool  # type: ignore
@@ -521,7 +529,7 @@ def IV2d_init(self, *args, fallback=None):
                 try:
                     x, y = self._parse(args[0])
                 except:
-                    x, y = float(args[0]),float(args[0])
+                    x, y = float(args[0]), float(args[0])
             else:
                 raise ValueError("too many arguments")
         except (ValueError, TypeError) as error:
@@ -720,62 +728,64 @@ inkex.transforms.Transform._set_matrix = fast_set_matrix  # type: ignore
 
 """ _utils.py """
 
+
 # Cache the namespace function results
-try:
-    from inkex.elements._utils import NSS, SSN
-except:
-    # old versions
-    from inkex.utils import NSS, SSN  # type: ignore
+
+NSloc = inkex.utils if hasattr(inkex.utils, "addNS") else inkex.elements._utils
+orig_addNS = getattr(NSloc, "addNS")
+orig_removeNS = getattr(NSloc, "removeNS")
+orig_splitNS = getattr(NSloc, "splitNS")
 
 
 @lru_cache(maxsize=None)
-def cached_addNS(tag, ns=None):  # pylint: disable=invalid-name
-    """Add a known namespace to a name for use with lxml"""
-    if tag.startswith("{") and ns:
-        _, tag = cached_removeNS(tag)
-    if not tag.startswith("{"):
-        tag = tag.replace("__", ":")
-        if ":" in tag:
-            (ns, tag) = tag.rsplit(":", 1)
-        ns = NSS.get(ns, None) or ns
-        if ns is not None:
-            return f"{{{ns}}}{tag}"
-    return tag
+def cached_addNS(*args, **kwargs):
+    return orig_addNS(*args, **kwargs)
 
 
 @lru_cache(maxsize=None)
-def cached_removeNS(name):  # pylint: disable=invalid-name
-    """The reverse of addNS, finds any namespace and returns tuple (ns, tag)"""
-    if name[0] == "{":
-        (url, tag) = name[1:].split("}", 1)
-        return SSN.get(url, "svg"), tag
-    if ":" in name:
-        return name.rsplit(":", 1)
-    return "svg", name
+def cached_removeNS(*args, **kwargs):
+    return orig_removeNS(*args, **kwargs)
 
 
 @lru_cache(maxsize=None)
-def cached_splitNS(name):  # pylint: disable=invalid-name
-    """Like removeNS, but returns a url instead of a prefix"""
-    (prefix, tag) = cached_removeNS(name)
-    return (NSS[prefix], tag)
+def cached_splitNS(*args, **kwargs):
+    return orig_splitNS(*args, **kwargs)
 
 
-inkex.addNS = inkex.elements._base.addNS = inkex.elements._groups.addNS = cached_addNS
-inkex.elements._filters.addNS = inkex.elements._polygons.addNS = cached_addNS
-try:
-    inkex.elements._utils.addNS = cached_addNS
-    inkex.elements._utils.removeNS = cached_removeNS
-    inkex.elements._utils.splitNS = cached_splitNS
-except:
-    # old versions
-    inkex.utils.addNS = cached_addNS  # type: ignore
-    inkex.utils.removeNS = cached_removeNS  # type: ignore
-    inkex.utils.splitNS = cached_splitNS  # type: ignore
+def clear_caches():
+    cached_addNS.cache_clear()
+    cached_removeNS.cache_clear()
+    cached_splitNS.cache_clear()
 
-inkex.elements._base.removeNS = cached_removeNS
-inkex.elements._base.splitNS = cached_splitNS
 
+# Reset the cache before namespace modifications
+orig_registerNS = getattr(NSloc, "registerNS", None)
+if orig_registerNS:
+
+    def mod_registerNS(*args, **kwargs):
+        clear_caches()
+        orig_registerNS(*args, **kwargs)
+
+    NSloc.registerNS = mod_registerNS  # type: ignore
+
+orig_add_namespace = getattr(inkex.SvgDocumentElement, "add_namespace", None)
+if orig_add_namespace:
+
+    def mod_add_namespace(*args, **kwargs):
+        clear_caches()
+        orig_add_namespace(*args, **kwargs)
+
+    inkex.SvgDocumentElement.add_namespace = mod_add_namespace  # type: ignore
+
+NSloc.addNS = (  # type: ignore
+    inkex.addNS
+) = (
+    inkex.elements._base.addNS
+) = (
+    inkex.elements._groups.addNS
+) = inkex.elements._filters.addNS = inkex.elements._polygons.addNS = cached_addNS
+NSloc.removeNS = inkex.elements._base.removeNS = cached_removeNS  # type: ignore
+NSloc.splitNS = inkex.elements._base.splitNS = cached_splitNS  # type: ignore
 try:
     inkex.elements._parser.splitNS = cached_splitNS  # new versions only
 except:

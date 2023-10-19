@@ -14,7 +14,7 @@
         <spacer/>
         <label>Scientific Inkscape v1.3.2</label>
         <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-        <label>David Burghoff, University of Texas at Austin</label>
+        <label>David Burghoff, University of Texas at Austin</label></page>
     </param>
     <effect needs-live-preview="false">
         <object-type>text</object-type>
