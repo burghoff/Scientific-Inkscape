@@ -718,8 +718,8 @@ class PangoRenderer:
 
         self.pango_to_fc = pango_to_fc_func
 
-        def pango_to_css_func(pfnt):
-            fd = pfnt.describe()
+        def pango_to_css_func(pdescription):
+            fd = pdescription
 
             def isnumeric(s):
                 try:
@@ -752,23 +752,42 @@ class PangoRenderer:
         self.putd = Pango.units_to_double
         self.scale = Pango.SCALE
 
-        self.families = self.ctx.get_font_map().list_families()
-        self.families.sort(key=lambda x: x.get_name())  # alphabetical
-        self.fmdict = {
-            f.get_name(): [fc.get_face_name() for fc in f.list_faces()]
-            for f in self.families
-        }
-        # self.fmdict2 = {f.get_name(): [(fc.describe().to_string(),fc.is_synthesized()) for fc in f.list_faces()] for f in self.families}
-        # dh.idebug([f.get_name() for f in self.families])
-
-        self.all_faces = [
-            fc.describe().to_string() for fm in self.families for fc in fm.list_faces()
-        ]
-        self.all_fms = [fm.get_name() for fm in self.families for fc in fm.list_faces()]
-        self.all_desc = [
-            fc.describe() for fm in self.families for fc in fm.list_faces()
-        ]
-        # dh.idebug(self.all_faces)
+    @property
+    def families(self):
+        if not hasattr(self,'_families'):
+            families = self.ctx.get_font_map().list_families()
+            self._families = sorted(families, key=lambda x: x.get_name())  # Sort families alphabetically
+        return self._families
+    
+    @property
+    def faces(self):
+        if not hasattr(self,'_faces'):
+            self._faces = [
+                fc for fm in self.families for fc in fm.list_faces()
+            ]
+        return self._faces
+    @property
+    def face_descriptions(self):
+        if not hasattr(self,'_face_descriptions'):
+            self._face_descriptions = [
+                fc.describe() for fc in self.faces
+            ]
+        return self._face_descriptions
+    @property
+    def face_strings(self):
+        if not hasattr(self,'_face_strings'):
+            self._face_strings = [
+                fd.to_string() for fd in self.face_descriptions
+            ]
+        return self._face_strings
+    @property
+    def face_css(self):
+        if not hasattr(self,'_face_css'):
+            self._face_css = [
+                self.pango_to_css(fd) for fd in self.face_descriptions
+            ]
+        return self._face_css
+    
 
     # Search the /etc/fonts/conf.d folder for the default sans-serif font
     # Not currently used
