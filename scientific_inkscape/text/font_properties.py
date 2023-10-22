@@ -754,40 +754,36 @@ class PangoRenderer:
 
     @property
     def families(self):
-        if not hasattr(self,'_families'):
+        if not hasattr(self, "_families"):
             families = self.ctx.get_font_map().list_families()
-            self._families = sorted(families, key=lambda x: x.get_name())  # Sort families alphabetically
+            self._families = sorted(
+                families, key=lambda x: x.get_name()
+            )  # Sort families alphabetically
         return self._families
-    
+
     @property
     def faces(self):
-        if not hasattr(self,'_faces'):
-            self._faces = [
-                fc for fm in self.families for fc in fm.list_faces()
-            ]
+        if not hasattr(self, "_faces"):
+            self._faces = [fc for fm in self.families for fc in fm.list_faces()]
         return self._faces
+
     @property
     def face_descriptions(self):
-        if not hasattr(self,'_face_descriptions'):
-            self._face_descriptions = [
-                fc.describe() for fc in self.faces
-            ]
+        if not hasattr(self, "_face_descriptions"):
+            self._face_descriptions = [fc.describe() for fc in self.faces]
         return self._face_descriptions
+
     @property
     def face_strings(self):
-        if not hasattr(self,'_face_strings'):
-            self._face_strings = [
-                fd.to_string() for fd in self.face_descriptions
-            ]
+        if not hasattr(self, "_face_strings"):
+            self._face_strings = [fd.to_string() for fd in self.face_descriptions]
         return self._face_strings
+
     @property
     def face_css(self):
-        if not hasattr(self,'_face_css'):
-            self._face_css = [
-                self.pango_to_css(fd) for fd in self.face_descriptions
-            ]
+        if not hasattr(self, "_face_css"):
+            self._face_css = [self.pango_to_css(fd) for fd in self.face_descriptions]
         return self._face_css
-    
 
     # Search the /etc/fonts/conf.d folder for the default sans-serif font
     # Not currently used
