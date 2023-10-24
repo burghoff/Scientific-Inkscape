@@ -1183,8 +1183,6 @@ class ParsedText:
 
     def get_chunk_ink(self):
         # Get the untranformed extent of each chunk
-        import math
-
         exts = []
         if self.lns is not None and len(self.lns) > 0:
             if self.lns[0].xsrc is not None:
@@ -1200,8 +1198,6 @@ class ParsedText:
 
     def get_line_ink(self):
         # Get the untranformed extent of each line
-        import math
-
         exts = []
         if self.lns is not None and len(self.lns) > 0:
             if self.lns[0].xsrc is not None:
@@ -3522,7 +3518,7 @@ class Character_Table:
 
     def measure_characters(self, ct, pct, rt, forcecommand=False):
         # Uses Pango to measure character properties by rendering them on an unseen
-        # canvas. Requires GTK Python bindings, generally present in Inkscape 1.1 and
+        # context. Requires GTK Python bindings, generally present in Inkscape 1.1 and
         # later. If Pango is absent, a slow Inkscape command call is used instead.
         #
         # Generates prefixed, suffixed copies of each string, compares them to a blank
@@ -3555,10 +3551,7 @@ class Character_Table:
             # test document has uu = 1 mm (210 mm / 210)
             svgstart = '<svg width="210mm" height="297mm" viewBox="0 0 210 297" id="svg60386" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg"> <defs id="defs60383" /> <g id="layer1">'
             svgstop = "</g> </svg>"
-            txt1 = '<text xml:space="preserve" style="'
-            txt2 = '" id="text'
-            txt3 = '">'
-            txt4 = "</text>"
+            txtfmt = '<text xml:space="preserve" style="{};font-size:{}px" id="text{}">{}</text>'
             svgtexts = ""
             import tempfile, os
 
@@ -3567,30 +3560,19 @@ class Character_Table:
             f.write(svgstart.encode("utf8"))
             from xml.sax.saxutils import escape
         else:
-            nbb = inkex.OrderedDict()
+            pstrings = inkex.OrderedDict()
 
-        def Make_Character(c, sty):
+        def Make_String(c, sty):
             nonlocal cnt
             cnt += 1
             if not (usepango):
                 nonlocal svgtexts
-                svgtexts += (
-                    txt1
-                    + str(sty)
-                    + ";font-size:"
-                    + str(TEXTSIZE)
-                    + "px"
-                    + txt2
-                    + str(cnt)
-                    + txt3
-                    + escape(c)
-                    + txt4
-                )
+                svgtexts += txtfmt.format(sty, TEXTSIZE, cnt, escape(c))
                 if cnt % 1000 == 0:
                     f.write(svgtexts.encode("utf8"))
                     svgtexts = ""
             else:
-                nbb["text" + str(cnt)] = (c, sty)
+                pstrings["text" + str(cnt)] = (c, sty)
             return "text" + str(cnt)
 
         class StringInfo:
@@ -3605,49 +3587,30 @@ class Character_Table:
         def effc(c):
             return badchars.get(c, c)
 
-        # ct2 = inkex.OrderedDict(); bareids = [];
-        # for s in pct:
-        #     ct2[s] = inkex.OrderedDict()
-        #     for myc in pct[s]:
-        #         t  = Make_Character(prefix + effc(myc) + suffix, s)
-        #         tb = Make_Character(         effc(myc)         , s);
-        #         bareids.append(tb)
-        #         dkern = inkex.OrderedDict()
-        #         if KERN_TABLE:
-        #             for pc in pct[s]:
-        #                 if myc in pct[s] and pc in pct[s][myc]:
-        #                     t2 = Make_Character(prefix + effc(pc)+effc(myc) + suffix, s)
-        #                     # precede by all chars of the same style
-        #                     dkern[pc] = t2
-        #         ct2[s][myc] = StringInfo(myc, t, dkern,tb)
-
-        #     ct2[s][pI]   = StringInfo(pI,   Make_Character(pI,   s), inkex.OrderedDict())
-        #     ct2[s][blnk] = St
-
         ct2 = inkex.OrderedDict()
         bareids = []
         for s in ct:
             ct2[s] = inkex.OrderedDict()
             for ii in range(len(ct[s])):
                 myc = ct[s][ii]
-                t = Make_Character(prefix + effc(myc) + suffix, s)
-                tb = Make_Character(effc(myc), s)
+                t = Make_String(prefix + effc(myc) + suffix, s)
+                tb = Make_String(effc(myc), s)
                 bareids.append(tb)
                 dkern = inkex.OrderedDict()
                 if KERN_TABLE:
                     for jj in range(len(ct[s])):
                         pc = ct[s][jj]
                         if myc in pct[s] and pc in pct[s][myc]:
-                            t2 = Make_Character(
+                            t2 = Make_String(
                                 prefix + effc(pc) + effc(myc) + suffix, s
                             )
                             # precede by all chars of the same style
                             dkern[pc] = t2
                 ct2[s][myc] = StringInfo(myc, t, dkern, tb)
 
-            ct2[s][pI] = StringInfo(pI, Make_Character(pI, s), inkex.OrderedDict())
+            ct2[s][pI] = StringInfo(pI, Make_String(pI, s), inkex.OrderedDict())
             ct2[s][blnk] = StringInfo(
-                blnk, Make_Character(blnk, s), inkex.OrderedDict()
+                blnk, Make_String(blnk, s), inkex.OrderedDict()
             )
 
         ct = ct2
@@ -3672,16 +3635,17 @@ class Character_Table:
                 else:
                     pangolocked = True
                     pr = PangoRenderer()
+                    nbb = inkex.OrderedDict()
                     for sty in ct:
                         joinch = " "
                         mystrs = [
                             v[0]
-                            for k, v in nbb.items()
+                            for k, v in pstrings.items()
                             if type(v[1]) == Style and v[1] == sty
                         ]
                         myids = [
                             k
-                            for k, v in nbb.items()
+                            for k, v in pstrings.items()
                             if type(v[1]) == Style and v[1] == sty
                         ]
 
