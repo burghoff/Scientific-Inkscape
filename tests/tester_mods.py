@@ -2,7 +2,6 @@ from test_main import version
 import inkex.tester
 import re
 
-# For x values, due to kerning measurement differences we allow for up to 1 pixel
 from inkex.tester.xmldiff import xmldiff,xml,text_compare
 hasxpath_ids = hasattr(inkex.tester.xmldiff,'xpath_ids')
     
@@ -13,8 +12,11 @@ def mod_xmldiff(data_a,data_b):
         diff_xml, delta = xmldiff(data_a, data_b)
         
     toremove = []
+    
     for x, (value_a, value_b) in enumerate(delta):
         # print( (value_a, value_b))
+        
+        # For x values, due to kerning measurement differences we allow for up to 1 pixel
         if value_a is not None and value_b is not None and len(value_a)>0 and len(value_b)>0 and \
            ((value_a[1]=='x' and value_b[1]=='x') or (value_a[1]=='y' and value_b[1]=='y')):
             try:
