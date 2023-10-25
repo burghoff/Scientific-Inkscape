@@ -69,7 +69,7 @@ from inkex.text.utils import (
     isrectangle,
     Get_Bounding_Boxes,
 )
-from inkex.text.cache import bbox, ipx, bounding_box2
+from inkex.text.cache import bbox, ipx, bounding_box2, tags
 from inkex.text.font_properties import (
     PangoRenderer,
     haspango,
@@ -85,8 +85,8 @@ EBset = lxml.etree.ElementBase.set
 import numpy as np
 from copy import copy
 
-tetag, frtag = TextElement.ctag, FlowRoot.ctag
-
+TEtag, TStag, FRtag = TextElement.ctag, Tspan.ctag, FlowRoot.ctag
+TEFRtags = {TEtag, FRtag}
 
 class ParsedTextList:
     def __init__(self, pts):
@@ -255,7 +255,7 @@ class ParsedText:
 
         sty = el.cspecified_style
         self.isflow = (
-            el.tag == frtag
+            el.tag == FRtag
             or sty.get_link("shape-inside", el.croot) is not None
             or ipx(sty.get("inline-size", "0")) != 0
         )
@@ -699,14 +699,14 @@ class ParsedText:
             if (
                 tt == TT_TAIL
                 and d.get("sodipodi:role") == "line"
-                and isinstance(d, Tspan)
-                and isinstance(self.tree.pdict[d], TextElement)
+                and d.tag==TStag
+                and self.tree.pdict[d].tag==TEtag
             ):
                 topcnt += 1  # top-level Tspans have an implicit CR at the beginning of the tail
             if txt is not None:
-                for ii in range(len(txt)):
-                    thec = [c for c in allcs if c.loc == cloc(d, ttv, ii)]
-                    thec[0].deltanum = topcnt
+                for ii,v in enumerate(txt):
+                    thec = next((c for c in allcs if c.loc == cloc(d, ttv, ii)), None)
+                    thec.deltanum = topcnt
                     topcnt += 1
 
     def Get_Delta(self, lns, el, xy):
@@ -722,18 +722,18 @@ class ParsedText:
                     if (
                         tt == TT_TAIL
                         and d.get("sodipodi:role") == "line"
-                        and isinstance(d, Tspan)
-                        and isinstance(self.tree.pdict[d], TextElement)
+                        and d.tag==TStag
+                        and self.tree.pdict[d].tag==TEtag
                     ):
                         cnt += 1  # top-level Tspans have an implicit CR at the beginning of the tail
                     if txt is not None:
-                        for ii in range(len(txt)):
-                            thec = [c for c in allcs if c.loc == cloc(d, ttv, ii)]
+                        for ii,v in enumerate(txt):
+                            thec = next((c for c in allcs if c.loc == cloc(d, ttv, ii)), None)
                             if cnt < len(dxy):
                                 if xy == "dx":
-                                    thec[0].dx = dxy[cnt]
+                                    thec.dx = dxy[cnt]
                                 if xy == "dy":
-                                    thec[0].dy = dxy[cnt]
+                                    thec.dy = dxy[cnt]
                             cnt += 1
                     if cnt >= len(dxy):
                         break
@@ -789,7 +789,6 @@ class ParsedText:
     def Make_Editable(self):
         el = self.textel
         el.set("xml:space", "preserve")
-        # if len(self.lns)==1 and self.lns[0].tlvlno==0: # only child, no nesting, not a sub/superscript
         if (
             len(self.lns) == 1
             and self.lns[0].tlvlno is not None
@@ -798,10 +797,6 @@ class ParsedText:
             ln = self.lns[0]
             olddx = [c.dx for ln in self.lns for c in ln.cs]
             olddy = [c.dy for ln in self.lns for c in ln.cs]
-
-            # ln.el.set('sodipodi:role','line')
-            # self.lns = self.Parse_Lines(el); # unnecessary if called last
-            # self.lns[0].change_pos(oldx,oldy);
 
             if len(ln.cs) > 0:
                 cel = ln.cs[0].loc.el
@@ -812,10 +807,6 @@ class ParsedText:
                 xyset(tlvl.getparent(), "x", ln.x)
                 xyset(tlvl.getparent(), "y", ln.y)
 
-                # tx = ln.el.get('x'); ty=ln.el.get('y');
-                # # myp = ln.el.getparent();
-                # if tx is not None: tlvl.set('x',tx)      # enabling sodipodi causes it to move to the parent's x and y
-                # if ty is not None: tlvl.set('y',ty)      # enabling sodipodi causes it to move to the parent's x and y
                 tlvl.set("sodipodi:role", "line")
                 # reenable sodipodi so we can insert returns
 
@@ -825,6 +816,7 @@ class ParsedText:
                         self.lns[0].cs[ii].dy = olddy[ii]
                     self.Update_Delta(forceupdate=True)
                     # may have deleted spr lines
+
 
     def Split_Off_Chunks(self, ws):
         nll = self.duplicate()
@@ -1030,12 +1022,12 @@ class ParsedText:
                     origx = ln.cs[0].pts_ut[0][0]
 
                 newtxt = self.Split_Off_Characters(ln.cs)
-                if isinstance(newtxt, FlowRoot):
+                if newtxt.tag==FRtag:
                     for d in newtxt.descendants2():
-                        if isinstance(d, FlowRoot):
+                        if d.tag==FRtag:
                             d.tag = TextElement.ctag
                         elif isinstance(d, (FlowPara, FlowSpan)):
-                            d.tag = Tspan.ctag
+                            d.tag = TStag
                         elif isinstance(d, inkex.FlowRegion):
                             d.delete()
                 else:
@@ -1246,13 +1238,13 @@ class ParsedText:
     # Parse_Lines for flowed text
     def Parse_Lines_Flow(self):
         sty = self.textel.cspecified_style
-        isflowroot = isinstance(self.textel, FlowRoot)
+        isflowroot = self.textel.tag==FRtag
         isshapeins = (
-            isinstance(self.textel, TextElement)
+            self.textel.tag==TEtag
             and sty.get_link("shape-inside", self.textel.croot) is not None
         )
         isinlinesz = (
-            isinstance(self.textel, TextElement) and sty.get("inline-size") is not None
+            self.textel.tag==TEtag and sty.get("inline-size") is not None
         )
 
         # Determine the flow region
@@ -3168,9 +3160,7 @@ class tchar:
 
     def add_style(self, sty, setdefault=True):
         # Adds a style to an existing character by wrapping it in a new Tspan
-        # t = Tspan();
-        span = Tspan if isinstance(self.ln.pt.textel, TextElement) else inkex.FlowSpan
-        # t = self.loc.el.croot.new_element(span, self.loc.el)
+        span = Tspan if self.ln.pt.textel.tag==TEtag else inkex.FlowSpan
         t = span()
         t.text = self.c
 
@@ -3528,7 +3518,7 @@ class Character_Table:
         if forcecommand:
             # Examine the whole document if using command
             ctels = [
-                d for d in self.root.iddict.ds if isinstance(d, (TextElement, FlowRoot))
+                d for d in self.root.iddict.ds if d.tag in TEFRtags
             ]
             ct, pct, self.rtable = self.collect_characters(ctels)
 
@@ -3820,7 +3810,7 @@ class Character_Table:
 
 # Recursively delete empty elements
 # Tspans are deleted if they're totally empty, TextElements are deleted if they contain only whitespace
-TEtag = TextElement.ctag
+
 
 
 def wstrip(txt):  # strip whitespaces
@@ -3904,7 +3894,7 @@ def shouldfixfont(ffam):
 def Character_Fixer(els):
     for el in els:
         shouldfix, fixw = shouldfixfont(el.cstyle.get("font-family"))
-        if shouldfix and isinstance(el, (TextElement, inkex.FlowRoot)):
+        if shouldfix and el.tag in TEFRtags:
             Replace_Non_Ascii_Font(el, fixw[1])
 
 
@@ -3963,13 +3953,14 @@ def Character_Fixer2(els):
                             prev_nonascii = nonascii(c)
 
 
+spantags = tags((Tspan, inkex.FlowPara, inkex.FlowSpan))
 def Replace_Non_Ascii_Font(el, newfont, *args):
     def alltext(el):
         astr = el.text
         if astr is None:
             astr = ""
         for k in list(el):
-            if isinstance(k, (Tspan, inkex.FlowPara, inkex.FlowSpan)):
+            if k.tag in spantags:
                 astr += alltext(k)
                 tl = k.tail
                 if tl is None:
@@ -3982,7 +3973,7 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
         alltxt = [el.text]
         el.text = ""
         for k in list(el):
-            if isinstance(k, (Tspan, inkex.FlowPara, inkex.FlowSpan)):
+            if k.tag in spantags:
                 dupe = k.duplicate()
                 alltxt.append(dupe)
                 alltxt.append(k.tail)
@@ -4021,7 +4012,7 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
                             el.text = w
                         else:
                             lstspan.tail = w
-            elif isinstance(t, (Tspan, inkex.FlowPara, inkex.FlowSpan)):
+            elif t.tag in spantags:
                 Replace_Non_Ascii_Font(t, newfont, True)
                 el.append(t)
                 t.cspecified_style = None
@@ -4030,7 +4021,7 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
 
     # Inkscape automatically prunes empty text/tails
     # Do the same so future parsing is not affected
-    if isinstance(el, inkex.TextElement):
+    if el.tag==TEtag:
         for d in el.descendants2():
             if d.text is not None and d.text == "":
                 d.text = None
