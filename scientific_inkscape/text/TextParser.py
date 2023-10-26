@@ -816,7 +816,24 @@ class ParsedText:
                         self.lns[0].cs[ii].dy = olddy[ii]
                     self.Update_Delta(forceupdate=True)
                     # may have deleted spr lines
-
+                    
+                el.cstyle['line-height']=1
+                for d in el.descendants2()[1:]:
+                    d.cstyle.pop('line-height',None)
+        # for d in el.descendants2():
+        #     sty = d.cstyle
+        #     for key in ['font-family','font-stretch','font-weight','font-style','-inkscape-font-specification']:
+        #         sty.pop(key, None)
+                
+        #     d.cstyle = sty
+        # for ln in self.lns:
+        #     for c in ln.cs:
+        #         sty = c.loc.sel.cstyle
+        #         # sty['font-size']=c.utfs
+        #         sty.update(c.fsty)
+        #         c.loc.sel.cstyle = sty
+            
+            
 
     def Split_Off_Chunks(self, ws):
         nll = self.duplicate()
