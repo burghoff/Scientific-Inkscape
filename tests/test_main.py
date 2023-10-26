@@ -71,6 +71,7 @@ from homogenizer import Homogenizer
 from autoexporter import AutoExporter
 from inkex.tester import ComparisonMixin, TestCase
 # from inkex.tester.filters import CompareWithoutIds
+os.environ['SI_TESTING_VERSION'] = version   # needed to avoid circular imports
 import tester_mods  # noqa
 from tester_mods import CompareNumericFuzzy2, CompareImages
 

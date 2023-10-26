@@ -1,4 +1,5 @@
-from test_main import version
+import os
+version = os.environ['SI_TESTING_VERSION'] 
 import inkex.tester
 import re
 
