@@ -825,24 +825,21 @@ class ParsedText:
                 for d in el.descendants2()[1:]:
                     d.cstyle.pop('line-height',None)
                     
-        # if len(self.cs)>0:
-        #     # Clear all fonts and only apply to relevant Tspans
-        #     for d in el.descendants2():
-        #         # inkex.utils.debug(tuple(d.cstyle))
-        #         sty = Style(tuple(d.cstyle.items()))
-        #         for key in ['font-family','font-stretch','font-weight','font-style','-inkscape-font-specification']:
-        #             sty.pop(key, None)
-        #         d.cstyle = sty
-        #     for c in self.cs:
-        #         sty = Style(tuple(c.loc.sel.cstyle.items()))
-        #         # if el.get_id()=='text0':
-        #         #     inkex.utils.debug((c.c,c.loc.sel.get_id(),c.fsty))
-        #         sty.update(c.fsty)
-        #         c.loc.sel.cstyle = sty
-        #     # Put the first char's font at top since that's what Inkscape displays
-        #     sty = Style(tuple(el.cstyle.items()))
-        #     sty.update(self.cs[0].fsty)
-        #     el.cstyle = sty
+        if len(self.cs)>0:
+            # Clear all fonts and only apply to relevant Tspans
+            for d in el.descendants2():
+                sty = Style(tuple(d.cstyle.items()))
+                for key in ['font-family','font-stretch','font-weight','font-style','-inkscape-font-specification']:
+                    sty.pop(key, None)
+                d.cstyle = sty
+            for c in self.cs:
+                sty = Style(tuple(c.loc.sel.cstyle.items()))
+                sty.update(c.fsty)
+                c.loc.sel.cstyle = sty
+            # Put the first char's font at top since that's what Inkscape displays
+            sty = Style(tuple(el.cstyle.items()))
+            sty.update(self.cs[0].fsty)
+            el.cstyle = sty
             
             
 
