@@ -310,6 +310,10 @@ class ParsedText:
 
     def reparse(self):
         self.__init__(self.textel, self.ctable)
+        
+    @property
+    def cs(self):
+        return [c for ln in self.lns for c in ln.cs]
 
     # Every text element in an SVG can be thought of as a group of lines.
     # A line is a collection of text that gets its position from a single source element.
@@ -820,18 +824,25 @@ class ParsedText:
                 el.cstyle['line-height']=1
                 for d in el.descendants2()[1:]:
                     d.cstyle.pop('line-height',None)
-        # for d in el.descendants2():
-        #     sty = d.cstyle
-        #     for key in ['font-family','font-stretch','font-weight','font-style','-inkscape-font-specification']:
-        #         sty.pop(key, None)
-                
-        #     d.cstyle = sty
-        # for ln in self.lns:
-        #     for c in ln.cs:
-        #         sty = c.loc.sel.cstyle
-        #         # sty['font-size']=c.utfs
+                    
+        # if len(self.cs)>0:
+        #     # Clear all fonts and only apply to relevant Tspans
+        #     for d in el.descendants2():
+        #         # inkex.utils.debug(tuple(d.cstyle))
+        #         sty = Style(tuple(d.cstyle.items()))
+        #         for key in ['font-family','font-stretch','font-weight','font-style','-inkscape-font-specification']:
+        #             sty.pop(key, None)
+        #         d.cstyle = sty
+        #     for c in self.cs:
+        #         sty = Style(tuple(c.loc.sel.cstyle.items()))
+        #         # if el.get_id()=='text0':
+        #         #     inkex.utils.debug((c.c,c.loc.sel.get_id(),c.fsty))
         #         sty.update(c.fsty)
         #         c.loc.sel.cstyle = sty
+        #     # Put the first char's font at top since that's what Inkscape displays
+        #     sty = Style(tuple(el.cstyle.items()))
+        #     sty.update(self.cs[0].fsty)
+        #     el.cstyle = sty
             
             
 
@@ -2991,6 +3002,9 @@ class tchar:
         self._sty = si
         self.lsp = tchar.lspfunc(self._sty)
         self.bshft = tchar.bshftfunc(self._sty, self.loc.sel, self.ln.pt.textel)
+        
+        self.tsty = true_style(si)
+        self.fsty = font_style(si)
 
     # anchorfrac = property(lambda self: get_anchorfrac(self.ln.anchor))
 
@@ -3223,8 +3237,6 @@ class tchar:
 
         t.cstyle = styset
         self.sty = styset
-        self.tsty = true_style(styset)
-        self.fsty = font_style(styset)
 
     def makesubsuper(self, sz=65):
         if self.type == "super":
