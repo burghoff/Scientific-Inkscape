@@ -1023,8 +1023,6 @@ class ParsedText:
                 el.cstyle["-inkscape-font-specification"] = None
                 for c in rlst[0][1]:
                     c.sty = el.cstyle
-                    c.tsty = true_style(el.cstyle)
-                    c.fsty = font_style(el.cstyle)
             # For less common, need to wrap in a new Tspan
             for r in rlst[1:]:
                 for c in r[1]:
