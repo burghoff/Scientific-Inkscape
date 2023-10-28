@@ -106,6 +106,7 @@ def xmldiff_xpath(data1, data2):
 
     delta = DeltaLogger()
     _xmldiff(xml1, xml2, delta, memo1, memo2)
+    
     return xml.tostring(xml1).decode("utf-8"), delta
 
 def xpath_ids(svg):
@@ -205,10 +206,11 @@ def xpath_ids(svg):
             elif n in bareids:
                 el.attrib[n] = repl_ids[v]
             elif "url(#" in v:  # precheck for speed
-                if any([w in v for w in oldids3]):
-                    for w in [oi3 for oi3 in oldids3 if oi3 in v]:
+                ms = re.findall(urlpat,v)
+                for m in ms:
+                    if m in oldids3:
                         el.attrib[n] = el.attrib[n].replace(
-                            "url(#" + w[5:-1] + ")", "url(#" + repl_ids[w[5:-1]] + ")"
+                            m, "url(#" + repl_ids[m[5:-1]] + ")"
                         )
         if el.tag == styletag:
             if el.text is not None:

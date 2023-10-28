@@ -1047,8 +1047,6 @@ class ParsedText:
         if self.isflow:
             newtxts = []
             for ln in reversed(self.lns):
-                import math
-
                 nany = any([math.isnan(yv) for yv in ln.y])
 
                 anch = ln.anchor
