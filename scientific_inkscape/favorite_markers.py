@@ -356,10 +356,10 @@ class FavoriteMarkers(inkex.EffectExtension):
             else:
                 m = previousmkr
             # dh.Set_Style_Comp(el, "marker-" + mtype, "url(#" + m.get_id() + ")")
-            el.cstyle["marker-" + mtype]="url(#" + m.get_id() + ")"
+            el.cstyle["marker-" + mtype] = "url(#" + m.get_id() + ")"
         else:
             # dh.Set_Style_Comp(el, "marker-" + mtype, None)
-            el.cstyle["marker-" + mtype]=None
+            el.cstyle["marker-" + mtype] = None
 
         # dh.debug(mkrname+mtype)
         # dh.debug(mkrdat)
@@ -495,4 +495,4 @@ class FavoriteMarkers(inkex.EffectExtension):
 
 
 if __name__ == "__main__":
-    dh.Run_SI_Extension(FavoriteMarkers(),"Favorite markers")
+    dh.Run_SI_Extension(FavoriteMarkers(), "Favorite markers")

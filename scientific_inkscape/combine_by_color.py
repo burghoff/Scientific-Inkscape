@@ -75,7 +75,9 @@ class CombineByColor(inkex.EffectExtension):
             #     sf1.stroke is not None
             #     and sf1.stroke.efflightness >= lightness_threshold
             # ):
-            if (sf1.stroke is None or sf1.stroke.efflightness >= lightness_threshold) and (sf1.fill is None or sf1.fill.efflightness >= lightness_threshold) :
+            if (
+                sf1.stroke is None or sf1.stroke.efflightness >= lightness_threshold
+            ) and (sf1.fill is None or sf1.fill.efflightness >= lightness_threshold):
                 merges = [ii]
                 merged[ii] = True
                 for jj in range(ii):
@@ -131,4 +133,4 @@ class CombineByColor(inkex.EffectExtension):
 
 
 if __name__ == "__main__":
-    dh.Run_SI_Extension(CombineByColor(),"Combine by color")
+    dh.Run_SI_Extension(CombineByColor(), "Combine by color")

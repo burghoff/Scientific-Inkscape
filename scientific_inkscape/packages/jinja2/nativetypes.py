@@ -27,7 +27,7 @@ def native_concat(nodes):
     if len(head) == 1:
         raw = head[0]
     else:
-        raw = u"".join([text_type(v) for v in chain(head, nodes)])
+        raw = "".join([text_type(v) for v in chain(head, nodes)])
 
     try:
         return literal_eval(raw)
@@ -45,7 +45,7 @@ class NativeCodeGenerator(CodeGenerator):
         return value
 
     def _output_const_repr(self, group):
-        return repr(u"".join([text_type(v) for v in group]))
+        return repr("".join([text_type(v) for v in group]))
 
     def _output_child_to_const(self, node, frame, finalize):
         const = node.as_const(frame.eval_ctx)

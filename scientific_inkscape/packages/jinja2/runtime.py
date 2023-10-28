@@ -66,7 +66,7 @@ def markup_join(seq):
     for arg in iterator:
         buf.append(arg)
         if hasattr(arg, "__html__"):
-            return Markup(u"").join(chain(buf, iterator))
+            return Markup("").join(chain(buf, iterator))
     return concat(buf)
 
 
@@ -808,7 +808,7 @@ class Undefined(object):
         return id(type(self))
 
     def __str__(self):
-        return u""
+        return ""
 
     def __len__(self):
         return 0
@@ -962,12 +962,12 @@ class DebugUndefined(Undefined):
     def __str__(self):
         if self._undefined_hint is None:
             if self._undefined_obj is missing:
-                return u"{{ %s }}" % self._undefined_name
+                return "{{ %s }}" % self._undefined_name
             return "{{ no such element: %s[%r] }}" % (
                 object_type_repr(self._undefined_obj),
                 self._undefined_name,
             )
-        return u"{{ undefined value printed: %s }}" % self._undefined_hint
+        return "{{ undefined value printed: %s }}" % self._undefined_hint
 
 
 @implements_to_string

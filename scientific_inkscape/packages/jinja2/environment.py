@@ -735,11 +735,11 @@ class Environment(object):
                 import imp
                 import marshal
 
-                py_header = imp.get_magic() + u"\xff\xff\xff\xff".encode("iso-8859-15")
+                py_header = imp.get_magic() + "\xff\xff\xff\xff".encode("iso-8859-15")
 
                 # Python 3.3 added a source filesize to the header
                 if sys.version_info >= (3, 3):
-                    py_header += u"\x00\x00\x00\x00".encode("iso-8859-15")
+                    py_header += "\x00\x00\x00\x00".encode("iso-8859-15")
 
         def write_file(filename, data):
             if zip:
@@ -904,7 +904,7 @@ class Environment(object):
 
         if not names:
             raise TemplatesNotFound(
-                message=u"Tried to select from an empty list " u"of templates."
+                message="Tried to select from an empty list " "of templates."
             )
         globals = self.make_globals(globals)
         for name in names:

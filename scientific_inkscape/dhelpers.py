@@ -30,16 +30,30 @@ import inkex
 # For SI we override Inkex's Style with a modified version, Style0
 # To do this we import Style0, then replace inkex.Style with it
 import Style0
+
 inkex.Style = Style0.Style0
 
 # Next we make sure we have the text submodule. If not, we add it from SI
-import text    # noqa
+import text  # noqa
 
 from inkex import Style
-from inkex.text.cache import tags, grouplike_tags, bb2_support_tags, bounding_box2, bbox, ipx
-from inkex.text.utils import (composed_width,
-                              unique, object_to_path,isrectangle,
-                              Get_Binary_Loc,Get_Bounding_Boxes,subprocess_repeat)
+from inkex.text.cache import (
+    tags,
+    grouplike_tags,
+    bb2_support_tags,
+    bounding_box2,
+    bbox,
+    ipx,
+)
+from inkex.text.utils import (
+    composed_width,
+    unique,
+    object_to_path,
+    isrectangle,
+    Get_Binary_Loc,
+    Get_Bounding_Boxes,
+    subprocess_repeat,
+)
 
 
 from inkex import Tspan, Transform, Path, PathElement, BaseElement
@@ -47,14 +61,18 @@ from applytransform_mod import fuseTransform
 import lxml, math, re, os, random, sys
 from functools import lru_cache
 
+
 # Returns non-comment children
 def list2(el):
-    return [k for k in list(el) if not(k.tag == ctag)]
+    return [k for k in list(el) if not (k.tag == ctag)]
 
-EBget = lxml.etree.ElementBase.get;
-EBset = lxml.etree.ElementBase.set;
+
+EBget = lxml.etree.ElementBase.get
+EBset = lxml.etree.ElementBase.set
 
 import inspect
+
+
 def count_callers():
     caller_frame = inspect.stack()[2]
     filename = caller_frame.filename
@@ -64,12 +82,12 @@ def count_callers():
     try:
         callinfo
     except:
-        callinfo = dict();
+        callinfo = dict()
     if lstr in callinfo:
-        callinfo[lstr]+=1
+        callinfo[lstr] += 1
     else:
-        callinfo[lstr]=1
-        
+        callinfo[lstr] = 1
+
 
 # Replace an element with another one
 # Puts it in the same location, update the cache dicts
@@ -92,7 +110,9 @@ def replace_element(el1, el2):
 # the true size reported by Inkscape, inheriting any styles/transforms
 def listsplit(x):
     # split list on commas or spaces
-    return [ipx(v) for v in re.split('[ ,]', x) if v]
+    return [ipx(v) for v in re.split("[ ,]", x) if v]
+
+
 # def Get_Composed_List(el, comp, nargout=1):
 #     cs = el.cspecified_style
 #     ct = el.ccomposed_transform
@@ -112,7 +132,8 @@ def listsplit(x):
 #             return None
 #         else:
 #             return None, None
-        
+
+
 def composed_list(el, comp):
     cs = el.cspecified_style
     ct = el.ccomposed_transform
@@ -176,8 +197,8 @@ def unlink2(el):
             d = useel.duplicate()
 
             # xy translation treated as a transform (applied first, then clip/mask, then full xform)
-            tx = EBget(el,"x")
-            ty = EBget(el,"y")
+            tx = EBget(el, "x")
+            ty = EBget(el, "y")
             if tx is None:
                 tx = 0
             if ty is None:
@@ -192,8 +213,8 @@ def unlink2(el):
             )
             compose_all(
                 d,
-                el.get_link('clip-path',llget=True),
-                el.get_link('mask',llget=True),
+                el.get_link("clip-path", llget=True),
+                el.get_link("mask", llget=True),
                 el.ctransform,
                 el.ccascaded_style,
             )
@@ -201,12 +222,12 @@ def unlink2(el):
             d.set("unlinked_clone", True)
             for k in d.descendants2()[1:]:
                 unlink2(k)
-                
+
             # To match Unlink Clone behavior, convert Symbol to Group
-            if isinstance(d,(inkex.Symbol)):
+            if isinstance(d, (inkex.Symbol)):
                 g = group(list(d))
                 ungroup(d)
-                d = g;
+                d = g
             return d
         else:
             return el
@@ -214,11 +235,11 @@ def unlink2(el):
         return el
 
 
-
 # unungroupable = (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment)
 unungroupable = tags((inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.ForeignObject))
 ctag = lxml.etree.Comment
 unungroupable.add(ctag)
+
 
 def ungroup(groupel):
     # Ungroup a group, preserving style, clipping, and masking
@@ -227,10 +248,10 @@ def ungroup(groupel):
     if groupel.croot is not None:
         gparent = groupel.getparent()
         gindex = gparent.index(groupel)  # group's location in parent
-        
+
         gtransform = groupel.ctransform
-        gclip = groupel.get_link('clip-path',llget=True)
-        gmask = groupel.get_link('mask',llget=True)
+        gclip = groupel.get_link("clip-path", llget=True)
+        gmask = groupel.get_link("mask", llget=True)
         gstyle = groupel.ccascaded_style
 
         for el in reversed(list(groupel)):
@@ -247,27 +268,32 @@ def ungroup(groupel):
         if len(groupel) == 0:
             groupel.delete()
 
-# Group a list of elements, placing the group in the location of the first element            
-def group(el_list,moveTCM=False):
+
+# Group a list of elements, placing the group in the location of the first element
+def group(el_list, moveTCM=False):
     # g = el_list[0].croot.new_element(inkex.Group)
     g = inkex.Group()
     myi = list(el_list[0].getparent()).index(el_list[0])
     el_list[0].getparent().insert(myi + 1, g)
     for el in el_list:
         g.append(el)
-        
+
     # If moveTCM is set and are grouping one element, move transform/clip/mask to group
     # Handy for adding and properly composing transforms/clips/masks
-    if moveTCM and len(el_list)==1:
-        g.ctransform = el.ctransform;              el.ctransform = None;
-        g.set("clip-path", el.get("clip-path"));   el.set("clip-path", None)
-        g.set("mask", el.get("mask"))          ;   el.set("mask", None)
+    if moveTCM and len(el_list) == 1:
+        g.ctransform = el.ctransform
+        el.ctransform = None
+        g.set("clip-path", el.get("clip-path"))
+        el.set("clip-path", None)
+        g.set("mask", el.get("mask"))
+        el.set("mask", None)
     return g
-
 
 
 # For composing a group's properties onto its children (also group-like objects like Uses)
 Itmat = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+
+
 def compose_all(el, clip, mask, transform, style):
     if style is not None:  # style must go first since we may change it with CSS
         mysty = el.ccascaded_style
@@ -338,8 +364,6 @@ def flush_stylesheet_entries(svg):
             stys[0].text += "\n" + ss + "\n"
 
 
-
-
 def intersect_paths(ptha, pthb):
     # Intersect two rectangular paths. Could be generalized later
     ptsa = list(ptha.end_points)
@@ -357,6 +381,8 @@ def intersect_paths(ptha, pthb):
 
 
 usetag = inkex.Use.ctag
+
+
 def merge_clipmask(node, newclip, mask=False):
     # Modified from Deep Ungroup
     def compose_clips(el, ptha, pthb):
@@ -394,7 +420,7 @@ def merge_clipmask(node, newclip, mask=False):
             for k in list(newclip):
                 if k.tag == usetag:
                     k = unlink2(k)
-        oldclip = node.get_link(cmstr,llget=True)
+        oldclip = node.get_link(cmstr, llget=True)
         if oldclip is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
             for k in list(oldclip):
@@ -429,103 +455,150 @@ def merge_clipmask(node, newclip, mask=False):
 
         return cout
 
-            
+
 # A cached list of all descendants of an svg in order
 # Currently only handles deletions appropriately
-class dtree():
-    def __init__(self,svg):
+class dtree:
+    def __init__(self, svg):
         ds, pts = svg.descendants2(True)
-        self.ds = ds;
-        self.iids = {d: ii for ii,d in enumerate(ds)} # desc. index by el
-        iipts = {ptv: (ii,jj) for ii,pt in enumerate(pts) for jj,ptv in enumerate(pt)}
-        self.range = [(ii,iipts[d][0]) for ii,d in enumerate(ds)]
-    def iterel(self,el):
+        self.ds = ds
+        self.iids = {d: ii for ii, d in enumerate(ds)}  # desc. index by el
+        iipts = {
+            ptv: (ii, jj) for ii, pt in enumerate(pts) for jj, ptv in enumerate(pt)
+        }
+        self.range = [(ii, iipts[d][0]) for ii, d in enumerate(ds)]
+
+    def iterel(self, el):
         try:
             eli = self.iids[el]
-            for ii in range(self.range[eli][0],self.range[eli][1]):
+            for ii in range(self.range[eli][0], self.range[eli][1]):
                 yield self.ds[ii]
         except:
             pass
-    def delel(self,el):
+
+    def delel(self, el):
         try:
             eli = self.iids[el]
             strt = self.range[eli][0]
             stop = self.range[eli][1]
-            self.ds  = self.ds[:strt]  + self.ds[stop:]
-            self.range  = self.range[:strt]  + self.range[stop:]
+            self.ds = self.ds[:strt] + self.ds[stop:]
+            self.range = self.range[:strt] + self.range[stop:]
             N = stop - strt
-            self.range  = [(x - N if x > strt else x, y - N if y > strt else y) for x, y in self.range]
-            self.iids = {d: ii for ii,d in enumerate(self.ds)} # desc. index by el
+            self.range = [
+                (x - N if x > strt else x, y - N if y > strt else y)
+                for x, y in self.range
+            ]
+            self.iids = {d: ii for ii, d in enumerate(self.ds)}  # desc. index by el
         except:
-            pass    
+            pass
+
+
 def get_cd2(svg):
     if not (hasattr(svg, "_cd2")):
         svg._cd2 = dtree(svg)
     return svg._cd2
-def set_cd2(svg,sv):
+
+
+def set_cd2(svg, sv):
     if sv is None and hasattr(svg, "_cd2"):
         delattr(svg, "_cd2")
-inkex.SvgDocumentElement.cdescendants2 = property(get_cd2,set_cd2)
 
 
-masktag = inkex.addNS('mask','svg')
+inkex.SvgDocumentElement.cdescendants2 = property(get_cd2, set_cd2)
+
+
+masktag = inkex.addNS("mask", "svg")
 svgtag = inkex.SvgDocumentElement.ctag
 
-unrendered = tags((inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.ForeignObject, inkex.Guide,
-              inkex.ClipPath,inkex.StyleElement,Tspan,inkex.FlowRegion,inkex.FlowPara))
-unrendered.update({masktag,inkex.addNS('RDF','rdf'),   inkex.addNS('Work','cc'),
-                          inkex.addNS('format','dc'), inkex.addNS('type','dc')})
+unrendered = tags(
+    (
+        inkex.NamedView,
+        inkex.Defs,
+        inkex.Metadata,
+        inkex.ForeignObject,
+        inkex.Guide,
+        inkex.ClipPath,
+        inkex.StyleElement,
+        Tspan,
+        inkex.FlowRegion,
+        inkex.FlowPara,
+    )
+)
+unrendered.update(
+    {
+        masktag,
+        inkex.addNS("RDF", "rdf"),
+        inkex.addNS("Work", "cc"),
+        inkex.addNS("format", "dc"),
+        inkex.addNS("type", "dc"),
+    }
+)
+
+
 # Determine if object has a bbox
-@lru_cache(maxsize=None)    
+@lru_cache(maxsize=None)
 def hasbbox(el):
-    myp = el.getparent();
+    myp = el.getparent()
     if myp is None:
         return el.tag == svgtag
     else:
         return el.tag not in unrendered if hasbbox(myp) else False
 
+
 # Determine if object itself is drawn
-@lru_cache(maxsize=None)     
+@lru_cache(maxsize=None)
 def isdrawn(el):
-    return el.tag not in grouplike_tags and hasbbox(el) and el.cspecified_style.get('display')!='none'
+    return (
+        el.tag not in grouplike_tags
+        and hasbbox(el)
+        and el.cspecified_style.get("display") != "none"
+    )
+
 
 # A wrapper that replaces Get_Bounding_Boxes with Pythonic calls only if possible
-def BB2(slf,els=None,forceupdate=False,roughpath=False,parsed=False):
+def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
     if els is None:
-        els = slf.svg.descendants2();
-    if all([d.tag in bb2_support_tags or not(hasbbox(d)) for d in els]):
-        # All descendants of all els in the list               
+        els = slf.svg.descendants2()
+    if all([d.tag in bb2_support_tags or not (hasbbox(d)) for d in els]):
+        # All descendants of all els in the list
         allds = set()
         for el in els:
-            if el not in allds: # so we're not re-descendants2ing
+            if el not in allds:  # so we're not re-descendants2ing
                 allds.update(el.descendants2())
-        tels = [d for d in unique(allds) if isinstance(d,(inkex.TextElement,inkex.FlowRoot))]
-        
-        if len(tels)>0:
+        tels = [
+            d
+            for d in unique(allds)
+            if isinstance(d, (inkex.TextElement, inkex.FlowRoot))
+        ]
+
+        if len(tels) > 0:
             if forceupdate:
                 slf.svg.char_table = None
                 for d in els:
                     d.cbbox = None
                     d.parsed_text = None
-            if not hasattr(slf.svg, '_char_table'):
-                from inkex.text import TextParser                    # noqa
+            if not hasattr(slf.svg, "_char_table"):
+                from inkex.text import TextParser  # noqa
+
                 slf.svg.make_char_table(els=tels)
                 pts = [el.parsed_text for el in tels]
                 TextParser.ParsedTextList(pts).precalcs()
         ret = inkex.OrderedDict()
         for d in els:
             if d.tag in bb2_support_tags and hasbbox(d):
-                mbbox = bounding_box2(d,roughpath=roughpath,parsed=parsed)
-                if not(mbbox.isnull):
+                mbbox = bounding_box2(d, roughpath=roughpath, parsed=parsed)
+                if not (mbbox.isnull):
                     ret[d.get_id()] = mbbox.sbb
     else:
         import tempfile
+
         with tempfile.TemporaryFile() as temp:
-            tname = os.path.abspath(temp.name);
+            tname = os.path.abspath(temp.name)
             overwrite_svg(slf.svg, tname)
             ret = Get_Bounding_Boxes(filename=tname, svg=slf.svg)
 
     return ret
+
 
 # For diagnosing BB2
 def Check_BB2(slf):
@@ -533,27 +606,26 @@ def Check_BB2(slf):
     HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
     for el in slf.svg.descendants2():
         if el.get_id() in bb2 and not el.tag in grouplike_tags:
-            bb = bbox(bb2[el.get_id()]);
+            bb = bbox(bb2[el.get_id()])
             # bb = bbox(bb2[el.get_id()])*(1/slf.svg.cscale);
             r = inkex.Rectangle()
-            r.set('mysource',el.get_id())
-            r.set('x',bb.x1)
-            r.set('y',bb.y1)
-            r.set('height',bb.h)
-            r.set('width', bb.w)
+            r.set("mysource", el.get_id())
+            r.set("x", bb.x1)
+            r.set("y", bb.y1)
+            r.set("height", bb.h)
+            r.set("width", bb.w)
             r.set("style", HIGHLIGHT_STYLE)
             el.croot.append(r)
 
 
-
 # Vectorized calculation of bbox intersection bools
 # Returns a matrix sized len(bbs) x len(bb2s)
-def bb_intersects(bbs,bb2s=None):
+def bb_intersects(bbs, bb2s=None):
     if bb2s is None:
         bb2s = bbs
     import numpy as np
-    
-    if len(bbs)==0 or len(bb2s)==0:
+
+    if len(bbs) == 0 or len(bb2s) == 0:
         return np.zeros((len(bbs), len(bb2s)), dtype=bool)
     else:
         xc1, yc1, wd1, ht1 = np.array([(bb.xc, bb.yc, bb.w, bb.h) for bb in bbs]).T
@@ -563,14 +635,18 @@ def bb_intersects(bbs,bb2s=None):
             (abs(yc1.reshape(-1, 1) - yc2) * 2 < (ht1.reshape(-1, 1) + ht2)),
         )
 
+
 # Get SVG from file
 from inkex import load_svg
+
+
 def svg_from_file(fin):
     svg = load_svg(fin).getroot()
     return svg
 
+
 def el_from_string(strin):
-    prefix = '''
+    prefix = """
     <svg
        xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
        xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
@@ -579,10 +655,11 @@ def el_from_string(strin):
        xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
        xmlns:cc="http://creativecommons.org/ns#"
        xmlns:dc="http://purl.org/dc/elements/1.1/">
-      '''
-    svgtxt = prefix + strin + '</svg>'
+      """
+    svgtxt = prefix + strin + "</svg>"
     nsvg = svg_from_file(svgtxt)
     return list(nsvg)[0]
+
 
 # Write to disk, removing any existing file
 def overwrite_svg(svg, fileout):
@@ -591,8 +668,10 @@ def overwrite_svg(svg, fileout):
     except:
         pass
     # idebug(inkex)
-    import inkex.command # needed for a weird bug in v1.1
+    import inkex.command  # needed for a weird bug in v1.1
+
     inkex.command.write_svg(svg, fileout)
+
 
 global debugs
 debugs = ""
@@ -615,19 +694,20 @@ def write_debug():
         f.close()
 
 
-def idebug(x,printids=True):
+def idebug(x, printids=True):
     def is_nested_list_of_base_elements(x):
-        if not isinstance(x, (list,tuple)):
+        if not isinstance(x, (list, tuple)):
             return False
         for element in x:
-            if isinstance(element, (list,tuple)):
+            if isinstance(element, (list, tuple)):
                 if not is_nested_list_of_base_elements(element):
                     return False
             elif not isinstance(element, BaseElement):
                 return False
         return True
-    
+
     if printids and is_nested_list_of_base_elements(x):
+
         def process_nested_list(input_list):
             if isinstance(input_list, list):
                 return [process_nested_list(e) for e in input_list]
@@ -635,76 +715,110 @@ def idebug(x,printids=True):
                 return tuple([process_nested_list(e) for e in input_list])
             elif isinstance(input_list, BaseElement):
                 return input_list.get_id()
+
         pv = process_nested_list(x)
     else:
         pv = x
     inkex.utils.debug(pv)
 
+
 import time
+
 global lasttic
+
+
 def tic():
     global lasttic
     lasttic = time.time()
+
+
 def toc():
     global lasttic
-    idebug(time.time()-lasttic)
-    
-    
+    idebug(time.time() - lasttic)
+
+
 # style atts that could have urls
-urlatts = ["fill", "stroke", "clip-path", "mask", "filter",
-            "marker-start", "marker-mid", "marker-end", "marker"]
+urlatts = [
+    "fill",
+    "stroke",
+    "clip-path",
+    "mask",
+    "filter",
+    "marker-start",
+    "marker-mid",
+    "marker-end",
+    "marker",
+]
+
 
 # An efficient Pythonic version of Clean Up Document
 def clean_up_document(svg):
     # defs types that do nothing unless they are referenced
-    prune = ["clipPath", "mask", "linearGradient", "radialGradient", "pattern",
-             "symbol", "marker", "filter", "animate", "animateTransform", 
-             "animateMotion", "textPath", "font", "font-face"]
-    prune = [inkex.addNS(v,'svg') for v in prune]
-    
+    prune = [
+        "clipPath",
+        "mask",
+        "linearGradient",
+        "radialGradient",
+        "pattern",
+        "symbol",
+        "marker",
+        "filter",
+        "animate",
+        "animateTransform",
+        "animateMotion",
+        "textPath",
+        "font",
+        "font-face",
+    ]
+    prune = [inkex.addNS(v, "svg") for v in prune]
+
     # defs types that don't need to be referenced
-    exclude = [inkex.addNS(v,'svg') for v in ["style","glyph"]]
-    
+    exclude = [inkex.addNS(v, "svg") for v in ["style", "glyph"]]
+
     def should_prune(el):
-        return el.tag in prune or (el.getparent()==svg.cdefs and el.tag not in exclude)
-    
-    xlink = [inkex.addNS("href", "xlink"),"href"]
-    attids = {sa : dict() for sa in urlatts}
+        return el.tag in prune or (
+            el.getparent() == svg.cdefs and el.tag not in exclude
+        )
+
+    xlink = [inkex.addNS("href", "xlink"), "href"]
+    attids = {sa: dict() for sa in urlatts}
     xlinks = dict()
 
     def miterdescendants(el):
         yield el
         for d in el.iterdescendants():
             yield d
-    
+
     # Make dicts of all url-containing style atts and xlinks
     for d in svg.cdescendants2.ds:
         for attName in d.attrib.keys():
             if attName in urlatts:
-                if d.attrib[attName].startswith('url'):
+                if d.attrib[attName].startswith("url"):
                     attids[attName][d.get_id()] = d.attrib[attName][5:-1]
             elif attName in xlink:
-                if d.attrib[attName].startswith('#'):
+                if d.attrib[attName].startswith("#"):
                     xlinks[d.get_id()] = d.attrib[attName][1:]
-            elif attName=='style':
-                if 'url' in d.attrib[attName]:
+            elif attName == "style":
+                if "url" in d.attrib[attName]:
                     sty = Style(d.attrib[attName])
                     for an2 in sty.keys():
                         if an2 in urlatts:
-                            if sty[an2].startswith('url'):
-                                attids[an2][d.get_id()] = sty[an2][5:-1] 
+                            if sty[an2].startswith("url"):
+                                attids[an2][d.get_id()] = sty[an2][5:-1]
 
     deletedsome = True
     while deletedsome:
-        allurls = set([v for sa in urlatts for v in attids[sa].values()] + list(xlinks.values()))
+        allurls = set(
+            [v for sa in urlatts for v in attids[sa].values()] + list(xlinks.values())
+        )
         # sets much faster than lists for membership testing
         deletedsome = False
         for el in svg.cdescendants2.ds:
             if should_prune(el):
                 eldids = [dv.get_id() for dv in svg.cdescendants2.iterel(el)]
-                if not(any([idv in allurls for idv in eldids])):
+                if not (any([idv in allurls for idv in eldids])):
                     el.delete()
-                    deletedsome = True  
+                    deletedsome = True
                     for did in eldids:
                         for anm in urlatts:
                             if did in attids[anm]:
@@ -712,14 +826,12 @@ def clean_up_document(svg):
                         if did in xlinks:
                             del xlinks[did]
 
-    
 
-
-def global_transform(el, trnsfrm, irange=None, trange=None,preserveStroke=True):
+def global_transform(el, trnsfrm, irange=None, trange=None, preserveStroke=True):
     # Transforms an object and fuses it to any paths
     # If preserveStroke is set the stroke width will be unchanged, otherwise
     # will also be scaled
-    
+
     # If parent layer is transformed, need to rotate out of its coordinate system
     myp = el.getparent()
     if myp is None:
@@ -749,20 +861,24 @@ def global_transform(el, trnsfrm, irange=None, trange=None,preserveStroke=True):
         if sw is not None:
             neww, sf = composed_width(el, "stroke-width")
             # Set_Style_Comp(el, "stroke-width", str(sw / sf))
-            el.cstyle["stroke-width"]=str(sw / sf)
+            el.cstyle["stroke-width"] = str(sw / sf)
             # fix width
         if not (sd in [None, "none"]):
             nd, sf = composed_list(el, "stroke-dasharray")
-            el.cstyle["stroke-dasharray"]=str([sdv / sf for sdv in sd]).strip("[").strip("]")
+            el.cstyle["stroke-dasharray"] = (
+                str([sdv / sf for sdv in sd]).strip("[").strip("]")
+            )
             # fix dash
+
 
 # Delete and prune empty ancestor groups
 def deleteup(el):
     myp = el.getparent()
     el.delete()
     if myp is not None:
-        if not len(myp): # faster than getting children
+        if not len(myp):  # faster than getting children
             deleteup(myp)
+
 
 # Combines a group of path-like elements
 def combine_paths(els, mergeii=0):
@@ -882,9 +998,8 @@ def visible_descendants(svg):
     return [v for el in ndefs for v in el.descendants2()]
 
 
-
 # Get document location or prompt
-def Get_Current_File(ext,msgstr):
+def Get_Current_File(ext, msgstr):
     tooearly = inkex.ivp[0] <= 1 and inkex.ivp[1] < 1
     if not (tooearly):
         myfile = ext.document_path()
@@ -896,7 +1011,8 @@ def Get_Current_File(ext,msgstr):
             msg = msgstr + "Inkscape must be version 1.1.0 or higher."
         else:
             msg = (
-                msgstr + "the SVG must first be saved. Please retry after you have done so."
+                msgstr
+                + "the SVG must first be saved. Please retry after you have done so."
             )
         inkex.utils.errormsg(msg)
         quit()
@@ -906,42 +1022,53 @@ def Get_Current_File(ext,msgstr):
 
 
 si_dir = os.path.dirname(os.path.realpath(__file__))
+
+
 # Generate a temporary file or folder in SI's location / tmp
 # tempfile does not always work with Linux Snap distributions
-def si_tmp(dirbase='',filename=None):
+def si_tmp(dirbase="", filename=None):
     if sys.executable[0:4] == "/tmp" or sys.executable[0:5] == "/snap":
-        si_dir = os.path.dirname(os.path.realpath(__file__)) # in case si_dir is not loaded
-        tmp_dir = os.path.join(si_dir,'tmp')
+        si_dir = os.path.dirname(
+            os.path.realpath(__file__)
+        )  # in case si_dir is not loaded
+        tmp_dir = os.path.join(si_dir, "tmp")
     else:
         import tempfile
+
         tmp_dir = tempfile.gettempdir()
     if not os.path.exists(tmp_dir):
         os.mkdir(tmp_dir)
-    if filename is not None:                 # filename input
-        return os.path.join(tmp_dir,filename)
-    else:                                    # directory
-        subdir_name = dirbase+str(random.randint(1, 100000))
+    if filename is not None:  # filename input
+        return os.path.join(tmp_dir, filename)
+    else:  # directory
+        subdir_name = dirbase + str(random.randint(1, 100000))
         subdir_path = os.path.join(tmp_dir, subdir_name)
         while os.path.exists(subdir_path):
-            subdir_name = dirbase+str(random.randint(1, 100000))
+            subdir_name = dirbase + str(random.randint(1, 100000))
             subdir_path = os.path.join(tmp_dir, subdir_name)
         os.mkdir(subdir_path)
         return subdir_path
 
 
+masktag = inkex.addNS("mask", "svg")
 
-masktag = inkex.addNS('mask','svg')
+
 def isMask(el):
     return el.tag == masktag
+
 
 # cprofile tic and toc
 def ctic():
     import cProfile
+
     global pr
     pr = cProfile.Profile()
     pr.enable()
+
+
 def ctoc():
     import io, pstats
+
     global pr
     pr.disable()
     s = io.StringIO()
@@ -963,16 +1090,19 @@ def ctoc():
     with open(ppath, "w") as f:
         f.write(result)
 
-def Run_SI_Extension(effext,name):
+
+def Run_SI_Extension(effext, name):
     Version_Check(name)
-    
+
     def run_and_cleanup():
         effext.run()
         flush_stylesheet_entries(effext.svg)
-    
+
     alreadyran = False
     lprofile = os.getenv("LINEPROFILE") == "True"
-    batexists = os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)),'cprofile open.bat'))
+    batexists = os.path.exists(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "cprofile open.bat")
+    )
     cprofile = batexists if not lprofile else False
     if cprofile or lprofile:
         profiledir = get_script_path()
@@ -981,15 +1111,24 @@ def Run_SI_Extension(effext,name):
         if lprofile:
             try:
                 from line_profiler import LineProfiler
+
                 lp = LineProfiler()
                 from inkex.text import TextParser
                 import RemoveKerning
                 from inspect import getmembers, isfunction, isclass, getmodule
                 import font_properties
-    
+
                 fns = []
-                for m in [sys.modules[__name__], TextParser, RemoveKerning, Style, font_properties,
-                          inkex.transforms, getmodule(effext), inkex.text.speedups]:
+                for m in [
+                    sys.modules[__name__],
+                    TextParser,
+                    RemoveKerning,
+                    Style,
+                    font_properties,
+                    inkex.transforms,
+                    getmodule(effext),
+                    inkex.text.speedups,
+                ]:
                     fns += [v[1] for v in getmembers(m, isfunction)]
                     for c in getmembers(m, isclass):
                         if getmodule(c[1]) is m:
@@ -1006,69 +1145,79 @@ def Run_SI_Extension(effext,name):
                 lp.add_function(ipx.__wrapped__)
                 lp.add_function(TextParser.Character_Table.true_style.__wrapped__)
                 lp.add_function(inkex.text.speedups.transform_to_matrix.__wrapped__)
-                   
+
                 lp(run_and_cleanup)()
                 import io
+
                 stdouttrap = io.StringIO()
-                lp.dump_stats(os.path.abspath(os.path.join(profiledir, "lprofile.prof")))
+                lp.dump_stats(
+                    os.path.abspath(os.path.join(profiledir, "lprofile.prof"))
+                )
                 lp.print_stats(stdouttrap)
-    
+
                 ppath = os.path.abspath(os.path.join(profiledir, "lprofile.csv"))
                 result = stdouttrap.getvalue()
                 with open(ppath, "w", encoding="utf-8") as f:
                     f.write(result)
-                
+
                 # Copy lprofile.csv to the profiles subdirectory
-                profiles_dir = os.path.join(os.path.dirname(ppath), 'profiles')
+                profiles_dir = os.path.join(os.path.dirname(ppath), "profiles")
                 if not os.path.exists(profiles_dir):
                     os.makedirs(profiles_dir)
                 from datetime import datetime
                 import shutil
-                timestamp = datetime.now().strftime('%Y-%m-%dT%H-%M-%S')
-                new_filename = f'lprofile_{timestamp}.csv'
+
+                timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+                new_filename = f"lprofile_{timestamp}.csv"
                 dst_path = os.path.join(profiles_dir, new_filename)
                 shutil.copy2(ppath, dst_path)
-                
+
                 alreadyran = True
             except ImportError:
                 pass
 
-    if not(alreadyran):
+    if not (alreadyran):
         try:
             run_and_cleanup()
         except lxml.etree.XMLSyntaxError:
             try:
                 # Try getting Inkscape to write a new clean copy
-                s = effext;
+                s = effext
                 s.parse_arguments(sys.argv[1:])
                 if s.options.input_file is None:
                     s.options.input_file = sys.stdin
                 elif "DOCUMENT_PATH" not in os.environ:
                     os.environ["DOCUMENT_PATH"] = s.options.input_file
-                
-                def overwrite_output(filein,fileout):      
+
+                def overwrite_output(filein, fileout):
                     try:
                         os.remove(fileout)
                     except:
                         pass
-                    arg2 = [Get_Binary_Loc(),"--export-filename",fileout,filein,]
+                    arg2 = [
+                        Get_Binary_Loc(),
+                        "--export-filename",
+                        fileout,
+                        filein,
+                    ]
                     subprocess_repeat(arg2)
-                tmpname=s.options.input_file.strip('.svg')+'_tmp.svg'
-                overwrite_output(s.options.input_file,tmpname);
+
+                tmpname = s.options.input_file.strip(".svg") + "_tmp.svg"
+                overwrite_output(s.options.input_file, tmpname)
                 os.remove(s.options.input_file)
-                os.rename(tmpname,s.options.input_file)
+                os.rename(tmpname, s.options.input_file)
                 try:
                     run_and_cleanup()
                 except lxml.etree.XMLSyntaxError:
                     # Try removing problematic bytes
-                    with open(s.options.input_file, 'rb') as f:
+                    with open(s.options.input_file, "rb") as f:
                         bytes_content = f.read()
-                    cleaned_content = bytes_content.decode('utf-8', errors='ignore')
-                    nfin = s.options.input_file.strip('.svg')+'_tmp.svg'
-                    with open(nfin, 'w', encoding='utf-8') as f:
+                    cleaned_content = bytes_content.decode("utf-8", errors="ignore")
+                    nfin = s.options.input_file.strip(".svg") + "_tmp.svg"
+                    with open(nfin, "w", encoding="utf-8") as f:
                         f.write(cleaned_content)
                     os.remove(s.options.input_file)
-                    os.rename(tmpname,s.options.input_file)
+                    os.rename(tmpname, s.options.input_file)
                     run_and_cleanup()
             except:
                 inkex.utils.errormsg(
@@ -1076,24 +1225,26 @@ def Run_SI_Extension(effext,name):
                 )
     if cprofile:
         ctoc()
-    write_debug()   
-    
+    write_debug()
+
     # Display accumulated caller info if any
     # from inkex.transforms import callinfo
     global callinfo
     try:
         callinfo
     except:
-        callinfo = dict();
+        callinfo = dict()
     sorted_items = sorted(callinfo.items(), key=lambda x: x[1], reverse=True)
     for key, value in sorted_items:
         idebug(f"{key}: {value}")
 
+
 # Give early versions of Style a .to_xpath function
 def to_xpath_func(sty):
     if inkex.ivp[0] <= 1 and inkex.ivp[1] < 2:
-    # pre-1.2: use v1.1 version of to_xpath from inkex.Style
+        # pre-1.2: use v1.1 version of to_xpath from inkex.Style
         import re
+
         step_to_xpath = [
             (
                 re.compile(r"\[(\w+)\^=([^\]]+)\]"),
@@ -1114,6 +1265,7 @@ def to_xpath_func(sty):
             (re.compile(r"//\["), r"//*["),  # Attribute only match
             (re.compile(r"//(\w+)"), r"//svg:\1"),  # SVG namespace addition
         ]
+
         def style_to_xpath(styin):
             return "|".join([rule_to_xpath(rule) for rule in styin.rules])
 
@@ -1122,11 +1274,14 @@ def to_xpath_func(sty):
             for matcher, replacer in step_to_xpath:
                 ret = matcher.sub(replacer, ret)
             return ret
+
         return style_to_xpath(sty)
     else:
         return sty.to_xpath()
+
+
 Style.to_xpath = to_xpath_func
-inkex.Style.to_xpath  = to_xpath_func
+inkex.Style.to_xpath = to_xpath_func
 
 
 def Version_Check(caller):
@@ -1134,7 +1289,7 @@ def Version_Check(caller):
     maxsupport = "1.3.1"
     minsupport = "1.1.0"
 
-    logname = "Log.txt";
+    logname = "Log.txt"
     NFORM = 200
 
     maxsupp = inkex.vparse(maxsupport)
@@ -1155,7 +1310,9 @@ def Version_Check(caller):
 
     # idebug(ivp)
     prevvp = [inkex.vparse(dv[-6:]) for dv in d]
-    if (inkex.ivp[0] < minsupp[0] or inkex.ivp[1] < minsupp[1]) and not (inkex.ivp in prevvp):
+    if (inkex.ivp[0] < minsupp[0] or inkex.ivp[1] < minsupp[1]) and not (
+        inkex.ivp in prevvp
+    ):
         msg = (
             "For best results, Scientific Inkscape requires Inkscape version "
             + minsupport
@@ -1163,7 +1320,9 @@ def Version_Check(caller):
             + "You are running an older version—all features may not work as expected.\n\nThis is a one-time message.\n\n"
         )
         inkex.utils.errormsg(msg)
-    if (inkex.ivp[0] > maxsupp[0] or inkex.ivp[1] > maxsupp[1]) and not (inkex.ivp in prevvp):
+    if (inkex.ivp[0] > maxsupp[0] or inkex.ivp[1] > maxsupp[1]) and not (
+        inkex.ivp in prevvp
+    ):
         msg = (
             "For best results, Scientific Inkscape requires Inkscape version "
             + maxsupport
@@ -1177,7 +1336,14 @@ def Version_Check(caller):
 
     dt = datetime.now().strftime("%Y.%m.%d, %H:%M:%S")
     d.append(
-        dt + " Running " + caller + " " + siv + ", Inkscape v" + inkex.__version__ + "\n"
+        dt
+        + " Running "
+        + caller
+        + " "
+        + siv
+        + ", Inkscape v"
+        + inkex.__version__
+        + "\n"
     )
 
     if len(d) > NFORM:

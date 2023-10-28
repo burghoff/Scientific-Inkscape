@@ -68,10 +68,11 @@ class TextGhoster(inkex.EffectExtension):
             dh.global_transform(g, -oldts[g.get_id()])
 
         # dh.idebug(sel)
-        
+
         # dh.idebug(dir(sel[0]))
-        bbs = dh.BB2(self,sel,forceupdate=True) # need to investigate why sel didn't work
-        
+        bbs = dh.BB2(
+            self, sel, forceupdate=True
+        )  # need to investigate why sel didn't work
 
         for g in gs:
             el = g.getchildren()[0]
@@ -97,8 +98,9 @@ class TextGhoster(inkex.EffectExtension):
             if len(fss) > 0:
                 fs = max(fss)
             else:
-                fs = dh.ipx('8pt')
-            border = fs * EXTENT;# / (self.svg.cscale)
+                fs = dh.ipx("8pt")
+            border = fs * EXTENT
+            # / (self.svg.cscale)
 
             gb.set("stdDeviation", border * STDDEV)
             pts = [
@@ -122,7 +124,7 @@ class TextGhoster(inkex.EffectExtension):
             # r.set('style','fill:#ffffff;filter:url(#'+fid+')')
             r.cstyle = "fill:#ffffff;stroke:none;filter:url(#{0})".format(fid)
             # dh.Set_Style_Comp(r, "opacity", str(OPACITY))
-            r.cstyle["opacity"]=str(OPACITY)
+            r.cstyle["opacity"] = str(OPACITY)
 
             dh.global_transform(g, oldts[g.get_id()])
 
@@ -136,4 +138,4 @@ class TextGhoster(inkex.EffectExtension):
 
 
 if __name__ == "__main__":
-    dh.Run_SI_Extension(TextGhoster(),"Text ghoster")
+    dh.Run_SI_Extension(TextGhoster(), "Text ghoster")

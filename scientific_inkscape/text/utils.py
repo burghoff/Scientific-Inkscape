@@ -53,7 +53,7 @@ def composed_width(el, comp):
 
         sc = float(sc.strip("%")) / 100
         tsz, sf = composed_width(cel.getparent(), comp)
-        
+
         return tsz * sc, sf
     else:
         if comp == "font-size":
@@ -71,8 +71,8 @@ def composed_width(el, comp):
 # Get absolute line-height in user units
 def composed_lineheight(el):
     cs = el.cspecified_style
-    sc = cs.get("line-height",default_style_atts['line-height'])
-    if sc=='normal':
+    sc = cs.get("line-height", default_style_atts["line-height"])
+    if sc == "normal":
         sc = 1.25
     elif "%" in sc:  # relative width, get parent width
         sc = float(sc.strip("%")) / 100

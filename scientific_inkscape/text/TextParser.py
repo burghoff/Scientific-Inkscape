@@ -88,6 +88,7 @@ from copy import copy
 TEtag, TStag, FRtag = TextElement.ctag, Tspan.ctag, FlowRoot.ctag
 TEFRtags = {TEtag, FRtag}
 
+
 class ParsedTextList:
     def __init__(self, pts):
         self.pts = pts
@@ -310,7 +311,7 @@ class ParsedText:
 
     def reparse(self):
         self.__init__(self.textel, self.ctable)
-        
+
     @property
     def cs(self):
         return [c for ln in self.lns for c in ln.cs]
@@ -704,12 +705,12 @@ class ParsedText:
             if (
                 tt == TT_TAIL
                 and d.get("sodipodi:role") == "line"
-                and d.tag==TStag
-                and self.tree.pdict[d].tag==TEtag
+                and d.tag == TStag
+                and self.tree.pdict[d].tag == TEtag
             ):
                 topcnt += 1  # top-level Tspans have an implicit CR at the beginning of the tail
             if txt is not None:
-                for ii,v in enumerate(txt):
+                for ii, v in enumerate(txt):
                     thec = next((c for c in allcs if c.loc == cloc(d, ttv, ii)), None)
                     thec.deltanum = topcnt
                     topcnt += 1
@@ -727,13 +728,15 @@ class ParsedText:
                     if (
                         tt == TT_TAIL
                         and d.get("sodipodi:role") == "line"
-                        and d.tag==TStag
-                        and self.tree.pdict[d].tag==TEtag
+                        and d.tag == TStag
+                        and self.tree.pdict[d].tag == TEtag
                     ):
                         cnt += 1  # top-level Tspans have an implicit CR at the beginning of the tail
                     if txt is not None:
-                        for ii,v in enumerate(txt):
-                            thec = next((c for c in allcs if c.loc == cloc(d, ttv, ii)), None)
+                        for ii, v in enumerate(txt):
+                            thec = next(
+                                (c for c in allcs if c.loc == cloc(d, ttv, ii)), None
+                            )
                             if cnt < len(dxy):
                                 if xy == "dx":
                                     thec.dx = dxy[cnt]
@@ -821,41 +824,49 @@ class ParsedText:
                         self.lns[0].cs[ii].dy = olddy[ii]
                     self.Update_Delta(forceupdate=True)
                     # may have deleted spr lines
-               
+
         # For single lines, reset line-height to default
-        if len(self.lns)==1:
+        if len(self.lns) == 1:
             for d in el.descendants2():
-                d.cstyle.pop('line-height',None)
-                    
-        if len(self.cs)>0:
+                d.cstyle.pop("line-height", None)
+
+        if len(self.cs) > 0:
             # Clear all fonts and only apply to relevant Tspans
             for d in el.descendants2():
                 sty = Style(tuple(d.cstyle.items()))
-                for key in ['font-family','font-stretch','font-weight','font-style','-inkscape-font-specification']:
+                for key in [
+                    "font-family",
+                    "font-stretch",
+                    "font-weight",
+                    "font-style",
+                    "-inkscape-font-specification",
+                ]:
                     sty.pop(key, None)
                 d.cstyle = sty
             for c in self.cs:
                 sty = Style(tuple(c.loc.sel.cstyle.items()))
                 sty.update(c.fsty)
                 c.loc.sel.cstyle = sty
-                
+
             # Put the first char's font at top since that's what Inkscape displays
             sty = Style(tuple(el.cstyle.items()))
             sty.update(self.cs[0].fsty)
             el.cstyle = sty
-            
+
             # Try to set nominal font size to max value
             # (value used by line-height, what Inkscape reports, etc.)
             fs_origins = set()
             for c in self.cs:
                 cel = c.loc.sel
                 fs_origins.add(cel)
-                while (('font-size' in cel.cstyle and '%' in str(cel.cstyle['font-size'])) or ('font-size' not in cel.cstyle)) and cel is not el:
+                while (
+                    ("font-size" in cel.cstyle and "%" in str(cel.cstyle["font-size"]))
+                    or ("font-size" not in cel.cstyle)
+                ) and cel is not el:
                     cel = cel.getparent()
                     fs_origins.add(cel)
             if el not in fs_origins:
-                el.cstyle['font-size']=max([c.utfs for c in self.cs])
-            
+                el.cstyle["font-size"] = max([c.utfs for c in self.cs])
 
     def Split_Off_Chunks(self, ws):
         nll = self.duplicate()
@@ -1057,9 +1068,9 @@ class ParsedText:
                     origx = ln.cs[0].pts_ut[0][0]
 
                 newtxt = self.Split_Off_Characters(ln.cs)
-                if newtxt.tag==FRtag:
+                if newtxt.tag == FRtag:
                     for d in newtxt.descendants2():
-                        if d.tag==FRtag:
+                        if d.tag == FRtag:
                             d.tag = TextElement.ctag
                         elif isinstance(d, (FlowPara, FlowSpan)):
                             d.tag = TStag
@@ -1273,14 +1284,12 @@ class ParsedText:
     # Parse_Lines for flowed text
     def Parse_Lines_Flow(self):
         sty = self.textel.cspecified_style
-        isflowroot = self.textel.tag==FRtag
+        isflowroot = self.textel.tag == FRtag
         isshapeins = (
-            self.textel.tag==TEtag
+            self.textel.tag == TEtag
             and sty.get_link("shape-inside", self.textel.croot) is not None
         )
-        isinlinesz = (
-            self.textel.tag==TEtag and sty.get("inline-size") is not None
-        )
+        isinlinesz = self.textel.tag == TEtag and sty.get("inline-size") is not None
 
         # Determine the flow region
         if isshapeins:
@@ -2526,7 +2535,7 @@ class tchunk:
                         ] = f"{format(sz, '.2f').rstrip('0').rstrip('.')}%"
 
                 if newsty is not None:
-                    newc.add_style(newsty,newfs=newfs)
+                    newc.add_style(newsty, newfs=newfs)
                 prevc = newc
 
             # Following the merge, append the new chunk's data to the orig pts lists
@@ -3012,7 +3021,7 @@ class tchar:
         self._sty = si
         self.lsp = tchar.lspfunc(self._sty)
         self.bshft = tchar.bshftfunc(self._sty, self.loc.sel, self.ln.pt.textel)
-        
+
         self.tsty = true_style(si)
         self.fsty = font_style(si)
 
@@ -3201,7 +3210,7 @@ class tchar:
 
     def add_style(self, sty, setdefault=True, newfs=False):
         # Adds a style to an existing character by wrapping it in a new Tspan
-        span = Tspan if self.ln.pt.textel.tag==TEtag else inkex.FlowSpan
+        span = Tspan if self.ln.pt.textel.tag == TEtag else inkex.FlowSpan
         t = span()
         t.text = self.c
 
@@ -3249,7 +3258,7 @@ class tchar:
         self.sty = styset
         if newfs:
             fs, sf = composed_width(self.loc.sel, "font-size")
-            self.utfs = fs/sf
+            self.utfs = fs / sf
             self.tfs = fs
 
     def makesubsuper(self, sz=65):
@@ -3560,9 +3569,7 @@ class Character_Table:
         # a composed font size of 1 uu.
         if forcecommand:
             # Examine the whole document if using command
-            ctels = [
-                d for d in self.root.iddict.ds if d.tag in TEFRtags
-            ]
+            ctels = [d for d in self.root.iddict.ds if d.tag in TEFRtags]
             ct, pct, self.rtable = self.collect_characters(ctels)
 
         prefix = "I="
@@ -3634,17 +3641,13 @@ class Character_Table:
                     for jj in range(len(ct[s])):
                         pc = ct[s][jj]
                         if myc in pct[s] and pc in pct[s][myc]:
-                            t2 = Make_String(
-                                prefix + effc(pc) + effc(myc) + suffix, s
-                            )
+                            t2 = Make_String(prefix + effc(pc) + effc(myc) + suffix, s)
                             # precede by all chars of the same style
                             dkern[pc] = t2
                 ct2[s][myc] = StringInfo(myc, t, dkern, tb)
 
             ct2[s][pI] = StringInfo(pI, Make_String(pI, s), inkex.OrderedDict())
-            ct2[s][blnk] = StringInfo(
-                blnk, Make_String(blnk, s), inkex.OrderedDict()
-            )
+            ct2[s][blnk] = StringInfo(blnk, Make_String(blnk, s), inkex.OrderedDict())
 
         ct = ct2
         if not (usepango):
@@ -3855,7 +3858,6 @@ class Character_Table:
 # Tspans are deleted if they're totally empty, TextElements are deleted if they contain only whitespace
 
 
-
 def wstrip(txt):  # strip whitespaces
     return txt.translate({ord(c): None for c in " \n\t\r"})
 
@@ -3997,6 +3999,8 @@ def Character_Fixer2(els):
 
 
 spantags = tags((Tspan, inkex.FlowPara, inkex.FlowSpan))
+
+
 def Replace_Non_Ascii_Font(el, newfont, *args):
     def alltext(el):
         astr = el.text
@@ -4064,7 +4068,7 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
 
     # Inkscape automatically prunes empty text/tails
     # Do the same so future parsing is not affected
-    if el.tag==TEtag:
+    if el.tag == TEtag:
         for d in el.descendants2():
             if d.text is not None and d.text == "":
                 d.text = None

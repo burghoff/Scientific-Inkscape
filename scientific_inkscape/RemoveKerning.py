@@ -56,14 +56,15 @@ def remove_kerning(
     mergesupersub,
     splitdistant,
     mergenearby,
-    justification=None,debugparser=False
+    justification=None,
+    debugparser=False,
 ):
-    tels = [el for el in els if isinstance(el, (inkex.TextElement,inkex.FlowRoot))]
-    if len(tels)>0:
+    tels = [el for el in els if isinstance(el, (inkex.TextElement, inkex.FlowRoot))]
+    if len(tels) > 0:
         tels[0].croot.make_char_table(tels)
     if DEBUG_PARSER or debugparser:
         for el in tels:
-            el.parsed_text.Make_Highlights('char')
+            el.parsed_text.Make_Highlights("char")
     else:
         # Do merges first (deciding based on original position)
         tels = [el for el in els if isinstance(el, (inkex.TextElement,))]
@@ -89,7 +90,8 @@ def remove_kerning(
         tels = Remove_Trailing_Leading_Spaces(tels)
         tels = Make_All_Editable(tels)
         tels = Final_Cleanup(tels)
-    return dh.unique(els+tels)
+    return dh.unique(els + tels)
+
 
 def Final_Cleanup(els):
     for el in els:
@@ -108,7 +110,9 @@ def Fix_Merge_Positions(els):
 
 def Remove_Trailing_Leading_Spaces(els):
     for el in els:
-        if not (el.parsed_text.ismlinkscape) and not (el.parsed_text.isflow):  # skip Inkscape-generated text
+        if not (el.parsed_text.ismlinkscape) and not (
+            el.parsed_text.isflow
+        ):  # skip Inkscape-generated text
             for ln in el.parsed_text.lns:
                 mtxt = ln.txt()
                 ii = len(mtxt) - 1
@@ -140,24 +144,24 @@ def Change_Justification(els, justification):
                 for ln in ll.lns:
                     ln.change_alignment(justification)
                 # dh.Set_Style_Comp(ll.textel, "text-anchor", justification)
-                ll.textel.cstyle["text-anchor"]= justification
+                ll.textel.cstyle["text-anchor"] = justification
                 alignd = {"start": "start", "middle": "center", "end": "end"}
                 # dh.Set_Style_Comp(ll.textel, "text-align", alignd[justification])
-                ll.textel.cstyle["text-align"]=alignd[justification]
+                ll.textel.cstyle["text-align"] = alignd[justification]
             # ll.Position_Check()
     return els
 
 
 # Split different lines
-def Split_Lines(els,ignoreinkscape=True):
+def Split_Lines(els, ignoreinkscape=True):
     # newlls = []
-    lls = [el.parsed_text for el in els];
+    lls = [el.parsed_text for el in els]
     for jj in range(len(lls)):
         ll = lls[jj]
         if (
             ll.lns is not None
             and len(ll.lns) > 1
-            and (not(ll.ismlinkscape) or not(ignoreinkscape))
+            and (not (ll.ismlinkscape) or not (ignoreinkscape))
             and not (ll.isflow)
         ):
             for il in reversed(range(1, len(ll.lns))):
@@ -187,8 +191,8 @@ def Split_Distant_Chunks(els):
                     w2 = sws[ii]
 
                     trl_spcs, ldg_spcs = trailing_leading(w, w2)
-                    dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs) 
-                    xtol = XTOLSPLIT * w.sw 
+                    dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs)
+                    xtol = XTOLSPLIT * w.sw
 
                     tr1, br1, tl2, bl2 = w.get_ut_pts(w2, current_pts=True)
 
@@ -238,8 +242,8 @@ def Split_Distant_Intrachunk(els):
                                 br1 = c.pts_ut[3]
 
                                 # trl_spcs, ldg_spcs = trailing_leading(w,w2)
-                                dx = w.sw * (NUM_SPACES) 
-                                xtol = XTOLSPLIT * w.sw 
+                                dx = w.sw * (NUM_SPACES)
+                                xtol = XTOLSPLIT * w.sw
 
                                 # If this character is splitting two numbers, should always split in case they are ticks
                                 import re
@@ -277,9 +281,7 @@ def Split_Distant_Intrachunk(els):
                                     sstop = len(w.cs)
 
                                 # dh.idebug(w.txt[sstart:sstop])
-                                newtxt = ll.Split_Off_Characters(
-                                    w.cs[sstart:sstop]
-                                )
+                                newtxt = ll.Split_Off_Characters(w.cs[sstart:sstop])
                                 els.append(newtxt)
                                 # newlls.append(nll)
     # lls += newlls
@@ -299,14 +301,14 @@ def Remove_Manual_Kerning(els, mergesupersub):
         w2 = w.nextw
         if w2 is not None and w2 in ws and not (twospaces(w, w2)):
             trl_spcs, ldg_spcs = trailing_leading(w, w2)
-            dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs) 
-            xtoln = XTOLMKN * w.sw 
-            xtolp = XTOLMKP * w.sw 
+            dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs)
+            xtoln = XTOLMKN * w.sw
+            xtolp = XTOLMKP * w.sw
 
             tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
 
             if isnumeric(w.txt) and isnumeric(w2.txt, True):
-                dx = w.sw * 0 
+                dx = w.sw * 0
 
             previoussp = w.txt == " " and w.prevw is not None
             validmerge = br1[0] - xtoln <= bl2[0] <= br1[0] + dx + xtolp
@@ -315,7 +317,7 @@ def Remove_Manual_Kerning(els, mergesupersub):
                 validmerge
             ):  # reconsider in case previous space was weirdly-kerned
                 tr1p, br1p, tl2p, bl2p = w.prevw.get_ut_pts(w2)
-                dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs + 1) 
+                dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs + 1)
                 validmerge = br1p[0] - xtoln <= bl2p[0] <= br1p[0] + dx + xtolp
 
             if validmerge:
@@ -360,8 +362,8 @@ def External_Merges(els, mergenearby, mergesupersub):
             ws += [w for ln in ll.lns for w in ln.ws]
         # ll.Position_Check()
     for w in ws:
-        dx = w.sw * w.sf * (
-            NUM_SPACES + XTOLEXT
+        dx = (
+            w.sw * w.sf * (NUM_SPACES + XTOLEXT)
         )  # a big bounding box that includes the extra space
         if w.parsed_bb is not None:
             w.bb_big = tp.bbox(
@@ -399,11 +401,11 @@ def External_Merges(els, mergenearby, mergesupersub):
     #     (abs(xc1.reshape(-1, 1) - xc2) * 2 < (wd1.reshape(-1, 1) + wd2)),
     #     (abs(yc1.reshape(-1, 1) - yc2) * 2 < (ht1.reshape(-1, 1) + ht2)),
     # )
-    
+
     bb1s = [w.bb_big for w in ws]
     bb2s = [w.bb if w.parsed_bb is None else w.parsed_bb for w in ws]
-    intersects = dh.bb_intersects(bb1s,bb2s)
-    
+    intersects = dh.bb_intersects(bb1s, bb2s)
+
     # reshape(-1,1) is a transpose
     potentials = np.logical_and(sameangle, intersects)
     potentials = np.logical_and(
@@ -419,7 +421,7 @@ def External_Merges(els, mergenearby, mergesupersub):
 
         trl_spcs, ldg_spcs = trailing_leading(w, w2)
 
-        dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs) 
+        dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs)
         xtol = XTOLEXT * w.sw
         ytol = YTOLEXT * w.mch
 
@@ -431,12 +433,16 @@ def External_Merges(els, mergenearby, mergesupersub):
             type = None
             # dh.idebug([w.tfs,w2.tfs])
             # dh.idebug([br1.y+ytol>=bl2.y>=tr1.y-ytol,mergesupersub])
-            if abs(bl2[1] - br1[1]) < ytol and abs(w.tfs - w2.tfs) < 0.001 and mergenearby:
+            if (
+                abs(bl2[1] - br1[1]) < ytol
+                and abs(w.tfs - w2.tfs) < 0.001
+                and mergenearby
+            ):
                 if isnumeric(w.ln.txt()) and isnumeric(w2.ln.txt(), True):
-                    numsp = (bl2[0]-br1[0])/(w.sw);
-                    if abs(numsp)<0.25:
+                    numsp = (bl2[0] - br1[0]) / (w.sw)
+                    if abs(numsp) < 0.25:
                         # only merge numbers if very close (could be x ticks)
-                        type='same'
+                        type = "same"
                 else:
                     type = "same"
                 # dh.debug(w.txt+' '+w2.txt)
@@ -444,14 +450,15 @@ def External_Merges(els, mergenearby, mergesupersub):
                 br1[1] + ytol >= bl2[1] >= tr1[1] - ytol and mergesupersub
             ):  # above baseline
                 aboveline = (
-                    br1[1] * (1 - SUBSUPER_YTHR) + tr1[1] * SUBSUPER_YTHR + ytol >= bl2[1]
+                    br1[1] * (1 - SUBSUPER_YTHR) + tr1[1] * SUBSUPER_YTHR + ytol
+                    >= bl2[1]
                 )
                 if w2.tfs < w.tfs * SUBSUPER_THR:  # new smaller, expect super
                     if aboveline:
                         type = "super"
                 elif w.tfs < w2.tfs * SUBSUPER_THR:  # old smaller, expect reutrn
                     type = "subreturn"
-                elif SUBSUPER_THR==1:
+                elif SUBSUPER_THR == 1:
                     if aboveline:
                         if len(w2.ln.txt()) > 2:  # long text, probably not super
                             type = "subreturn"
@@ -462,14 +469,15 @@ def External_Merges(els, mergenearby, mergesupersub):
                         type = "subreturn"
             elif br1[1] + ytol >= tl2[1] >= tr1[1] - ytol and mergesupersub:
                 belowline = (
-                    tl2[1] >= br1[1] * SUBSUPER_YTHR + tr1[1] * (1 - SUBSUPER_YTHR) - ytol
+                    tl2[1]
+                    >= br1[1] * SUBSUPER_YTHR + tr1[1] * (1 - SUBSUPER_YTHR) - ytol
                 )
                 if w2.tfs < w.tfs * SUBSUPER_THR:  # new smaller, expect sub
                     if belowline:
                         type = "sub"
                 elif w.tfs < w2.tfs * SUBSUPER_THR:  # old smaller, expect superreturn
                     type = "superreturn"
-                elif SUBSUPER_THR==1:
+                elif SUBSUPER_THR == 1:
                     if belowline:
                         if len(w2.ln.txt()) > 2:  # long text, probably not sub
                             type = "superreturn"
@@ -493,7 +501,9 @@ def External_Merges(els, mergenearby, mergesupersub):
                     if not (abs(bl2[1] - br1[1]) < ytol):
                         dh.idebug("Aborted, y pen too far: " + str([bl2[1], br1[1]]))
                     elif not (abs(w.tfs - w2.tfs) < 0.001):
-                        dh.idebug("Aborted, fonts too different: " + str([w.tfs, w2.tfs]))
+                        dh.idebug(
+                            "Aborted, fonts too different: " + str([w.tfs, w2.tfs])
+                        )
                     elif not (
                         not (isnumeric(w.ln.txt())) or not (isnumeric(w2.ln.txt()))
                     ):
@@ -628,26 +638,26 @@ def Perform_Merges(ws, mk=False):
 
                 mels.append(w.merges[ii].ln.pt.textel)
                 w.appendw(w.merges[ii], w.wtypes[ii + 1], maxspaces)
-                
+
             # Union clips if necessary
-            mels = dh.unique([w.ln.pt.textel]+mels)
-            if len(mels)>1:
-                clips = [el.get_link('clip-path') for el in mels]
+            mels = dh.unique([w.ln.pt.textel] + mels)
+            if len(mels) > 1:
+                clips = [el.get_link("clip-path") for el in mels]
                 if any([c is None for c in clips]):
-                    w.ln.pt.textel.set('clip-path',None)
+                    w.ln.pt.textel.set("clip-path", None)
                 else:
                     # Duplicate main clip
-                    dc = clips[0].duplicate();
-                    wt = mels[0].ccomposed_transform;
-                    for ii in range(1,len(mels)):
+                    dc = clips[0].duplicate()
+                    wt = mels[0].ccomposed_transform
+                    for ii in range(1, len(mels)):
                         # Duplicate merged clip, group contents, move to main dupe
-                        dc2 = clips[ii].duplicate();
+                        dc2 = clips[ii].duplicate()
                         ng = dh.group(list(dc2))
-                        dc.append(ng);
+                        dc.append(ng)
                         ng.ctransform = (-wt) @ mels[ii].ccomposed_transform
-                        dc2.delete();
-                    mels[0].set('clip-path',dc.get_id(2))
-                
+                        dc2.delete()
+                    mels[0].set("clip-path", dc.get_id(2))
+
     # Clear out clips
     # for el in set(mels):
     #     if el.get_link('clip-path') is not None:
@@ -674,8 +684,11 @@ ncs = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "e", "E", "-", "�
 #         isnum = True  # count a minus sign as a number
 #     return isnum
 
+
 def isnumeric(s, countminus=False):
-    s = s.strip().replace("−", "-").replace(",", "")  # strip whitespaces, replace minus signs with -, remove commas
+    s = (
+        s.strip().replace("−", "-").replace(",", "")
+    )  # strip whitespaces, replace minus signs with -, remove commas
     if countminus and s == "-":  # count a minus sign as a number
         return True
     try:
