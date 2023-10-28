@@ -34,11 +34,11 @@ import math, re, sys, os
 flookup = {"small": "10px", "medium": "12px", "large": "14px"}
 
 
-def Get_Composed_Width(el, comp, nargout=1):
+# Gets the transformed size of a style component and the scale factor representing
+# the scale of the composed transform, accounting for relative sizes
+def composed_width(el, comp):
     cs = el.cspecified_style
     ct = el.ccomposed_transform
-    if nargout == 4:
-        ang = math.atan2(ct.c, ct.d) * 180 / math.pi
     sc = cs.get(comp)
 
     # Get default attribute if empty
@@ -52,46 +52,37 @@ def Get_Composed_Width(el, comp, nargout=1):
             # figure out ancestor where % is coming from
 
         sc = float(sc.strip("%")) / 100
-        fs, sf, ct, tmp = Get_Composed_Width(cel.getparent(), comp, 4)
-        if nargout == 4:
-            return fs * sc, sf, ct, ang
-        else:
-            return fs * sc
+        tsz, sf = composed_width(cel.getparent(), comp)
+        
+        return tsz * sc, sf
     else:
         if comp == "font-size":
-            sw = (
+            utsz = (
                 ipx(sc)
                 or ipx(flookup.get(sc))
                 or ipx(flookup.get(default_style_atts[comp]))
             )
         else:
-            sw = ipx(sc) or ipx(default_style_atts[comp])
+            utsz = ipx(sc) or ipx(default_style_atts[comp])
         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))  # scale factor
-        if nargout == 4:
-            return sw * sf, sf, ct, ang
-        else:
-            return sw * sf
+        return utsz * sf, sf
 
 
-# Get line-height in user units
-def Get_Composed_LineHeight(el):
+# Get absolute line-height in user units
+def composed_lineheight(el):
     cs = el.cspecified_style
-    sc = cs.get("line-height")
-    if sc is not None:
-        if "%" in sc:  # relative width, get parent width
-            sc = float(sc.strip("%")) / 100
-        elif sc.lower() == "normal":
-            sc = 1.25
-        else:
-            try:
-                sc = float(sc)
-            except:
-                fs, sf, ct, ang = Get_Composed_Width(el, "font-size", 4)
-                sc = ipx(sc) / (fs / sf)
-    if sc is None:
+    sc = cs.get("line-height",default_style_atts['line-height'])
+    if sc=='normal':
         sc = 1.25
-        # default line-height is 12 uu
-    fs = Get_Composed_Width(el, "font-size")
+    elif "%" in sc:  # relative width, get parent width
+        sc = float(sc.strip("%")) / 100
+    else:
+        try:
+            sc = float(sc)
+        except:
+            fs, sf = composed_width(el, "font-size")
+            sc = ipx(sc) / (fs / sf)
+    fs, _ = composed_width(el, "font-size")
     return sc * fs
 
 

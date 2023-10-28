@@ -93,7 +93,7 @@ class TextGhoster(inkex.EffectExtension):
                 sty = d.cspecified_style
                 fs = sty.get("font-size")
                 if fs is not None:
-                    fss.append(dh.Get_Composed_Width(d, "font-size"))
+                    fss.append(dh.composed_width(d, "font-size")[0])
             if len(fss) > 0:
                 fs = max(fss)
             else:

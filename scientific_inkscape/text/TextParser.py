@@ -61,8 +61,8 @@ from inkex import (
 from inkex.text.utils import (
     unique,
     uniquetol,
-    Get_Composed_Width,
-    Get_Composed_LineHeight,
+    composed_width,
+    composed_lineheight,
     default_style_atts,
     otp_support_tags,
     object_to_path,
@@ -78,7 +78,7 @@ from inkex.text.font_properties import (
     true_style,
 )
 
-import lxml, os, sys, itertools
+import lxml, os, sys, itertools, math
 
 EBget = lxml.etree.ElementBase.get
 EBset = lxml.etree.ElementBase.set
@@ -450,10 +450,11 @@ class ParsedText:
                 # tails get their sty from the parent of the element the tail belongs to
                 sty = sel.cspecified_style
                 ct = sel.ccomposed_transform
-                fs, sf, ct, ang = Get_Composed_Width(sel, "font-size", 4)
+                fs, sf = composed_width(sel, "font-size")
+                ang = math.atan2(ct.c, ct.d) * 180 / math.pi
 
                 if newsprl:
-                    lh = Get_Composed_LineHeight(sel)
+                    lh = composed_lineheight(sel)
                 tsty = true_style(sty)
 
                 # Make a new line if we're sprl or if we have a new x or y
@@ -820,10 +821,11 @@ class ParsedText:
                         self.lns[0].cs[ii].dy = olddy[ii]
                     self.Update_Delta(forceupdate=True)
                     # may have deleted spr lines
-                    
-                el.cstyle['line-height']=1
-                for d in el.descendants2()[1:]:
-                    d.cstyle.pop('line-height',None)
+               
+        # For single lines, reset line-height to default
+        if len(self.lns)==1:
+            for d in el.descendants2():
+                d.cstyle.pop('line-height',None)
                     
         if len(self.cs)>0:
             # Clear all fonts and only apply to relevant Tspans
@@ -836,11 +838,23 @@ class ParsedText:
                 sty = Style(tuple(c.loc.sel.cstyle.items()))
                 sty.update(c.fsty)
                 c.loc.sel.cstyle = sty
+                
             # Put the first char's font at top since that's what Inkscape displays
             sty = Style(tuple(el.cstyle.items()))
             sty.update(self.cs[0].fsty)
             el.cstyle = sty
             
+            # Try to set nominal font size to max value
+            # (value used by line-height, what Inkscape reports, etc.)
+            fs_origins = set()
+            for c in self.cs:
+                cel = c.loc.sel
+                fs_origins.add(cel)
+                while (('font-size' in cel.cstyle and '%' in str(cel.cstyle['font-size'])) or ('font-size' not in cel.cstyle)) and cel is not el:
+                    cel = cel.getparent()
+                    fs_origins.add(cel)
+            if el not in fs_origins:
+                el.cstyle['font-size']=max([c.utfs for c in self.cs])
             
 
     def Split_Off_Chunks(self, ws):
@@ -1359,9 +1373,9 @@ class ParsedText:
             self.textel.croot._prefixcounter = pctr
 
         def Height_AboveBelow_Baseline(el):
-            lh = Get_Composed_LineHeight(el)
+            lh = composed_lineheight(el)
             lsty = true_style(el.cspecified_style)
-            fs, sf, ct, ang = Get_Composed_Width(el, "font-size", 4)
+            fs, sf = composed_width(el, "font-size")
             # inkex.utils.debug(self.ctable.flowy(lsty))
 
             absp = (0.5000 * (lh / fs - 1) + self.ctable.flowy(lsty)) * (
@@ -1411,7 +1425,8 @@ class ParsedText:
                 sty = sel.cspecified_style
                 tsty = true_style(sty)
                 ct = sel.ccomposed_transform
-                fs, sf, ct, ang = Get_Composed_Width(sel, "font-size", 4)
+                fs, sf = composed_width(sel, "font-size")
+                ang = math.atan2(ct.c, ct.d) * 180 / math.pi
                 absp, bbsp, mrfs = Height_AboveBelow_Baseline(sel)
                 lsty = true_style(sel.cspecified_style)
                 fabsp = max(rabsp, absp)
@@ -2486,6 +2501,7 @@ class tchunk:
 
                 # Update the style
                 newsty = None
+                newfs = False
                 if c.sty != newc.sty or ntype in ["super", "sub"] or c.sf != newc.sf:
                     newsty = c.sty
                     if ntype in ["super", "sub"]:
@@ -2495,6 +2511,7 @@ class tchunk:
                             "super" if ntype == "super" else "sub"
                         )
                         newsty["font-size"] = "65%"
+                        newfs = True
                         # Leave size unchanged
                         # sz = round((c.sw*c.sf)/(newc.sw*newc.sf)*100)
                         # newsty['font-size'] = str(sz)+'%';
@@ -2511,7 +2528,7 @@ class tchunk:
                         ] = f"{format(sz, '.2f').rstrip('0').rstrip('.')}%"
 
                 if newsty is not None:
-                    newc.add_style(newsty)
+                    newc.add_style(newsty,newfs=newfs)
                 prevc = newc
 
             # Following the merge, append the new chunk's data to the orig pts lists
@@ -3085,7 +3102,7 @@ class tchar:
         elif bshft == "sub":
             bshft = "-20%"
         if "%" in bshft:  # relative to parent
-            fs2, sf2, tmp, tmp = Get_Composed_Width(fsel, "font-size", 4)
+            fs2, sf2 = composed_width(fsel, "font-size")
             bshft = fs2 / sf2 * float(bshft.strip("%")) / 100
         else:
             bshft = ipx(bshft) or 0
@@ -3184,7 +3201,7 @@ class tchar:
         # Update the dx/dy value in the ParsedText
         self.ln.pt.Update_Delta()
 
-    def add_style(self, sty, setdefault=True):
+    def add_style(self, sty, setdefault=True, newfs=False):
         # Adds a style to an existing character by wrapping it in a new Tspan
         span = Tspan if self.ln.pt.textel.tag==TEtag else inkex.FlowSpan
         t = span()
@@ -3232,6 +3249,10 @@ class tchar:
 
         t.cstyle = styset
         self.sty = styset
+        if newfs:
+            fs, sf = composed_width(self.loc.sel, "font-size")
+            self.utfs = fs/sf
+            self.tfs = fs
 
     def makesubsuper(self, sz=65):
         if self.type == "super":

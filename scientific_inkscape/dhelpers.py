@@ -37,7 +37,7 @@ import text    # noqa
 
 from inkex import Style
 from inkex.text.cache import tags, grouplike_tags, bb2_support_tags, bounding_box2, bbox, ipx
-from inkex.text.utils import (Get_Composed_Width,
+from inkex.text.utils import (composed_width,
                               unique, object_to_path,isrectangle,
                               Get_Binary_Loc,Get_Bounding_Boxes,subprocess_repeat)
 
@@ -93,25 +93,39 @@ def replace_element(el1, el2):
 def listsplit(x):
     # split list on commas or spaces
     return [ipx(v) for v in re.split('[ ,]', x) if v]
-def Get_Composed_List(el, comp, nargout=1):
+# def Get_Composed_List(el, comp, nargout=1):
+#     cs = el.cspecified_style
+#     ct = el.ccomposed_transform
+#     sc = cs.get(comp)
+#     if sc == "none":
+#         return "none"
+#     elif sc is not None:
+#         sv = listsplit(sc)
+#         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))
+#         sv = [x * sf for x in sv]
+#         if nargout == 1:
+#             return sv
+#         else:
+#             return sv, sf
+#     else:
+#         if nargout == 1:
+#             return None
+#         else:
+#             return None, None
+        
+def composed_list(el, comp):
     cs = el.cspecified_style
     ct = el.ccomposed_transform
     sc = cs.get(comp)
     if sc == "none":
-        return "none"
+        return "none", None
     elif sc is not None:
         sv = listsplit(sc)
         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))
         sv = [x * sf for x in sv]
-        if nargout == 1:
-            return sv
-        else:
-            return sv, sf
+        return sv, sf
     else:
-        if nargout == 1:
-            return None
-        else:
-            return None, None
+        return None, None
 
 
 # Unit parser and renderer
@@ -725,20 +739,20 @@ def global_transform(el, trnsfrm, irange=None, trange=None,preserveStroke=True):
             for ii in range(len(trange)):
                 trange[ii] = (-prt) @ trange[ii] @ prt @ Transform(myt)
 
-    sw = Get_Composed_Width(el, "stroke-width")
-    sd = Get_Composed_List(el, "stroke-dasharray")
+    sw, _ = composed_width(el, "stroke-width")
+    sd, _ = composed_list(el, "stroke-dasharray")
 
     el.ctransform = newtr  # Add the new transform
     fuseTransform(el, irange=irange, trange=trange)
 
     if preserveStroke:
         if sw is not None:
-            neww, sf, ct, ang = Get_Composed_Width(el, "stroke-width", nargout=4)
+            neww, sf = composed_width(el, "stroke-width")
             # Set_Style_Comp(el, "stroke-width", str(sw / sf))
             el.cstyle["stroke-width"]=str(sw / sf)
             # fix width
         if not (sd in [None, "none"]):
-            nd, sf = Get_Composed_List(el, "stroke-dasharray", nargout=2)
+            nd, sf = composed_list(el, "stroke-dasharray")
             el.cstyle["stroke-dasharray"]=str([sdv / sf for sdv in sd]).strip("[").strip("]")
             # fix dash
 
@@ -829,8 +843,8 @@ def get_strokefill(el):
         fill = None
         filll = None
 
-    sw = Get_Composed_Width(el, "stroke-width")
-    sd = Get_Composed_List(el, "stroke-dasharray")
+    sw, _ = composed_width(el, "stroke-width")
+    sd, _ = composed_list(el, "stroke-dasharray")
     if sd in nones:
         sd = None
     if sw in nones or sw == 0 or strk is None:

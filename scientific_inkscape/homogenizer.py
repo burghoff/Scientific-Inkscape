@@ -190,11 +190,11 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                 for d in reversed(el.descendants2()):
                     sty = d.cspecified_style
                     if el==d or 'font-size' in sty:
-                        dfs, sf, _, _ = dh.Get_Composed_Width(d, "font-size", nargout=4)
+                        dfs, sf = dh.composed_width(d, "font-size")
                         bshift = TextParser.tchar.get_baseline(sty, d.getparent())
                         if bshift!=0 or '%' in sty.get('font-size',''):
                             # Convert sub/superscripts into relative size
-                            pfs, sf, _, _ = dh.Get_Composed_Width(d.getparent(), "font-size", nargout=4)
+                            pfs, sf = dh.composed_width(d.getparent(), "font-size")
                             d.cstyle["font-size"] = f"{dfs / pfs * 100:.2f}%"
                         else:
                             # Set absolute size
@@ -301,7 +301,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             sfd = dict()
             szs = []
             for el in sela:
-                sw, sf, ct, ang = dh.Get_Composed_Width(el, "stroke-width", nargout=4)
+                sw, sf = dh.composed_width(el, "stroke-width")
 
                 elid = el.get_id()
                 szd[elid] = sw

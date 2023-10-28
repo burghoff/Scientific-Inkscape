@@ -1348,7 +1348,7 @@ class AutoExporter(inkex.EffectExtension):
                             mys = s.ccascaded_style
                             if mys.get('baseline-shift')=='0%':
                                 mys['baseline-shift'] = d.ccascaded_style.get('baseline-shift')
-                            fs,sf,tmp,tmp = dh.Get_Composed_Width(s,'font-size',nargout=4);
+                            fs,sf = dh.composed_width(s,'font-size');
                             mys['font-size'] = str(fs/sf)
                             d.addprevious(s)
                             s.cstyle = mys
@@ -1392,7 +1392,7 @@ class AutoExporter(inkex.EffectExtension):
             if dxv[0] is not None: TextParser.xyset(d,'dx',[v*s for v in dxv])
             if dyv[0] is not None: TextParser.xyset(d,'dy',[v*s for v in dyv])
                 
-            fs,sf,tmp,tmp = dh.Get_Composed_Width(d,'font-size',nargout=4)
+            fs,sf = dh.composed_width(d,'font-size')
             # dh.Set_Style_Comp(d, 'font-size', "{:.3f}".format(fs/sf*s))    
             d.cstyle['font-size']= "{:.3f}".format(fs/sf*s)
                 
