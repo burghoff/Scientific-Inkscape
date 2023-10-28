@@ -2,14 +2,11 @@ import subprocess, os, time
 from test_main import vpaths
 vpy = dict()
 for k, v in vpaths.items():
-    bins = [vv for vv in v if os.path.split(vv)[-1]=='bin']
-    for b in bins:
-        f = os.path.join(b, 'python.exe');
-        if os.path.exists(f):
-            vpy[k] = f
-# print(vpy)
+    b = os.path.join(v,'bin')
+    f = os.path.join(b, 'python.exe');
+    if os.path.exists(f):
+        vpy[k] = f
 
-# test_versions = list(vpy.keys())
 
 # Set column widths for Version and Pango columns
 version_col_width = 7

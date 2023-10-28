@@ -2,11 +2,10 @@ import subprocess, os
 from test_main import vpaths, version
 vpy = dict()
 for k, v in vpaths.items():
-    bins = [vv for vv in v if os.path.split(vv)[-1]=='bin']
-    for b in bins:
-        f = os.path.join(b, 'python.exe');
-        if os.path.exists(f):
-            vpy[k] = f
+    b = os.path.join(v,'bin')
+    f = os.path.join(b, 'python.exe');
+    if os.path.exists(f):
+        vpy[k] = f
 pyexec = vpy[version]
 
 

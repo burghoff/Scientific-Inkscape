@@ -13,8 +13,10 @@
             <param name="vscale" type="float" precision="0" min="1" max="9999" gui-text="Vertical scaling (%)">100</param>
             <spacer/><param name="wholeplot1" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
-            <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Texas at Austin</label>
+            <spacer/>
+            <label>Scientific Inkscape v1.3.2</label>
+            <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+            <label>David Burghoff, University of Texas at Austin</label>
         </page> 
         
         <page name="matching" gui-text="Matching mode">
@@ -39,8 +41,10 @@
             
             <spacer/><param name="wholeplot2" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
-            <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Texas at Austin</label>
+            <spacer/>
+            <label>Scientific Inkscape v1.3.2</label>
+            <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+            <label>David Burghoff, University of Texas at Austin</label>
         </page>
         
         <page name="correction" gui-text="Correction mode">
@@ -61,8 +65,10 @@
             <label>Otherwise, the final stroke widths may change.</label>
             <spacer/><param name="wholeplot3" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
-            <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Texas at Austin</label>
+            <spacer/>
+            <label>Scientific Inkscape v1.3.2</label>
+            <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+            <label>David Burghoff, University of Texas at Austin</label>
         </page>
         
         <page name="options" gui-text="Advanced">
@@ -95,6 +101,10 @@
                        <option value="3">Scaled</option>
                        <option value="4">Remove markings</option>
                     </param>
+            <spacer/>
+            <label>Scientific Inkscape v1.3.2</label>
+            <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+            <label>David Burghoff, University of Texas at Austin</label>
         </page>
     </param>
     <effect needs-live-preview="false">

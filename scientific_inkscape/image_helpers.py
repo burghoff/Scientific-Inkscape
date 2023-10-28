@@ -166,7 +166,7 @@ def embed_external_image(el, filename):
             # Don't read the whole file to check the header
             file_type = get_type(filename, handle.read(10))
             handle.seek(0)
-            
+
             if file_type:
                 # Future: Change encodestring to encodebytes when python3 only
                 el.set(
@@ -280,6 +280,7 @@ def get_type(path, header):
 # if __name__ == '__main__':
 #     EmbedImage().run()
 
+
 # Modification to the built-in absolute_href function that doesn't require an
 # extension class
 def absolute_href2(filename, svg_dir, default="~/"):
@@ -299,7 +300,6 @@ def absolute_href2(filename, svg_dir, default="~/"):
     if not os.path.isabs(filename):
         filename = os.path.join(svg_dir, filename)
     return os.path.realpath(os.path.expanduser(filename))
-
 
 
 # Stuff by David Burghoff
@@ -331,7 +331,7 @@ except:
 #             bbox = im.getbbox()
 #             # # Composite to remove transparent regions
 #             # compim = remove_alpha(im, imb)
-            
+
 #             # Crop to non-transparent region only
 #             # left,upper,right,lower (left & upper pixel is non-zero corner, right-1 & lower-1 is non-zero corner)
 #             if bbox is not None:
@@ -345,11 +345,11 @@ except:
 #                 # normalize to original size
 #             oim.convert('RGB').save(imout)
 #             return imout, bbox
-        
 
-def to_jpeg(imin,imout):
+
+def to_jpeg(imin, imout):
     with ImagePIL.open(imin) as im:
-        im.convert('RGB').save(imout)
+        im.convert("RGB").save(imout)
 
 
 def crop_image(imin):
@@ -367,6 +367,7 @@ def crop_image(imin):
             # normalized to original size
             cropim.save(imin)
         return imin, bbox
+
 
 # Extract an embedded image
 def extract_image_simple(node, save_to_base):
@@ -386,6 +387,7 @@ def extract_image_simple(node, save_to_base):
         fhl.write(decodebytes(data.encode("utf-8")))
     return pathwext
 
+
 # Get the size of an embedded image
 def embedded_size(node):
     xlink = node.get("xlink:href")
@@ -397,69 +399,79 @@ def embedded_size(node):
     except (ValueError, TypeError):
         return None
 
+
 # Get the data string of an embedded image with the alpha stripped out
 # This allows images to be identified after conversion to PDF
 def Stripped_Alpha_String(el):
     import tempfile
-    tf = tempfile.NamedTemporaryFile().name;
+
+    tf = tempfile.NamedTemporaryFile().name
     fullpath = extract_image_simple(el, tf)
-    
+
     with ImagePIL.open(fullpath) as im:
-        newfile = strip_ext(fullpath)+'.png'
-        
+        newfile = strip_ext(fullpath) + ".png"
+
         return str(im.size)
-        
+
     #     im.convert('RGB').save(newfile)
-        
+
     #     with open(newfile, "rb") as handle:
     #         # Don't read the whole file to check the header
     #         file_type = get_type(newfile, handle.read(10))
     #         handle.seek(0)
-            
+
     #         if file_type:
     #             return "data:{};base64,{}".format(
     #                     file_type, encodebytes(handle.read()).decode("ascii"))
     # return None
-    
+
 
 def Make_Data_Image(datastr):
     data = [ord(c) for c in datastr]
     # inkex.utils.debug(data)
     import numpy as np
-    im = ImagePIL.fromarray(np.array([data],dtype='uint8'));
-    
+
+    im = ImagePIL.fromarray(np.array([data], dtype="uint8"))
+
     import tempfile
-    tf = tempfile.NamedTemporaryFile().name;
-    newfile = tf+'.png'
+
+    tf = tempfile.NamedTemporaryFile().name
+    newfile = tf + ".png"
     im.save(newfile)
-    
+
     with open(newfile, "rb") as handle:
         # Don't read the whole file to check the header
         file_type = get_type(newfile, handle.read(10))
         handle.seek(0)
-        
+
         if file_type:
             return "data:{};base64,{}".format(
-                    file_type, encodebytes(handle.read()).decode("ascii"))
+                file_type, encodebytes(handle.read()).decode("ascii")
+            )
     return None
+
 
 def Read_Data_Image(imstr):
     data = imstr[5:]
     (mimetype, data) = data.split(";", 1)
     (base, data) = data.split(",", 1)
     import io
-    im=ImagePIL.open(io.BytesIO(decodebytes(data.encode("utf-8"))))
-    
+
+    im = ImagePIL.open(io.BytesIO(decodebytes(data.encode("utf-8"))))
+
     import numpy as np
+
     npa = np.asarray(im)
-    if len(npa.shape)==3:
-        data = npa[:,:,0]
+    if len(npa.shape) == 3:
+        data = npa[:, :, 0]
     else:
         data = npa
-    return ''.join([chr(v) for v in list(data.ravel())])
+    return "".join([chr(v) for v in list(data.ravel())])
 
 
 import io
+
+
 def str_to_ImagePIL(imstr):
     try:
         data = imstr[5:]
@@ -469,21 +481,21 @@ def str_to_ImagePIL(imstr):
         return im
     except:
         return None
-    
+
+
 def ImagePIL_to_str(im):
     try:
         img_byte_arr = io.BytesIO()
-        im.save(img_byte_arr,format='png')
+        im.save(img_byte_arr, format="png")
         vals = img_byte_arr.getvalue()
         file_type = get_type(None, vals[0:10])
         if file_type:
             return "data:{};base64,{}".format(
-                    file_type, encodebytes(vals).decode("ascii")
-                )
+                file_type, encodebytes(vals).decode("ascii")
+            )
     except:
         return None
-  
-        
+
 
 # Get just the alpha channel of an image, which can be turned into a mask
 # def make_alpha_mask(fin,maskout):
@@ -495,7 +507,7 @@ def ImagePIL_to_str(im):
 #         # (r,g,b)=Image.new('RGB',im.size,'black').split()
 #         nim = Image.merge('L',(a,))
 #         nim.save(maskout)
-        
+
 # # Get just the alpha channel of an image, which can be turned into a mask
 # def make_rgb(fin,rgbout):
 #     from PIL import Image, ImageOps
@@ -507,26 +519,27 @@ def ImagePIL_to_str(im):
 #         nim = Image.merge('RGB',(r,g,b))
 #         nim.save(rgbout)
 
+
 # Strips image extensions
 def strip_ext(fnin):
     # strip existing extension
-    if fnin[-4:].lower() in ['.png','.gif','jpg','tif']:
+    if fnin[-4:].lower() in [".png", ".gif", "jpg", "tif"]:
         fnin = fnin[0:-4]
-    if fnin[-5:].lower() in ['jpeg','tiff']:
+    if fnin[-5:].lower() in ["jpeg", "tiff"]:
         fnin = fnin[0:-5]
     return fnin
-        
-# Extracts embedded images or returns the path of linked ones        
-def extract_img_file(el,svg_dir,newpath):
+
+
+# Extracts embedded images or returns the path of linked ones
+def extract_img_file(el, svg_dir, newpath):
     islinked, validpath = check_linked(el, svg_dir)
     if islinked and validpath is not None:
-        impath = validpath;
+        impath = validpath
         madenew = False
     elif islinked and validpath is None:
         impath = None
         madenew = False
     else:
-        
         # inkex.utils.debug(newpath)
         extract = extract_image_simple(el, strip_ext(newpath))
         if extract is not None:
@@ -543,30 +556,37 @@ def extract_img_file(el,svg_dir,newpath):
 # For those pixels, alpha is then set to 1 (out of 255), which prevents the PDF
 # renderer from replacing those pixels with black. This avoids the 'gray ring'
 # issue that can happen on PDF exports.
-def Set_Alpha0_RGB(img,imgref):
-    im1 =  ImagePIL.open(img).convert('RGBA')
-    im2 =  ImagePIL.open(imgref).convert('RGBA')
+def Set_Alpha0_RGB(img, imgref):
+    im1 = ImagePIL.open(img).convert("RGBA")
+    im2 = ImagePIL.open(imgref).convert("RGBA")
     import numpy as np
+
     d1 = np.asarray(im1)
     d2 = np.asarray(im2)
-    a = d1[:,:,3];
-    nd = np.stack((np.where(a==0,d2[:,:,0],d1[:,:,0]),
-                   np.where(a==0,d2[:,:,1],d1[:,:,1]),
-                   np.where(a==0,d2[:,:,2],d1[:,:,2]),
-                   np.where(a==0,1*np.ones_like(a),a)),2);
+    a = d1[:, :, 3]
+    nd = np.stack(
+        (
+            np.where(a == 0, d2[:, :, 0], d1[:, :, 0]),
+            np.where(a == 0, d2[:, :, 1], d1[:, :, 1]),
+            np.where(a == 0, d2[:, :, 2], d1[:, :, 2]),
+            np.where(a == 0, 1 * np.ones_like(a), a),
+        ),
+        2,
+    )
     ImagePIL.fromarray(nd).save(img)
     # inkex.utils.debug(img)
-    anyalpha0 = np.where(a==0,True,False).any()
+    anyalpha0 = np.where(a == 0, True, False).any()
     return anyalpha0
 
+
 # Crop a list of images based on the transparency of the first one
-# Returns the normalized bounding box, which we need later 
+# Returns the normalized bounding box, which we need later
 def crop_images(ims_in):
     bbox = None
     with ImagePIL.open(ims_in[0]) as ref_im:
         bbox = ref_im.getbbox()
         nsz = ref_im.size
-        
+
     if bbox is not None:
         # left,upper,right,lower (left & upper pixel is non-zero corner, right-1 & lower-1 is non-zero corner)
         nbbox = [
@@ -576,17 +596,18 @@ def crop_images(ims_in):
             bbox[3] / nsz[1],
         ]  # normalize to original size
         for imf in ims_in:
-            with ImagePIL.open(imf) as im: 
+            with ImagePIL.open(imf) as im:
                 im.crop(bbox).save(imf)
         return nbbox
     else:
         return None
 
+
 # Get the absolute locations of all linked images when called by an extension
 # Needed because the temp file has a different location from the actual one
 def get_linked_locations(slf):
     llocations = dict()
-    images = slf.svg.xpath('//svg:image')
+    images = slf.svg.xpath("//svg:image")
     for node in images:
         xlink = node.get("xlink:href")
         if xlink is not None and xlink[:5] != "data:":
@@ -597,34 +618,35 @@ def get_linked_locations(slf):
                 # python2 compatibility, remove when python3 only.
                 import urllib
                 import urlparse
-    
+
             url = urlparse.urlparse(xlink)
             href = urllib.url2pathname(url.path)
-    
+
             # Look relative to the *temporary* filename instead of the original filename.
-            try:    # v1.2 forward
+            try:  # v1.2 forward
                 path = slf.absolute_href(
                     href or "", cwd=os.path.dirname(slf.options.input_file)
                 )
-            except: # pre-v1.2
+            except:  # pre-v1.2
                 # Primary location always the filename itself, we allow this
                 # call to search the user's home folder too.
-                path = slf.absolute_href(href or '')
-    
+                path = slf.absolute_href(href or "")
+
             # Backup directory where we can find the image
             if not os.path.isfile(path):
                 path = node.get("sodipodi:absref", path)
-                
+
             if os.path.isfile(path):
-                llocations[node.get_id()]  = path;
+                llocations[node.get_id()] = path
             else:
-                llocations[node.get_id()]  = None;
+                llocations[node.get_id()] = None
     return llocations
 
+
 # Get the absolute locations of all linked images when the absolute path is known
-def get_linked_locations_file(fin,svg):
+def get_linked_locations_file(fin, svg):
     llocations = dict()
-    images = svg.xpath('//svg:image')
+    images = svg.xpath("//svg:image")
     for node in images:
         xlink = node.get("xlink:href")
         if xlink is not None and xlink[:5] != "data:":
@@ -635,18 +657,18 @@ def get_linked_locations_file(fin,svg):
                 # python2 compatibility, remove when python3 only.
                 import urllib
                 import urlparse
-    
+
             url = urlparse.urlparse(xlink)
             href = urllib.url2pathname(url.path)
-    
+
             path = absolute_href2(href or "", os.path.dirname(fin))
-    
+
             # Backup directory where we can find the image
             if not os.path.isfile(path):
                 path = node.get("sodipodi:absref", path)
-                
+
             if os.path.isfile(path):
-                llocations[node.get_id()]  = path;
+                llocations[node.get_id()] = path
             else:
-                llocations[node.get_id()]  = None;
+                llocations[node.get_id()] = None
     return llocations

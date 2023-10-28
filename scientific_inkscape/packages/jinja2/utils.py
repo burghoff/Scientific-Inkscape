@@ -24,7 +24,7 @@ missing = type("MissingType", (), {"__repr__": lambda x: "missing"})()
 # internal code
 internal_code = set()
 
-concat = u"".join
+concat = "".join
 
 _slash_escape = "\\/" not in json.dumps("/")
 
@@ -257,7 +257,7 @@ def urlize(text, trim_url_limit=None, rel=None, target=None):
 
         words[i] = head + middle + tail
 
-    return u"".join(words)
+    return "".join(words)
 
 
 def generate_lorem_ipsum(n=5, html=True, min=20, max=100):
@@ -297,7 +297,7 @@ def generate_lorem_ipsum(n=5, html=True, min=20, max=100):
             p.append(word)
 
         # ensure that the paragraph ends with a dot.
-        p = u" ".join(p)
+        p = " ".join(p)
         if p.endswith(","):
             p = p[:-1] + "."
         elif not p.endswith("."):
@@ -305,8 +305,8 @@ def generate_lorem_ipsum(n=5, html=True, min=20, max=100):
         result.append(p)
 
     if not html:
-        return u"\n\n".join(result)
-    return Markup(u"\n".join(u"<p>%s</p>" % escape(x) for x in result))
+        return "\n\n".join(result)
+    return Markup("\n".join("<p>%s</p>" % escape(x) for x in result))
 
 
 def unicode_urlencode(obj, charset="utf-8", for_qs=False):
@@ -617,10 +617,10 @@ def htmlsafe_json_dumps(obj, dumper=None, **kwargs):
         dumper = json.dumps
     rv = (
         dumper(obj, **kwargs)
-        .replace(u"<", u"\\u003c")
-        .replace(u">", u"\\u003e")
-        .replace(u"&", u"\\u0026")
-        .replace(u"'", u"\\u0027")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+        .replace("'", "\\u0027")
     )
     return Markup(rv)
 
@@ -682,14 +682,14 @@ class Cycler(object):
 class Joiner(object):
     """A joining helper for templates."""
 
-    def __init__(self, sep=u", "):
+    def __init__(self, sep=", "):
         self.sep = sep
         self.used = False
 
     def __call__(self):
         if not self.used:
             self.used = True
-            return u""
+            return ""
         return self.sep
 
 

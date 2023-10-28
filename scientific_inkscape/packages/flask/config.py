@@ -219,7 +219,7 @@ class Config(dict):
             )
         mappings.append(kwargs.items())
         for mapping in mappings:
-            for (key, value) in mapping:
+            for key, value in mapping:
                 if key.isupper():
                     self[key] = value
         return True

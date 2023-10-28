@@ -20,8 +20,10 @@
             <param name="size" type="float" precision="1" min="0" max="10000"
                     gui-text="Size (%)">100</param>
             
-            <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-            <label>By David Burghoff, University of Texas at Austin</label>
+            <spacer/>
+            <label>Scientific Inkscape v1.3.2</label>
+            <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+            <label>David Burghoff, University of Texas at Austin</label>
         </page>
         
         <page name="addremove" gui-text="Add/remove templates">

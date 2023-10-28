@@ -29,11 +29,10 @@
         <param name="exportnow" type="bool" gui-text="Export this document now (without running the Autoexporter)"
         gui-description="Export the current document as it is now (like Save a Copy). Exports will be placed in the same folder as the original.">false</param>
                 
-        
-        
-        
-        <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-        <label>By David Burghoff, University of Texas at Austin</label>
+        <spacer/>
+        <label>Scientific Inkscape v1.3.2</label>
+        <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+        <label>David Burghoff, University of Texas at Austin</label>
         </page>
     
         <page name="advanced" gui-text="Advanced">
@@ -41,10 +40,8 @@
         <label appearance="header">Embedded image handling</label> 
         <label>Embedded images can be resampled and cropped to reduce output file sizes.</label>     
         <param name="imagemode2" type="bool" gui-text="Crop and resample images?"
-        gui-description="When exporting SVGs with images, they can be resampled to avoid unnecessarily large file sizes. For example, a large image that has been shrunk to a small size will have an enormous effective DPI—this can be reduced.">true</param> 
-        <param name="dpi_im" type="float" precision="0" min="1" max="9999" gui-text="Resampling DPI"
-        gui-description="When exporting SVGs with images, they can be resampled to avoid unnecessarily large file sizes. For example, a large image that has been shrunk to a small size will have an enormous effective DPI—this can be reduced.">300</param>
-        
+        gui-description="Resample embedded Images at the rasterization DPI if doing so makes the file size smaller. This avoids unnecessarily large files created by high-DPI images.">true</param> 
+
         <label appearance="header">Other options</label>
         <param name="texttopath" type="bool" gui-text="Convert text to paths"
         gui-description="Conversion of text to paths can help guarantee that it looks identical on all platforms.">false</param> 
@@ -59,9 +56,10 @@
          <param name="latexpdf" type="bool" gui-text="Omit text in PDF and create LaTeX file"
          gui-description="Equivalent to same option when saving as PDF">false</param> 
          
-
-        <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-        <label>By David Burghoff, University of Texas at Austin</label>
+        <spacer/>
+        <label>Scientific Inkscape v1.3.2</label>
+        <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+        <label>David Burghoff, University of Texas at Austin</label>
         </page>
         
         <page name="rasterizer" gui-text="Rasterizer">
@@ -76,8 +74,10 @@
                    <option value="2">Rasterized as JPG</option>
                    <option value="3">Left unchanged</option>
                 </param>
-        <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-        <label>By David Burghoff, University of Texas at Austin</label>
+        <spacer/>
+        <label>Scientific Inkscape v1.3.2</label>
+        <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+        <label>David Burghoff, University of Texas at Austin</label>
         </page>
     </param>
     <effect needs-live-preview="false">

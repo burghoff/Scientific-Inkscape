@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 #
-# Copyright (C) 2021 David Burghoff, dburghoff@nd.edu
+# Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,33 +19,14 @@
 #
 
 import inkex
-from inkex import (
-    TextElement,
-    FlowRoot,
-    FlowPara,
-    Tspan,
-    TextPath,
-    Rectangle,
-    addNS,
-    Transform,
-    PathElement,
-    Line,
-    Rectangle,
-    Path,
-    Vector2d,
-    Use,
-    Group,
-    FontFace,
-    FlowSpan,
-    Image,
-    FlowRegion,
-)
+from inkex import TextElement, FlowRoot, FlowPara, Tspan, Transform, Group, FlowSpan
 import os, sys
 
 sys.path.append(
     os.path.dirname(os.path.realpath(sys.argv[0]))
 )  # make sure my directory is on the path
 import dhelpers as dh
+from inkex.text.utils import otp_support_tags
 
 from applytransform_mod import fuseTransform
 import math
@@ -108,7 +89,10 @@ class Homogenizer(inkex.EffectExtension):
             help="Fuse transforms to paths?",
         )
         pars.add_argument(
-            "--plotaware", type=inkex.Boolean, default=False, help="Plot-aware text scaling?"
+            "--plotaware",
+            type=inkex.Boolean,
+            default=False,
+            help="Plot-aware text scaling?",
         )
 
     def effect(self):
@@ -132,8 +116,20 @@ class Homogenizer(inkex.EffectExtension):
         sel0 = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
         # should work with both v1.0 and v1.1
         sel = [v for el in sel0 for v in el.descendants2()]
-        
-        if self.options.plotaware and any([not isinstance(k, Group) for k in sel0]):
+
+        itag = inkex.Image.ctag
+        if all([el.tag == itag for el in sel]):
+            inkex.utils.errormsg(
+                """Thanks for using Scientific Inkscape!
+            
+It appears that you're attempting to homogenize a raster Image object. Please note that Inkscape is mainly for working with vector images, not raster images. Vector images preserve all of the information used to generate them, whereas raster images do not. Read about the difference here:
+https://en.wikipedia.org/wiki/Vector_graphics
+            
+Unfortunately, this means that there is not much the Homogenizer can do to edit raster images. If you want to edit a raster image, you will need to use a program like Photoshop or GIMP.
+            """
+            )
+            quit()
+        elif self.options.plotaware and any([not isinstance(k, Group) for k in sel0]):
             inkex.utils.errormsg(
                 "Plot-aware scaling requires that every selected object be a grouped plot."
             )
@@ -149,90 +145,20 @@ class Homogenizer(inkex.EffectExtension):
         if setfontfamily or setfontsize or fixtextdistortion:
             tels = [d for d in sel if isinstance(d, (TextElement, FlowRoot))]
             if not self.options.plotaware:
-                bbs = dh.BB2(self,tels,False)
+                bbs = dh.BB2(self, tels, False)
             else:
                 aels = [d for el in sel0 for d in el.descendants2()]
-                bbs = dh.BB2(self,aels,False)
+                bbs = dh.BB2(self, aels, False)
 
-        
         if setfontsize:
-            # Get all font sizes and scale factors
-            # szd = dict()
-            # sfd = dict()
-            # for el in sel:
-            #     actualsize, sf, ct, ang = dh.Get_Composed_Width(
-            #         el, "font-size", nargout=4
-            #     )
-            #     elid = el.get_id()
-            #     szd[elid] = actualsize
-            #     sfd[elid] = sf
-            # # Get font sizes of all root text elements (max size) and convert sub/superscripts to relative size
-            # szs = []
-            # for el in sel:
-            #     if isinstance(el, (TextElement, FlowRoot)):
-            #         maxsz = float("-inf")
-            #         for d in el.descendants2():
-            #             if (d.text is not None and len(d.text) > 0) or (
-            #                 d.tail is not None and len(d.tail) > 0
-            #             ):
-            #                 mysz = szd[d.get_id()]
-            #                 maxsz = max(maxsz, mysz)
-
-            #                 sty = d.ccascaded_style
-            #                 bshift = sty.get("baseline-shift")
-            #                 if bshift in ["sub", "super"]:
-            #                     psz = szd[d.getparent().get_id()]
-            #                     pct = mysz / psz * 100
-            #                     # dh.Set_Style_Comp(d, "font-size", str(pct) + "%")
-            #                     d.cstyle["font-size"] = str(pct) + "%"
-            #         maxsz = maxsz / self.svg.cdocsize.unittouu("1pt")
-            #         szs.append(maxsz)    
-                     
-            # # Determine scale and/or size
-            # fixedscale = False
-            # try:
-            #     if self.options.fontmodes == 3:
-            #         fixedscale = True
-            #     elif self.options.fontmodes == 4:
-            #         fixedscale = True
-            #         fontsize = fontsize / max(szs) * 100
-            #     elif self.options.fontmodes == 5:
-            #         from statistics import mean
-            #         fontsize = mean(szs)
-            #     elif self.options.fontmodes == 6:
-            #         from statistics import median
-    
-            #         fontsize = median(szs)
-            #     elif self.options.fontmodes == 7:
-            #         fontsize = min(szs)
-            #     elif self.options.fontmodes == 8:
-            #         fontsize = max(szs)
-            # except ValueError:
-            #     fontsize = 12;   
-            
-            
-            # # Set the font sizes
-            # for el in sel:
-            #     elid = el.get_id()
-            #     actualsize = szd[elid]
-            #     sf = sfd[elid]
-            #     if not (fixedscale):
-            #         newsize = self.svg.cdocsize.unittouu("1pt") * fontsize
-            #     else:
-            #         newsize = actualsize * (fontsize / 100)
-            #     fs = el.cstyle.get("font-size")
-            #     if fs is None or not ("%" in fs):  # keep sub/superscripts relative size
-            #         el.cstyle["font-size"]= str(newsize / sf) + "px"
-                    
-                    
             # Get all font sizes and scale factors
             onept = self.svg.cdocsize.unittouu("1pt")
             szs = dict()
             for el in tels:
-                cszs = [c.tfs/onept for ln in el.parsed_text.lns for c in ln.cs]
-                if len(cszs)>0:
+                cszs = [c.tfs / onept for ln in el.parsed_text.lns for c in ln.cs]
+                if len(cszs) > 0:
                     szs[el] = max(cszs)
-                    
+
             # Determine scale and/or size
             fixedscale = False
             try:
@@ -243,35 +169,41 @@ class Homogenizer(inkex.EffectExtension):
                     fontsize = fontsize / max(szs.values()) * 100
                 elif self.options.fontmodes == 5:
                     from statistics import mean
+
                     fontsize = mean(szs.values())
                 elif self.options.fontmodes == 6:
                     from statistics import median
+
                     fontsize = median(szs.values())
                 elif self.options.fontmodes == 7:
                     fontsize = min(szs.values())
                 elif self.options.fontmodes == 8:
                     fontsize = max(szs.values())
             except ValueError:
-                fontsize = 12;
-            
-            from TextParser import tchar
+                fontsize = 12
+
+            from inkex.text import TextParser
+
             for el in szs:
                 for d in reversed(el.descendants2()):
                     sty = d.cspecified_style
-                    if el==d or 'font-size' in sty:
-                        dfs, sf, _, _ = dh.Get_Composed_Width(d, "font-size", nargout=4)
-                        bshift = tchar.get_baseline(sty, d.getparent())
-                        if bshift!=0 or '%' in sty.get('font-size',''):
+                    if el == d or "font-size" in sty:
+                        dfs, sf = dh.composed_width(d, "font-size")
+                        bshift = TextParser.tchar.get_baseline(sty, d.getparent())
+                        if bshift != 0 or "%" in sty.get("font-size", ""):
                             # Convert sub/superscripts into relative size
-                            pfs, sf, _, _ = dh.Get_Composed_Width(d.getparent(), "font-size", nargout=4)
+                            pfs, sf = dh.composed_width(d.getparent(), "font-size")
                             d.cstyle["font-size"] = f"{dfs / pfs * 100:.2f}%"
                         else:
                             # Set absolute size
-                            scl = fontsize*onept/dfs if not fixedscale else fontsize/100
-                            nfs = dfs*scl/sf
-                            nfs = f"{nfs:.2f}" if abs(nfs)>1 else "{:.3g}".format(nfs)
-                            d.cstyle["font-size"] = nfs.rstrip('0').rstrip('.')+'px'
-
+                            scl = (
+                                fontsize * onept / dfs
+                                if not fixedscale
+                                else fontsize / 100
+                            )
+                            nfs = dfs * scl / sf
+                            nfs = f"{nfs:.2f}" if abs(nfs) > 1 else "{:.3g}".format(nfs)
+                            d.cstyle["font-size"] = nfs.rstrip("0").rstrip(".") + "px"
 
         if fixtextdistortion:
             # make a new transform that removes bad scaling and shearing (see General_affine_transformation.nb)
@@ -280,7 +212,7 @@ class Homogenizer(inkex.EffectExtension):
                 detv = ct.a * ct.d - ct.b * ct.c
                 signdet = -1 * (detv < 0) + (detv >= 0)
                 sqrtdet = math.sqrt(abs(detv))
-                magv = math.sqrt(ct.b ** 2 + ct.a ** 2)
+                magv = math.sqrt(ct.b**2 + ct.a**2)
                 ctnew = Transform(
                     [
                         [ct.a * sqrtdet / magv, -ct.b * sqrtdet * signdet / magv, ct.e],
@@ -291,16 +223,15 @@ class Homogenizer(inkex.EffectExtension):
 
         if setfontfamily:
             for el in reversed(sel):
-                # dh.Set_Style_Comp(el, "font-family", fontfamily)
                 el.cstyle["font-family"] = fontfamily
-                # dh.Set_Style_Comp(el, "-inkscape-font-specification", None)
-                el.cstyle["-inkscape-font-specification"]= None
-                
-            from TextParser import Character_Fixer2
-            Character_Fixer2(tels)
-        
+                el.cstyle["-inkscape-font-specification"] = None
+
+            from inkex.text import TextParser
+
+            TextParser.Character_Fixer2(tels)
+
         if setfontfamily or setfontsize or fixtextdistortion:
-            bbs2 = dh.BB2(self,tels,True)
+            bbs2 = dh.BB2(self, tels, True)
             if not self.options.plotaware:
                 for el in sel:
                     myid = el.get_id()
@@ -313,16 +244,22 @@ class Homogenizer(inkex.EffectExtension):
                         bb2 = bbs2[el.get_id()]
                         tx = (bb2[0] + bb2[2] / 2) - (bb[0] + bb[2] / 2)
                         ty = (bb2[1] + bb2[3] / 2) - (bb[1] + bb[3] / 2)
-                        trl = Transform("translate(" + str(-tx) + ", " + str(-ty) + ")")
+                        trl = Transform("translate({0}, {1})".format(-tx, -ty))
                         dh.global_transform(el, trl)
-            
+
             else:
-                from scale_plots import geometric_bbox, Find_Plot_Area, TrTransform, appendInt
+                from scale_plots import (
+                    geometric_bbox,
+                    Find_Plot_Area,
+                    TrTransform,
+                    appendInt,
+                )
+
                 gbbs = {elid: geometric_bbox(el, fbb).sbb for elid, fbb in bbs.items()}
-                for i0,g in enumerate(sel0):
+                for i0, g in enumerate(sel0):
                     pels = [k for k in g if k.get_id() in bbs]  # plot elements list
-                    vl, hl, lvel, lhel = Find_Plot_Area(pels,gbbs)
-                    
+                    vl, hl, lvel, lhel = Find_Plot_Area(pels, gbbs)
+
                     if lvel is None or lhel is None:
                         lvel = None
                         lhel = None
@@ -336,11 +273,12 @@ class Homogenizer(inkex.EffectExtension):
                             + ").\n\nDraw a box with a stroke to define the plot area."
                             + "\nAdjustment will still be performed, but the results may not be ideal."
                         )
-                    
-                    bbp = dh.bbox(None);    # plot area
+
+                    bbp = dh.bbox(None)
+                    # plot area
                     for el in pels:
                         if el.get_id() in [lvel, lhel]:
-                            bbp  = bbp.union(gbbs[el.get_id()])
+                            bbp = bbp.union(gbbs[el.get_id()])
                     for el in g.descendants2():
                         if el in tels:
                             bb1 = dh.bbox(bbs[el.get_id()])
@@ -352,27 +290,34 @@ class Homogenizer(inkex.EffectExtension):
                                 # For elements outside the plot area, adjust position to maintain
                                 # the scaled distance to the plot area
                                 if bb1.xc < bbp.x1:
-                                    dx = (bbp.x1 - bb2.x2) - (bbp.x1 - bb1.x2)*bb2.w/bb1.w
+                                    dx = (bbp.x1 - bb2.x2) - (
+                                        bbp.x1 - bb1.x2
+                                    ) * bb2.w / bb1.w
                                 elif bb1.xc > bbp.x2:
-                                    dx = (bb1.x1 - bbp.x2)*bb2.w/bb1.w - (bb2.x1 - bbp.x2)
+                                    dx = (bb1.x1 - bbp.x2) * bb2.w / bb1.w - (
+                                        bb2.x1 - bbp.x2
+                                    )
                                 else:
                                     dx = bb1.xc - bb2.xc
                                 if bb1.yc < bbp.y1:
-                                    dy = (bbp.y1 - bb2.y2) - (bbp.y1 - bb1.y2)*bb2.h/bb1.h
+                                    dy = (bbp.y1 - bb2.y2) - (
+                                        bbp.y1 - bb1.y2
+                                    ) * bb2.h / bb1.h
                                 elif bb1.yc > bbp.y2:
-                                    dy = (bb1.y1 - bbp.y2)*bb2.h/bb1.h - (bb2.y1 - bbp.y2)
+                                    dy = (bb1.y1 - bbp.y2) * bb2.h / bb1.h - (
+                                        bb2.y1 - bbp.y2
+                                    )
                                 else:
                                     dy = bb1.yc - bb2.yc
-                            tr2 = TrTransform(dx,dy)
+                            tr2 = TrTransform(dx, dy)
                             dh.global_transform(el, tr2)
-
 
         if setstroke:
             szd = dict()
             sfd = dict()
             szs = []
             for el in sela:
-                sw, sf, ct, ang = dh.Get_Composed_Width(el, "stroke-width", nargout=4)
+                sw, sf = dh.composed_width(el, "stroke-width")
 
                 elid = el.get_id()
                 szd[elid] = sw
@@ -406,11 +351,11 @@ class Homogenizer(inkex.EffectExtension):
                     else:
                         newsize = szd[elid] * (setstrokew / 100)
                     # dh.Set_Style_Comp(el, "stroke-width", str(newsize / sfd[elid]) + "px")
-                    el.cstyle["stroke-width"]=str(newsize / sfd[elid]) + "px"
+                    el.cstyle["stroke-width"] = str(newsize / sfd[elid]) + "px"
 
         if self.options.fusetransforms:
             for el in sela:
-                if el.tag in dh.otp_support_tags:
+                if el.tag in otp_support_tags:
                     # Fuse the composed transform onto the path
                     el.ctransform = el.ccomposed_transform
                     fuseTransform(el)
@@ -426,4 +371,4 @@ class Homogenizer(inkex.EffectExtension):
 
 
 if __name__ == "__main__":
-    dh.Run_SI_Extension(Homogenizer(),"Homogenizer")
+    dh.Run_SI_Extension(Homogenizer(), "Homogenizer")

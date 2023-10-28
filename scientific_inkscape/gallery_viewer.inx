@@ -10,8 +10,11 @@
         <label>- The viewer runs on a local server.</label>
         <param name="portnum" type="int" min="0" max="65535" gui-text="Port number"
         gui-description="Port for the Gallery Viewer server. &#13;If the default does not work, try another.">5001</param>
-        <spacer/><label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-        <label>By David Burghoff, University of Texas at Austin</label></page>
+        
+        <spacer/>
+        <label>Scientific Inkscape v1.3.2</label>
+        <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
+        <label>David Burghoff, University of Texas at Austin</label></page>
     </param>
     <effect needs-live-preview="false">
         <object-type>text</object-type>

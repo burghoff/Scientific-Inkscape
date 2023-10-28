@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 #
-# Copyright (C) 2021 David Burghoff, dburghoff@nd.edu
+# Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -28,30 +28,33 @@ sys.path.append(
 )  # make sure my directory is on the path
 import dhelpers as dh
 
+
 # Convenience functions
 def joinmod(dirc, f):
     return os.path.join(os.path.abspath(dirc), f)
 
+
 # Runs a Python script using a Python binary in a working directory
 # It detaches from Inkscape, allowing it to continue running after the extension has finished
-def run_python(python_bin,python_script,python_wd,interminal=False):
+def run_python(python_bin, python_script, python_wd, interminal=False):
     import platform
-    if platform.system() == 'Windows':
-        DEVNULL = 'nul'
+
+    if platform.system() == "Windows":
+        DEVNULL = "nul"
     else:
-        DEVNULL = '/dev/null'
-    DEVNULL = dh.si_tmp(filename='si_gv_output.txt')
+        DEVNULL = "/dev/null"
+    DEVNULL = dh.si_tmp(filename="si_gv_output.txt")
     # dh.idebug(DEVNULL)
-    with open(DEVNULL, 'w') as devnull:
+    with open(DEVNULL, "w") as devnull:
         subprocess.Popen([python_bin, python_script], stdout=devnull, stderr=devnull)
-        
+
 
 class GalleryViewer(inkex.EffectExtension):
     def add_arguments(self, pars):
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
         pars.add_argument("--portnum", help="Port number for server")
 
-    def effect(self):        
+    def effect(self):
         if dispprofile:
             import cProfile, pstats, io
             from pstats import SortKey
@@ -69,21 +72,22 @@ class GalleryViewer(inkex.EffectExtension):
         pyloc, pybin = os.path.split(sys.executable)
 
         aepy = os.path.join(dh.si_dir, "gallery_viewer_script.py")
-        
+
         # Pass settings using a config file. Include the current path so Inkex can be called if needed.
         import pickle
-        optcopy.inkscape_bfn = bfn;
-        optcopy.syspath = sys.path;
-        optcopy.inshell = False;
+
+        optcopy.inkscape_bfn = bfn
+        optcopy.syspath = sys.path
+        optcopy.inshell = False
 
         with open(dh.si_tmp(filename="si_gv_settings.p"), "wb") as f:
             pickle.dump(optcopy, f)
         import warnings
-        warnings.simplefilter("ignore", ResourceWarning); # prevent warning that process is open
 
+        warnings.simplefilter("ignore", ResourceWarning)
+        # prevent warning that process is open
 
-        
-        run_python(pybin,aepy,pyloc,optcopy.inshell)
+        run_python(pybin, aepy, pyloc, optcopy.inshell)
 
         if dispprofile:
             pr.disable()
@@ -95,5 +99,4 @@ class GalleryViewer(inkex.EffectExtension):
 
 
 if __name__ == "__main__":
-    dh.Run_SI_Extension(GalleryViewer(),"Gallery Viewer")
-
+    dh.Run_SI_Extension(GalleryViewer(), "Gallery Viewer")

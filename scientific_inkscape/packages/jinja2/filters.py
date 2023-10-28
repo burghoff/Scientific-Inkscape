@@ -158,7 +158,7 @@ def do_urlencode(value):
     else:
         items = iter(value)
 
-    return u"&".join(
+    return "&".join(
         "%s=%s" % (unicode_urlencode(k, for_qs=True), unicode_urlencode(v, for_qs=True))
         for k, v in items
     )
@@ -229,13 +229,13 @@ def do_xmlattr(_eval_ctx, d, autospace=True):
     As you can see it automatically prepends a space in front of the item
     if the filter returned something unless the second parameter is false.
     """
-    rv = u" ".join(
-        u'%s="%s"' % (escape(key), escape(value))
+    rv = " ".join(
+        '%s="%s"' % (escape(key), escape(value))
         for key, value in iteritems(d)
         if value is not None and not isinstance(value, Undefined)
     )
     if autospace and rv:
-        rv = u" " + rv
+        rv = " " + rv
     if _eval_ctx.autoescape:
         rv = Markup(rv)
     return rv
@@ -420,7 +420,7 @@ def do_max(environment, value, case_sensitive=False, attribute=None):
     return _min_or_max(environment, value, max, case_sensitive, attribute)
 
 
-def do_default(value, default_value=u"", boolean=False):
+def do_default(value, default_value="", boolean=False):
     """If the value is undefined it will return the passed default value,
     otherwise the value of the variable:
 
@@ -449,7 +449,7 @@ def do_default(value, default_value=u"", boolean=False):
 
 
 @evalcontextfilter
-def do_join(eval_ctx, value, d=u"", attribute=None):
+def do_join(eval_ctx, value, d="", attribute=None):
     """Return a string which is the concatenation of the strings in the
     sequence. The separator between elements is an empty string per
     default, you can define it with the optional parameter:
@@ -639,8 +639,8 @@ def do_indent(s, width=4, first=False, blank=False, indentfirst=None):
         )
         first = indentfirst
 
-    indention = u" " * width
-    newline = u"\n"
+    indention = " " * width
+    newline = "\n"
 
     if isinstance(s, Markup):
         indention = Markup(indention)
@@ -933,7 +933,7 @@ def do_round(value, precision=0, method="common"):
     if method == "common":
         return round(value, precision)
     func = getattr(math, method)
-    return func(value * (10 ** precision)) / (10 ** precision)
+    return func(value * (10**precision)) / (10**precision)
 
 
 # Use a regular tuple repr here.  This is what we did in the past and we
