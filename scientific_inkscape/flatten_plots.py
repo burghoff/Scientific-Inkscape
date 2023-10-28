@@ -176,14 +176,6 @@ class FlattenPlots(inkex.EffectExtension):
         reversions = self.options.reversions and self.options.fixtext
 
         sel = [el for el in self.svg.descendants2() if el in sel]  # doc order
-        for el in sel:
-            if el.get("inkscape-scientific-flattenexclude"):
-                sel.remove(el)
-        seld = [v for el in sel for v in el.descendants2()]
-        for el in seld:
-            if el.get("inkscape-scientific-flattenexclude"):
-                seld.remove(el)
-
         if self.options.tab == "Exclusions":
             self.options.markexc = {1: True, 2: False}[self.options.markexc]
             for el in sel:
@@ -192,6 +184,14 @@ class FlattenPlots(inkex.EffectExtension):
                 else:
                     el.set("inkscape-scientific-flattenexclude", None)
             return
+        for el in sel:
+            if el.get("inkscape-scientific-flattenexclude"):
+                sel.remove(el)
+        seld = [v for el in sel for v in el.descendants2()]
+        for el in seld:
+            if el.get("inkscape-scientific-flattenexclude"):
+                seld.remove(el)
+
 
         # Move selected defs/clips/mask into global defs
         defstag = inkex.Defs.ctag
