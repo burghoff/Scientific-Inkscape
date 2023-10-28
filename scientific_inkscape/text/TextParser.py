@@ -2264,9 +2264,9 @@ class tchunk:
         # Character attribute lists
         self.txt = c.c
         self.lsp = [c.lsp]
-        self.dxeff = [c.dx, c.lsp]
-        # letter-spacing applies to next character
-        # dxeff[ii] = cs[ii].dx + w.cs[ii-1].lsp (0 at edges)
+        self.dxeff = [c.dx, c.lsp]      
+        # Effective dx (with letter-spacing). Note that letter-spacing adds space
+        # after the char, so dxeff ends up being longer than the number of chars by 1
         self.cw = [c.cw]
         self.dy = [c.dy]
         self.ch = [c.ch]
@@ -2596,43 +2596,6 @@ class tchunk:
                 newx[self.cs[0].lnindex] -= deltaanch
                 self.ln.change_pos(newx)
             self.ln.pt.Update_Delta()
-
-    # @property
-    # def lsp(self):
-    #     # chunk letter-spacing
-    #     if self._lsp is None:
-    #         self._lsp = [c.lsp for c in self.cs]
-    #     return self._lsp
-
-    # @lsp.setter
-    # def lsp(self, li):
-    #     # chunk letter-spacing
-    #     if li is None:
-    #         self._lsp = None
-    #         self.dxeff = None
-
-    # Effective dx (with letter-spacing). Note that letter-spacing adds space
-    # after the char, so dxl ends up being longer than the number of chars by 1
-    # @property
-    # @property
-    # def dxeff(self):
-    #     if self._dxeff is None:
-    #         dxlsp = [0] + self.lsp
-    #         # letter-spacing applies to next character
-    #         self._dxeff = [c.dx + d for c, d in zip(self.cs, dxlsp)] + [dxlsp[-1]]
-
-    #         if not self._dxeff == self.dxeff2:
-    #             inkex.utils.debug('1: '+str(self._dxeff))
-    #             inkex.utils.debug('2: '+str(self.dxeff2))
-    #             inkex.utils.debug('1: '+str(len(self._dxeff)))
-    #             inkex.utils.debug('2: '+str(len(self.dxeff2)))
-    #     return self._dxeff
-
-    # @dxeff.setter
-    # def dxeff(self, di):
-    #     if di is None:
-    #         self._dxeff = None
-    #         self.charpos = None
 
     # chunk properties
     def get_fs(self):

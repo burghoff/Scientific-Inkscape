@@ -99,6 +99,10 @@ def to_lxml(data):
 
 def xmldiff_xpath(data1, data2):
     """Create an xml difference, will modify the first xml structure with a diff"""
+    
+    # from dhelpers import ctic, ctoc
+    # ctic()
+    
     xml1, xml2 = to_lxml(data1), to_lxml(data2)
 
     memo1 = xpath_ids(xml1)
@@ -106,6 +110,8 @@ def xmldiff_xpath(data1, data2):
 
     delta = DeltaLogger()
     _xmldiff(xml1, xml2, delta, memo1, memo2)
+    
+    # ctoc()
     
     return xml.tostring(xml1).decode("utf-8"), delta
 
@@ -213,11 +219,13 @@ def xpath_ids(svg):
                             m, "url(#" + repl_ids[m[5:-1]] + ")"
                         )
         if el.tag == styletag:
-            if el.text is not None:
-                for w in [oi3 for oi3 in oldids3 if oi3 in el.text]:
-                    el.text = el.text.replace(
-                        "url(#" + w[5:-1] + ")", "url(#" + repl_ids[w[5:-1]] + ")"
-                    )
+            if el.text is not None and "url(#" in el.text:
+                ms = re.findall(urlpat,el.text)
+                for m in ms:
+                    if m in oldids3:
+                        el.text = el.text.replace(
+                            m, "url(#" + repl_ids[m[5:-1]] + ")"
+                        )
                 ms = re.findall(classpat, el.text)
                 for m in ms:
                     if m.strip() in repl_ids:
