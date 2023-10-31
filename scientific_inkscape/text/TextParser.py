@@ -451,7 +451,6 @@ class ParsedText:
 
                 if newsprl:
                     lh = max(composed_lineheight(sel),composed_lineheight(sel.getparent()))
-                    # inkex.utils.debug(lh)
                 tsty = true_style(sty)
 
                 # Make a new line if we're sprl or if we have a new x or y
@@ -563,8 +562,6 @@ class ParsedText:
 
                 if txt is not None:
                     for jj, c in enumerate(txt):
-                        # prop = self.ctable.get_prop(c, tsty) * fs
-                        # prop = self.ctable.get_prop_mult(c, tsty, fs/sf)
                         prop = self.ctable.get_prop(c, tsty)
                         ttv = TT_TAIL if tt == TT_TAIL else TT_TEXT
                         tchar(c, fs, sf, prop, sty, tsty, cloc(tel, ttv, jj), lns[-1])
@@ -658,7 +655,6 @@ class ParsedText:
             ndxs = [c.dx for ln in self.lns for c in ln.cs]
             ndys = [c.dy for ln in self.lns for c in ln.cs]
             for ii, c in enumerate(cs):
-                # if c.ln.cs.index(c)>0:
                 if c.lnindex > 0:
                     if (
                         abs(odxs[ii] - ndxs[ii]) > 0.001
@@ -777,7 +773,6 @@ class ParsedText:
                 self.textel.set("dx", dxset)
                 self.textel.set("dy", dyset)
                 for w in [w for ln in self.lns for w in ln.ws]:
-                    # w.dxeff = None
                     w.charpos = None
             self.dxs = dxs
             self.dys = dys
@@ -915,14 +910,11 @@ class ParsedText:
 
         il = self.lns.index(cs[0].ln)
         # chars' line index
-        # ciis = [c.ln.cs.index(c) for c in cs]  # indexs of charsin line
         ciis = [c.lnindex for c in cs]  # indexs of charsin line
 
         # Record position
         dxl = [c.dx for c in cs]
         dyl = [c.dy for c in cs]
-
-        # inkex.utils.debug(dxl)
 
         fusex = self.lns[il].continuex or ciis[0] > 0 or dxl[0] != 0
         fusey = self.lns[il].continuey or ciis[0] > 0 or dyl[0] != 0
@@ -954,7 +946,6 @@ class ParsedText:
             self.lns[0].change_pos(newx=self.lns[0].x, newy=self.lns[0].y)
             # self.lns[0].disablesodipodi(force=True)
 
-        # inkex.utils.debug([''.join([c.c for c in cs]),dyl,fusey])
         if fusex:
             nln.continuex = False
             nln.change_pos(newx=[oldx])
@@ -1046,7 +1037,6 @@ class ParsedText:
                     c.add_style(
                         {"font-family": r[0], "baseline-shift": "0%"}, setdefault=False
                     )
-                    # inkex.utils.debug((c.c,c.tsty))
 
     # Convert flowed text into normal text
     def Flow_to_Text(self):
@@ -1356,8 +1346,6 @@ class ParsedText:
                 sptregion.closed = True
 
         bb = bounding_box2(region, dotransform=False, includestroke=False).sbb
-        # inkex.utils.debug(region.cpath)
-        # inkex.utils.debug(bb)
         if not padding == 0:
             bb = [
                 bb[0] + padding,
@@ -1378,7 +1366,6 @@ class ParsedText:
             lh = composed_lineheight(el)
             lsty = true_style(el.cspecified_style)
             fs, sf = composed_width(el, "font-size")
-            # inkex.utils.debug(self.ctable.flowy(lsty))
 
             absp = (0.5000 * (lh / fs - 1) + self.ctable.flowy(lsty)) * (
                 fs / sf
@@ -1452,7 +1439,6 @@ class ParsedText:
                         anch = {"start": "start", "center": "middle", "end": "end"}[
                             algn
                         ]
-                    # inkex.utils.debug(anch)
                     cln = tline(
                         self,
                         [0],
@@ -1697,7 +1683,6 @@ class ParsedText:
                         hardbreak = False
                         strt = 0 if len(breaks) == 0 else breaks[-1] + 1
                         csleft = lncs[ii][strt:]
-                        # inkex.utils.debug(''.join([c.c for c in csleft]))
                         for jj, c in enumerate(csleft):
                             if jj == 0:
                                 fcrun = c
@@ -2113,10 +2098,8 @@ class tline:
 
                 if len(w.cs) > 0:
                     newxv = self.x
-                    # newxv[self.cs.index(w.cs[0])] = newx
                     newxv[w.cs[0].lnindex] = newx
 
-                    # inkex.utils.debug([w.txt(),newx,newxv])
                     self.change_pos(newxv)
                     w.cs[0].loc.el.cstyle["text-anchor"] = newanch
                     alignd = {"start": "start", "middle": "center", "end": "end"}
@@ -2163,7 +2146,6 @@ class tline:
             oldx = self._x if not self.continuex else self.x
             self._x = newx
             xyset(self.xsrc, "x", newx)
-            # inkex.utils.debug([self.txt(),self.xsrc.get('x')])
 
             if (
                 len(oldx) > 1 and len(newx) == 1 and len(self.sprlabove) > 0
@@ -2458,18 +2440,14 @@ class tchunk:
             if maxspaces is not None:
                 numsp = min(numsp, maxspaces)
 
-            # inkex.utils.debug([self.txt(),nw.txt(),(bl2.x-br1.x)/(lc.sw/self.sf)])
-            # inkex.utils.debug([self.txt(),nw.txt(),lc.sw,lc.cw])
             for ii in range(numsp):
                 self.appendc(" ", lc.ln.pt.ctable.get_prop(" ", lc.tsty), -lc.lsp, 0)
-                # self.appendc(" ", lc.ln.pt.ctable.get_prop(' ',lc.tsty)*lc.tfs, -lc.lsp, 0)
 
             fc = nw.cs[0]
             prevc = self.cs[-1]
             for c in nw.cs:
                 mydx = (c != fc) * c.dx - prevc.lsp * (c == fc)
                 # use dx to remove lsp from the previous c
-                # inkex.utils.debug(ParsedText(self.ln.pt.textel,self.ln.pt.ctable).txt())
                 c.delc()
 
                 ntype = copy(type)
@@ -2635,7 +2613,6 @@ class tchunk:
             if KERN_TABLE:
                 for ii in range(1, self.Ncs):
                     wadj[ii] = self.cs[ii].dkerns(self.cs[ii - 1].c, self.cs[ii].c)
-                    # inkex.utils.debug((self.cs[ii - 1].c, self.cs[ii].c,wadj[ii]))
                     # default to 0 for chars of different style
 
             ws = [self.cw[ii] + self.dxeff[ii] + wadj[ii] for ii in range(self.Ncs)]
@@ -2647,7 +2624,6 @@ class tchunk:
             cstop = np.array(cstop, dtype=float)
 
             ww = cstop[-1]
-            # inkex.utils.debug((self.txt,self.unrenderedspace))
             offx = -self.ln.anchfrac * (ww - self.unrenderedspace * self.cs[-1].cw)
             # offset of the left side of the chunk from the anchor
             wx = self.x
@@ -2656,7 +2632,6 @@ class tchunk:
             lx = (wx + cstrt + offx)[:, np.newaxis]
             rx = (wx + cstop + offx)[:, np.newaxis]
 
-            # dyl, chs, bss = zip(*[(c.dy, c.ch, c.bshft) for c in self.cs])
             adyl = list(itertools.accumulate(self.dy))
             by = np.array(
                 [wy + dy - bs for dy, bs in zip(adyl, self.bshft)], dtype=float
@@ -3445,10 +3420,6 @@ class Character_Table:
                     tsty = true_style(sty)
                     fsty = font_style(sty)
 
-                    # inkex.utils.debug(sty)
-                    # inkex.utils.debug(fsty)
-                    # inkex.utils.debug(tsty)
-
                     ctable[tsty] = unique(ctable.get(tsty, []) + list(txt))
                     rtable[fsty] = unique(rtable.get(fsty, []) + list(txt))
                     if tsty not in pctable:
@@ -3788,7 +3759,6 @@ class Character_Table:
                 allcs = set("".join(self.rtable[s]))
                 tfbc = fcfg.get_true_font_by_char(s, allcs)
                 tfbc = {k: v for k, v in tfbc.items() if v is not None}
-                # inkex.utils.debug((s,allcs,tfbc))
                 self._ftable[s] = {k: v["font-family"] for k, v in tfbc.items()}
 
                 for k, v in tfbc.items():
