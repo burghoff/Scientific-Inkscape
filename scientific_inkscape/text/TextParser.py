@@ -445,17 +445,14 @@ class ParsedText:
         for di, tt, tel, sel, txt in self.tree.dgenerator():
             newsprl = tt == TT_TEXT and types[di] == "tlvlsprl"
             if (txt is not None and len(txt) > 0) or newsprl:
-                # sel = tel
-                # if tt==TT_TAIL:
-                #     sel = pd[tel]
-                # tails get their sty from the parent of the element the tail belongs to
                 sty = sel.cspecified_style
                 ct = sel.ccomposed_transform
                 fs, sf = composed_width(sel, "font-size")
                 ang = math.atan2(ct.c, ct.d) * 180 / math.pi
 
                 if newsprl:
-                    lh = composed_lineheight(sel)
+                    lh = max(composed_lineheight(sel),composed_lineheight(sel.getparent()))
+                    # inkex.utils.debug(lh)
                 tsty = true_style(sty)
 
                 # Make a new line if we're sprl or if we have a new x or y
@@ -865,7 +862,7 @@ class ParsedText:
                 ) and cel is not el:
                     cel = cel.getparent()
                     fs_origins.add(cel)
-            if el not in fs_origins:
+            if el not in fs_origins and (len(self.lns) == 1 or all([not ln.sprl for ln in self.lns[1:]])):
                 el.cstyle["font-size"] = max([c.utfs for c in self.cs])
 
     def Split_Off_Chunks(self, ws):
