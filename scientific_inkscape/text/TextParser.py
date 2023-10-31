@@ -448,7 +448,6 @@ class ParsedText:
                 sty = sel.cspecified_style
                 ct = sel.ccomposed_transform
                 fs, sf = composed_width(sel, "font-size")
-                ang = math.atan2(ct.c, ct.d) * 180 / math.pi
 
                 if newsprl:
                     lh = max(composed_lineheight(sel),composed_lineheight(sel.getparent()))
@@ -492,20 +491,20 @@ class ParsedText:
                         issprl = False
                         if xv[0] is None:
                             if len(lns) > 0:
-                                xv = copy(lns[-1].x)
+                                xv = lns[-1].x[:]
                                 xsrc = lns[-1].xsrc
                             else:
-                                xv = copy(ixs[0])
+                                xv = ixs[0][:]
                                 xsrc = xsrcs[0]
                             continuex = True
                             # issprl = True;
                         continuey = False
                         if yv[0] is None:
                             if len(lns) > 0:
-                                yv = copy(lns[-1].y)
+                                yv = lns[-1].y[:]
                                 ysrc = lns[-1].ysrc
                             else:
-                                yv = copy(iys[0])
+                                yv = iys[0][:]
                                 ysrc = ysrcs[0]
                             continuey = True
 
@@ -552,7 +551,6 @@ class ParsedText:
                             sprlabove,
                             anch,
                             ct,
-                            ang,
                             tlvlno,
                             sty,
                             continuex,
@@ -1430,7 +1428,6 @@ class ParsedText:
                 tsty = true_style(sty)
                 ct = sel.ccomposed_transform
                 fs, sf = composed_width(sel, "font-size")
-                ang = math.atan2(ct.c, ct.d) * 180 / math.pi
                 absp, bbsp, mrfs = Height_AboveBelow_Baseline(sel)
                 lsty = true_style(sel.cspecified_style)
                 fabsp = max(rabsp, absp)
@@ -1466,7 +1463,6 @@ class ParsedText:
                         [],
                         anch,
                         ct,
-                        ang,
                         None,
                         sty,
                         False,
@@ -1791,7 +1787,6 @@ class ParsedText:
                         [],
                         ln.anchor,
                         ln.transform,
-                        ln.angle,
                         None,
                         ln.style,
                         False,
@@ -1917,7 +1912,6 @@ class tline:
         "cs",
         "ws",
         "transform",
-        "angle",
         "xsrc",
         "ysrc",
         "tlvlno",
@@ -1943,7 +1937,6 @@ class tline:
         sprlabove,
         anch,
         xform,
-        ang,
         tlvlno,
         sty,
         continuex,
@@ -1963,10 +1956,6 @@ class tline:
             self.transform = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
         else:
             self.transform = xform
-        if ang is None:
-            self.angle = 0
-        else:
-            self.angle = ang
         self.xsrc = xsrc
         # element from which we derive our x value
         self.ysrc = ysrc
@@ -1994,7 +1983,6 @@ class tline:
         ret.cs = [c.copy(memo) for c in self.cs]
         ret.ws = [w.copy(memo) for w in self.ws]
         ret.transform = self.transform
-        ret.angle = self.angle
         ret.xsrc = memo[self.xsrc]
         ret.ysrc = memo[self.ysrc]
         ret.tlvlno = self.tlvlno
@@ -2003,6 +1991,12 @@ class tline:
         ret.continuey = self.continuey
         ret.pt = self.pt
         return ret
+    
+    # transform angle in degrees
+    def get_ang(self):
+        return math.atan2(self.transform.c, self.transform.d) * 180 / math.pi
+
+    angle = property(get_ang)
 
     # x property
     def get_x(self):
