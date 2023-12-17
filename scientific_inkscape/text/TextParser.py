@@ -450,7 +450,9 @@ class ParsedText:
                 fs, sf = composed_width(sel, "font-size")
 
                 if newsprl:
-                    lh = max(composed_lineheight(sel),composed_lineheight(sel.getparent()))
+                    lh = max(
+                        composed_lineheight(sel), composed_lineheight(sel.getparent())
+                    )
                 tsty = true_style(sty)
 
                 # Make a new line if we're sprl or if we have a new x or y
@@ -855,7 +857,9 @@ class ParsedText:
                 ) and cel is not el:
                     cel = cel.getparent()
                     fs_origins.add(cel)
-            if el not in fs_origins and (len(self.lns) == 1 or all([not ln.sprl for ln in self.lns[1:]])):
+            if el not in fs_origins and (
+                len(self.lns) == 1 or all([not ln.sprl for ln in self.lns[1:]])
+            ):
                 el.cstyle["font-size"] = max([c.utfs for c in self.cs])
 
     def Split_Off_Chunks(self, ws):
@@ -1976,7 +1980,7 @@ class tline:
         ret.continuey = self.continuey
         ret.pt = self.pt
         return ret
-    
+
     # transform angle in degrees
     def get_ang(self):
         return math.atan2(self.transform.c, self.transform.d) * 180 / math.pi
@@ -2237,7 +2241,7 @@ class tchunk:
         # Character attribute lists
         self.txt = c.c
         self.lsp = [c.lsp]
-        self.dxeff = [c.dx, c.lsp]      
+        self.dxeff = [c.dx, c.lsp]
         # Effective dx (with letter-spacing). Note that letter-spacing adds space
         # after the char, so dxeff ends up being longer than the number of chars by 1
         self.cw = [c.cw]
