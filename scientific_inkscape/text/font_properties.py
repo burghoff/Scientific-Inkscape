@@ -28,15 +28,65 @@
 #              the same layout for all rendering.
 
 import inkex
-import os, warnings, sys, re
+import os, warnings, sys, re, ctypes
 
 
 # The fontconfig library is used to select a font given its CSS specs
 # This library should work starting with v1.0
-import inkex.text.packages.fontconfig as fc  # type: ignore
-from inkex.text.packages.fontconfig import FC  # type: ignore
+# Due to the way fontconfig is structured, we have to temporarily override
+# ctypes's LoadLibrary to help it find libfontconfig
 from inkex.text.utils import default_style_atts, Get_Binary_Loc
 from inkex import Style
+
+original_load_library = ctypes.cdll.LoadLibrary
+
+
+def custom_load_library(name):
+    if name in ["libfontconfig.so.1", "libfreetype.so.6"]:
+        LIBNAME = {
+            "linux": {
+                "libfreetype.so.6": "libfreetype.so.6",
+                "libfontconfig.so.1": "libfontconfig.so.1",
+            },
+            "openbsd6": {
+                "libfreetype.so.6": "libfreetype.so.28",
+                "libfontconfig.so.1": "libfontconfig.so.11",
+            },
+            "darwin": {
+                "libfreetype.so.6": "libfreetype.6.dylib",
+                "libfontconfig.so.1": "libfontconfig.1.dylib",
+            },
+            "win32": {
+                "libfreetype.so.6": "libfreetype-6.dll",
+                "libfontconfig.so.1": "libfontconfig-1.dll",
+            },
+        }[sys.platform][name]
+
+        if "SI_FC_DIR" in os.environ:
+            fpath = os.path.abspath(os.path.join(os.environ["SI_FC_DIR"], LIBNAME))
+            fc = original_load_library(fpath)
+        else:
+            try:
+                fc = original_load_library(LIBNAME)
+            except FileNotFoundError:
+                blocdir = os.path.dirname(Get_Binary_Loc())
+                fpath = os.path.abspath(os.path.join(blocdir, LIBNAME))
+                fc = original_load_library(fpath)
+        return fc
+    elif name == "libc.so.6":
+        # Do not need to load, return a blank class consistent with fontconfig
+        libc = type("libc", (object,), {"free": staticmethod(lambda ptr: None)})()
+        libc.free.argtypes = (ctypes.c_void_p,)
+        return libc
+    else:
+        return original_load_library(name)
+
+
+ctypes.cdll.LoadLibrary = custom_load_library
+import inkex.text.packages.fontconfig as fc  # type: ignore
+from inkex.text.packages.fontconfig import FC  # type: ignore
+
+ctypes.cdll.LoadLibrary = original_load_library
 
 
 class FontConfig:

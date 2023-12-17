@@ -1,4 +1,3 @@
-# type: ignore
 """
 A ctypes-based binding for the Fontconfig API, for Python
 3.4 or later.
@@ -33,49 +32,9 @@ except ImportError:
     freetype = None
 # end try
 
-# fc = ct.cdll.LoadLibrary("libfontconfig.so.1")
+fc = ct.cdll.LoadLibrary("libfontconfig.so.1")
 
-# libc = ct.cdll.LoadLibrary("libc.so.6")
-
-import sys
-
-LIBNAME = {
-    "linux": {
-        "freetype": "libfreetype.so.6",
-        "fontconfig": "libfontconfig.so.1",
-    },
-    "openbsd6": {
-        "freetype": "libfreetype.so.28",
-        "fontconfig": "libfontconfig.so.11",
-    },
-    "darwin": {
-        "freetype": "libfreetype.6.dylib",
-        "fontconfig": "libfontconfig.1.dylib",
-    },
-    "win32": {
-        "freetype": "libfreetype-6.dll",
-        "fontconfig": "libfontconfig-1.dll",
-    },
-}[sys.platform]
-
-import os
-
-if "SI_FC_DIR" in os.environ:
-    fpath = os.path.abspath(
-        os.path.join(os.environ["SI_FC_DIR"], LIBNAME["fontconfig"])
-    )
-    fc = ct.cdll.LoadLibrary(fpath)
-else:
-    try:
-        fc = ct.cdll.LoadLibrary(LIBNAME["fontconfig"])
-    except FileNotFoundError:
-        import os
-        from inkex.text.utils import Get_Binary_Loc
-
-        blocdir = os.path.dirname(Get_Binary_Loc())
-        fpath = os.path.abspath(os.path.join(blocdir, LIBNAME["fontconfig"]))
-        fc = ct.cdll.LoadLibrary(fpath)
-    # libc = ct.cdll.LoadLibrary("libc.so.6")
+libc = ct.cdll.LoadLibrary("libc.so.6")
 
 
 class FC:
@@ -1046,7 +1005,7 @@ fc.FcFreeTypeQueryFace.argtypes = (ct.c_void_p, ct.c_char_p, ct.c_int, ct.c_void
 
 # other
 
-# libc.free.argtypes = (ct.c_void_p,)
+libc.free.argtypes = (ct.c_void_p,)
 
 
 class CallFailed(Exception):
@@ -2215,7 +2174,7 @@ class Pattern:
     def name_unparse(self):
         name = fc.FcNameUnparse(self._fcobj)
         result = ct.cast(name, ct.c_char_p).value.decode()
-        # libc.free(name)
+        libc.free(name)
         return result
 
     # end name_unparse
