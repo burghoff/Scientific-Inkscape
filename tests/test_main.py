@@ -44,7 +44,7 @@ import os, sys, re
 vpaths = {'1.0' : 'D:\\Inkscapes\\inkscape-1.0.2-2-x64',
           '1.1' : 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64',
           '1.2' : 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64', 
-          '1.3' : 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64',
+          '1.3' : 'D:\\Inkscapes\\inkscape-1.3.1_2023-11-16_91b66b0783-x64',
           '1.3e': 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64_extensions',
           '1.4' : 'D:\\Inkscapes\\inkscape-1.4-dev_2023-09-22_79074f2-x64'}
 
