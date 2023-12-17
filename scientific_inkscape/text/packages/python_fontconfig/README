@@ -1,0 +1,264 @@
+Python_fontconfig is a Python 3 binding for
+[Fontconfig](https://www.freedesktop.org/wiki/Software/fontconfig/), the
+standard Linux font-matching API.
+
+Fontconfig lets applications use and store font-matching *patterns*
+instead of font-file pathnames. This allows applications to cope with
+different system setups that have fonts installed in different places,
+as well as setups where the exact original font is not available, so
+it has to fall back to some other suitable alternative. Fontconfig
+also lets applications automatically discover that new fonts have been
+installed (or old ones removed) at any time, instead of only once at
+startup time.
+
+
+Do I Need python_fontconfig?
+============================
+
+You may not actually need to use this module. If you are making use of
+any of my Python wrappers for other major parts of the Linux
+typography stack, namely
+
+* Qahirah ([GitLab](https://gitlab.com/ldo/qahirah),
+  [BitBucket](https://bitbucket.org/ldo17/qahirah)) -- my binding for the
+  [Cairo](https://www.cairographics.org/) graphics library
+* python_freetype ([GitLab](https://gitlab.com/ldo/python_freetype),
+  [BitBucket](https://bitbucket.org/ldo17/python_freetype)) -- my binding for
+  [FreeType](https://www.freetype.org/)
+
+then these already include their own mini-wrappers for Fontconfig,
+that are sufficient for finding fonts using default system
+configuration settings.
+
+But if you are going beyond simple defaults, and want to customize
+various aspects of the font-matching behaviour of Fontconfig from
+within your own Python scripts, then you will need this module.
+
+
+Installation
+============
+
+To install python_fontconfig on your system, type
+
+    python3 setup.py install
+
+This will install the Python module named `fontconfig`.
+
+
+Basic Usage
+===========
+
+All functionality comes from the one module:
+
+    import fontconfig
+
+Or you may want to abbreviate its name for convenience:
+
+    import fontconfig as fc
+
+(The subsequent examples will assume this abbreviation.)
+
+You will typically also want more direct access to constants and other
+definitions within the `FC` class:
+
+    from fontconfig import \
+        FC
+
+Fontconfig configurations are kept in `Config` objects. Fontconfig
+supplies a default *current* configuration, initially accessible via
+
+    conf = fc.Config.get_current()
+
+This is already preloaded with all the system configuration settings.
+Or you can create a new, blank configuration with
+
+    conf = fc.Config.create()
+
+Either way, you can add your own extra places to tell Fontconfig where
+to look for things:
+
+    conf.app_font_add_file(«file»)
+
+will add individual extra font files to the set to be searched, and
+
+    conf.app_font_add_dir(«dir»)
+
+will add directories in which to look for fonts.
+
+If you create your own `Config` object, you can make it the current
+one with
+
+    conf.set_current()
+
+
+Patterns
+========
+
+Fontconfig font specifiers take the form of *patterns*, represented in
+Python by `Pattern` objects. Patterns specify values for one or more
+named *properties*, such as the font family, style, weight,
+character-set coverage, language support, and even things like the
+file name and the name of the foundry that created the font--basically
+everything that might be useful for trying to ensure that you get the
+same font the next time, or, failing that, the best available
+substitute.
+
+All the recognized property names are listed in the `PROP`
+enumeration in the `fontconfig` module.
+
+Patterns also have a string form, and can be easily converted
+between this form and Pattern objects. The string form looks like
+this:
+
+    [«family»][:«prop»=«value»[:«prop»=«value»...]]
+
+where «family» is the family name, and each «prop» is a property name
+and «value» the corresponding property value. All parts are optional:
+even the empty string is a valid pattern!
+
+Whatever pattern you specify, Fontconfig will always find a match, as
+long as it knows of at least one font installed on your system. For
+example, on my Debian system, the final fallback, if no other font
+can be found to match a pattern, always seems to be DejaVu Sans.
+
+
+Testing Patterns
+================
+
+Fontconfig comes with a handy set of command-line tools that can be
+used to exercise your system configuration. `fc-match` will let you
+specify a pattern string, and will print out info (selected property
+values) for matching fonts, in the form of a pattern string. For
+example, on my system, the shell command
+
+    fc-match palatino file family
+
+to see what font I would get if I asked for “Palatino”, prints out
+
+    URW Palladio L:file=/usr/share/fonts/type1/gsfonts/p052003l.pfb
+
+Or, given any font file, `fc-query` will print out the full set of
+pattern information that could be used to specify that font.
+
+
+Basic Font Matching
+===================
+
+Given a pattern string, you can convert it to a `Pattern` object
+thus:
+
+    pat = fc.Pattern.name_parse(«pattern_string»)
+
+To use this to find a font from the default configuration:
+
+    conf = fc.Config.get_current()
+
+also perform the following steps:
+
+    conf.substitute(pat, FC.MatchPattern)
+    pat.default_substitute()
+
+which will fill in defaults for the `Pattern` from the specified
+configuration, and from Fontconfig’s own hard-coded fallback settings,
+respectively.
+
+Now, to get back a `Pattern` object for the best available matching
+font, simply do
+
+    found, status = conf.font_match(pat)
+
+to get the result in `found`. (You can ignore the `status` value,
+which will usually be `FC.ResultMatch`.)
+
+To retrieve information from the pattern, you can use its `get`
+method. For example, to get the full font file pathname so you can
+actually load the font:
+
+    filename = found.get(fc.PROP.FILE, 0)[0]
+
+Or, you can print out the full contents of the `Pattern` as a string
+by
+
+    print(found.name_unparse())
+
+
+Font Coverage And Fallback
+==========================
+
+There is a common need to find fonts that cover certain given ranges
+of code points. This includes finding suitable “fallback” fonts to
+cover missing code points not present within a given font.
+
+For example, the set of basic Arabic code points can be constructed
+as follows:
+
+    coverage_wanted = set(range(0x0600, 0x06FF + 1))
+
+Restricting this to currently-defined code points--or at least, those
+that Python knows about in its `unicodedata` module:
+
+    coverage_wanted -= set \
+      (
+        c for c in coverage_wanted
+        if unicodedata.name(chr(c), None) == None
+      )
+
+(Note that this is a standard Python set of integer character codes.
+Fontconfig defines its own `FcCharSet` type, but this is automatically
+converted to a Python set wherever it is returned from a call, and
+a Python set is passed wherever the Fontconfig call expects an object
+of this type.)
+
+Now we can construct a `Pattern` to find fonts giving this coverage:
+
+    pat = fc.Pattern.create \
+      (
+        vals =
+            (
+                (fc.PROP.CHARSET, coverage_wanted),
+            )
+      )
+    conf.substitute(pat, FC.MatchPattern)
+    pat.default_substitute()
+
+(Note the convenience option of being able to directly pass a tuple of
+(«property», «value») pairs to the `Pattern.create` call, to be added
+to the new `Pattern` object.)
+
+Now we can find a list of fonts in descending order of suitability as follows:
+
+    found, total_coverage, status = conf.font_sort(pat, trim = True, want_coverage = True)
+
+where the `trim` arg says not to bother including fonts that only
+cover code points already handled by prior fonts, and `want_coverage`
+says that the `total_coverage` variable should return a set of all the
+code points covered by the fonts in `found`; this can be used, for
+example, to see if there are any code points still missing from the
+available fonts.
+
+The following loop prints out some basic information about the fonts
+in `found`, including which code points in `coverage_wanted` are
+missing from the font’s character set:
+
+    for i, f in enumerate(found) :
+        missing = coverage_wanted - f.get(fc.PROP.CHARSET, 0)[0]
+        sys.stdout.write \
+          (
+                "found[%d]: %s (%s), missing(%d) = %s\n"
+            %
+                (
+                    i,
+                    f.get(fc.PROP.FAMILY, 0)[0],
+                    f.get(fc.PROP.STYLE, 0)[0],
+                    len(missing),
+                    repr(missing),
+                )
+          )
+    #end for
+
+For some example scripts, see my python_fontconfig_examples repository
+([GitLab](https://gitlab.com/ldo/python_fontconfig_examples),
+[BitBucket](https://bitbucket.org/ldo17/python_fontconfig_examples)).
+
+Lawrence D'Oliveiro <ldo@geek-central.gen.nz>
+2023 September 28

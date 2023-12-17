@@ -85,7 +85,7 @@ def custom_load_library(name):
 from unittest.mock import patch
 
 with patch("ctypes.cdll.LoadLibrary", side_effect=custom_load_library):
-    import inkex.text.packages.fontconfig as fc  # type: ignore
+    import inkex.text.packages.python_fontconfig.fontconfig as fc  # type: ignore
 FC = fc.FC
 
 
