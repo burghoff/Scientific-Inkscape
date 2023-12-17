@@ -33,7 +33,7 @@ import os, warnings, sys, re, ctypes
 
 # The fontconfig library is used to select a font given its CSS specs
 # This library should work starting with v1.0
-# Due to the way fontconfig is structured, we have to temporarily override
+# Due to the way fontconfig is structured, we have to patch
 # ctypes's LoadLibrary to help it find libfontconfig
 from inkex.text.utils import default_style_atts, Get_Binary_Loc
 from inkex import Style
@@ -64,15 +64,15 @@ def custom_load_library(name):
 
         if "SI_FC_DIR" in os.environ:
             fpath = os.path.abspath(os.path.join(os.environ["SI_FC_DIR"], LIBNAME))
-            fc = original_load_library(fpath)
+            ret = original_load_library(fpath)
         else:
             try:
-                fc = original_load_library(LIBNAME)
+                ret = original_load_library(LIBNAME)
             except FileNotFoundError:
                 blocdir = os.path.dirname(Get_Binary_Loc())
                 fpath = os.path.abspath(os.path.join(blocdir, LIBNAME))
-                fc = original_load_library(fpath)
-        return fc
+                ret = original_load_library(fpath)
+        return ret
     elif name == "libc.so.6":
         # Do not need to load, return a blank class consistent with fontconfig
         libc = type("libc", (object,), {"free": staticmethod(lambda ptr: None)})()
@@ -82,11 +82,11 @@ def custom_load_library(name):
         return original_load_library(name)
 
 
-ctypes.cdll.LoadLibrary = custom_load_library
-import inkex.text.packages.fontconfig as fc  # type: ignore
-from inkex.text.packages.fontconfig import FC  # type: ignore
+from unittest.mock import patch
 
-ctypes.cdll.LoadLibrary = original_load_library
+with patch("ctypes.cdll.LoadLibrary", side_effect=custom_load_library):
+    import inkex.text.packages.fontconfig as fc  # type: ignore
+FC = fc.FC
 
 
 class FontConfig:
