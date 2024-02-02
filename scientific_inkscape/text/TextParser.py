@@ -1338,9 +1338,12 @@ class ParsedText:
             return self.Parse_Lines()
         if usesvt:
             object_to_path(region)
-            current_script_directory = os.path.dirname(os.path.abspath(__file__))
-            sys.path += [os.path.join(current_script_directory, "packages")]
-            import svgpathtools as spt
+            try:
+                import svgpathtools as spt
+            except ModuleNotFoundError:
+                current_script_directory = os.path.dirname(os.path.abspath(__file__))
+                sys.path += [os.path.join(current_script_directory, "packages")]
+                import svgpathtools as spt
 
             sptregion = spt.parse_path(region.get("d"))
             if not sptregion.isclosed():

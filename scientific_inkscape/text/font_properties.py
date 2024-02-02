@@ -85,7 +85,10 @@ def custom_load_library(name):
 from unittest.mock import patch
 
 with patch("ctypes.cdll.LoadLibrary", side_effect=custom_load_library):
-    import inkex.text.packages.python_fontconfig.fontconfig as fc  # type: ignore
+    try:
+        import fontconfig as fc
+    except ModuleNotFoundError:
+        import inkex.text.packages.python_fontconfig.fontconfig as fc  # type: ignore
 FC = fc.FC
 
 
@@ -333,11 +336,13 @@ class FontTools_FontInstance:
     # Find a FontTools font from a found FontConfig font
     def font_from_fc(self, found):
         fname = found.get(fc.PROP.FILE, 0)[0]
-        current_script_directory = os.path.dirname(os.path.abspath(__file__))
-        sys.path += [os.path.join(current_script_directory, "packages")]
-        # dh.idebug(fname)
 
-        from fontTools.ttLib import TTFont
+        try:
+            from fontTools.ttLib import TTFont
+        except ModuleNotFoundError:
+            current_script_directory = os.path.dirname(os.path.abspath(__file__))
+            sys.path += [os.path.join(current_script_directory, "packages")]
+            from fontTools.ttLib import TTFont
         import logging
 
         # logging.getLogger('fontTools.ttLib.tables._h_e_a_d').setLevel(logging.ERROR)
