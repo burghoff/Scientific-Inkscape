@@ -1518,18 +1518,16 @@ class AutoExporter(inkex.EffectExtension):
 
     def Opacity_Fix(self, el):
         # Fuse opacity onto fill and stroke for path-like elements
-        # Prevents rasterization-at-PDF for Office products
+        # Helps prevent rasterization-at-PDF for Office products
         sty = el.cspecified_style
-        if sty.get("opacity") is not None and float(sty.get("opacity", 1.0)) != 1.0:
+        if sty.get("opacity") is not None and float(sty.get("opacity", 1.0)) != 1.0 and el.tag in otp_support_tags:
             sf = dh.get_strokefill(el)  # fuses opacity and stroke-opacity/fill-opacity
-            if sf.stroke is not None:
-                # dh.Set_Style_Comp(el,'stroke-opacity',sf.stroke.alpha)
+            if sf.stroke is not None and sf.fill is None:
                 el.cstyle["stroke-opacity"] = sf.stroke.alpha
-            if sf.fill is not None:
-                # dh.Set_Style_Comp(el,'fill-opacity',sf.fill.alpha)
+                el.cstyle["opacity"] = 1
+            elif sf.fill is not None and sf.stroke is None:
                 el.cstyle["fill-opacity"] = sf.fill.alpha
-            # dh.Set_Style_Comp(el,'opacity',1);
-            el.cstyle["opacity"] = 1
+                el.cstyle["opacity"] = 1
 
     # Replace super and sub with numerical values
     # Collapse Tspans with 0% baseline-shift, which Office displays incorrectly
