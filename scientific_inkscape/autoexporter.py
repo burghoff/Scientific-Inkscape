@@ -1153,9 +1153,10 @@ class AutoExporter(inkex.EffectExtension):
                                 if el is not None:
                                     el.delete()
 
-                        pnum = str(ii + 1)
+                        pname = pgs[ii].get('inkscape:label')
+                        pname = str(ii + 1) if pname is None else pname
                         addendum = (
-                            "_page_" + pnum
+                            "_page_" + pname
                             if not (input_options.testmode or len(pgs) == 1)
                             else ""
                         )
@@ -1180,14 +1181,14 @@ class AutoExporter(inkex.EffectExtension):
                         # match the viewbox to each page and delete them
                         svgpg = get_svg(filein)
                         pgs2 = svgpg.cdocsize.pgs
-
                         self.Change_Viewbox_To_Page(svgpg, pgs[ii])
                         for jj in reversed(range(len(pgs2))):
                             pgs2[jj].delete()
 
-                        pnum = str(ii + 1)
+                        pname = pgs[ii].get('inkscape:label')
+                        pname = str(ii + 1) if pname is None else pname
                         addendum = (
-                            "_page_" + pnum if not (input_options.testmode) else ""
+                            "_page_" + pname if not (input_options.testmode) else ""
                         )
                         svgpgfn = tempbase + addendum + ".svg"
                         dh.overwrite_svg(svgpg, svgpgfn)
@@ -1263,6 +1264,16 @@ class AutoExporter(inkex.EffectExtension):
     def postprocessing(self, svg, input_options):
         # Postprocessing of SVGs, mainly for overcoming bugs in Office products
         vds = dh.visible_descendants(svg)
+        
+        # Shift viewbox corner to (0,0) by translating top-level elements
+        evb = svg.cdocsize.effvb
+        if not(evb[0]==0 and evb[1]==0):
+            newtr = Transform("translate(" + str(-evb[0]) + ", " + str(-evb[1]) + ")")
+            svg.set_viewbox([0,0,evb[2],evb[3]])
+            ndefs = [el for el in list(svg) if not (el.tag in dh.unungroupable)]
+            for el in ndefs:
+                el.ctransform = newtr @ el.ctransform
+        
         for d in vds:
             if (
                 isinstance(d, (TextElement))
