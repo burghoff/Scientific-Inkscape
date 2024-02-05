@@ -1217,7 +1217,7 @@ class AutoExporter(inkex.EffectExtension):
                 self.postprocessing(svg, input_options)
                 finalname = myoutput
                 if len(moutputs) > 1:
-                    pnum = mout.split("_page_")[-1].strip(".svg")
+                    pnum, _ = os.path.splitext(mout.split("_page_")[-1])
                     finalname = myoutput.replace(
                         "_plain.svg", "_page_" + pnum + "_plain.svg"
                     )
@@ -1232,11 +1232,11 @@ class AutoExporter(inkex.EffectExtension):
         if extension == ".svg" and base_name.endswith("_plain"):
             base_name = base_name[:-6]  # Remove "_plain" from the base name
             pattern = re.compile(
-                rf"{re.escape(base_name)}(_page_\d+)?_plain{re.escape(extension)}$"
+                rf"{re.escape(base_name)}(_page_.*)?_plain{re.escape(extension)}$"
             )
         else:
             pattern = re.compile(
-                rf"{re.escape(base_name)}(_page_\d+)?{re.escape(extension)}$"
+                rf"{re.escape(base_name)}(_page_.*)?{re.escape(extension)}$"
             )
         matching_files = []
         for file in os.listdir(directory):
