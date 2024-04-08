@@ -928,6 +928,7 @@ def get_strokefill(el):
     fill = sty.get("fill", None)
     op = float(sty.get("opacity", 1.0))
     nones = [None, "none", "None"]
+    strk_isurl, fill_isurl = False , False
     if not (strk in nones):
         try:
             strk = inkex.Color(strk).to_rgb()
@@ -938,11 +939,13 @@ def get_strokefill(el):
             # effective lightness frac with a white bg
             strk.efflightness = strkl
         except:  # inkex.colors.ColorIdError:
-            strk = None
-            strkl = None
+            if "url(#" in strk:
+                strk = sty.get_link("stroke",el.croot)
+                strk_isurl = True
+            else:
+                strk = None
     else:
         strk = None
-        strkl = None
     if not (fill in nones):
         try:
             fill = inkex.Color(fill).to_rgb()
@@ -953,11 +956,13 @@ def get_strokefill(el):
             # effective lightness frac with a white bg
             fill.efflightness = filll
         except:  # inkex.colors.ColorIdError:
-            fill = None
-            filll = None
+            if "url(#" in fill:
+                fill = sty.get_link("fill",el.croot)
+                fill_isurl = True
+            else:
+                fill = None
     else:
         fill = None
-        filll = None
 
     sw, _ = composed_width(el, "stroke-width")
     sd, _ = composed_list(el, "stroke-dasharray")
@@ -982,9 +987,11 @@ def get_strokefill(el):
                 self.markerstart,
                 self.markermid,
                 self.markerend,
+                self.strk_isurl,
+                self.fill_isurl
             ) = args
 
-    return StrokeFill(strk, fill, sw, sd, ms, mm, me)
+    return StrokeFill(strk, fill, sw, sd, ms, mm, me, strk_isurl, fill_isurl)
 
 
 # Gets the caller's location

@@ -332,7 +332,7 @@ class FlattenPlots(inkex.EffectExtension):
                                 bb = dh.bounding_box2(
                                     el, includestroke=False, dotransform=False
                                 )
-                                if bb.w < bb.h * 0.1:
+                                if bb.w < bb.h * 0.1 and not sf.fill_isurl:
                                     dh.object_to_path(el)
                                     np = "m {0},{1} v {2}".format(bb.xc, bb.y1, bb.h)
                                     el.set("d", np)

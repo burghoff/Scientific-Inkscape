@@ -78,7 +78,8 @@ def composed_lineheight(el):
         sc = float(sc.strip("%")) / 100
     else:
         try:
-            sc = float(sc)
+            # Lines have no unit, em treated the same
+            sc = float(sc.strip("em"))
         except:
             fs, sf = composed_width(el, "font-size")
             sc = ipx(sc) / (fs / sf)
