@@ -23,7 +23,8 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-""" Patches for speeding up native Inkex functions after import """
+"""Patches for speeding up native Inkex functions after import"""
+
 import inkex
 from inkex import Transform
 import re, lxml
@@ -343,7 +344,9 @@ for pc in PCsubs:
     pc.letter = letts[pc]
 
 # Make parse_string faster by combining with strargs (about 20% faster)
-LEX_REX = inkex.paths.LEX_REX if hasattr(inkex.paths, "LEX_REX") else inkex.paths.path.LEX_REX  # type: ignore
+LEX_REX = (
+    inkex.paths.LEX_REX if hasattr(inkex.paths, "LEX_REX") else inkex.paths.path.LEX_REX
+)  # type: ignore
 try:
     NUMBER_REX = inkex.utils.NUMBER_REX
 except:
@@ -779,11 +782,9 @@ if orig_add_namespace:
 
 NSloc.addNS = (  # type: ignore
     inkex.addNS
-) = (
-    inkex.elements._base.addNS
-) = (
-    inkex.elements._groups.addNS
-) = inkex.elements._filters.addNS = inkex.elements._polygons.addNS = cached_addNS
+) = inkex.elements._base.addNS = inkex.elements._groups.addNS = (
+    inkex.elements._filters.addNS
+) = inkex.elements._polygons.addNS = cached_addNS
 NSloc.removeNS = inkex.elements._base.removeNS = cached_removeNS  # type: ignore
 NSloc.splitNS = inkex.elements._base.splitNS = cached_splitNS  # type: ignore
 try:
@@ -810,9 +811,7 @@ try:
             try:
                 lup2[element.tag] = list(reversed(lup1[cached_splitNS(element.tag)]))
                 for kls in lup2[element.tag]:
-                    if kls.is_class_element(
-                        element
-                    ):  # pylint: disable=protected-access
+                    if kls.is_class_element(element):  # pylint: disable=protected-access
                         return kls
             except TypeError:
                 lup2[element.tag] = None  # handle comments

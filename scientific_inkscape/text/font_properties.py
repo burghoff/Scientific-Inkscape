@@ -591,9 +591,9 @@ class FontTools_FontInstance:
                                     ] + ligature.Component
                                     # The 'LigGlyph' field is the glyph that the components are replaced with
                                     ligature_glyph = ligature.LigGlyph
-                                    self.ligatures[
-                                        tuple(component_glyphs)
-                                    ] = ligature_glyph
+                                    self.ligatures[tuple(component_glyphs)] = (
+                                        ligature_glyph
+                                    )
             else:
                 self.ligatures = dict()
 

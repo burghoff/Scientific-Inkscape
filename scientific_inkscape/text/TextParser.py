@@ -2506,9 +2506,9 @@ class tchunk:
                         # Prevent accidental font size changes when differently transformed
                         sz = round((c.sw * c.sf) / (newc.sw * newc.sf) * 100)
                         # newsty['font-size'] = str(sz)+'%';
-                        newsty[
-                            "font-size"
-                        ] = f"{format(sz, '.2f').rstrip('0').rstrip('.')}%"
+                        newsty["font-size"] = (
+                            f"{format(sz, '.2f').rstrip('0').rstrip('.')}%"
+                        )
 
                 if newsty is not None:
                     newc.add_style(newsty, newfs=newfs)
@@ -2601,7 +2601,7 @@ class tchunk:
         lastspc = (
             self.Ncs > 1
             and self.cs[-1] == self.ln.cs[-1]
-            and self.cs[-1].c in [" ", "\u00A0"]
+            and self.cs[-1].c in [" ", "\u00a0"]
         )
         if not self.ln.pt.isflow:
             return lastspc
@@ -3974,7 +3974,7 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
                 sty = "baseline-shift:0%;"
                 for w in ws:
                     if any([nonletter(c) for c in w]):
-                        w = w.replace(" ", "\u00A0")
+                        w = w.replace(" ", "\u00a0")
                         # spaces can disappear, replace with NBSP
                         if el.croot is not None:
                             # ts = el.croot.new_element(Tspan,el);

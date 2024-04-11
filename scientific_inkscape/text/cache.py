@@ -633,7 +633,8 @@ inkex_set_id = inkex.BaseElement.set_id
 
 def set_id_mod(self, new_id, backlinks=False):
     """Set the id and update backlinks to xlink and style urls if needed"""
-    self.croot.iddict[new_id] = self
+    if self.croot is not None:
+        self.croot.iddict[new_id] = self
     # old_id = self.get('id')
     inkex_set_id(self, new_id, backlinks=backlinks)
     # Deleting the old value doesn't currently work properly (abandoned references?)
