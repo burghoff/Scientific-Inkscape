@@ -1,9 +1,6 @@
-#!/usr/bin/env python
 # coding=utf-8
 #
 # Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
-#
-# Functions modified from Inkex were made by
 #                    Martin Owens <doctormo@gmail.com>
 #                    Sergei Izmailov <sergei.a.izmailov@gmail.com>
 #                    Thomas Holder <thomas.holder@schrodinger.com>

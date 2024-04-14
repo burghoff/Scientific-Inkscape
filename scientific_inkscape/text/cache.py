@@ -1,11 +1,11 @@
-#!/usr/bin/env python
 # coding=utf-8
+
 # Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
-# Functions modified from Inkex were made by
 #                    Martin Owens <doctormo@gmail.com>
 #                    Sergei Izmailov <sergei.a.izmailov@gmail.com>
 #                    Thomas Holder <thomas.holder@schrodinger.com>
 #                    Jonathan Neuhauser <jonathan.neuhauser@outlook.com>
+
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
