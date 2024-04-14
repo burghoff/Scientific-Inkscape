@@ -679,7 +679,7 @@ with warnings.catch_warnings():
             haspango = False
 
         try:
-            # requires some typelibs we do not have
+            # May require some typelibs we do not have
             gi.require_version("PangoFT2", "1.0")
             from gi.repository import PangoFT2
 

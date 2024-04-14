@@ -23,7 +23,7 @@ guitype = input_options.guitype
 
 import inkex
 import dhelpers as dh  # noqa
-import inkex.text.TextParser  # needed to prevent GTK crashing
+import inkex.text.parser  # needed to prevent GTK crashing
 
 import autoexporter
 from autoexporter import AutoExporter

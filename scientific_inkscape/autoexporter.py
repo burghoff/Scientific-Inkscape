@@ -34,7 +34,7 @@ sys.path.append(
 import dhelpers as dh
 import image_helpers as ih
 from inkex.text.utils import otp_support_tags, default_style_atts, uniquetol
-import inkex.text.TextParser  # needed to prevent GTK crashing
+import inkex.text.parser  # needed to prevent GTK crashing
 
 
 # Convenience functions
@@ -670,9 +670,9 @@ class AutoExporter(inkex.EffectExtension):
 
         # Fix Avenir/Whitney
         tels = [el for el in vds if isinstance(el, (inkex.TextElement, inkex.FlowRoot))]
-        from inkex.text import TextParser
+        from inkex.text import parser
 
-        TextParser.Character_Fixer2(tels)
+        parser.Character_Fixer2(tels)
 
         # if not(input_options.reduce_images):
         #     input_options.dpi_im = input_options.dpi
@@ -1563,9 +1563,9 @@ class AutoExporter(inkex.EffectExtension):
                 # split parent
                 myp = d.getparent()
                 if anysubsuper and myp is not None:
-                    from inkex.text import TextParser
+                    from inkex.text import parser
 
-                    ds = TextParser.split_text(myp)
+                    ds = parser.split_text(myp)
                     for d in reversed(ds):
                         if (
                             len(list(d)) == 1
@@ -1590,7 +1590,7 @@ class AutoExporter(inkex.EffectExtension):
         # Sets all font-sizes to 100 px by moving size into transform
         # Office rounds every fonts to the nearest px and then transforms it,
         # so this makes text sizes more accurate
-        from inkex.text import TextParser
+        from inkex.text import parser
 
         svg = el.croot
         szs = []
@@ -1611,19 +1611,19 @@ class AutoExporter(inkex.EffectExtension):
         g = dh.group([el], moveTCM=True)
 
         for d in reversed(el.descendants2()):
-            xv = TextParser.ParsedText.GetXY(d, "x")
-            yv = TextParser.ParsedText.GetXY(d, "y")
-            dxv = TextParser.ParsedText.GetXY(d, "dx")
-            dyv = TextParser.ParsedText.GetXY(d, "dy")
+            xv = parser.ParsedText.GetXY(d, "x")
+            yv = parser.ParsedText.GetXY(d, "y")
+            dxv = parser.ParsedText.GetXY(d, "dx")
+            dyv = parser.ParsedText.GetXY(d, "dy")
 
             if xv[0] is not None:
-                TextParser.xyset(d, "x", [v * s for v in xv])
+                parser.xyset(d, "x", [v * s for v in xv])
             if yv[0] is not None:
-                TextParser.xyset(d, "y", [v * s for v in yv])
+                parser.xyset(d, "y", [v * s for v in yv])
             if dxv[0] is not None:
-                TextParser.xyset(d, "dx", [v * s for v in dxv])
+                parser.xyset(d, "dx", [v * s for v in dxv])
             if dyv[0] is not None:
-                TextParser.xyset(d, "dy", [v * s for v in dyv])
+                parser.xyset(d, "dy", [v * s for v in dyv])
 
             fs, sf = dh.composed_width(d, "font-size")
             # dh.Set_Style_Comp(d, 'font-size', "{:.3f}".format(fs/sf*s))

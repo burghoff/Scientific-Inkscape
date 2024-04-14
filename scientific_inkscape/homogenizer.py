@@ -182,14 +182,14 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             except ValueError:
                 fontsize = 12
 
-            from inkex.text import TextParser
+            from inkex.text import parser
 
             for el in szs:
                 for d in reversed(el.descendants2()):
                     sty = d.cspecified_style
                     if el == d or "font-size" in sty:
                         dfs, sf = dh.composed_width(d, "font-size")
-                        bshift = TextParser.tchar.get_baseline(sty, d.getparent())
+                        bshift = parser.tchar.get_baseline(sty, d.getparent())
                         if bshift != 0 or "%" in sty.get("font-size", ""):
                             # Convert sub/superscripts into relative size
                             pfs, sf = dh.composed_width(d.getparent(), "font-size")
@@ -226,9 +226,9 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                 el.cstyle["font-family"] = fontfamily
                 el.cstyle["-inkscape-font-specification"] = None
 
-            from inkex.text import TextParser
+            from inkex.text import parser
 
-            TextParser.Character_Fixer2(tels)
+            parser.Character_Fixer2(tels)
 
         if setfontfamily or setfontsize or fixtextdistortion:
             bbs2 = dh.BB2(self, tels, True)

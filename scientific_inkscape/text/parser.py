@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # coding=utf-8
 #
 # Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
@@ -18,7 +17,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 
-# The TextParser parses text in a document according to the way Inkscape handles it.
+# text.parser parses text in a document according to the way Inkscape handles it.
 # In short, every TextElement or FlowRoot is parsed into a ParsedText.
 # Each ParsedText contains a collection of tlines, representing one line of text.
 # Each tline contains a collection of tchars, representing a single character.

@@ -578,11 +578,11 @@ def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
                     d.cbbox = None
                     d.parsed_text = None
             if not hasattr(slf.svg, "_char_table"):
-                from inkex.text import TextParser  # noqa
+                from inkex.text import parser  # noqa
 
                 slf.svg.make_char_table(els=tels)
                 pts = [el.parsed_text for el in tels]
-                TextParser.ParsedTextList(pts).precalcs()
+                parser.ParsedTextList(pts).precalcs()
         ret = inkex.OrderedDict()
         for d in els:
             if d.tag in bb2_support_tags and hasbbox(d):
@@ -1120,7 +1120,7 @@ def Run_SI_Extension(effext, name):
                 from line_profiler import LineProfiler
 
                 lp = LineProfiler()
-                from inkex.text import TextParser
+                from inkex.text import parser
                 import RemoveKerning
                 from inspect import getmembers, isfunction, isclass, getmodule
                 import font_properties
@@ -1128,7 +1128,7 @@ def Run_SI_Extension(effext, name):
                 fns = []
                 for m in [
                     sys.modules[__name__],
-                    TextParser,
+                    parser,
                     RemoveKerning,
                     Style,
                     font_properties,
@@ -1150,7 +1150,7 @@ def Run_SI_Extension(effext, name):
                 for fn in fns:
                     lp.add_function(fn)
                 lp.add_function(ipx.__wrapped__)
-                lp.add_function(TextParser.Character_Table.true_style.__wrapped__)
+                lp.add_function(parser.Character_Table.true_style.__wrapped__)
                 lp.add_function(inkex.text.speedups.transform_to_matrix.__wrapped__)
 
                 lp(run_and_cleanup)()

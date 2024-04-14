@@ -22,7 +22,7 @@
 #     import text
 #
 # Following this, text properties will be available at el.parsed_text. For more
-# details, see TextParser.py. To check if it is working properly, run the
+# details, see parser.py. To check if it is working properly, run the
 # following on some text:
 #
 #     el.parsed_text.Make_Highlights('char')
@@ -71,7 +71,7 @@ inkex.Style.__hash__ = __hash__mod  # type: ignore
 
 # Add parsed_text property to text, which is used to get the properties of text
 def get_parsed_text(el):
-    from inkex.text.TextParser import ParsedText  # import only if needed
+    from inkex.text.parser import ParsedText  # import only if needed
 
     if not (hasattr(el, "_parsed_text")):
         el._parsed_text = ParsedText(el, el.croot.char_table)
@@ -102,7 +102,7 @@ def make_char_table_fcn(svg, els=None):
     if not (hasattr(svg, "_char_table")) or any(
         [t not in svg._char_table.els for t in tels]
     ):
-        from inkex.text.TextParser import Character_Table  # import if needed
+        from inkex.text.parser import Character_Table  # import if needed
 
         svg._char_table = Character_Table(tels)
 

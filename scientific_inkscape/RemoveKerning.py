@@ -17,7 +17,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-# for debugging TextParser
+# for debugging parser
 DEBUG_PARSER = True
 DEBUG_PARSER = False
 
@@ -40,7 +40,7 @@ SUBSUPER_YTHR = 1 / 3
 # superscripts must be at least 1/3 of the way above the baseline to merge (1/3 below cap for sub)
 
 import inkex
-import inkex.text.TextParser as tp
+import inkex.text.parser as tp
 
 import os, sys
 
