@@ -635,29 +635,29 @@ with warnings.catch_warnings():
             import platform
 
             if platform.system().lower() == "windows":
-                # Windows does not have all of the typelibs needed for PangoFT2
-                # Manually add the missing ones
-                girep = os.path.join(
+                # Windows may not have all of the typelibs needed for PangoFT2
+                # Add the typelibs subdirectory as a fallback option
+                girepo = os.path.join(
                     os.path.dirname(os.path.dirname(Get_Binary_Loc())),
                     "lib",
                     "girepository-1.0",
-                )
-                if os.path.isdir(girep):
+                )  # Inkscape's GI repository
+                if os.path.isdir(girepo):
                     tlibs = [
                         "fontconfig-2.0.typelib",
                         "PangoFc-1.0.typelib",
                         "PangoFT2-1.0.typelib",
                         "freetype2-2.0.typelib",
                     ]
-                    if any([not (os.path.exists(t)) for t in tlibs]):
-                        # gi looks in the order specified in GI_TYPELIB_PATH
-                        current_script_directory = os.path.dirname(
-                            os.path.abspath(__file__)
+                    # If any typelibs are missing, try adding the typelibs subdirectory
+                    if any(
+                        [not (os.path.exists(os.path.join(girepo, t))) for t in tlibs]
+                    ):
+                        tlibsub = os.path.join(
+                            os.path.dirname(os.path.abspath(__file__)), "typelibs"
                         )
-                        for newpath in [
-                            girep,
-                            os.path.join(current_script_directory, "typelibs"),
-                        ]:
+                        for newpath in [girepo, tlibsub]:
+                            # gi looks in the order specified in GI_TYPELIB_PATH
                             cval = os.environ.get("GI_TYPELIB_PATH", "")
                             if cval == "":
                                 os.environ["GI_TYPELIB_PATH"] = newpath
@@ -669,13 +669,11 @@ with warnings.catch_warnings():
             import gi
 
             gi.require_version("Gtk", "3.0")
-
             from gi.repository import GLib
             from gi.repository import Pango
             from gi.repository import Gdk
 
-            Pango.Variant.NORMAL
-            # make sure this exists
+            Pango.Variant.NORMAL  # make sure this exists
             haspango = True
         except:
             haspango = False
