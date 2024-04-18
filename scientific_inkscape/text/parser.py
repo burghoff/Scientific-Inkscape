@@ -1327,7 +1327,7 @@ class ParsedText:
             region = r
 
         padding = ipx(self.textel.cspecified_style.get("shape-padding", "0"))
-        isrect, rpth = isrectangle(region, includingtransform=False)
+        isrect = isrectangle(region, includingtransform=False)
 
         usesvt = not isrect and region.tag in otp_support_tags and padding == 0
         if not isrect and not usesvt:

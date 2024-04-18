@@ -20,7 +20,9 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-# Utilities used for text parsing
+"""
+Utilities for text parsing
+"""
 
 import inkex
 from inkex.text.cache import tags, ipx, cpath_support
@@ -31,9 +33,18 @@ import math, re, sys, os
 flookup = {"small": "10px", "medium": "12px", "large": "14px"}
 
 
-# Gets the transformed size of a style component and the scale factor representing
-# the scale of the composed transform, accounting for relative sizes
 def composed_width(el, comp):
+    """
+    Gets the transformed size of a style component and the scale factor representing
+    the scale of the composed transform, accounting for relative sizes.
+
+    Parameters:
+        el (Element): The element whose style to compute.
+        comp (str): The component of the style to compute, such as 'stroke-width' or 'font-size'.
+
+    Returns:
+        tuple: A tuple containing the true size in user units and the scale factor.
+    """
     cs = el.cspecified_style
     ct = el.ccomposed_transform
     sc = cs.get(comp)
@@ -53,20 +64,25 @@ def composed_width(el, comp):
 
         return tsz * sc, sf
     else:
-        if comp == "font-size":
-            utsz = (
-                ipx(sc)
-                or ipx(flookup.get(sc))
-                or ipx(flookup.get(default_style_atts[comp]))
-            )
-        else:
-            utsz = ipx(sc) or ipx(default_style_atts[comp])
+        utsz = (
+            ipx(sc)
+            or ipx(flookup.get(sc) if comp == "font-size" else None)
+            or ipx(default_style_atts[comp])
+        )
         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))  # scale factor
         return utsz * sf, sf
 
 
-# Get absolute line-height in user units
 def composed_lineheight(el):
+    """
+    Get absolute line-height in user units based on an element's specified style.
+
+    Parameters:
+        el (Element): The element whose line-height to compute.
+
+    Returns:
+        float: The computed line-height in user units.
+    """
     cs = el.cspecified_style
     sc = cs.get("line-height", default_style_atts["line-height"])
     if sc == "normal":
@@ -84,15 +100,30 @@ def composed_lineheight(el):
     return sc * fs
 
 
-# Like list(set(lst)), but preserves order
 def unique(lst):
-    seen = set()
-    seen_add = seen.add
-    return [x for x in lst if not (x in seen or seen_add(x))]
+    """
+    Returns a list of unique items from the given list while preserving order.
+
+    Parameters:
+        lst (list): The list from which to remove duplicates.
+
+    Returns:
+        list: A list of unique items in the order they appeared in the input list.
+    """
+    return list(dict.fromkeys(lst))
 
 
-# Like uniquetol in Matlab
 def uniquetol(A, tol):
+    """
+    Like unique, but for numeric values and accepts a tolerance.
+
+    Parameters:
+        A (list of float): List of numeric values from which to remove near-duplicates.
+        tol (float): The tolerance within which two numbers are considered the same.
+
+    Returns:
+        list of float: A list of unique numbers within the specified tolerance.
+    """
     if not A:  # Check if the input list is empty
         return []
     A_sorted = sorted((x for x in A if x is not None))  # Sort, ignoring None values
@@ -108,24 +139,30 @@ def uniquetol(A, tol):
     return ret
 
 
-# Object to Path function that converts certain elements to paths
-# List of supported tags in otp_support_tags
 otp_support = cpath_support
 otp_support_tags = tags(cpath_support)
 ptag = inkex.PathElement.ctag
 
 
 def object_to_path(el):
+    """
+    Converts specified elements to paths if supported. Adjusts the 'd' attribute and changes the element tag to a path.
+
+    Parameters:
+        el (Element): The element to convert to a path.
+
+    Note:
+        Only operates on elements within the `otp_support_tags` list.
+    """
     if el.tag in otp_support_tags and not el.tag == ptag:
         el.set("d", str(el.cpath))  # do this first so cpath is correct
         el.tag = ptag
 
 
-# Determines if an element is rectangle-like
-# If it is one, also return Path
 rectlike_tags = tags((inkex.PathElement, inkex.Rectangle, inkex.Line, inkex.Polyline))
 rect_tag = inkex.Rectangle.ctag
 pel_tag = inkex.PathElement.ctag
+usetag = inkex.Use.ctag
 
 pth_cmds = "".join(list(inkex.paths.PathCommand._letter_to_class.keys()))
 pth_cmd_pat = re.compile("[" + re.escape(pth_cmds) + "]")
@@ -133,52 +170,80 @@ cnt_pth_cmds = lambda d: len(pth_cmd_pat.findall(d))  # count path commands
 
 
 def isrectangle(el, includingtransform=True):
-    isrect = False
+    """
+    Determines if an element is rectangle-like, considering transformations if specified.
+
+    Parameters:
+        el (Element): The element to check.
+        includingtransform (bool): Whether to consider transformations in the determination.
+
+    Returns:
+        tuple: A tuple containing a boolean indicating if the element is a rectangle and the path if it is.
+    """
 
     if not includingtransform and el.tag == rect_tag:
         pth = el.cpath
-        isrect = True
     elif el.tag in rectlike_tags:
-        if el.tag == pel_tag and cnt_pth_cmds(el.get("d", "")) > 5:
-            return False, None
+        # Before parsing the path (possibly slow), make sure 4-5 path commands
+        if el.tag == pel_tag and not (4 <= cnt_pth_cmds(el.get("d", "")) <= 5):
+            return False
         pth = el.cpath
+        # if includingtransform:
+        #     pth = pth.transform(el.ctransform)
+
         if includingtransform:
-            pth = pth.transform(el.ctransform)
-
-        xs = []
-        ys = []
-        cnt = 0
-        for pt in pth.control_points:
-            xs.append(pt.x)
-            ys.append(pt.y)
-            cnt += 1
-            if cnt > 5:  # don't iterate through long paths
-                return False, None
-
-        if 4 <= len(xs) <= 5:
-            maxsz = max(max(xs) - min(xs), max(ys) - min(ys))
-            tol = 1e-3 * maxsz
-            if len(uniquetol(xs, tol)) == 2 and len(uniquetol(ys, tol)) == 2:
-                isrect = True
-
-    # if I am clipped I may not be a rectangle
-    if isrect:
-        if el.get_link("clip-path", llget=True) is not None:
-            isrect = all(
-                [isrectangle(k) for k in list(el.get_link("clip-path", llget=True))]
+            tmat = el.ctransform.matrix
+            xs, ys = list(
+                zip(
+                    *[
+                        (
+                            tmat[0][0] * pt.x + tmat[0][1] * pt.y + tmat[0][2],
+                            tmat[1][0] * pt.x + tmat[1][1] * pt.y + tmat[1][2],
+                        )
+                        for pt in pth.end_points
+                    ]
+                )
             )
-        if el.get_link("mask", llget=True) is not None:
-            isrect = False
+        else:
+            xs, ys = list(zip(*[(pt.x, pt.y) for pt in pth.end_points]))
 
-    if isrect:
-        return True, pth
+        maxsz = max(max(xs) - min(xs), max(ys) - min(ys))
+        tol = 1e-3 * maxsz
+        if len(uniquetol(xs, tol)) != 2 or len(uniquetol(ys, tol)) != 2:
+            return False
+    elif el.tag == usetag:
+        useel = el.get_link("xlink:href")
+        if useel is not None:
+            return isrectangle(useel)
+        else:
+            return True
     else:
-        return False, None
+        return False
+
+    # Assume masks aren't rectangular
+    if el.get_link("mask", llget=True) is not None:
+        return False
+    # Clipped rectangles may not be rectangular
+    if el.get_link("clip-path", llget=True) is not None and any(
+        [not isrectangle(k) for k in list(el.get_link("clip-path", llget=True))]
+    ):
+        return False
+    return True
 
 
-# Gets all of a document's bounding boxes using a binary call
-# Result is a dict whose keys are IDs and values are bboxes in user units
 def Get_Bounding_Boxes(filename, inkscape_binary=None, extra_args=[], svg=None):
+    """
+    Retrieves all of a document's bounding boxes using a call to the Inkscape binary.
+
+    Parameters:
+        filename (str): The path to the SVG file.
+        inkscape_binary (str): The path to the Inkscape binary. If not provided, it will attempt to find it.
+        extra_args (list): Additional arguments to pass to the Inkscape command.
+        svg (SVGElement): An optional SVGElement to use instead of loading from file.
+
+    Returns:
+        dict: A dictionary where keys are element IDs and values are bounding boxes in user units.
+    """
     if inkscape_binary is None:
         inkscape_binary = Get_Binary_Loc()
     arg2 = [inkscape_binary, "--query-all"] + extra_args + [filename]
@@ -213,12 +278,17 @@ def Get_Bounding_Boxes(filename, inkscape_binary=None, extra_args=[], svg=None):
     return bbs
 
 
-# Gets the location of the Inkscape binary, checking path if necessary
 global bloc
 bloc = None
 
 
 def Get_Binary_Loc():
+    """
+    Gets the location of the Inkscape binary, checking the system path if necessary.
+
+    Returns:
+        str: The path to the Inkscape executable.
+    """
     global bloc
     if bloc is None:
         try:
@@ -258,8 +328,16 @@ def Get_Binary_Loc():
     return bloc
 
 
-# In the event of a timeout, repeat subprocess call several times
 def subprocess_repeat(argin):
+    """
+    In the event of a timeout, repeats a subprocess call several times.
+
+    Parameters:
+        argin (list): The command and arguments to run in the subprocess.
+
+    Returns:
+        CompletedProcess: The result from the subprocess call.
+    """
     BASE_TIMEOUT = 60
     NATTEMPTS = 4
     import subprocess

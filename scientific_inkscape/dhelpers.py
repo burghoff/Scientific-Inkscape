@@ -435,14 +435,16 @@ def merge_clipmask(node, newclip, mask=False):
 
             newclipisrect = False
             if newclip is not None and len(newclip) == 1:
-                newclipisrect, newclippth = isrectangle(list(newclip)[0])
+                newclipisrect = isrectangle(list(newclip)[0])
 
             couts = []
             for k in reversed(list(d)):  # may be deleting, so reverse
-                oldclipisrect, oldclippth = isrectangle(k)
+                oldclipisrect = isrectangle(k)
                 if newclipisrect and oldclipisrect and mask == False:
                     # For rectangular clips, we can compose them easily
                     # Since most clips are rectangles this semi-fixes the PDF clip export bug
+                    newclippth = list(newclip)[0].cpath.transform(list(newclip)[0].ctransform)
+                    oldclippth = k.cpath.transform(k.ctransform)
                     cout = compose_clips(k, newclippth, oldclippth)
                 else:
                     cout = merge_clipmask(k, newclip, mask)
@@ -1121,9 +1123,10 @@ def Run_SI_Extension(effext, name):
 
                 lp = LineProfiler()
                 from inkex.text import parser
+                from inkex.text import font_properties
+                from inkex.text import speedups
                 import RemoveKerning
                 from inspect import getmembers, isfunction, isclass, getmodule
-                import font_properties
 
                 fns = []
                 for m in [
@@ -1134,7 +1137,7 @@ def Run_SI_Extension(effext, name):
                     font_properties,
                     inkex.transforms,
                     getmodule(effext),
-                    inkex.text.speedups,
+                    speedups,
                 ]:
                     fns += [v[1] for v in getmembers(m, isfunction)]
                     for c in getmembers(m, isclass):
@@ -1150,8 +1153,8 @@ def Run_SI_Extension(effext, name):
                 for fn in fns:
                     lp.add_function(fn)
                 lp.add_function(ipx.__wrapped__)
-                lp.add_function(parser.Character_Table.true_style.__wrapped__)
-                lp.add_function(inkex.text.speedups.transform_to_matrix.__wrapped__)
+                lp.add_function(font_properties.true_style.__wrapped__)
+                lp.add_function(speedups.transform_to_matrix.__wrapped__)
 
                 lp(run_and_cleanup)()
                 import io

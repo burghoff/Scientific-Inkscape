@@ -281,7 +281,7 @@ class FlattenPlots(inkex.EffectExtension):
                     if (
                         myp is not None
                         and not (myp.tag in fltag)
-                        and isrectangle(el, includingtransform=False)[0]
+                        and isrectangle(el, includingtransform=False)
                     ):
                         sty = el.cspecified_style
                         strk = sty.get("stroke", None)
