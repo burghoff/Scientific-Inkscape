@@ -142,10 +142,12 @@ class Style0(inkex.OrderedDict):
         """Not equals, prefer to overload 'in' but that doesn't seem possible"""
         if not isinstance(other, Style0):
             other = Style0(other)
-        for arg in set(self) | set(other):
-            if self.get(arg, None) != other.get(arg, None):
-                return False
-        return True
+        return dict.__eq__(self,other)
+        # Inkex uses dict comparison, not OrderedDict
+        # for arg in set(self) | set(other):
+        #     if self.get(arg, None) != other.get(arg, None):
+        #         return False
+        # return True
 
     __ne__ = lambda self, other: not self.__eq__(other)
 

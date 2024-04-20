@@ -857,24 +857,24 @@ class bbox:
     __slots__ = ("isnull", "x1", "x2", "y1", "y2", "xc", "yc", "w", "h", "sbb")
 
     def __init__(self, bb):
-        self.isnull = bb is None
-        if not (self.isnull):
+        if bb is not None:
+            self.isnull = False
             if len(bb) == 2:  # allow tuple of two points ((x1,y1),(x2,y2))
-                bb = [
+                self.sbb = [
                     min(bb[0][0], bb[1][0]),
                     min(bb[0][1], bb[1][1]),
                     abs(bb[0][0] - bb[1][0]),
                     abs(bb[0][1] - bb[1][1]),
                 ]
-            self.x1 = bb[0]
-            self.x2 = bb[0] + bb[2]
-            self.y1 = bb[1]
-            self.y2 = bb[1] + bb[3]
+            else:
+                self.sbb = bb[:] # standard bbox
+            self.x1, self.y1, self.w, self.h = self.sbb
+            self.x2 = self.x1 + self.w
+            self.y2 = self.y1 + self.h
             self.xc = (self.x1 + self.x2) / 2
             self.yc = (self.y1 + self.y2) / 2
-            self.w = bb[2]
-            self.h = bb[3]
-            self.sbb = [self.x1, self.y1, self.w, self.h]  # standard bbox
+        else:
+            self.isnull = True
 
     def copy(self):
         ret = bbox.__new__(bbox)
@@ -919,17 +919,15 @@ class bbox:
         if isinstance(bb2, list):
             bb2 = bbox(bb2)
         if not (self.isnull) and not bb2.isnull:
-            minx = min([self.x1, self.x2, bb2.x1, bb2.x2])
-            maxx = max([self.x1, self.x2, bb2.x1, bb2.x2])
-            miny = min([self.y1, self.y2, bb2.y1, bb2.y2])
-            maxy = max([self.y1, self.y2, bb2.y1, bb2.y2])
-            return bbox([minx, miny, abs(maxx - minx), abs(maxy - miny)])
+            minx = min((self.x1, self.x2, bb2.x1, bb2.x2))
+            maxx = max((self.x1, self.x2, bb2.x1, bb2.x2))
+            miny = min((self.y1, self.y2, bb2.y1, bb2.y2))
+            maxy = max((self.y1, self.y2, bb2.y1, bb2.y2))
+            return bbox([minx, miny, maxx - minx, maxy - miny])
         elif self.isnull and not bb2.isnull:
-            return bbox(bb2.sbb)
-        elif not self.isnull and bb2.isnull:
-            return bbox(self.sbb)
+            return bb2
         else:
-            return bbox(None)
+            return self # bb2 is empty
 
     def intersection(self, bb2):
         if isinstance(bb2, list):

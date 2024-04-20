@@ -1125,6 +1125,7 @@ def Run_SI_Extension(effext, name):
                 from inkex.text import parser
                 from inkex.text import font_properties
                 from inkex.text import speedups
+                from inkex.text import cache
                 import RemoveKerning
                 from inspect import getmembers, isfunction, isclass, getmodule
 
@@ -1137,7 +1138,7 @@ def Run_SI_Extension(effext, name):
                     font_properties,
                     inkex.transforms,
                     getmodule(effext),
-                    speedups,
+                    speedups,cache
                 ]:
                     fns += [v[1] for v in getmembers(m, isfunction)]
                     for c in getmembers(m, isclass):
