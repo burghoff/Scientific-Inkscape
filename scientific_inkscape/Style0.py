@@ -1,5 +1,6 @@
-# A copy of the v1.1 Style
-# DB: Added some instance checks to reduce number of inits that need to be called
+# Fork of the v1.1 Style
+# Adds some instance checks to reduce number of inits that need to be called
+# Uses dicts instead of OrderedDicts, which are faster
 
 # Copyright (C) 2005 Aaron Spike, aaron@ekips.org
 
@@ -40,7 +41,7 @@ def count_callers():
     inkex.utils.debug(lstr)
 
 
-class Style0(inkex.OrderedDict):
+class Style0(dict):
     """A list of style directives"""
 
     color_props = ("stroke", "fill", "stop-color", "flood-color", "lighting-color")
@@ -54,13 +55,13 @@ class Style0(inkex.OrderedDict):
         if cls != Style0 and issubclass(
             cls, Style0
         ):  # Don't treat subclasses' arguments as callback
-            return inkex.OrderedDict.__new__(cls)
+            return dict.__new__(cls)
         elif callback is not None:
-            instance = inkex.OrderedDict.__new__(Style0cb)
+            instance = dict.__new__(Style0cb)
             instance.__init__(style, callback, **kw)
             return instance
         else:
-            return inkex.OrderedDict.__new__(cls)
+            return dict.__new__(cls)
 
     def __init__(self, style=None, **kw):
         # Either a string style or kwargs (with dashes as underscores).
@@ -72,8 +73,8 @@ class Style0(inkex.OrderedDict):
         if isinstance(style, str):
             style = self.parse_str(style)
         # Order raw dictionaries so tests can be made reliable
-        if isinstance(style, dict) and not isinstance(style, inkex.OrderedDict):
-            style = [(name, style[name]) for name in sorted(style)]
+        # if isinstance(style, dict) and not isinstance(style, inkex.OrderedDict):
+        #     style = [(name, style[name]) for name in sorted(style)]
         # Should accept dict, Style, parsed string, list etc.
         super().__init__(style)
 
@@ -118,7 +119,7 @@ class Style0(inkex.OrderedDict):
     def copy(self):
         new_instance = type(self).__new__(type(self))
         for k, v in self.items():
-            inkex.OrderedDict.__setitem__(new_instance, k, v)
+            dict.__setitem__(new_instance, k, v)
         return new_instance
 
     def __iadd__(self, other):
@@ -217,7 +218,7 @@ class Style0cb(Style0):
     def copy(self):
         new_instance = type(self).__new__(type(self))
         for k, v in self.items():
-            inkex.OrderedDict.__setitem__(new_instance, k, v)
+            dict.__setitem__(new_instance, k, v)
         new_instance.callback = self.callback
         return new_instance
 
