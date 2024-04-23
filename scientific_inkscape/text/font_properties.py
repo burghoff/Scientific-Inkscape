@@ -668,9 +668,8 @@ with warnings.catch_warnings():
             import gi
 
             gi.require_version("Gtk", "3.0")
-            from gi.repository import GLib
+            # from gi.repository import GLib  # only needed by _none
             from gi.repository import Pango
-            from gi.repository import Gdk
 
             Pango.Variant.NORMAL  # make sure this exists
             haspango = True
@@ -685,6 +684,8 @@ with warnings.catch_warnings():
             haspangoFT2 = True
         except:
             haspangoFT2 = False
+            if haspango:
+                from gi.repository import Gdk
 
 if pangoenv in ["True", "False"]:
     os.environ["HASPANGO"] = str(haspango)
@@ -708,10 +709,10 @@ class PangoRenderer:
         # warnings.simplefilter('ignore')
         # GTk warning suppression from Martin Owens
         # Can sometimes suppress debug output also?
-        def _nope(*args, **kwargs):  #
-            global numerrlogs
-            numerrlogs += 1
-            return GLib.LogWriterOutput.HANDLED
+        # def _nope(*args, **kwargs):  #
+        #     global numerrlogs
+        #     numerrlogs += 1
+        #     return GLib.LogWriterOutput.HANDLED
 
         # GLib.log_set_writer_func(_nope, None)
         # Disabled 2023.09.26 because was causing crashing after refactoring
