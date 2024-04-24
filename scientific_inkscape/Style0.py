@@ -94,7 +94,9 @@ class Style0(dict):
 
     def __str__(self):
         """Format an inline style attribute from a dictionary"""
-        return self.to_str()
+        return ';'.join(
+            [f"{key}:{value}" for key, value in self.items()]
+        )
 
     def to_str(self, sep=";"):
         """Convert to string using a custom delimiter"""

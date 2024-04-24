@@ -217,17 +217,29 @@ class CStyle(Style):
         super().__init__(val)
         self.init = False
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, *args):
+        # inkex.utils.debug(str(self))
+        # inkex.utils.debug(args)
         if self.init:
             # OrderedDict sets items during initialization, use super()
-            super().__setitem__(key, value)
+            # super().__setitem__(key, value)
+            super().__setitem__(args[0], args[1])
         else:
-            if value is None:
-                if key in self:
-                    del self[key]
-            else:
-                super().__setitem__(key, value)
-            self.el.cstyle = self
+            changedvalue = False
+            for i in range(0,len(args),2):
+                key = args[i]
+                value = args[i+1]
+                if value is None:
+                    if key in self:
+                        del self[key]
+                        changedvalue = True
+                else:
+                    if key not in self or self[key]!=value:
+                        super().__setitem__(key, value)
+                        changedvalue = True
+            if changedvalue:
+                self.el.cstyle = self
+                # inkex.utils.debug('write')
 
 
 class CStyleDescriptor:
@@ -237,12 +249,15 @@ class CStyleDescriptor:
         return el._cstyle
 
     def __set__(self, el, value):
-        vstr = str(value)
-        if vstr == "":
+        # from dhelpers import count_callers
+        # count_callers()
+        
+        if value:
+            vstr = str(value)
+            EBset(el, "style", vstr)
+        else:
             if "style" in el.attrib:
                 del el.attrib["style"]
-        else:
-            EBset(el, "style", vstr)
 
         if not isinstance(value, CStyle):
             value = CStyle(value, el)

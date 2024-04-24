@@ -823,6 +823,7 @@ class ParsedText:
 
         if len(self.cs) > 0:
             # Clear all fonts and only apply to relevant Tspans
+            changed_styles = dict()
             for d in el.descendants2():
                 sty = Style(tuple(d.cstyle.items()))
                 for key in [
@@ -833,11 +834,17 @@ class ParsedText:
                     "-inkscape-font-specification",
                 ]:
                     sty.pop(key, None)
-                d.cstyle = sty
+                changed_styles[d] = sty
+            
             for c in self.cs:
-                sty = Style(tuple(c.loc.sel.cstyle.items()))
+                if c.loc.sel in changed_styles:
+                    sty = changed_styles[c.loc.sel]
+                else:
+                    sty = Style(tuple(c.loc.sel.cstyle.items()))
                 sty.update(c.fsty)
-                c.loc.sel.cstyle = sty
+                changed_styles[c.loc.sel] = sty
+            for k,v in changed_styles.items():
+                k.cstyle = v
 
             # Put the first char's font at top since that's what Inkscape displays
             sty = Style(tuple(el.cstyle.items()))
@@ -2107,9 +2114,11 @@ class tline:
                     newxv[w.cs[0].lnindex] = newx
 
                     self.change_pos(newxv)
-                    w.cs[0].loc.el.cstyle["text-anchor"] = newanch
+                    # w.cs[0].loc.el.cstyle["text-anchor"] = newanch
                     alignd = {"start": "start", "middle": "center", "end": "end"}
-                    w.cs[0].loc.el.cstyle["text-align"] = alignd[newanch]
+                    # w.cs[0].loc.el.cstyle["text-align"] = alignd[newanch]
+                    
+                    w.cs[0].loc.el.cstyle.__setitem__("text-anchor",newanch,"text-align",alignd[newanch])
 
                 self.anchor = newanch
                 self.anchfrac = xf
