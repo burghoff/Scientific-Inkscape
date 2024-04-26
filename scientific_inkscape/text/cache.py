@@ -159,7 +159,6 @@ svgpres = {
     "writing-mode",
 }
 excludes = {"clip", "clip-path", "mask", "transform", "transform-origin"}
-bstyle = Style("")
 
 
 def get_cascaded_style(el):
@@ -218,11 +217,10 @@ class CStyle(Style):
         self.init = False
 
     def __setitem__(self, *args):
-        # inkex.utils.debug(str(self))
-        # inkex.utils.debug(args)
+        # Allows for multiple inputs using
+        # __setitem__(key1, value1, key2, value2, ...)
         if self.init:
             # OrderedDict sets items during initialization, use super()
-            # super().__setitem__(key, value)
             super().__setitem__(args[0], args[1])
         else:
             changedvalue = False
@@ -239,7 +237,6 @@ class CStyle(Style):
                         changedvalue = True
             if changedvalue:
                 self.el.cstyle = self
-                # inkex.utils.debug('write')
 
 
 class CStyleDescriptor:
@@ -565,7 +562,9 @@ inkex.BaseElement.set_random_id = set_random_id_fcn  # type: ignore
 
 # Version of get_id that uses the low-level get
 def get_id_func(el, as_url=0):
+    # inkex.utils.debug(el)
     if "id" not in el.attrib:
+        # inkex.utils.debug(el.croot.get_id())
         el.set_random_id(el.TAG)
     eid = EBget(el, "id")
     if as_url > 0:
@@ -1385,6 +1384,10 @@ def insert_func(g, index, el):
             newroot.iddict.add(el)  # generates an ID if needed
             if css is not None:
                 newroot.cssdict[el.get_id()] = css
+                
+        # Ensure children roots and dicts updated
+        for k in list2(el):
+            el.append(k)
 
 
 inkex.BaseElement.insert = insert_func  # type: ignore
@@ -1415,6 +1418,9 @@ def append_func(g, el):
             if css is not None:
                 newroot.cssdict[el.get_id()] = css
 
+        # Ensure children roots and dicts updated
+        for k in list2(el):
+            el.append(k)
 
 inkex.BaseElement.append = append_func  # type: ignore
 

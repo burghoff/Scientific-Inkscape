@@ -65,12 +65,9 @@ class Style0(dict):
 
     def __init__(self, style=None, **kw):
         # Either a string style or kwargs (with dashes as underscores).
-        style = (
-            ((k.replace("_", "-"), v) for k, v in kw.items())
-            if style is None
-            else style
-        )
-        if isinstance(style, str):
+        if style is None:     
+            style = ((k.replace("_", "-"), v) for k, v in kw.items())
+        elif isinstance(style, str):
             style = self.parse_str(style)
         # Order raw dictionaries so tests can be made reliable
         # if isinstance(style, dict) and not isinstance(style, inkex.OrderedDict):
@@ -100,10 +97,9 @@ class Style0(dict):
 
     def to_str(self, sep=";"):
         """Convert to string using a custom delimiter"""
-        # return sep.join(["{0}:{1}".format(*seg) for seg in self.items()])
         return sep.join(
             [f"{key}:{value}" for key, value in self.items()]
-        )  # about 40% faster
+        )
 
     def __hash__(self):
         return hash(tuple(self.items()))
@@ -120,8 +116,7 @@ class Style0(dict):
     # A shallow copy that does not call __init__
     def copy(self):
         new_instance = type(self).__new__(type(self))
-        for k, v in self.items():
-            dict.__setitem__(new_instance, k, v)
+        new_instance.update(self)
         return new_instance
 
     def __iadd__(self, other):

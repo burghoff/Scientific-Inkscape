@@ -817,15 +817,20 @@ class ParsedText:
                     # may have deleted spr lines
 
         # For single lines, reset line-height to default
+        changed_styles = dict()
         if len(self.lns) == 1:
             for d in el.descendants2():
-                d.cstyle.pop("line-height", None)
+                if "line-height" in d.cstyle:
+                    changed_styles[d] = d.cstyle
+                    del changed_styles[d]["line-height"]
+                # d.cstyle.pop("line-height", None)
 
         if len(self.cs) > 0:
             # Clear all fonts and only apply to relevant Tspans
-            changed_styles = dict()
+            
             for d in el.descendants2():
-                sty = Style(tuple(d.cstyle.items()))
+                # sty = Style(tuple(d.cstyle.items()))
+                sty = changed_styles.get(d,d.cstyle)
                 for key in [
                     "font-family",
                     "font-stretch",
@@ -833,23 +838,27 @@ class ParsedText:
                     "font-style",
                     "-inkscape-font-specification",
                 ]:
-                    sty.pop(key, None)
-                changed_styles[d] = sty
+                    if key in sty:
+                        del sty[key]
+                        # sty.pop(key, None)
+                        changed_styles[d] = sty
             
             for c in self.cs:
-                if c.loc.sel in changed_styles:
-                    sty = changed_styles[c.loc.sel]
-                else:
-                    sty = Style(tuple(c.loc.sel.cstyle.items()))
+                sty = changed_styles.get(c.loc.sel,c.loc.sel.cstyle)
+                # if c.loc.sel in changed_styles:
+                #     sty = changed_styles[c.loc.sel]
+                # else:
+                #     # sty = Style(tuple(c.loc.sel.cstyle.items()))
+                #     sty = c.loc.sel.cstyle
                 sty.update(c.fsty)
                 changed_styles[c.loc.sel] = sty
-            for k,v in changed_styles.items():
-                k.cstyle = v
 
             # Put the first char's font at top since that's what Inkscape displays
-            sty = Style(tuple(el.cstyle.items()))
+            # sty = Style(tuple(el.cstyle.items()))
+            sty = changed_styles.get(el,el.cstyle)
             sty.update(self.cs[0].fsty)
-            el.cstyle = sty
+            # el.cstyle = sty
+            changed_styles[el] = sty
 
             # Try to set nominal font size to max value
             # (value used by line-height, what Inkscape reports, etc.)
@@ -857,16 +866,24 @@ class ParsedText:
             for c in self.cs:
                 cel = c.loc.sel
                 fs_origins.add(cel)
+                celstyle = changed_styles.get(cel,cel.cstyle)
                 while (
-                    ("font-size" in cel.cstyle and "%" in str(cel.cstyle["font-size"]))
-                    or ("font-size" not in cel.cstyle)
+                    ("font-size" in celstyle and "%" in str(celstyle["font-size"]))
+                    or ("font-size" not in celstyle)
                 ) and cel is not el:
                     cel = cel.getparent()
                     fs_origins.add(cel)
+                    celstyle = changed_styles.get(cel,cel.cstyle)
             if el not in fs_origins and (
                 len(self.lns) == 1 or all([not ln.sprl for ln in self.lns[1:]])
             ):
-                el.cstyle["font-size"] = max([c.utfs for c in self.cs])
+                sty = changed_styles.get(el,el.cstyle)
+                maxsize = max([c.utfs for c in self.cs])
+                if "font-size" not in sty or sty["font-size"]!=maxsize:
+                    sty["font-size"] = max([c.utfs for c in self.cs])
+                    changed_styles[el]=sty
+        for k,v in changed_styles.items():
+            k.cstyle = v
 
     def Split_Off_Chunks(self, ws):
         nll = self.duplicate()
