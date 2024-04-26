@@ -823,13 +823,11 @@ class ParsedText:
                 if "line-height" in d.cstyle:
                     changed_styles[d] = d.cstyle
                     del changed_styles[d]["line-height"]
-                # d.cstyle.pop("line-height", None)
 
         if len(self.cs) > 0:
             # Clear all fonts and only apply to relevant Tspans
             
             for d in el.descendants2():
-                # sty = Style(tuple(d.cstyle.items()))
                 sty = changed_styles.get(d,d.cstyle)
                 for key in [
                     "font-family",
@@ -840,16 +838,10 @@ class ParsedText:
                 ]:
                     if key in sty:
                         del sty[key]
-                        # sty.pop(key, None)
                         changed_styles[d] = sty
             
             for c in self.cs:
                 sty = changed_styles.get(c.loc.sel,c.loc.sel.cstyle)
-                # if c.loc.sel in changed_styles:
-                #     sty = changed_styles[c.loc.sel]
-                # else:
-                #     # sty = Style(tuple(c.loc.sel.cstyle.items()))
-                #     sty = c.loc.sel.cstyle
                 sty.update(c.fsty)
                 changed_styles[c.loc.sel] = sty
 
@@ -857,7 +849,6 @@ class ParsedText:
             # sty = Style(tuple(el.cstyle.items()))
             sty = changed_styles.get(el,el.cstyle)
             sty.update(self.cs[0].fsty)
-            # el.cstyle = sty
             changed_styles[el] = sty
 
             # Try to set nominal font size to max value
