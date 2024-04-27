@@ -4,7 +4,7 @@ Scientific Inkscape is a set of Inkscape extensions for editing and exporting sc
 1. **Scale Plots**: Changes the size or aspect ratio of a plot without modifying its text and ticks. Especially useful for assembling multi-panel figures. (For non-plots, provides a way to scale objects without affecting text.)
 2. **Flattener**: A utility that eliminates much of the structure of imported figures and facilitates editing. For most imports, this should be the first thing you run.
 3. **Homogenizer**: Quickly sets uniform fonts, font sizes, and stroke widths in a selection.
-4. **Auto-Exporter**: Automatically exports SVG files in a directory and keeps them updated. Produces files immune to the rendering bugs of Office and Acrobat.
+4. **Autoexporter**: Automatically exports SVG files in a directory and keeps them updated. Produces files immune to the rendering bugs of Office and Acrobat.
 5. **Gallery Viewer**: Provides a way to view and edit the SVG contents of files or folders.
 
 It also includes the following utility extensions:
@@ -55,7 +55,7 @@ The Homogenizer is a utility that can set all fonts, font sizes, and stroke widt
 <p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Homogenizer_portable.svg" alt="drawing" ></img></p>
 
 # Autoexporter
-When writing, it is common to iterate between figure adjustment and writing. The Auto-Exporter makes this easy, automatically exporting files to their final form as they are saved. It runs in the background and watches a directory; whenever any SVGs are changed, it automatically converts them to the specified formats. Just select (a) the formats you would like to export, (b) what directory you would like it to watch, and (c) where you would like the Autoexporter to put the exports. This is especially convenient for documents typset in LaTeX: edits to your SVGs can automatically show up in your document.  
+When writing, it is common to iterate between figure adjustment and writing. The Autoexporter makes this easy, automatically exporting files to their final form as they are saved. It runs in the background and watches a directory; whenever any SVGs are changed, it automatically converts them to the specified formats. Just select (a) the formats you would like to export, (b) what directory you would like it to watch, and (c) where you would like the Autoexporter to put the exports. This is especially convenient for documents typset in LaTeX: edits to your SVGs can automatically show up in your document.  
 
 The Advanced options can be used to configure how images and text are stored. It can also generate SVGs resistant to Microsoft Office rendering bugs that can be directly inserted into Powerpoint and Word, as well as PDFs that are immune to Adobe Acrobat's rendering bugs. It also provides additional options for rasterizing certain elements during the export. For additional information on best practices for exporting, see [this page](https://github.com/burghoff/Scientific-Inkscape/blob/main/EXPORTING.md).
 
