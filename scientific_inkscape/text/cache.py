@@ -160,6 +160,20 @@ svgpres = {
 }
 excludes = {"clip", "clip-path", "mask", "transform", "transform-origin"}
 
+# Fast empty Style initialization
+bstyle_dict = Style().__dict__
+if len(bstyle_dict)==0:
+    def empty_style():
+        return Style.__new__(Style)
+else:
+    def empty_style():
+        ret = Style.__new__(Style)
+        ret.__dict__ = bstyle_dict
+        return ret
+if not hasattr(Style,'add3'):
+    def add3_fcn(x,y,z):
+        return x + y + z
+    Style.add3 = add3_fcn
 
 def get_cascaded_style(el):
     # Object's style including any CSS
@@ -175,8 +189,8 @@ def get_cascaded_style(el):
         locsty = el.cstyle
 
         # Add any presentation attributes to local style
-        # attsty = Style.__new__(Style)
-        attsty = Style()
+        attsty = empty_style()
+        # attsty = Style()
         for a in el.attrib:
             if (
                 a in svgpres
@@ -190,7 +204,7 @@ def get_cascaded_style(el):
         else:
             # Any style specified locally takes priority, followed by CSS,
             # followed by any attributes that the element has
-            ret = attsty + csssty + locsty
+            ret = attsty.add3(csssty,locsty)
         el._ccascaded_style = ret
     return el._ccascaded_style
 
@@ -257,7 +271,13 @@ class CStyleDescriptor:
                 del el.attrib["style"]
 
         if not isinstance(value, CStyle):
-            value = CStyle(value, el)
+            if isinstance(value,Style):
+                # Cast to CStyle without reinitializing
+                value.__class__ = CStyle
+                value.el = el
+                value.init = False
+            else:
+                value = CStyle(value, el)
         el._cstyle = value
         el.ccascaded_style = None
         el.cspecified_style = None

@@ -1156,6 +1156,7 @@ def Run_SI_Extension(effext, name):
                 lp.add_function(ipx.__wrapped__)
                 lp.add_function(font_properties.true_style.__wrapped__)
                 lp.add_function(speedups.transform_to_matrix.__wrapped__)
+                lp.add_function(Style.parse_str.__wrapped__)
 
                 lp(run_and_cleanup)()
                 import io
