@@ -241,32 +241,30 @@ ctag = lxml.etree.Comment
 unungroupable.add(ctag)
 
 
-def ungroup(groupel):
+def ungroup(g):
     # Ungroup a group, preserving style, clipping, and masking
     # Remove any comments
 
-    if groupel.croot is not None:
-        gparent = groupel.getparent()
-        gindex = gparent.index(groupel)  # group's location in parent
+    if g.croot is not None:
+        gparent = g.getparent()
+        gindex = gparent.index(g)  # group's location in parent
 
-        gtransform = groupel.ctransform
-        gclip = groupel.get_link("clip-path", llget=True)
-        gmask = groupel.get_link("mask", llget=True)
-        gstyle = groupel.ccascaded_style
+        gtransform = g.ctransform
+        gclip = g.get_link("clip-path", llget=True)
+        gmask = g.get_link("mask", llget=True)
+        gstyle = g.ccascaded_style
 
-        for el in reversed(list(groupel)):
+        for el in reversed(list(g)):
             if el.tag == ctag:  # remove comments
-                groupel.remove(el)
-            if not (el.tag in unungroupable):
+                g.remove(el)
+            if el.tag not in unungroupable:
                 clippedout = compose_all(el, gclip, gmask, gtransform, gstyle)
                 if clippedout:
                     el.delete()
                 else:
-                    gparent.insert(gindex + 1, el)
-                    # places above
-
-        if len(groupel) == 0:
-            groupel.delete()
+                    gparent.insert(gindex + 1, el) # places above
+        if len(g) == 0:
+            g.delete()
 
 
 # Group a list of elements, placing the group in the location of the first element
@@ -313,12 +311,11 @@ def compose_all(el, clip, mask, transform, style):
     if mask is not None:
         fix_css_clipmask(el, mask=True)
 
-    if transform is not None:
-        if transform.matrix != Itmat:
-            if el.ctransform is None or el.ctransform.matrix == Itmat:
-                el.ctransform = transform
-            else:
-                el.ctransform = transform @ el.ctransform
+    if transform is not None and transform.matrix != Itmat:
+        if el.ctransform is None or el.ctransform.matrix == Itmat:
+            el.ctransform = transform
+        else:
+            el.ctransform = transform @ el.ctransform
 
     if clip is None:
         return False

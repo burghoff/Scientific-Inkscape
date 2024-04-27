@@ -159,6 +159,7 @@ svgpres = {
     "writing-mode",
 }
 excludes = {"clip", "clip-path", "mask", "transform", "transform-origin"}
+style_atts = svgpres - excludes
 
 # Fast empty Style initialization
 bstyle_dict = Style().__dict__
@@ -170,35 +171,25 @@ else:
         ret = Style.__new__(Style)
         ret.__dict__ = bstyle_dict
         return ret
+    
+# Adds three styles
 if not hasattr(Style,'add3'):
     def add3_fcn(x,y,z):
         return x + y + z
-    Style.add3 = add3_fcn
+    Style.add3 = add3_fcn               # type: ignore
+dict_update = Style.__bases__[0].update # raw dict update
 
 def get_cascaded_style(el):
     # Object's style including any CSS
-    # Modified from Inkex's cascaded_style
     if not (hasattr(el, "_ccascaded_style")):
-        svg = el.croot
-        if svg is not None:
-            cssdict = svg.cssdict
-        else:
-            cssdict = dict()
-
-        csssty = cssdict.get(el.get_id())
+        # Local style (in "style" attribute)
         locsty = el.cstyle
-
-        # Add any presentation attributes to local style
+        # CSS style (from stylesheet)
+        csssty = getattr(el.croot,'cssdict',dict()).get(el.get_id())
+        # Attribute style (from attributes other than "style")
         attsty = empty_style()
-        # attsty = Style()
-        for a in el.attrib:
-            if (
-                a in svgpres
-                and not (a in excludes)
-                and locsty.get(a) is None
-                and el.get(a) is not None
-            ):
-                attsty[a] = el.get(a)
+        dict_update(attsty,({a: EBget(el,a) for a in el.attrib if a in style_atts}))
+        
         if csssty is None:
             ret = attsty + locsty
         else:
@@ -493,12 +484,11 @@ svgtag = SvgDocumentElement.ctag
 def get_croot(el):
     try:
         return el._croot
-    except:
-        myn = el
-        while myn.getparent() is not None:
-            myn = myn.getparent()
-        if myn.tag == svgtag:
-            el._croot = myn
+    except AttributeError:
+        if el.getparent() is not None:
+            el._croot = el.getparent().croot
+        elif el.tag == svgtag:
+            el._croot = el
         else:
             el._croot = None
         return el._croot
