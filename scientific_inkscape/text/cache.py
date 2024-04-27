@@ -177,7 +177,8 @@ if not hasattr(Style,'add3'):
     def add3_fcn(x,y,z):
         return x + y + z
     Style.add3 = add3_fcn               # type: ignore
-dict_update = Style.__bases__[0].update # raw dict update
+# raw dict update
+dict_update = Style.__bases__[0].update # type: ignore
 
 def get_cascaded_style(el):
     # Object's style including any CSS

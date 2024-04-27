@@ -106,6 +106,12 @@ class FlattenPlots(inkex.EffectExtension):
             help="Revert certain paths to strokes?",
         )
         pars.add_argument(
+            "--removetextclips",
+            type=inkex.Boolean,
+            default=True,
+            help="Remove clips and masks from text?",
+        )
+        pars.add_argument(
             "--replacement", type=str, default="Arial", help="Missing font replacement"
         )
         pars.add_argument(
@@ -163,6 +169,7 @@ class FlattenPlots(inkex.EffectExtension):
                 self.options.mergesubsuper = True
                 self.options.setreplacement = True
                 self.options.reversions = True
+                self.options.removetextclips = True
                 self.options.replacement = "sans-serif"
                 self.options.justification = 1
         else:
@@ -174,6 +181,7 @@ class FlattenPlots(inkex.EffectExtension):
         mergenearby = self.options.mergenearby and self.options.fixtext
         setreplacement = self.options.setreplacement and self.options.fixtext
         reversions = self.options.reversions and self.options.fixtext
+        removetextclips = self.options.removetextclips and self.options.fixtext
 
         sel = [el for el in self.svg.descendants2() if el in sel]  # doc order
         if self.options.tab == "Exclusions":
@@ -263,7 +271,7 @@ class FlattenPlots(inkex.EffectExtension):
                 elif dh.EBget(g, "mpl_comment") is not None:
                     pass
                 else:
-                    dh.ungroup(g)
+                    dh.ungroup(g,removetextclips)
             dh.flush_stylesheet_entries(self.svg)
 
         if self.options.removerectw or reversions or self.options.revertpaths:
@@ -381,6 +389,12 @@ class FlattenPlots(inkex.EffectExtension):
                     justification,
                     self.options.debugparser,
                 )
+            if removetextclips:
+                from inkex.text.cache import ttags
+                for el in ngs:
+                    if el.tag in ttags:
+                        el.set('clip-path',None)
+                        el.set('mask',None)
 
         if self.options.removerectw:
             ngset = set(ngs)

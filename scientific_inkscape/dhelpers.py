@@ -40,6 +40,7 @@ from inkex import Style
 from inkex.text.cache import (
     tags,
     grouplike_tags,
+    ttags,
     bb2_support_tags,
     bounding_box2,
     bbox,
@@ -241,7 +242,7 @@ ctag = lxml.etree.Comment
 unungroupable.add(ctag)
 
 
-def ungroup(g):
+def ungroup(g,removetextclip=False):
     # Ungroup a group, preserving style, clipping, and masking
     # Remove any comments
 
@@ -258,7 +259,7 @@ def ungroup(g):
             if el.tag == ctag:  # remove comments
                 g.remove(el)
             if el.tag not in unungroupable:
-                clippedout = compose_all(el, gclip, gmask, gtransform, gstyle)
+                clippedout = compose_all(el, gclip, gmask, gtransform, gstyle,removetextclip=removetextclip)
                 if clippedout:
                     el.delete()
                 else:
@@ -292,7 +293,7 @@ def group(el_list, moveTCM=False):
 Itmat = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
 
 
-def compose_all(el, clip, mask, transform, style):
+def compose_all(el, clip, mask, transform, style, removetextclip=False):
     if style is not None:  # style must go first since we may change it with CSS
         mysty = el.ccascaded_style
         compsty = style + mysty
@@ -301,15 +302,19 @@ def compose_all(el, clip, mask, transform, style):
         )  # opacity accumulates at each layer
         el.cstyle = compsty
 
-    if clip is not None:
-        # idebug([el.get_id(),clipurl])
-        cout = merge_clipmask(el, clip)  # clip applied before transform, fix first
-    if mask is not None:
-        merge_clipmask(el, mask, mask=True)
-    if clip is not None:
-        fix_css_clipmask(el)
-    if mask is not None:
-        fix_css_clipmask(el, mask=True)
+    if removetextclip and el.tag in ttags:
+        el.set("clip-path", None)
+        el.set("mask",      None)
+        cout = False
+    else:
+        if clip is not None:
+            cout = merge_clipmask(el, clip)  # clip applied before transform, fix first
+        if mask is not None:
+            merge_clipmask(el, mask, mask=True)
+        if clip is not None:
+            fix_css_clipmask(el)
+        if mask is not None:
+            fix_css_clipmask(el, mask=True)
 
     if transform is not None and transform.matrix != Itmat:
         if el.ctransform is None or el.ctransform.matrix == Itmat:
