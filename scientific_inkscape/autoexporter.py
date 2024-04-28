@@ -666,7 +666,7 @@ class AutoExporter(inkex.EffectExtension):
                     if cnt > 5:  # don't iterate through long paths
                         break
                 if len(uniquetol(xs, 0)) == 1 and len(uniquetol(ys, 0)) == 1:
-                    dh.deleteup(el)
+                    el.delete(deleteup=True)
 
         # Fix Avenir/Whitney
         tels = [el for el in vds if isinstance(el, (inkex.TextElement, inkex.FlowRoot))]
@@ -1291,7 +1291,7 @@ class AutoExporter(inkex.EffectExtension):
                 #     dh.ungroup(d.getparent());
             elif isinstance(d, (inkex.Group)):
                 if len(d) == 0:
-                    dh.deleteup(d)
+                    d.delete(deleteup=True)
 
         if input_options.thinline:
             for d in vds:

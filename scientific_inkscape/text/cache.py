@@ -252,9 +252,6 @@ class CStyleDescriptor:
         return el._cstyle
 
     def __set__(self, el, value):
-        # from dhelpers import count_callers
-        # count_callers()
-        
         if value:
             vstr = str(value)
             EBset(el, "style", vstr)
@@ -392,21 +389,6 @@ def get_path2(el):
             ry = ipx(el.get("ry", el.get("rx", "0")))
             right = left + width
             bottom = top + height
-            # if rx:
-            #     return inkex.Path((
-            #         "M {lft2},{topv}"
-            #         "L {rgt2},{topv}  A {rxv},{ryv} 0 0 1 {rgtv},{top2}"
-            #         "L {rgtv},{btm2}  A {rxv},{ryv} 0 0 1 {rgt2},{btmv}"
-            #         "L {lft2},{btmv}  A {rxv},{ryv} 0 0 1 {lftv},{btm2}"
-            #         "L {lftv},{top2}  A {rxv},{ryv} 0 0 1 {lft2},{topv} z".format(
-            #             topv=top, btmv=bottom, lftv=left,rgtv=right, rxv=rx, ryv=ry,
-            #             lft2=left+rx, rgt2=right-rx, top2=top+ry, btm2=bottom-ry
-            #         ))
-            #     )
-            # ret = inkex.Path("M {lftv},{topv} h {wdtv} v {hgtv} h {wdt2} z".format(
-            #     topv=top, lftv=left, wdtv=width, hgtv=height,
-            #     wdt2=-width)
-            # )
 
             """Calculate the path as the box around the rect"""
             if rx or ry:
@@ -453,7 +435,6 @@ def get_path2(el):
             ret = inkex.Path(f"M{x1},{y1} L{x2},{y2}")
         else:
             ret = el.get_path()
-            # inkex.utils.debug(el.tag)
             if isinstance(ret, str):
                 ret = inkex.Path(ret)
         el._cpath = ret
@@ -575,7 +556,6 @@ inkex.BaseElement.set_random_id = set_random_id_fcn  # type: ignore
 def get_id_func(el, as_url=0):
     # inkex.utils.debug(el)
     if "id" not in el.attrib:
-        # inkex.utils.debug(el.croot.get_id())
         el.set_random_id(el.TAG)
     eid = EBget(el, "id")
     if as_url > 0:
@@ -678,11 +658,6 @@ if hasmatches:
     import warnings
 
 
-# try:
-#     estyle2 = inkex.origStyle()
-# except:
-#     estyle2 = inkex.Style()  # still using Inkex's Style here since from stylesheets
-# estyle2 = inkex.Style()
 class cssdict(inkex.OrderedDict):
     def __init__(self, svg):
         self.svg = svg
@@ -1352,7 +1327,7 @@ inkex.SvgDocumentElement.standardize_viewbox = standardize_viewbox
 inkexdelete = inkex.BaseElement.delete
 
 
-def delete_func(el):
+def delete_func(el, deleteup=False):
     svg = el.croot
     for d in reversed(el.descendants2()):
         did = d.get_id()
@@ -1365,7 +1340,16 @@ def delete_func(el):
         d.croot = None
     if hasattr(svg, "_cd2"):
         svg.cdescendants2.delel(el)
-    inkexdelete(el)
+        
+    if deleteup:
+        # If set, remove empty ancestor groups
+        myp = el.getparent()
+        inkexdelete(el)
+        if myp is not None and not len(myp):
+            delete_func(myp,True)
+    else:
+        inkexdelete(el)
+    
 
 
 BaseElement.delete = delete_func  # type: ignore
@@ -1475,12 +1459,3 @@ def duplicate_func(self):
 
 
 BaseElement.duplicate = duplicate_func  # type: ignore
-
-# inkexBaseElement = inkex.BaseElement
-# class BaseElementCached(inkexBaseElement):
-#     append = append_func
-#     duplicate = duplicate_func
-# import inspect
-# for name, cls in inspect.getmembers(inkex):
-#     if inspect.isclass(cls) and inkexBaseElement in cls.__bases__:
-#         cls.__bases__ = tuple(BaseElementCached if base is inkexBaseElement else base for base in cls.__bases__)

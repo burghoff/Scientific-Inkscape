@@ -876,12 +876,12 @@ def global_transform(el, trnsfrm, irange=None, trange=None, preserveStroke=True)
 
 
 # Delete and prune empty ancestor groups
-def deleteup(el):
-    myp = el.getparent()
-    el.delete()
-    if myp is not None:
-        if not len(myp):  # faster than getting children
-            deleteup(myp)
+# def deleteup(el):
+#     myp = el.getparent()
+#     el.delete()
+#     if myp is not None:
+#         if not len(myp):  # faster than getting children
+#             deleteup(myp)
 
 
 # Combines a group of path-like elements
@@ -920,7 +920,8 @@ def combine_paths(els, mergeii=0):
     mel.set("inkscape-scientific-combined-by-color", " ".join([str(v) for v in si]))
     for s in range(len(els)):
         if s != mergeii:
-            deleteup(els[s])
+            # deleteup(els[s])
+            els[s].delete(deleteup=True)
 
 
 # Gets all of the stroke and fill properties from a style

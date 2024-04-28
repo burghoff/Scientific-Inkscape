@@ -409,7 +409,7 @@ class FlattenPlots(inkex.EffectExtension):
             intrscts = dh.bb_intersects(bbs, wrbbs)
             for jj, ii in enumerate(wriis):
                 if not any(intrscts[:ii, jj]):
-                    dh.deleteup(ngs3[ii])
+                    ngs3[ii].delete(deleteup=True)
                     intrscts[ii, :] = False
 
         # Remove any unused clips we made, unnecessary white space in document
@@ -423,9 +423,9 @@ class FlattenPlots(inkex.EffectExtension):
         if hasattr(self.svg, "newclips"):
             for el in self.svg.newclips:
                 if el.tag == ctag and not (el.get_id() in clips):
-                    dh.deleteup(el)
+                    el.delete(deleteup=True)
                 elif dh.isMask(el) and not (el.get_id() in masks):
-                    dh.deleteup(el)
+                    el.delete(deleteup=True)
 
         ttags = dh.tags((Tspan, TextPath, FlowPara, FlowRegion, FlowSpan))
         flow_types = (
