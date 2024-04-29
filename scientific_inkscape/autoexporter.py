@@ -722,7 +722,7 @@ class AutoExporter(inkex.EffectExtension):
                             and d.cspecified_style["fill"] != "#000000"
                         ):
                             d.cstyle["fill"] = d.cspecified_style["fill"]
-        dh.flush_stylesheet_entries(svg)  # since we ungrouped
+        # dh.flush_stylesheet_entries(svg)  # since we ungrouped
         tmp = tempbase + "_mod.svg"
         dh.overwrite_svg(svg, tmp)
         cfile = tmp
@@ -1004,7 +1004,7 @@ class AutoExporter(inkex.EffectExtension):
                         if embedimg:
                             self.Replace_with_Raster(el, tmpimg, bbs[el.get_id()], bbox)
 
-                dh.flush_stylesheet_entries(svg)  # since we ungrouped
+                # dh.flush_stylesheet_entries(svg)  # since we ungrouped
                 tmp = tempbase + "_eimg.svg"
                 dh.overwrite_svg(svg, tmp)
                 cfile = tmp
@@ -1018,7 +1018,7 @@ class AutoExporter(inkex.EffectExtension):
                     if el is not None:
                         dh.ungroup(el.getparent())
 
-            dh.flush_stylesheet_entries(svg)  # since we ungrouped
+            # dh.flush_stylesheet_entries(svg)  # since we ungrouped
             dh.overwrite_svg(svg, tmp)
             cfile = tmp
 

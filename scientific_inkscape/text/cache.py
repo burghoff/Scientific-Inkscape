@@ -483,7 +483,7 @@ def set_croot(el, ri):
 BaseElement.croot = property(get_croot, set_croot)
 
 
-# Cached defs that avoids xpath. Looks for a defs under the svg
+# Cached def directly under root
 def cdefs_func(svg):
     if not (hasattr(svg, "_cdefs")):
         for k in list(svg):
@@ -497,6 +497,19 @@ def cdefs_func(svg):
 
 
 inkex.SvgDocumentElement.cdefs = property(cdefs_func)
+
+# Cached style element directly under root
+styletag = inkex.addNS('style','svg')
+def crootsty_func(svg):
+    if not hasattr(svg,'_crootsty'):
+        rootstys = [sty for sty in list(svg) if sty.tag==styletag]
+        if len(rootstys)==0:
+            svg._crootsty = inkex.StyleElement()
+            svg.insert(0,svg._crootsty)
+        else:
+            svg._crootsty = rootstys[0]
+    return svg._crootsty
+inkex.SvgDocumentElement.crootsty = property(crootsty_func)
 
 
 # Version of get_ids that uses iddict

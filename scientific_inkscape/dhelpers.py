@@ -114,27 +114,6 @@ def listsplit(x):
     return [ipx(v) for v in re.split("[ ,]", x) if v]
 
 
-# def Get_Composed_List(el, comp, nargout=1):
-#     cs = el.cspecified_style
-#     ct = el.ccomposed_transform
-#     sc = cs.get(comp)
-#     if sc == "none":
-#         return "none"
-#     elif sc is not None:
-#         sv = listsplit(sc)
-#         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))
-#         sv = [x * sf for x in sv]
-#         if nargout == 1:
-#             return sv
-#         else:
-#             return sv, sf
-#     else:
-#         if nargout == 1:
-#             return None
-#         else:
-#             return None, None
-
-
 def composed_list(el, comp):
     cs = el.cspecified_style
     ct = el.ccomposed_transform
@@ -335,35 +314,13 @@ def fix_css_clipmask(el, mask=False):
     cm = "clip-path" if not mask else "mask"
     svg = el.croot
     if svg is not None:
-        cssdict = svg.cssdict
-    else:
-        cssdict = dict()
-
-    mycss = cssdict.get(el.get_id())
-    if mycss is not None:
-        if mycss.get(cm) is not None and mycss.get(cm) != el.get(cm):
-            svg = el.croot
-            if not (hasattr(svg, "stylesheet_entries")):
-                svg.stylesheet_entries = dict()
-            svg.stylesheet_entries["#" + el.get_id()] = cm + ":" + el.get(cm)
-            mycss[cm] = el.get(cm)
+        mycss = svg.cssdict.get(el.get_id())
+        if mycss is not None and mycss.get(cm) is not None and mycss.get(cm) != el.get(cm):
+                sty = el.croot.crootsty
+                sty.text = (sty.text or "") + "\n#{0}{{{1}:{2}}}".format(el.get_id(), cm, el.get(cm))
+                mycss[cm] = el.get(cm)
     if el.cstyle.get(cm) is not None:  # also clear local style
-        # Set_Style_Comp(el, cm, None)
         el.cstyle[cm] = None
-
-
-# Adding to the stylesheet is slow, so as a workaround we only do this once
-# There is no good way to do many entries at once, so we do it after we're finished
-def flush_stylesheet_entries(svg):
-    if hasattr(svg, "stylesheet_entries"):
-        ss = ""
-        for k in svg.stylesheet_entries.keys():
-            ss += k + "{" + svg.stylesheet_entries[k] + "}\n"
-        svg.stylesheet_entries = dict()
-
-        stys = svg.xpath("svg:style")
-        if len(stys) > 0:
-            stys[0].text += "\n" + ss + "\n"
 
 
 def intersect_paths(ptha, pthb):
@@ -392,10 +349,8 @@ def merge_clipmask(node, newclip, mask=False):
         isempty = str(newpath) == ""
 
         if not (isempty):
-            myp = el.getparent()
-            # p = el.croot.new_element(PathElement, el)
             p = PathElement()
-            myp.append(p)
+            el.getparent().append(p)
             p.set("d", newpath)
         el.delete()
         return isempty  # if clipped out, safe to delete element
@@ -875,15 +830,6 @@ def global_transform(el, trnsfrm, irange=None, trange=None, preserveStroke=True)
             # fix dash
 
 
-# Delete and prune empty ancestor groups
-# def deleteup(el):
-#     myp = el.getparent()
-#     el.delete()
-#     if myp is not None:
-#         if not len(myp):  # faster than getting children
-#             deleteup(myp)
-
-
 # Combines a group of path-like elements
 def combine_paths(els, mergeii=0):
     pnew = Path()
@@ -1108,7 +1054,7 @@ def Run_SI_Extension(effext, name):
 
     def run_and_cleanup():
         effext.run()
-        flush_stylesheet_entries(effext.svg)
+        # flush_stylesheet_entries(effext.svg)
 
     alreadyran = False
     lprofile = os.getenv("LINEPROFILE") == "True"

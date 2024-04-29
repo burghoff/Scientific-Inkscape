@@ -272,7 +272,7 @@ class FlattenPlots(inkex.EffectExtension):
                     pass
                 else:
                     dh.ungroup(g,removetextclips)
-            dh.flush_stylesheet_entries(self.svg)
+            # dh.flush_stylesheet_entries(self.svg)
 
         if self.options.removerectw or reversions or self.options.revertpaths:
             prltag = dh.tags((PathElement, Rectangle, Line))

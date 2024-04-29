@@ -129,7 +129,7 @@ class CombineByColor(inkex.EffectExtension):
                         0
                     ]  # use the median
                     dh.combine_paths([els[kk] for kk in merges], mergeii)
-        dh.flush_stylesheet_entries(self.svg)  # since we removed clips
+        # dh.flush_stylesheet_entries(self.svg)  # since we removed clips
 
 
 if __name__ == "__main__":

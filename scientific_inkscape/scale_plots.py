@@ -652,7 +652,7 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                 fbbs = actfbbs
                 gbbs = actgbbs
 
-        dh.flush_stylesheet_entries(self.svg)
+        # dh.flush_stylesheet_entries(self.svg)
 
 
 if __name__ == "__main__":
