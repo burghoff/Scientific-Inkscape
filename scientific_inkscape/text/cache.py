@@ -1439,9 +1439,10 @@ clipmasktags = {inkex.addNS("mask", "svg"), inkex.ClipPath.ctag}
 def duplicate_func(self):
     # type: (BaseElement) -> BaseElement
     svg = self.croot
-    svg.iddict
-    svg.cssdict
+    # svg.iddict    # disabled 2024-04-29
+    # svg.cssdict   # disabled 2024-04-29
     # need to generate now to prevent problems in duplicate_fixed (self.addnext(elem) line, no idea why)
+    
 
     eltail = self.tail
     if eltail is not None:
