@@ -781,8 +781,10 @@ class cssdict(dict):
                     if len(stylev)>0:
                         idvs = [EBget(elem,"id", None) for elem in els if "id" in elem.attrib]
                         newstys = {elid: stylev if elid not in self else self[elid]+stylev for elid in idvs}
+                        # Technically we should copy stylev, but as long as styles in cssdict are only used
+                        # in get_cascaded_style, this is fine since that function adds (creating copies)
                         self.update(newstys)
-                except (lxml.etree.XPathEvalError, TypeError):
+                except (lxml.etree.XPathEvalError,):
                     pass
 
     def dupe_entry(self, oldid, newid):
