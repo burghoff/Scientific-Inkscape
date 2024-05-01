@@ -595,7 +595,7 @@ inkex.SvgDocumentElement.getElementById = getElementById_func  # type: ignore
 
 
 # Add iddict, which keeps track of the IDs in a document
-class iddict(inkex.OrderedDict):
+class iddict(dict):
     def __init__(self, svg):
         self.svg = svg
         self.prefixcounter = dict()
@@ -671,7 +671,7 @@ if hasmatches:
     import warnings
 
 
-class cssdict(inkex.OrderedDict):
+class cssdict(dict):
     def __init__(self, svg):
         self.svg = svg
 
@@ -724,22 +724,35 @@ class cssdict(inkex.OrderedDict):
                             for ii, r in enumerate(style.rules)
                         ]
 
+        # inkex.utils.debug(simpleclasses)
         knownxpaths = dict()
         if hasall or len(simpleclasses) > 0:
             ds = svg.iddict.ds
-
-            cs = [EBget(d, "class") for d in ds]
+            
             if hasall:
                 knownxpaths["//*"] = ds
-            for xp in simpleclasses:
-                knownxpaths[xp] = []
-            for ii in range(len(ds)):
-                if cs[ii] is not None:
-                    cv = cs[ii].split(" ")
-                    # only valid delimeter for multiple classes is space
-                    for xp in simpleclasses:
-                        if any([v in cv for v in simpleclasses[xp]]):
-                            knownxpaths[xp].append(ds[ii])
+            cs = [EBget(d, "class") for d in ds]
+            c2 = [(ii,c) for (ii,c) in enumerate(cs) if c is not None]
+            cmatches = dict()
+            for ii, clsval in c2:
+                for c in clsval.split(" "):
+                    cmatches[c] = cmatches.get(c, []) + [ds[ii]]
+            kxp2 = {xp : list(dict.fromkeys([d for c in clslist if c in cmatches for d in cmatches[c]])) for xp,clslist in simpleclasses.items()}
+            knownxpaths.update(kxp2)   
+            
+            
+            # cs = [EBget(d, "class") for d in ds]
+            # if hasall:
+            #     knownxpaths["//*"] = ds
+            # for xp in simpleclasses:
+            #     knownxpaths[xp] = []
+            # for ii in range(len(ds)):
+            #     if cs[ii] is not None:
+            #         cv = cs[ii].split(" ")
+            #         # only valid delimeter for multiple classes is space
+            #         for xp in simpleclasses:
+            #             if any([v in cv for v in simpleclasses[xp]]):
+            #                 knownxpaths[xp].append(ds[ii])
         for xp in simpleids:
             knownxpaths[xp] = []
             for sid in simpleids[xp]:
@@ -764,13 +777,11 @@ class cssdict(inkex.OrderedDict):
                         els = knownxpaths[xp]
                     else:
                         els = svg.xpath(xp)
-                    for elem in els:
-                        elid = elem.get("id", None)
-                        if elid is not None and style != estyle:
-                            if self.get(elid) is None:
-                                self[elid] = stylev.copy()
-                            else:
-                                self[elid] += style
+                    
+                    if len(stylev)>0:
+                        idvs = [EBget(elem,"id", None) for elem in els if "id" in elem.attrib]
+                        newstys = {elid: stylev if elid not in self else self[elid]+stylev for elid in idvs}
+                        self.update(newstys)
                 except (lxml.etree.XPathEvalError, TypeError):
                     pass
 
@@ -1380,9 +1391,15 @@ def insert_func(g, index, el):
     el.cspecified_style = None
     el.ccomposed_transform = None
 
-    # When the root is changing, removing from old dicts and add to new
-    # Note that most new elements have their IDs assigned here or in append
-    if not oldroot == newroot or el.get("id") is None:
+    if EBget(el,"id") is None:
+        # Make sure all elements have an ID (most assigned here)
+        el.croot = newroot
+        if newroot is not None:
+            newroot.iddict.add(el)  # generates an ID if needed
+        for k in list2(el):
+            el.append(k)  # update children
+    elif oldroot != newroot:
+        # When the root is changing, remove from old dicts and add to new
         css = None
         if oldroot is not None:
             oldroot.iddict.remove(el)
@@ -1392,10 +1409,8 @@ def insert_func(g, index, el):
             newroot.iddict.add(el)  # generates an ID if needed
             if css is not None:
                 newroot.cssdict[el.get_id()] = css
-                
-        # Ensure children roots and dicts updated
         for k in list2(el):
-            el.append(k)
+            el.append(k) # update children
 
 
 inkex.BaseElement.insert = insert_func  # type: ignore
@@ -1413,9 +1428,15 @@ def append_func(g, el):
     el.cspecified_style = None
     el.ccomposed_transform = None
 
-    # When the root is changing, removing from old dicts and add to new
-    # Note that most new elements have their IDs assigned here or in insert
-    if not oldroot == newroot or el.get("id") is None:
+    if EBget(el,"id") is None:
+        # Make sure all elements have an ID (most assigned here)
+        el.croot = newroot
+        if newroot is not None:
+            newroot.iddict.add(el)  # generates an ID if needed
+        for k in list2(el):
+            el.append(k)  # update children
+    elif oldroot != newroot:
+        # When the root is changing, remove from old dicts and add to new
         css = None
         if oldroot is not None:
             oldroot.iddict.remove(el)
@@ -1425,12 +1446,48 @@ def append_func(g, el):
             newroot.iddict.add(el)  # generates an ID if needed
             if css is not None:
                 newroot.cssdict[el.get_id()] = css
-
-        # Ensure children roots and dicts updated
         for k in list2(el):
-            el.append(k)
+            el.append(k) # update children
 
 inkex.BaseElement.append = append_func  # type: ignore
+
+
+# addnext
+BEaddnext = inkex.BaseElement.addnext
+
+
+def addnext_func(g, el):
+    oldroot = el.croot
+    newroot = g.croot
+
+    BEaddnext(g, el)
+    el.ccascaded_style = None
+    el.cspecified_style = None
+    el.ccomposed_transform = None
+
+    if EBget(el,"id") is None:
+        # Make sure all elements have an ID (most assigned here)
+        el.croot = newroot
+        if newroot is not None:
+            newroot.iddict.add(el)  # generates an ID if needed
+        for k in list2(el):
+            el.append(k)  # update children
+    elif oldroot != newroot:
+        # When the root is changing, remove from old dicts and add to new
+        css = None
+        if oldroot is not None:
+            oldroot.iddict.remove(el)
+            css = oldroot.cssdict.pop(el.get_id(), None)
+        el.croot = newroot
+        if newroot is not None:
+            newroot.iddict.add(el)  # generates an ID if needed
+            if css is not None:
+                newroot.cssdict[el.get_id()] = css
+        for k in list2(el):
+            el.append(k) # update children
+
+
+inkex.BaseElement.addnext = addnext_func  # type: ignore
 
 # Duplication
 clipmasktags = {inkex.addNS("mask", "svg"), inkex.ClipPath.ctag}
@@ -1438,33 +1495,30 @@ clipmasktags = {inkex.addNS("mask", "svg"), inkex.ClipPath.ctag}
 
 def duplicate_func(self):
     # type: (BaseElement) -> BaseElement
-    svg = self.croot
+    # svg = self.croot
     # svg.iddict    # disabled 2024-04-29
     # svg.cssdict   # disabled 2024-04-29
     # need to generate now to prevent problems in duplicate_fixed (self.addnext(elem) line, no idea why)
     
-
     eltail = self.tail
     if eltail is not None:
         self.tail = None
     d = self.copy()
+    
+    # After copying, duplicates have the original ID. Remove prior to insertion
+    origids = dict();
+    for dd in d.descendants2():
+        origids[dd] = dd.pop('id',None)
+        dd.croot = self.croot              # set now for speed
+    
     self.addnext(d)
-    d.set_random_id()
     if eltail is not None:
         self.tail = eltail
     # Fix tail bug: https://gitlab.com/inkscape/extensions/-/issues/480
-
-    d.croot = svg  # set now for speed
-    self.croot.cssdict.dupe_entry(self.get_id(), d.get_id())
-    svg.iddict.add(d)
-
-    for k in descendants2(d)[1:]:
-        if not k.tag == comment_tag:
-            oldid = k.get_id()
-            k.croot = svg  # set now for speed
-            k.set_random_id()
-            k.croot.cssdict.dupe_entry(oldid, k.get_id())
-            svg.iddict.add(k)
+    
+    css = self.croot.cssdict
+    newids = {EBget(k,'id') : css.get(origids[k]) for k in d.descendants2() if origids[k] in css}
+    d.croot.cssdict.update(newids)
 
     if d.tag in clipmasktags:
         # Clip duplications can cause weird issues if they are not appended to the end of Defs
