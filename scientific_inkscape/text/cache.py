@@ -807,12 +807,14 @@ inkex.SvgDocumentElement.cssdict = property(get_cssdict)
 # A version of descendants that also returns a list of elements whose tails
 # precede each element. (This is helpful for parsing text.)
 def descendants2(el, return_tails=False):
-    descendants = [el]
-    precedingtails = [[]]
-    endsat = [(el, None)]
-    for d in el.iterdescendants():
-        if not (d.tag == comment_tag):
-            if return_tails:
+    if not return_tails:
+        return [el] + [d for d in el.iterdescendants() if d.tag != comment_tag] 
+    else:
+        descendants = [el]
+        precedingtails = [[]]
+        endsat = [(el, None)]
+        for d in el.iterdescendants():
+            if not (d.tag == comment_tag):
                 precedingtails.append([])
                 while endsat[-1][1] == d:
                     precedingtails[-1].append(endsat.pop()[0])
@@ -821,11 +823,8 @@ def descendants2(el, return_tails=False):
                     endsat.append((d, endsat[-1][1]))
                 else:
                     endsat.append((d, nsib))
-            descendants.append(d)
-
-    if not return_tails:
-        return descendants
-    else:
+                descendants.append(d)
+        
         precedingtails.append([])
         while len(endsat) > 0:
             precedingtails[-1].append(endsat.pop()[0])

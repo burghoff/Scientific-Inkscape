@@ -1996,7 +1996,19 @@ class tline:
         ret.continuex = self.continuex
         ret.continuey = self.continuey
         ret.pt = self.pt
+        
+        
+        # ret.__dict__.update(self.__dict__)
+        # ret._x = self._x[:]
+        # ret._y = self._y[:]
+        # ret.sprlabove = [memo[sa] for sa in self.sprlabove]
+        # ret.cs = [c.copy(memo) for c in self.cs]
+        # ret.ws = [w.copy(memo) for w in self.ws]
+        # ret.xsrc = memo[self.xsrc]
+        # ret.ysrc = memo[self.ysrc]
+        
         return ret
+    
 
     # transform angle in degrees
     def get_ang(self):
@@ -2295,10 +2307,23 @@ class tchunk:
         ret.dy = self.dy[:]
         ret.ch = self.ch[:]
         ret.bshft = self.bshft[:]
+        
+        # ret.__dict__.update(self.__dict__)
+        # ret.lsp = self.lsp[:]
+        # ret.dxeff = self.dxeff[:]
+        # ret.cw = self.cw[:]
+        # ret.dy = self.dy[:]
+        # ret.ch = self.ch[:]
+        # ret.bshft = self.bshft[:]
 
         ret.cs = list(
             map(memo.get, self.cs, self.cs)
         )  # faster than [memo.get(c) for c in self.cs]
+        # ret.cs = []
+        # for c in self.cs:
+        #     ret_c = memo.get(c)
+        #     ret.cs.append(ret_c)
+        #     ret_c.w = ret
         for ret_c in ret.cs:
             ret_c.w = ret
         ret.iis = self.iis[:]
@@ -2826,34 +2851,34 @@ def style_derived(styv, pel, textel):
 
 # A single character and its style
 class tchar:
-    __slots__ = (
-        "c",
-        "tfs",
-        "utfs",
-        "sf",
-        "prop",
-        "cw",
-        "_sty",
-        "tsty",
-        "fsty",
-        "loc",
-        "ch",
-        "sw",
-        "ln",
-        "lnindex",
-        "w",
-        "windex",
-        "type",
-        "_dx",
-        "_dy",
-        "deltanum",
-        "dkerns",
-        "parsed_pts_t",
-        "parsed_pts_ut",
-        "_lsp",
-        "_bshft",
-        "lhs",
-    )
+    # __slots__ = (
+    #     "c",
+    #     "tfs",
+    #     "utfs",
+    #     "sf",
+    #     "prop",
+    #     "cw",
+    #     "_sty",
+    #     "tsty",
+    #     "fsty",
+    #     "loc",
+    #     "ch",
+    #     "sw",
+    #     "ln",
+    #     "lnindex",
+    #     "w",
+    #     "windex",
+    #     "type",
+    #     "_dx",
+    #     "_dy",
+    #     "deltanum",
+    #     "dkerns",
+    #     "parsed_pts_t",
+    #     "parsed_pts_ut",
+    #     "_lsp",
+    #     "_bshft",
+    #     "lhs",
+    # )
 
     def __init__(self, c, tfs, sf, prop, sty, tsty, loc, ln):
         self.c = c
@@ -2907,29 +2932,31 @@ class tchar:
         ret = tchar.__new__(tchar)
         memo[self] = ret
 
-        ret.c = self.c
-        ret.tfs = self.tfs
-        ret.sf = self.sf
-        ret.utfs = self.utfs
-        ret.prop = self.prop
-        ret.cw = self.cw
-        ret._sty = self._sty
-        ret.tsty = self.tsty
-        ret.fsty = self.fsty
-        ret.ch = self.ch
-        ret.sw = self.sw
-        ret.lnindex = self.lnindex
-        ret.w = self.w
-        ret.windex = self.windex
-        ret.type = self.type
-        ret._dx = self._dx
-        ret._dy = self._dy
-        ret.deltanum = self.deltanum
-        ret.dkerns = self.dkerns
-        ret.parsed_pts_t = self.parsed_pts_t
-        ret.parsed_pts_ut = self.parsed_pts_ut
-        ret._lsp = self._lsp
-        ret._bshft = self._bshft
+        # ret.c = self.c
+        # ret.tfs = self.tfs
+        # ret.sf = self.sf
+        # ret.utfs = self.utfs
+        # ret.prop = self.prop
+        # ret.cw = self.cw
+        # ret._sty = self._sty
+        # ret.tsty = self.tsty
+        # ret.fsty = self.fsty
+        # ret.ch = self.ch
+        # ret.sw = self.sw
+        # ret.lnindex = self.lnindex
+        # ret.w = self.w
+        # ret.windex = self.windex
+        # ret.type = self.type
+        # ret._dx = self._dx
+        # ret._dy = self._dy
+        # ret.deltanum = self.deltanum
+        # ret.dkerns = self.dkerns
+        # ret.parsed_pts_t = self.parsed_pts_t
+        # ret.parsed_pts_ut = self.parsed_pts_ut
+        # ret._lsp = self._lsp
+        # ret._bshft = self._bshft
+        
+        ret.__dict__.update(self.__dict__)
 
         ret.loc = cloc(memo.get(self.loc.el, self.loc.el), self.loc.tt, self.loc.ind)
         ret.ln = memo.get(self.ln, self.ln)
@@ -3071,7 +3098,6 @@ class tchar:
         # Deletes character from document (and from my chunk/line)
         # Deleting a character causes the chunk to move if it's center- or right-justified. Adjust position to fix
         lncs = self.ln.cs
-        # myi = lncs.index(self)  # index in line
         myi = self.lnindex  # index in line
 
         # Differential kerning affect on character width
@@ -3099,11 +3125,9 @@ class tchar:
         lnx = [v for v in self.ln.x]
         changedx = False
         if deltax != 0:
-            nnii = [ii for ii, x in enumerate(lnx) if x is not None]
-            # non-None
+            nnii = [ii for ii, x in enumerate(lnx) if x is not None] # non-None
             lnx[nnii[self.ln.ws.index(self.w)]] -= deltax
             changedx = True
-            # self.ln.change_pos(newx)
 
         # Delete from document
         if self.loc.tt == TT_TEXT:
@@ -3115,7 +3139,6 @@ class tchar:
                 self.loc.el.tail[: self.loc.ind] + self.loc.el.tail[self.loc.ind + 1 :]
             )
 
-        # lnx = self.ln.x
         if len(lnx) > 1 and myi < len(lnx):
             if myi < len(lnx) - 1 and lnx[myi] is not None and lnx[myi + 1] is None:
                 newx = (
@@ -3128,7 +3151,6 @@ class tchar:
 
             lnx = newx[: len(lncs) - 1]
             # we haven't deleted the char yet, so make it len-1 long
-            # self.ln.change_pos(newx)
             changedx = True
         if changedx:
             self.ln.change_pos(lnx)
@@ -3139,8 +3161,6 @@ class tchar:
             if ca.loc.tt == self.loc.tt and ca.loc.el == self.loc.el:
                 ca.loc.ind -= 1
             if ca.w is not None:
-                # i2 = ca.w.cs.index(ca)
-                # ca.w.iis[i2] -= 1
                 ca.w.iis[ca.windex] -= 1
 
         for c in self.ln.cs[myi + 1 :]:
@@ -3150,11 +3170,8 @@ class tchar:
 
         if len(self.ln.cs) == 0:  # line now empty, can delete
             self.ln.dell()
-        # self.ln = None
 
         # Remove from chunk
-        # myi = self.w.cs.index(self)
-        # self.w.removec(myi)
         self.w.removec(self)
 
         # Update the dx/dy value in the ParsedText
