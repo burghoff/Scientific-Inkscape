@@ -339,13 +339,13 @@ class ParsedText:
         ]
 
         # Find effective sprls (ones that are not disabled)
-        esprl = copy(sprl)
-        for ii in range(len(ds)):
+        esprl = sprl[:]
+        for ii, d in enumerate(ds):
             # Any non-sprl ancestor disables spr:l on me
-            cel = ds[ii]
-            while esprl[ii] and cel != el:
-                esprl[ii] = esprl[ii] and sprl[ds.index(cel)]
-                cel = pd[cel]
+            # cel = d
+            # while esprl[ii] and cel != el:
+            #     esprl[ii] = esprl[ii] and sprl[ds.index(cel)]
+            #     cel = pd[cel]
 
             # If I don't have text and any descendants have position, disables spr:l
             if esprl[ii] and (text[ii] == "" or text[ii] is None):
@@ -360,20 +360,17 @@ class ParsedText:
             esprl[ii] = esprl[ii] and ds[ii] in ks
 
         # Figure out which effective sprls are top-level
-        types = [None] * len(ds)
-        for ii in range(len(ds)):
-            if esprl[ii]:
-                if len(ptail[ii]) > 0 and ptail[ii][-1] is not None:
-                    types[ii] = "precededsprl"
-                elif ds[ii] == ks[0] and text[0] is not None:  # and len(text[0])>0:
-                    # 2022.08.17: I am not sure if the len(text[0])==0 condition should be included
-                    # Inkscape prunes text='', so not relevant most of the time
-                    # It does seem to make a difference though
-                    types[ii] = "precededsprl"
-                else:
-                    types[ii] = "tlvlsprl"
+        types = ["normal"] * len(ds)
+        for ii in [ii for ii in range(len(ds)) if esprl[ii]]:
+            if len(ptail[ii]) > 0 and ptail[ii][-1] is not None:
+                types[ii] = "precededsprl"
+            elif ds[ii] == ks[0] and text[0] is not None:  # and len(text[0])>0:
+                # 2022.08.17: I am not sure if the len(text[0])==0 condition should be included
+                # Inkscape prunes text='', so not relevant most of the time
+                # It does seem to make a difference though
+                types[ii] = "precededsprl"
             else:
-                types[ii] = "normal"
+                types[ii] = "tlvlsprl"
 
         # Position has a property of bidirectional inheritance. A tspan can inherit
         # position from its parent or its descendant unless there is text in between.
@@ -415,23 +412,21 @@ class ParsedText:
             return xy[iin], ds[iin]
 
         # For positions that are None, inherit from ancestor/descendants if possible
-        ixs = copy(xs)
-        iys = copy(ys)
-        xsrcs = [None] * len(ds)
-        ysrcs = [None] * len(ds)
-        for ii in range(0, len(ds)):
-            xv = xs[ii]
-            xsrc = ds[ii]
-            yv = ys[ii]
-            ysrc = ds[ii]
-            if xv[0] is None:
-                xv, xsrc = inheritNone(ii, xs)
-            if yv[0] is None:
-                yv, ysrc = inheritNone(ii, ys)
-            ixs[ii] = xv
-            iys[ii] = yv
-            xsrcs[ii] = xsrc
-            ysrcs[ii] = ysrc
+        ixs = xs[:]
+        iys = ys[:]
+        xsrcs = ds[:]
+        ysrcs = ds[:]
+        
+        for ii in [ii for ii in range(0, len(ds)) if ixs[ii][0] is None]:
+            ixs[ii], xsrcs[ii] = inheritNone(ii, xs)
+        for ii in [ii for ii in range(0, len(ds)) if iys[ii][0] is None]:
+            iys[ii], ysrcs[ii] = inheritNone(ii, ys)
+        
+        # for ii in range(0, len(ds)):
+        #     if ixs[ii][0] is None:
+        #         ixs[ii], xsrcs[ii] = inheritNone(ii, xs)
+        #     if iys[ii][0] is None:
+        #         iys[ii], ysrcs[ii] = inheritNone(ii, ys)
 
         if ixs[0][0] is None:
             ixs[0] = [0]  # at least the parent needs a position
@@ -564,8 +559,7 @@ class ParsedText:
                 if txt is not None:
                     for jj, c in enumerate(txt):
                         prop = self.ctable.get_prop(c, tsty)
-                        ttv = TT_TAIL if tt == TT_TAIL else TT_TEXT
-                        tchar(c, fs, sf, prop, sty, tsty, cloc(tel, ttv, jj), lns[-1])
+                        tchar(c, fs, sf, prop, sty, tsty, cloc(tel, tt, jj), lns[-1])
 
                         if jj == 0:
                             lsp0 = lns[-1].cs[-1].lsp
@@ -682,18 +676,15 @@ class ParsedText:
     @staticmethod
     def GetXY(el, xy):
         val = EBget(el, xy)  # fine for 'x','y','dx','dy'
-        if val is None:
-            val = [None]  # None forces inheritance
-        else:
-            val = [None if x.lower() == "none" else ipx(x) for x in val.split()]
-        return val
+        if not val:
+            return [None]  # None forces inheritance
+        return [None if x == "none" else ipx(x) for x in val.split()]
 
     # Traverse the tree to find where deltas need to be located relative to the top-level text
     def Get_DeltaNum(self):
         allcs = [c for ln in self.lns for c in ln.cs]
         topcnt = 0
         for di, tt, d, sel, txt in self.tree.dgenerator():
-            ttv = TT_TAIL if tt == TT_TAIL else TT_TEXT
             if (
                 tt == TT_TAIL
                 and d.get("sodipodi:role") == "line"
@@ -703,7 +694,7 @@ class ParsedText:
                 topcnt += 1  # top-level Tspans have an implicit CR at the beginning of the tail
             if txt is not None:
                 for ii, v in enumerate(txt):
-                    thec = next((c for c in allcs if c.loc == cloc(d, ttv, ii)), None)
+                    thec = next((c for c in allcs if c.loc == cloc(d, tt, ii)), None)
                     thec.deltanum = topcnt
                     topcnt += 1
 
@@ -716,7 +707,6 @@ class ParsedText:
                 allcs = [c for ln in self.lns for c in ln.cs]
                 cnt = 0
                 for di, tt, d, sel, txt in self.tree.dgenerator(subel=do):
-                    ttv = TT_TAIL if tt == TT_TAIL else TT_TEXT
                     if (
                         tt == TT_TAIL
                         and d.get("sodipodi:role") == "line"
@@ -727,7 +717,7 @@ class ParsedText:
                     if txt is not None:
                         for ii, v in enumerate(txt):
                             thec = next(
-                                (c for c in allcs if c.loc == cloc(d, ttv, ii)), None
+                                (c for c in allcs if c.loc == cloc(d, tt, ii)), None
                             )
                             if cnt < len(dxy):
                                 if xy == "dx":
@@ -1431,7 +1421,6 @@ class ParsedText:
                     lnno = 0
 
                 # Determine above- and below-baseline lineheight
-                # sel = tel if tt==TT_TEXT else tel.getparent()
                 sty = sel.cspecified_style
                 tsty = true_style(sty)
                 ct = sel.ccomposed_transform
@@ -1484,8 +1473,7 @@ class ParsedText:
 
                 for jj, c in enumerate(txt):
                     prop = self.ctable.get_prop(c, tsty)
-                    ttv = TT_TAIL if tt == TT_TAIL else TT_TEXT
-                    tc = tchar(c, fs, sf, prop, sty, tsty, cloc(tel, ttv, jj), cln)
+                    tc = tchar(c, fs, sf, prop, sty, tsty, cloc(tel, tt, jj), cln)
                     tc.lhs = (fabsp, fbbsp)
                     if jj == 0:
                         lsp0 = tc.lsp
@@ -2443,7 +2431,6 @@ class tchunk:
         c.sty = c.loc.sel.cspecified_style
 
         # Add to line
-        # myi = self.ln.cs.index(lc) + 1  # insert after last character
         myi = lc.lnindex + 1  # insert after last character
         if len(self.ln.x) > 0:
             newx = self.ln.x[0:myi] + [None] + self.ln.x[myi:]
@@ -2458,8 +2445,6 @@ class tchunk:
             if ca.loc.tt == c.loc.tt and ca.loc.el == c.loc.el:
                 ca.loc.ind += 1
             if ca.w is not None:
-                # i2 = ca.w.cs.index(ca)
-                # ca.w.iis[i2] += 1
                 ca.w.iis[ca.windex] += 1
         # Add to chunk, recalculate properties
         self.addc(myi)
@@ -2469,7 +2454,6 @@ class tchunk:
         deltax = -self.ln.anchfrac * self.ln.cs[myi].cw
         if deltax != 0:
             newx = self.ln.x
-            # newx[self.ln.cs.index(self.cs[0])] -= deltax
             newx[self.cs[0].lnindex] -= deltax
             self.ln.change_pos(newx)
         self.ln.pt.Update_Delta()
@@ -3156,15 +3140,19 @@ class tchar:
             self.ln.change_pos(lnx)
 
         # Delete from line
-        for ii, ca in enumerate(lncs[myi + 1 :], start=myi + 1):
-            # need to decrement index of subsequent objects with the same parent
-            if ca.loc.tt == self.loc.tt and ca.loc.el == self.loc.el:
-                ca.loc.ind -= 1
-            if ca.w is not None:
-                ca.w.iis[ca.windex] -= 1
+        # for ca in lncs[myi + 1 :]:
+        #     # need to decrement index of subsequent objects with the same parent
+        #     if ca.loc.tt == self.loc.tt and ca.loc.el == self.loc.el:
+        #         ca.loc.ind -= 1
+        #     if ca.w is not None:
+        #         ca.w.iis[ca.windex] -= 1  
+        [setattr(ca.loc, 'ind', ca.loc.ind - 1) for ca in lncs[myi + 1 :] if ca.loc.tt == self.loc.tt and ca.loc.el == self.loc.el]
+        [ca.w.iis.__setitem__(ca.windex, ca.w.iis[ca.windex] - 1) for ca in lncs[myi + 1:] if ca.w is not None]
 
-        for c in self.ln.cs[myi + 1 :]:
-            c.lnindex -= 1
+        # for c in self.ln.cs[myi + 1 :]:
+        #     c.lnindex -= 1
+        [setattr(c, 'lnindex', c.lnindex - 1) for c in self.ln.cs[myi + 1 :]]
+
         lncs[myi].lnindex = None
         self.ln.cs = lncs[:myi] + lncs[myi + 1 :]
 
