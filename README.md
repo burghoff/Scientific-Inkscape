@@ -3,13 +3,13 @@ Scientific Inkscape is a set of Inkscape extensions for editing and exporting sc
 <p align="center"><img src="https://github.com/burghoff/Scientific-Inkscape/blob/dev/examples/Resize_Optica.gif" alt="drawing" width="70%"></img></p>
 
 The core extensions are:
-1. **Scale Plots**: Changes the size or aspect ratio of a plot without modifying its text and ticks. Especially useful for assembling multi-panel figures. (For non-plots, provides a way to scale objects without affecting text.)
-2. **Flattener**: A utility that eliminates much of the structure of imported figures and facilitates editing. For most imports, this should be the first thing you run.
-3. **Homogenizer**: Quickly sets uniform fonts, font sizes, and stroke widths in a selection.
-4. **Autoexporter**: Automatically exports SVG files in a directory and keeps them updated. Produces files immune to the rendering bugs of Office and Acrobat.
-5. **Gallery Viewer**: Provides a way to view and edit the SVG contents of files or folders.
+1. **Scale Plots**: Changes the size or aspect ratio of a plot without modifying its text and ticks, making it easy to assemble multi-panel figures. Also works on non-plots.
+2. **Flattener**: Eliminates the structure of imported figures, making them easier to edit. For most imports, this should be the first thing you run.
+3. **Homogenizer**: Sets uniform fonts, font sizes, and stroke widths in a selection.
+4. **Autoexporter**: Automatically refreshes exports of SVGs in a folder. Also produces exports immune to the rendering bugs of Office and Acrobat.
+5. **Gallery Viewer**: Quickly view and edit all SVGs in a file or folder.
 
-It also includes the following utility extensions:
+It also includes the following utilities:
 
 6. **Text Ghoster**: Adds a semi-transparent background to text so that it can be overlaid with data.
 7. **Combine by Color**: An extension that fuses paths of the same color and style together into a single path. Speeds up operations on plots with thousands of similar elements, like markers. 
