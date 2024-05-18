@@ -4,18 +4,18 @@ Scientific Inkscape is a set of Inkscape extensions for editing and exporting sc
 
 The core extensions are:
 1. **Scale Plots**: Changes the size or aspect ratio of a plot without modifying its text and ticks, making it easy to assemble multi-panel figures. Also works on non-plots.
-2. **Flattener**: Eliminates the structure of imported figures, making them easier to edit. For most imports, this should be the first thing you run.
-3. **Homogenizer**: Sets uniform fonts, font sizes, and stroke widths in a selection.
+2. **Homogenizer**: Sets uniform fonts, font sizes, and stroke widths in a selection.
+3. **Flattener**: Eliminates the structure of imported figures, making them easier to edit. For most imports, this should be the first thing you run.
 4. **Autoexporter**: Automatically refreshes exports of SVGs in a folder. Also produces exports immune to the rendering bugs of Office and Acrobat.
 5. **Gallery Viewer**: Quickly view and edit all SVGs in a file or folder.
 
 It also includes the following utilities:
 
 6. **Text Ghoster**: Adds a semi-transparent background to text so that it can be overlaid with data.
-7. **Combine by Color**: An extension that fuses paths of the same color and style together into a single path. Speeds up operations on plots with thousands of similar elements, like markers. 
+7. **Combine by Color**: Fuses paths of the same color and style together into a single path. Speeds up operations on plots with thousands of similar elements, like markers. 
 8. **Favorite Markers**: Lets you save certain markers as favorites. 
 
-All were written by [David Burghoff](https://burghoff.org) at UT Austin. If you find it useful, tell your collegaues! We would also appreciate it if you could give us a star on Github and on [Inkscape's website](https://inkscape.org/gallery/item/30306/). You may also find it helpful to map the extensions to hotkeys (done in the Edit > Preferences > Interface > Keyboard menu).
+All were written by [David Burghoff](https://burghoff.org) of UT Austin ECE. If you find it useful, tell your collegaues! We would also appreciate it if you could give us a star on Github and on [Inkscape's website](https://inkscape.org/gallery/item/30306/). You may also find it helpful to map the extensions to hotkeys (done in the Edit > Preferences > Interface > Keyboard menu).
 
 # Installation
 You must have the latest release version of Inkscape (1.3), and the extensions should be installed using the instructions provided [here](https://inkscape.org/gallery/=extension/). Download all of the files in the scientific_inkscape folder, then copy them into the directory listed at Edit > Preferences > System: User extensions. After a restart of Inkscape, the extensions will be available under Extensions > Scientific.
