@@ -33,7 +33,7 @@ sys.path.append(
 )  # make sure my directory is on the path
 import dhelpers as dh
 import image_helpers as ih
-from inkex.text.utils import otp_support_tags, default_style_atts, uniquetol
+from inkex.text.utils import otp_support_tags, default_style_atts, uniquetol, unique
 import inkex.text.parser  # needed to prevent GTK crashing
 
 
@@ -551,10 +551,26 @@ class AutoExporter(inkex.EffectExtension):
         cfile = fin
         svg = get_svg(cfile)
 
-        # Prune hidden items
+        # Prune hidden items and remove language switching
+        stag = inkex.addNS('switch','svg')
+        todelete, todelang = [], []
         for el in dh.visible_descendants(svg):
             if el.cspecified_style.get("display") == "none":
-                el.delete()
+                todelete.append(el)
+            if el.get('systemLanguage') is not None:
+                lang = inkex.inkscape_system_info.language
+                if el.get('systemLanguage')==lang:
+                    todelang.append(el)
+                    # Remove other languages from switches
+                    if el.getparent().tag == stag:
+                        todelete.extend([k for k in el.getparent() if k.get('systemLanguage')!=lang])
+                else:
+                    # Remove non-matching languages
+                    todelete.append(el)
+        for el in unique(todelete):
+            el.delete()
+        for el in todelang:
+            el.set('systemLanguage',None)
 
         # Embed linked images into the SVG. This should be done prior to clone unlinking
         # since some images may be cloned
@@ -656,17 +672,18 @@ class AutoExporter(inkex.EffectExtension):
             # Prune single-point paths, which Inkscape doesn't show
             if el.tag in otp_support_tags:
                 pth = el.cpath
-                xs = []
-                ys = []
-                cnt = 0
-                for pt in pth.control_points:
-                    xs.append(pt.x)
-                    ys.append(pt.y)
-                    cnt += 1
-                    if cnt > 5:  # don't iterate through long paths
+                firstpt = None
+                trivial = True
+                for pt in pth.end_points:
+                    if firstpt is None:
+                        firstpt = (pt.x,pt.y)
+                    elif (pt.x,pt.y)!=firstpt:
+                        trivial = False
                         break
-                if len(uniquetol(xs, 0)) == 1 and len(uniquetol(ys, 0)) == 1:
+                if trivial:
                     el.delete(deleteup=True)
+                        
+                        
 
         # Fix Avenir/Whitney
         tels = [el for el in vds if isinstance(el, (inkex.TextElement, inkex.FlowRoot))]
