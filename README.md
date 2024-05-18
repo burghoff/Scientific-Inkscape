@@ -1,6 +1,6 @@
 # Scientific Inkscape: Extensions for figure editing and resizing
 Scientific Inkscape is a set of Inkscape extensions for editing and exporting scientific figures.
-<p align="center"><img src="https://github.com/burghoff/Scientific-Inkscape/blob/dev/examples/Resize_Optica.gif" alt="drawing" width="80%"></img></p>
+<p align="center"><img src="https://github.com/burghoff/Scientific-Inkscape/blob/dev/examples/Resize_Optica.gif" alt="drawing" width="70%"></img></p>
 
 The core extensions are:
 1. **Scale Plots**: Changes the size or aspect ratio of a plot without modifying its text and ticks. Especially useful for assembling multi-panel figures. (For non-plots, provides a way to scale objects without affecting text.)
