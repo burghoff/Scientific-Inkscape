@@ -345,7 +345,7 @@ class AutoExporter(inkex.EffectExtension):
         optcopy.reduce_images = self.options.imagemode2
         # optcopy.tojpg = self.options.imagemode == 2
 
-        bfn = dh.Get_Binary_Loc()
+        bfn = inkex.inkscape_system_info.binary_location
         pyloc, pybin = os.path.split(sys.executable)
 
         if not (self.options.exportnow):

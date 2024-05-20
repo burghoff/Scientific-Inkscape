@@ -34,7 +34,7 @@ import os, warnings, sys, re, ctypes
 # This library should work starting with v1.0
 # Due to the way fontconfig is structured, we have to patch
 # ctypes's LoadLibrary to help it find libfontconfig
-from inkex.text.utils import default_style_atts, Get_Binary_Loc
+from inkex.text.utils import default_style_atts
 from inkex import Style
 
 original_load_library = ctypes.cdll.LoadLibrary
@@ -68,7 +68,7 @@ def custom_load_library(name):
             try:
                 ret = original_load_library(LIBNAME)
             except FileNotFoundError:
-                blocdir = os.path.dirname(Get_Binary_Loc())
+                blocdir = os.path.dirname(inkex.inkscape_system_info.binary_location)
                 fpath = os.path.abspath(os.path.join(blocdir, LIBNAME))
                 ret = original_load_library(fpath)
         return ret
@@ -637,7 +637,7 @@ with warnings.catch_warnings():
                 # Windows may not have all of the typelibs needed for PangoFT2
                 # Add the typelibs subdirectory as a fallback option
                 girepo = os.path.join(
-                    os.path.dirname(os.path.dirname(Get_Binary_Loc())),
+                    os.path.dirname(os.path.dirname(inkex.inkscape_system_info.binary_location)),
                     "lib",
                     "girepository-1.0",
                 )  # Inkscape's GI repository
@@ -841,7 +841,7 @@ class PangoRenderer:
     # Search the /etc/fonts/conf.d folder for the default sans-serif font
     # Not currently used
     def Find_Default_Sanserifs(self):
-        bloc = Get_Binary_Loc()
+        bloc = inkex.inkscape_system_info.binary_location
 
         import platform
 
@@ -1155,7 +1155,7 @@ def Unicode_Test_Doc():
         except:
             pass
         arg2 = [
-            Get_Binary_Loc(),
+            inkex.inkscape_system_info.binary_location,
             "--export-background",
             "#ffffff",
             "--export-background-opacity",
@@ -1262,7 +1262,7 @@ def pango_line_breaks(txt):
     try:
         pango = ct.CDLL(LIBNAME)
     except FileNotFoundError:
-        blocdir = os.path.dirname(Get_Binary_Loc())
+        blocdir = os.path.dirname(inkex.inkscape_system_info.binary_location)
         fpath = os.path.abspath(os.path.join(blocdir, LIBNAME))
         pango = ct.CDLL(fpath)  # Update this as per your system
 

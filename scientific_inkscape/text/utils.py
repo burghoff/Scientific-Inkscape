@@ -245,7 +245,7 @@ def Get_Bounding_Boxes(filename, inkscape_binary=None, extra_args=[], svg=None):
         dict: A dictionary where keys are element IDs and values are bounding boxes in user units.
     """
     if inkscape_binary is None:
-        inkscape_binary = Get_Binary_Loc()
+        inkscape_binary = inkex.inkscape_system_info.binary_location
     arg2 = [inkscape_binary, "--query-all"] + extra_args + [filename]
     p = subprocess_repeat(arg2)
     tFStR = p.stdout
@@ -278,19 +278,37 @@ def Get_Bounding_Boxes(filename, inkscape_binary=None, extra_args=[], svg=None):
     return bbs
 
 
-global bloc
-bloc = None
-
-
-def Get_Binary_Loc():
-    """
-    Gets the location of the Inkscape binary, checking the system path if necessary.
-
-    Returns:
-        str: The path to the Inkscape executable.
-    """
-    global bloc
-    if bloc is None:
+class Inkscape_System_Info:
+    '''
+    Discovers and caches Inkscape System info.
+    '''
+    def __init__(self):
+        pass
+    
+    @property
+    def language(self):
+        if not hasattr(self,'_language'):
+            self._language = self.determine_language()
+        return self._language
+    
+    @property
+    def preferences(self):
+        if not hasattr(self,'_preferences'):
+            self._preferences = self.find_preferences()
+        return self._preferences
+    
+    
+    @property
+    def binary_location(self):
+        if not hasattr(self,'_binary_location'):
+            self._binary_location = self.Get_Binary_Loc()
+        return self._binary_location
+    
+    def Get_Binary_Loc(self):
+        """
+        Gets the location of the Inkscape binary, checking the system
+        path if necessary.
+        """
         try:
             import inkex.command
         except:
@@ -324,9 +342,106 @@ def Get_Binary_Loc():
                     f"Can not find the command: '{program}'"
                 )
 
-        bloc = which2(inkex.command.INKSCAPE_EXECUTABLE_NAME)
-    return bloc
+        return which2(inkex.command.INKSCAPE_EXECUTABLE_NAME)
+    
+    def find_preferences(self):
+        ''' Attempt to discover preferences.xml '''
+        # First check the location of the user extensions directory
+        mydir = os.path.dirname(os.path.abspath(__file__))
+        file_path = mydir
+        while 'extensions' in file_path and os.path.basename(file_path) != 'extensions':
+            file_path = os.path.dirname(file_path)
+        prefspath = os.path.join(os.path.dirname(file_path), 'preferences.xml')
+        if os.path.exists(prefspath):
+            return prefspath
+        
+        # Try some common default locations based on the home directory
+        homedir = os.path.expanduser("~")
+        if sys.platform == "win32":
+            appdata = os.getenv('APPDATA')
+            if appdata is not None:
+                # https://wiki.inkscape.org/wiki/Preferences_subsystem
+                prefspath = os.path.join(os.path.abspath(appdata),'inkscape','preferences.xml')
+                if os.path.exists(prefspath):
+                    return prefspath
+            # https://en.wikipedia.org/wiki/Environment_variable#Default_Values_on_Microsoft_Windows
+            prefspath = os.path.join(homedir,'AppData','Roaming','inkscape','preferences.xml')
+            if os.path.exists(prefspath):
+                return prefspath
+            # https://en.wikipedia.org/wiki/Environment_variable#Default_Values_on_Microsoft_Windows
+            # http://tavmjong.free.fr/INKSCAPE/MANUAL/html/Customize-Files.html
+            prefspath = os.path.join(homedir,'­Application Data','­Inkscape','preferences.xml')
+            if os.path.exists(prefspath):
+                return prefspath
+        else:
+            if sys.platform == "darwin":
+                # DB's Mac
+                prefspath = os.path.join(homedir,'Library','Application Support','org.inkscape.Inkscape','config','inkscape','preferences.xml')
+                if os.path.exists(prefspath):
+                    return prefspath
+            # DB's Linux
+            prefspath = os.path.join(homedir,'.config','inkscape','preferences.xml')
+            if os.path.exists(prefspath):
+                return prefspath
+            # https://wiki.inkscape.org/wiki/Preferences_subsystem#Where_preferences_are_stored
+            prefspath = os.path.join(homedir,'.config','Inkscape','preferences.xml')
+            if os.path.exists(prefspath):
+                return prefspath
+            # https://wiki.inkscape.org/wiki/Preferences_subsystem#Where_preferences_are_stored
+            # https://alpha.inkscape.org/vectors/www.inkscapeforum.com/viewtopicc8ae.html?t=1712
+            prefspath = os.path.join(homedir,'.inkscape','preferences.xml')
+            if os.path.exists(prefspath):
+                return prefspath
+            
+            # Try finding from snap location
+            file_path = mydir
+            while 'snap' in file_path and os.path.basename(file_path) != 'snap':
+                file_path = os.path.dirname(file_path)
+            prefspath = os.path.join(os.path.dirname(file_path), '.config','inkscape','preferences.xml')
+            if os.path.exists(prefspath):
+                return prefspath
+        return None # failed
+    
+    def determine_language(self,verbose=False):
+        ''' Try to find the language Inkscape is using'''
 
+        def get_ui_language(prefspath):
+            from lxml import etree
+            proot = etree.parse(prefspath).getroot()
+            for k in proot:
+                if k.get('id')=='ui' and k.get('language') is not None:
+                    return k.get('language')
+            return None
+        
+        def getlocale_mod():
+            import warnings, locale
+            with warnings.catch_warnings():
+                # temporary work-around for https://github.com/python/cpython/issues/82986
+                # by continuing to use getdefaultlocale() even though it has been deprecated.
+                if sys.version_info.minor >= 13:
+                    warnings.warn("This function may not behave as expected in Python versions beyond 3.12", FutureWarning)
+                warnings.simplefilter('ignore', category=DeprecationWarning)
+                language_code = locale.getdefaultlocale()[0]
+            if language_code:
+                return language_code
+            return "en-US"
+        
+        # First, try to get the language from preferences.xml
+        pxml = self.find_preferences()
+        if verbose:
+            inkex.utils.debug('Found preferences.xml: '+str(pxml))
+        if pxml is not None:
+            prefslang = get_ui_language(pxml)
+            if verbose:
+                inkex.utils.debug('preferences.xml language: '+str(prefslang))
+        # If it can't be found or is set to use the system lang, use locale
+        if pxml is None or prefslang in ['', None]:
+            lcle = getlocale_mod()
+            prefslang = lcle.split('_')[0]
+            if verbose:
+                inkex.utils.debug('locale language: '+str(prefslang))
+        return prefslang
+inkex.inkscape_system_info = Inkscape_System_Info()
 
 def subprocess_repeat(argin):
     """

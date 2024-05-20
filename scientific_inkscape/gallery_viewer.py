@@ -67,7 +67,7 @@ class GalleryViewer(inkex.EffectExtension):
         delattr(optcopy, "output")
         delattr(optcopy, "input_file")
 
-        bfn = dh.Get_Binary_Loc()
+        bfn = inkex.inkscape_system_info.binary_location
         bloc, bnm = os.path.split(bfn)
         pyloc, pybin = os.path.split(sys.executable)
 
