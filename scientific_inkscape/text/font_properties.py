@@ -17,14 +17,16 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
-# Some functions for getting the properties of fonts and characters.
-# Three libraries are used:
-#  fontconfig: Used for discovering fonts based on the SVG style. This uses
-#              Inkscape's libfontconfig, so it should always match what Inkscape does
-#  fonttools:  Gets font properties once discovered (from font's filename)
-#  Pango:      Used to render test characters (included with GTK)
-#              Sets up a blank GTK window and renders Pango text, reusing
-#              the same layout for all rendering.
+"""
+Some functions for getting the properties of fonts and characters.
+Three libraries are used:
+  fontconfig: Used for discovering fonts based on the SVG style. This uses
+              Inkscape's libfontconfig, so it should always match what Inkscape does
+  fonttools:  Gets font properties once discovered (from font's filename)
+  Pango:      Used to render test characters (included with GTK)
+              Sets up a blank GTK window and renders Pango text, reusing
+              the same layout for all rendering.
+"""
 
 import inkex
 import os, warnings, sys, re, ctypes
@@ -68,7 +70,8 @@ def custom_load_library(name):
             try:
                 ret = original_load_library(LIBNAME)
             except FileNotFoundError:
-                blocdir = os.path.dirname(inkex.inkscape_system_info.binary_location)
+                bloc = inkex.inkscape_system_info.binary_location  # type: ignore
+                blocdir = os.path.dirname(bloc)
                 fpath = os.path.abspath(os.path.join(blocdir, LIBNAME))
                 ret = original_load_library(fpath)
         return ret
@@ -636,8 +639,9 @@ with warnings.catch_warnings():
             if platform.system().lower() == "windows":
                 # Windows may not have all of the typelibs needed for PangoFT2
                 # Add the typelibs subdirectory as a fallback option
+                bloc = inkex.inkscape_system_info.binary_location  # type: ignore
                 girepo = os.path.join(
-                    os.path.dirname(os.path.dirname(inkex.inkscape_system_info.binary_location)),
+                    os.path.dirname(os.path.dirname(bloc)),
                     "lib",
                     "girepository-1.0",
                 )  # Inkscape's GI repository
@@ -743,7 +747,7 @@ class PangoRenderer:
         def css_to_pango_description_fcn(sty):
             from gi.repository import Pango
 
-            fd = Pango.FontDescription(sty["font-family"].strip("'") + ",")
+            fd = Pango.FontDescription(sty["font-family"].strip("'").strip('"') + ",")
             # The comma above is very important for font-families like Rockwell Condensed.
             # Without it, Pango will interpret it as the Condensed font-stretch of the Rockwell font-family,
             # rather than the Rockwell Condensed font-family.
@@ -841,7 +845,7 @@ class PangoRenderer:
     # Search the /etc/fonts/conf.d folder for the default sans-serif font
     # Not currently used
     def Find_Default_Sanserifs(self):
-        bloc = inkex.inkscape_system_info.binary_location
+        bloc = inkex.inkscape_system_info.binary_location  # type: ignore
 
         import platform
 
@@ -1154,8 +1158,9 @@ def Unicode_Test_Doc():
             os.remove(fileout)
         except:
             pass
+        bloc = inkex.inkscape_system_info.binary_location  # type: ignore
         arg2 = [
-            inkex.inkscape_system_info.binary_location,
+            bloc,
             "--export-background",
             "#ffffff",
             "--export-background-opacity",
@@ -1262,7 +1267,8 @@ def pango_line_breaks(txt):
     try:
         pango = ct.CDLL(LIBNAME)
     except FileNotFoundError:
-        blocdir = os.path.dirname(inkex.inkscape_system_info.binary_location)
+        bloc = inkex.inkscape_system_info.binary_location  # type: ignore
+        blocdir = os.path.dirname(bloc)
         fpath = os.path.abspath(os.path.join(blocdir, LIBNAME))
         pango = ct.CDLL(fpath)  # Update this as per your system
 

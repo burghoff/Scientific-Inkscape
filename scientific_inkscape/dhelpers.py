@@ -541,7 +541,7 @@ def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
                 slf.svg.make_char_table(els=tels)
                 pts = [el.parsed_text for el in tels]
                 parser.ParsedTextList(pts).precalcs()
-        ret = inkex.OrderedDict()
+        ret = dict()
         for d in els:
             if d.tag in bb2_support_tags and hasbbox(d):
                 mbbox = bounding_box2(d, roughpath=roughpath, parsed=parsed)
@@ -1201,47 +1201,47 @@ def Run_SI_Extension(effext, name):
 
 # Give early versions of Style a .to_xpath function
 def to_xpath_func(sty):
-    if inkex.ivp[0] <= 1 and inkex.ivp[1] < 2:
-        # pre-1.2: use v1.1 version of to_xpath from inkex.Style
-        import re
+    # pre-1.2: use v1.1 version of to_xpath from inkex.Style
+    import re
 
-        step_to_xpath = [
-            (
-                re.compile(r"\[(\w+)\^=([^\]]+)\]"),
-                r"[starts-with(@\1,\2)]",
-            ),  # Starts With
-            (re.compile(r"\[(\w+)\$=([^\]]+)\]"), r"[ends-with(@\1,\2)]"),  # Ends With
-            (re.compile(r"\[(\w+)\*=([^\]]+)\]"), r"[contains(@\1,\2)]"),  # Contains
-            (re.compile(r"\[([^@\(\)\]]+)\]"), r"[@\1]"),  # Attribute (start)
-            (re.compile(r"#(\w+)"), r"[@id='\1']"),  # Id Match
-            (re.compile(r"\s*>\s*([^\s>~\+]+)"), r"/\1"),  # Direct child match
-            # (re.compile(r'\s*~\s*([^\s>~\+]+)'), r'/following-sibling::\1'),
-            # (re.compile(r'\s*\+\s*([^\s>~\+]+)'), r'/following-sibling::\1[1]'),
-            (re.compile(r"\s*([^\s>~\+]+)"), r"//\1"),  # Decendant match
-            (
-                re.compile(r"\.([-\w]+)"),
-                r"[contains(concat(' ', normalize-space(@class), ' '), ' \1 ')]",
-            ),
-            (re.compile(r"//\["), r"//*["),  # Attribute only match
-            (re.compile(r"//(\w+)"), r"//svg:\1"),  # SVG namespace addition
-        ]
+    step_to_xpath = [
+        (
+            re.compile(r"\[(\w+)\^=([^\]]+)\]"),
+            r"[starts-with(@\1,\2)]",
+        ),  # Starts With
+        (re.compile(r"\[(\w+)\$=([^\]]+)\]"), r"[ends-with(@\1,\2)]"),  # Ends With
+        (re.compile(r"\[(\w+)\*=([^\]]+)\]"), r"[contains(@\1,\2)]"),  # Contains
+        (re.compile(r"\[([^@\(\)\]]+)\]"), r"[@\1]"),  # Attribute (start)
+        (re.compile(r"#(\w+)"), r"[@id='\1']"),  # Id Match
+        (re.compile(r"\s*>\s*([^\s>~\+]+)"), r"/\1"),  # Direct child match
+        # (re.compile(r'\s*~\s*([^\s>~\+]+)'), r'/following-sibling::\1'),
+        # (re.compile(r'\s*\+\s*([^\s>~\+]+)'), r'/following-sibling::\1[1]'),
+        (re.compile(r"\s*([^\s>~\+]+)"), r"//\1"),  # Decendant match
+        (
+            re.compile(r"\.([-\w]+)"),
+            r"[contains(concat(' ', normalize-space(@class), ' '), ' \1 ')]",
+        ),
+        (re.compile(r"//\["), r"//*["),  # Attribute only match
+        (re.compile(r"//(\w+)"), r"//svg:\1"),  # SVG namespace addition
+    ]
 
-        def style_to_xpath(styin):
-            return "|".join([rule_to_xpath(rule) for rule in styin.rules])
+    def style_to_xpath(styin):
+        return "|".join([rule_to_xpath(rule) for rule in styin.rules])
 
-        def rule_to_xpath(rulein):
-            ret = rulein.rule
-            for matcher, replacer in step_to_xpath:
-                ret = matcher.sub(replacer, ret)
-            return ret
+    def rule_to_xpath(rulein):
+        ret = rulein.rule
+        for matcher, replacer in step_to_xpath:
+            ret = matcher.sub(replacer, ret)
+        return ret
 
-        return style_to_xpath(sty)
-    else:
-        return sty.to_xpath()
+    return style_to_xpath(sty)
 
-
-Style.to_xpath = to_xpath_func
-inkex.Style.to_xpath = to_xpath_func
+if not hasattr(Style,'to_xpath'):
+    Style.to_xpath = to_xpath_func
+if not hasattr(inkex.Style,'to_xpath'):
+    inkex.Style.to_xpath = to_xpath_func
+if not hasattr(Style0,'to_xpath'):
+    Style0.to_xpath = to_xpath_func
 
 
 def Version_Check(caller):

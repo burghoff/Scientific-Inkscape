@@ -17,30 +17,31 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 
-# text.parser parses text in a document according to the way Inkscape handles it.
-# In short, every TextElement or FlowRoot is parsed into a ParsedText.
-# Each ParsedText contains a collection of tlines, representing one line of text.
-# Each tline contains a collection of tchars, representing a single character.
-# Characters are also grouped into tchunks, which represent chunks of characters
-# sharing an anchor (usually from manually-kerned text).
-#
-# These functions allow text metrics and bounding boxes to be calculated without binary
-# calls to Inkscape. It can calculate both the ink bounding box (i.e., where characters'
-# ink is) as well as the extent bounding box (i.e, its logical location).
-# The extent of a character is defined as extending between cursor positions in the
-# x-direction and between the baseline and capital height in the y-direction.
-#
-# Some examples:
-# el.parsed_text.get_full_inkbbox(): gets the untransformed bounding box of the whole element
-# el.parsed_text.get_char_extents(): gets all characters' untransformed extents
-# el.parse_text.lns[0].cs[0].pts_ut: the untransformed points of the extent of the first character of the first line
-# el.parse_text.lns[0].cs[0].pts_t : the transformed points of the extent of the first character of the first line
-#
-# To check if things are working property, you can run the Make_Highlights() function,
-# which draws rectangles that tell you where the extents / bboxes are. For example,
-# el.parsed_text.Make_Highlights('char')    : shows the extent of each character
-# el.parsed_text.Make_Highlights('fullink') : shows the bbox of the whole element
+"""
+text.parser module parses text in a document according to the way Inkscape handles it.
+In short, every TextElement or FlowRoot is parsed into a ParsedText.
+Each ParsedText contains a collection of tlines, representing one line of text.
+Each tline contains a collection of tchars, representing a single character.
+Characters are also grouped into tchunks, which represent chunks of characters
+sharing an anchor (usually from manually-kerned text).
 
+These functions allow text metrics and bounding boxes to be calculated without binary
+calls to Inkscape. It can calculate both the ink bounding box (i.e., where characters'
+ink is) as well as the extent bounding box (i.e, its logical location).
+The extent of a character is defined as extending between cursor positions in the
+x-direction and between the baseline and capital height in the y-direction.
+
+Some examples:
+- el.parsed_text.get_full_inkbbox(): gets the untransformed bounding box of the whole element
+- el.parsed_text.get_char_extents(): gets all characters' untransformed extents
+- el.parse_text.lns[0].cs[0].pts_ut: the untransformed points of the extent of the first character of the first line
+- el.parse_text.lns[0].cs[0].pts_t : the transformed points of the extent of the first character of the first line
+
+To check if things are working properly, you can run the Make_Highlights() function,
+which draws rectangles that tell you where the extents / bboxes are. For example,
+- el.parsed_text.Make_Highlights('char')    : shows the extent of each character
+- el.parsed_text.Make_Highlights('fullink') : shows the bbox of the whole element
+"""
 
 KERN_TABLE = True  # generate a fine kerning table for each font?
 TEXTSIZE = 100
@@ -416,12 +417,12 @@ class ParsedText:
         iys = ys[:]
         xsrcs = ds[:]
         ysrcs = ds[:]
-        
+
         for ii in [ii for ii in range(0, len(ds)) if ixs[ii][0] is None]:
             ixs[ii], xsrcs[ii] = inheritNone(ii, xs)
         for ii in [ii for ii in range(0, len(ds)) if iys[ii][0] is None]:
             iys[ii], ysrcs[ii] = inheritNone(ii, ys)
-        
+
         # for ii in range(0, len(ds)):
         #     if ixs[ii][0] is None:
         #         ixs[ii], xsrcs[ii] = inheritNone(ii, xs)
@@ -816,9 +817,9 @@ class ParsedText:
 
         if len(self.cs) > 0:
             # Clear all fonts and only apply to relevant Tspans
-            
+
             for d in el.descendants2():
-                sty = changed_styles.get(d,d.cstyle)
+                sty = changed_styles.get(d, d.cstyle)
                 for key in [
                     "font-family",
                     "font-stretch",
@@ -829,15 +830,15 @@ class ParsedText:
                     if key in sty:
                         del sty[key]
                         changed_styles[d] = sty
-            
+
             for c in self.cs:
-                sty = changed_styles.get(c.loc.sel,c.loc.sel.cstyle)
+                sty = changed_styles.get(c.loc.sel, c.loc.sel.cstyle)
                 sty.update(c.fsty)
                 changed_styles[c.loc.sel] = sty
 
             # Put the first char's font at top since that's what Inkscape displays
             # sty = Style(tuple(el.cstyle.items()))
-            sty = changed_styles.get(el,el.cstyle)
+            sty = changed_styles.get(el, el.cstyle)
             sty.update(self.cs[0].fsty)
             changed_styles[el] = sty
 
@@ -847,23 +848,23 @@ class ParsedText:
             for c in self.cs:
                 cel = c.loc.sel
                 fs_origins.add(cel)
-                celstyle = changed_styles.get(cel,cel.cstyle)
+                celstyle = changed_styles.get(cel, cel.cstyle)
                 while (
                     ("font-size" in celstyle and "%" in str(celstyle["font-size"]))
                     or ("font-size" not in celstyle)
                 ) and cel is not el:
                     cel = cel.getparent()
                     fs_origins.add(cel)
-                    celstyle = changed_styles.get(cel,cel.cstyle)
+                    celstyle = changed_styles.get(cel, cel.cstyle)
             if el not in fs_origins and (
                 len(self.lns) == 1 or all([not ln.sprl for ln in self.lns[1:]])
             ):
-                sty = changed_styles.get(el,el.cstyle)
+                sty = changed_styles.get(el, el.cstyle)
                 maxsize = max([c.utfs for c in self.cs])
-                if "font-size" not in sty or sty["font-size"]!=maxsize:
+                if "font-size" not in sty or sty["font-size"] != maxsize:
                     sty["font-size"] = max([c.utfs for c in self.cs])
-                    changed_styles[el]=sty
-        for k,v in changed_styles.items():
+                    changed_styles[el] = sty
+        for k, v in changed_styles.items():
             k.cstyle = v
 
     def Split_Off_Chunks(self, ws):
@@ -1984,8 +1985,7 @@ class tline:
         ret.continuex = self.continuex
         ret.continuey = self.continuey
         ret.pt = self.pt
-        
-        
+
         # ret.__dict__.update(self.__dict__)
         # ret._x = self._x[:]
         # ret._y = self._y[:]
@@ -1994,9 +1994,8 @@ class tline:
         # ret.ws = [w.copy(memo) for w in self.ws]
         # ret.xsrc = memo[self.xsrc]
         # ret.ysrc = memo[self.ysrc]
-        
+
         return ret
-    
 
     # transform angle in degrees
     def get_ang(self):
@@ -2125,8 +2124,10 @@ class tline:
                     # w.cs[0].loc.el.cstyle["text-anchor"] = newanch
                     alignd = {"start": "start", "middle": "center", "end": "end"}
                     # w.cs[0].loc.el.cstyle["text-align"] = alignd[newanch]
-                    
-                    w.cs[0].loc.el.cstyle.__setitem__("text-anchor",newanch,"text-align",alignd[newanch])
+
+                    w.cs[0].loc.el.cstyle.__setitem__(
+                        "text-anchor", newanch, "text-align", alignd[newanch]
+                    )
 
                 self.anchor = newanch
                 self.anchfrac = xf
@@ -2295,7 +2296,7 @@ class tchunk:
         ret.dy = self.dy[:]
         ret.ch = self.ch[:]
         ret.bshft = self.bshft[:]
-        
+
         # ret.__dict__.update(self.__dict__)
         # ret.lsp = self.lsp[:]
         # ret.dxeff = self.dxeff[:]
@@ -2939,7 +2940,7 @@ class tchar:
         # ret.parsed_pts_ut = self.parsed_pts_ut
         # ret._lsp = self._lsp
         # ret._bshft = self._bshft
-        
+
         ret.__dict__.update(self.__dict__)
 
         ret.loc = cloc(memo.get(self.loc.el, self.loc.el), self.loc.tt, self.loc.ind)
@@ -3109,7 +3110,7 @@ class tchar:
         lnx = [v for v in self.ln.x]
         changedx = False
         if deltax != 0:
-            nnii = [ii for ii, x in enumerate(lnx) if x is not None] # non-None
+            nnii = [ii for ii, x in enumerate(lnx) if x is not None]  # non-None
             lnx[nnii[self.ln.ws.index(self.w)]] -= deltax
             changedx = True
 
@@ -3145,13 +3146,21 @@ class tchar:
         #     if ca.loc.tt == self.loc.tt and ca.loc.el == self.loc.el:
         #         ca.loc.ind -= 1
         #     if ca.w is not None:
-        #         ca.w.iis[ca.windex] -= 1  
-        [setattr(ca.loc, 'ind', ca.loc.ind - 1) for ca in lncs[myi + 1 :] if ca.loc.tt == self.loc.tt and ca.loc.el == self.loc.el]
-        [ca.w.iis.__setitem__(ca.windex, ca.w.iis[ca.windex] - 1) for ca in lncs[myi + 1:] if ca.w is not None]
+        #         ca.w.iis[ca.windex] -= 1
+        [
+            setattr(ca.loc, "ind", ca.loc.ind - 1)
+            for ca in lncs[myi + 1 :]
+            if ca.loc.tt == self.loc.tt and ca.loc.el == self.loc.el
+        ]
+        [
+            ca.w.iis.__setitem__(ca.windex, ca.w.iis[ca.windex] - 1)
+            for ca in lncs[myi + 1 :]
+            if ca.w is not None
+        ]
 
         # for c in self.ln.cs[myi + 1 :]:
         #     c.lnindex -= 1
-        [setattr(c, 'lnindex', c.lnindex - 1) for c in self.ln.cs[myi + 1 :]]
+        [setattr(c, "lnindex", c.lnindex - 1) for c in self.ln.cs[myi + 1 :]]
 
         lncs[myi].lnindex = None
         self.ln.cs = lncs[:myi] + lncs[myi + 1 :]
@@ -3434,11 +3443,11 @@ class Character_Table:
 
     # Find all the characters in a list of elements
     def collect_characters(self, els):
-        ctable = inkex.OrderedDict()
+        ctable = dict()
         pctable = (
-            inkex.OrderedDict()
+            dict()
         )  # a dictionary of preceding characters in the same style
-        rtable = inkex.OrderedDict()
+        rtable = dict()
 
         for el in els:
             tree = txttree(el)
@@ -3451,7 +3460,7 @@ class Character_Table:
                     ctable[tsty] = unique(ctable.get(tsty, []) + list(txt))
                     rtable[fsty] = unique(rtable.get(fsty, []) + list(txt))
                     if tsty not in pctable:
-                        pctable[tsty] = inkex.OrderedDict()
+                        pctable[tsty] = dict()
                     for jj in range(1, len(txt)):
                         pctable[tsty][txt[jj]] = unique(
                             pctable[tsty].get(txt[jj], []) + [txt[jj - 1]]
@@ -3470,7 +3479,7 @@ class Character_Table:
         # from the font file using fonttools
         try:
             badchars = {"\n", "\r"}
-            ct2 = inkex.OrderedDict()
+            ct2 = dict()
             for ts in ct:
                 bcs = [c for c in ct[ts] if c in badchars]  # strip out unusual chars
                 gcs = [c for c in ct[ts] if c not in badchars]
@@ -3484,7 +3493,7 @@ class Character_Table:
                     else:
                         fntcs[v] = [k]
 
-                ct2[ts] = inkex.OrderedDict()
+                ct2[ts] = dict()
                 for chrfnt in fntcs:
                     fnt = fcfg.get_fonttools_font(chrfnt)
                     pct2 = {k: v for k, v in pct[ts].items() if k in fntcs[chrfnt]}
@@ -3553,7 +3562,7 @@ class Character_Table:
             f.write(svgstart.encode("utf8"))
             from xml.sax.saxutils import escape
         else:
-            pstrings = inkex.OrderedDict()
+            pstrings = dict()
 
         def Make_String(c, sty):
             nonlocal cnt
@@ -3580,16 +3589,16 @@ class Character_Table:
         def effc(c):
             return badchars.get(c, c)
 
-        ct2 = inkex.OrderedDict()
+        ct2 = dict()
         bareids = []
         for s in ct:
-            ct2[s] = inkex.OrderedDict()
+            ct2[s] = dict()
             for ii in range(len(ct[s])):
                 myc = ct[s][ii]
                 t = Make_String(prefix + effc(myc) + suffix, s)
                 tb = Make_String(effc(myc), s)
                 bareids.append(tb)
-                dkern = inkex.OrderedDict()
+                dkern = dict()
                 if KERN_TABLE:
                     for jj in range(len(ct[s])):
                         pc = ct[s][jj]
@@ -3599,8 +3608,8 @@ class Character_Table:
                             dkern[pc] = t2
                 ct2[s][myc] = StringInfo(myc, t, dkern, tb)
 
-            ct2[s][pI] = StringInfo(pI, Make_String(pI, s), inkex.OrderedDict())
-            ct2[s][blnk] = StringInfo(blnk, Make_String(blnk, s), inkex.OrderedDict())
+            ct2[s][pI] = StringInfo(pI, Make_String(pI, s), dict())
+            ct2[s][blnk] = StringInfo(blnk, Make_String(blnk, s), dict())
 
         ct = ct2
         if not (usepango):
@@ -3624,7 +3633,7 @@ class Character_Table:
                 else:
                     pangolocked = True
                     pr = PangoRenderer()
-                    nbb = inkex.OrderedDict()
+                    nbb = dict()
                     for sty in ct:
                         joinch = " "
                         mystrs = [
@@ -3716,19 +3725,19 @@ class Character_Table:
                     pangolocked = False
                     finished = True
 
-        dkern = inkex.OrderedDict()
+        dkern = dict()
         for s in ct:
             for ii in ct[s]:
                 ct[s][ii].bb = bbox(nbb[ct[s][ii].strid])
                 if KERN_TABLE:
-                    precwidth = inkex.OrderedDict()
+                    precwidth = dict()
                     for jj in ct[s][ii].dkern:
                         precwidth[jj] = bbox(nbb[ct[s][ii].dkern[jj]]).w
                         # width including the preceding character and extra kerning
                     ct[s][ii].precwidth = precwidth
 
             if KERN_TABLE:
-                dkern[s] = inkex.OrderedDict()
+                dkern[s] = dict()
                 for ii in ct[s]:
                     mcw = ct[s][ii].bb.w - ct[s][blnk].bb.w  # my character width
                     for jj in ct[s][ii].precwidth:
@@ -3745,7 +3754,7 @@ class Character_Table:
             sw = ct[s][" "].bb.w - blnkwd  # space width
             ch = -ct[s][blnk].bb.y1  # cap height is the top of I (relative to baseline)
 
-            dkernscl = inkex.OrderedDict()
+            dkernscl = dict()
             if KERN_TABLE:
                 for k in dkern[s]:
                     dkernscl[k] = dkern[s][k] / TEXTSIZE
@@ -3781,7 +3790,7 @@ class Character_Table:
     def font_table(self):
         if not hasattr(self, "_ftable"):
             ctable2 = dict()
-            self._ftable = inkex.OrderedDict()
+            self._ftable = dict()
             for s in self.rtable:
                 tsty = true_style(s)
                 allcs = set("".join(self.rtable[s]))
@@ -3800,7 +3809,7 @@ class Character_Table:
             for s in ctable2:
                 for k in ctable2[s]:
                     if s not in self.ctable:
-                        self.ctable[s] = inkex.OrderedDict()
+                        self.ctable[s] = dict()
                     self.ctable[s][k] = ctable2[s][k]
 
         return self._ftable

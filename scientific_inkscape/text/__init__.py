@@ -14,26 +14,28 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-#
-#
-# This submodule gives all TextElements and FlowRoots the parsed_text property,
-# which is a cached instance of ParsedText. To use, simply run
-#
-#     import text
-#
-# Following this, text properties will be available at el.parsed_text. For more
-# details, see parser.py. To check if it is working properly, run the
-# following on some text:
-#
-#     el.parsed_text.Make_Highlights('char')
-#
-# Rectangles should appear surround the logical extents of each character.
-#
-# Before parsing is done, a character table must be generated to determine the properties
-# of all the characters present. This is done automatically by the first invocation of .parsed_text,
-# which automatically analyzes the whole document and adds it to the SVG. If you are only
-# parsing a few text elements, this can be sped up by calling svg.make_char_table(els).
-# On the rare occasions this fails, a command call may be performed as a fallback.
+
+
+"""
+This submodule gives all TextElements and FlowRoots the parsed_text property,
+which is a cached instance of ParsedText. To use, simply run
+
+    import text
+
+Following this, text properties will be available at el.parsed_text. For more
+details, see parser.py. To check if it is working properly, run the
+following on some text:
+
+    el.parsed_text.Make_Highlights('char')
+
+Rectangles should appear surrounding the logical extents of each character.
+
+Before parsing is done, a character table must be generated to determine the properties
+of all the characters present. This is done automatically by the first invocation of .parsed_text,
+which automatically analyzes the whole document and adds it to the SVG. If you are only
+parsing a few text elements, this can be sped up by calling svg.make_char_table(els).
+On the rare occasions this fails, a command call may be performed as a fallback.
+"""
 
 # Give inkex an inkex.text submodule that refers to this directory
 import inkex, sys, os

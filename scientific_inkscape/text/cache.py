@@ -18,24 +18,25 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-# A collection of functions that provide caching of certain Inkex properties.
-# Most provide the same functionality as the regular properties,
-# but with a 'c' in front of the name. For example,
-#   Style: cstyle, cspecified_style, ccascaded_style
-#   Transform: ctransform, ccomposed_transform
-#   Miscellaneous: croot, cdefs, ctag
-# Most are invalidated by setting to None (except ctransform, which is set to identity).
-# xpath calls are avoided at all costs
-#
-# Also gives SvgDocumentElements some dictionaries that are used to speed up
-# various lookups:
-#   svg.iddict: elements by their ID
-#   svg.cssdict: CSS styles by ID
-#
-# Lastly, several core Inkex functions are overwritten with versions that
-# use the cache. For example, getElementById uses svg.iddict to avoid xpath
-# calls.
+"""
+A collection of functions that provide caching of certain Inkex properties.
+Most provide the same functionality as the regular properties,
+but with a 'c' in front of the name. For example,
+  Style: cstyle, cspecified_style, ccascaded_style
+  Transform: ctransform, ccomposed_transform
+  Miscellaneous: croot, cdefs, ctag
+Most are invalidated by setting to None (except ctransform, which is set to identity).
+xpath calls are avoided at all costs.
 
+Also gives SvgDocumentElements some dictionaries that are used to speed up
+various lookups:
+  svg.iddict: elements by their ID
+  svg.cssdict: CSS styles by ID
+
+Lastly, several core Inkex functions are overwritten with versions that
+use the cache. For example, getElementById uses svg.iddict to avoid xpath
+calls.
+"""
 
 import inkex
 from inkex import Style
@@ -163,22 +164,28 @@ style_atts = svgpres - excludes
 
 # Fast empty Style initialization
 bstyle_dict = Style().__dict__
-if len(bstyle_dict)==0:
+if len(bstyle_dict) == 0:
+
     def empty_style():
         return Style.__new__(Style)
 else:
+
     def empty_style():
         ret = Style.__new__(Style)
         ret.__dict__ = bstyle_dict
         return ret
-    
+
+
 # Adds three styles
-if not hasattr(Style,'add3'):
-    def add3_fcn(x,y,z):
+if not hasattr(Style, "add3"):
+
+    def add3_fcn(x, y, z):
         return x + y + z
-    Style.add3 = add3_fcn               # type: ignore
+
+    Style.add3 = add3_fcn  # type: ignore
 # raw dict update
-dict_update = Style.__bases__[0].update # type: ignore
+dict_update = Style.__bases__[0].update  # type: ignore
+
 
 def get_cascaded_style(el):
     # Object's style including any CSS
@@ -186,17 +193,17 @@ def get_cascaded_style(el):
         # Local style (in "style" attribute)
         locsty = el.cstyle
         # CSS style (from stylesheet)
-        csssty = getattr(el.croot,'cssdict',dict()).get(el.get_id())
+        csssty = getattr(el.croot, "cssdict", dict()).get(el.get_id())
         # Attribute style (from attributes other than "style")
         attsty = empty_style()
-        dict_update(attsty,({a: EBget(el,a) for a in el.attrib if a in style_atts}))
-        
+        dict_update(attsty, ({a: EBget(el, a) for a in el.attrib if a in style_atts}))
+
         if csssty is None:
             ret = attsty + locsty
         else:
             # Any style specified locally takes priority, followed by CSS,
             # followed by any attributes that the element has
-            ret = attsty.add3(csssty,locsty)
+            ret = attsty.add3(csssty, locsty)
         el._ccascaded_style = ret
     return el._ccascaded_style
 
@@ -230,15 +237,15 @@ class CStyle(Style):
             super().__setitem__(args[0], args[1])
         else:
             changedvalue = False
-            for i in range(0,len(args),2):
+            for i in range(0, len(args), 2):
                 key = args[i]
-                value = args[i+1]
+                value = args[i + 1]
                 if value is None:
                     if key in self:
                         del self[key]
                         changedvalue = True
                 else:
-                    if key not in self or self[key]!=value:
+                    if key not in self or self[key] != value:
                         super().__setitem__(key, value)
                         changedvalue = True
             if changedvalue:
@@ -260,7 +267,7 @@ class CStyleDescriptor:
                 del el.attrib["style"]
 
         if not isinstance(value, CStyle):
-            if isinstance(value,Style):
+            if isinstance(value, Style):
                 # Cast to CStyle without reinitializing
                 value.__class__ = CStyle
                 value.el = el
@@ -499,16 +506,20 @@ def cdefs_func(svg):
 inkex.SvgDocumentElement.cdefs = property(cdefs_func)
 
 # Cached style element directly under root
-styletag = inkex.addNS('style','svg')
+styletag = inkex.addNS("style", "svg")
+
+
 def crootsty_func(svg):
-    if not hasattr(svg,'_crootsty'):
-        rootstys = [sty for sty in list(svg) if sty.tag==styletag]
-        if len(rootstys)==0:
+    if not hasattr(svg, "_crootsty"):
+        rootstys = [sty for sty in list(svg) if sty.tag == styletag]
+        if len(rootstys) == 0:
             svg._crootsty = inkex.StyleElement()
-            svg.insert(0,svg._crootsty)
+            svg.insert(0, svg._crootsty)
         else:
             svg._crootsty = rootstys[0]
     return svg._crootsty
+
+
 inkex.SvgDocumentElement.crootsty = property(crootsty_func)
 
 
@@ -670,10 +681,24 @@ hasmatches = hasattr(inkex.styles.ConditionalStyle, "matches")
 if hasmatches:
     import warnings
 
-
 class cssdict(dict):
     def __init__(self, svg):
         self.svg = svg
+
+        # if hasmatches:
+        #     for el in svg.descendants2():
+        #         stys = list(svg.stylesheets.lookup_specificity(el))
+        #         stys = sorted(stys, key=lambda item: item[1])
+        #         if len(stys)>0:
+        #             result = stys[0][0].copy()
+        #             for style, _ in stys[1:]:
+        #                 result.update(style)
+        #         else:
+        #             result = estyle;
+        #         self[el.get_id()] = result
+                
+        # else:
+                
 
         # For certain xpaths such as classes, we can avoid xpath calls
         # by checking the class attributes on a document's descendants directly.
@@ -683,6 +708,9 @@ class cssdict(dict):
         simpleids = dict()
         c1 = re.compile(r"\.([-\w]+)")
         c2 = re.compile(r"#(\w+)")
+        
+        # for sheet
+        
         for sheet in svg.stylesheets:
             for style in sheet:
                 if not hasmatches:
@@ -698,61 +726,41 @@ class cssdict(dict):
                     ):  # all rules are ids
                         simpleids[xp] = [c1.sub(r"\1", r.rule)[1:] for r in style.rules]
                 else:
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", category=DeprecationWarning)
-                        xp = style.to_xpath()
-                    if xp == "//*":
+                    # The new Style doesn't use xpaths, it uses parsed rules
+                    rules = (str(r) for r in style.rules)
+                    if rules==['*']:
                         hasall = True
-                    elif all(
-                        [
-                            c1.sub(r"IAMCLASS", style._rules[ii].strip()) == "IAMCLASS"
-                            for ii, r in enumerate(style.rules)
-                        ]
-                    ):  # all rules are classes
-                        simpleclasses[xp] = [
-                            c1.sub(r"\1", style._rules[ii].strip())
-                            for ii, r in enumerate(style.rules)
-                        ]
-                    elif all(
-                        [
-                            c2.sub(r"IAMID", style._rules[ii].strip()) == "IAMID"
-                            for ii, r in enumerate(style.rules)
-                        ]
-                    ):  # all rules are ids
-                        simpleids[xp] = [
-                            c1.sub(r"\1", style._rules[ii].strip())[1:]
-                            for ii, r in enumerate(style.rules)
-                        ]
+                    elif all([c1.match(r) for r in rules]):
+                        # all rules are classes
+                        simpleclasses[rules] = [c1.sub(r"\1", r) for r in rules]
+                    elif all([c2.match(r) for r in rules]):  # all rules are ids
+                        simpleids[rules] = [c2.sub(r"\1",r) for r in rules]
 
-        # inkex.utils.debug(simpleclasses)
+        # Now, we make a dictionary of rules / xpaths we can do easily
         knownxpaths = dict()
         if hasall or len(simpleclasses) > 0:
             ds = svg.iddict.ds
-            
             if hasall:
-                knownxpaths["//*"] = ds
+                if not hasmatches:
+                    knownxpaths["//*"] = ds
+                else:
+                    knownxpaths[['*']] = ds
             cs = [EBget(d, "class") for d in ds]
-            c2 = [(ii,c) for (ii,c) in enumerate(cs) if c is not None]
+            c2 = [(ii, c) for (ii, c) in enumerate(cs) if c is not None]
             cmatches = dict()
             for ii, clsval in c2:
                 for c in clsval.split(" "):
                     cmatches[c] = cmatches.get(c, []) + [ds[ii]]
-            kxp2 = {xp : list(dict.fromkeys([d for c in clslist if c in cmatches for d in cmatches[c]])) for xp,clslist in simpleclasses.items()}
-            knownxpaths.update(kxp2)   
-            
-            
-            # cs = [EBget(d, "class") for d in ds]
-            # if hasall:
-            #     knownxpaths["//*"] = ds
-            # for xp in simpleclasses:
-            #     knownxpaths[xp] = []
-            # for ii in range(len(ds)):
-            #     if cs[ii] is not None:
-            #         cv = cs[ii].split(" ")
-            #         # only valid delimeter for multiple classes is space
-            #         for xp in simpleclasses:
-            #             if any([v in cv for v in simpleclasses[xp]]):
-            #                 knownxpaths[xp].append(ds[ii])
+            kxp2 = {
+                xp: list(
+                    dict.fromkeys(
+                        [d for c in clslist if c in cmatches for d in cmatches[c]]
+                    )
+                )
+                for xp, clslist in simpleclasses.items()
+            }
+            knownxpaths.update(kxp2)
+
         for xp in simpleids:
             knownxpaths[xp] = []
             for sid in simpleids[xp]:
@@ -760,27 +768,49 @@ class cssdict(dict):
                 if idel is not None:
                     knownxpaths[xp].append(idel)
 
+        # inkex.utils.debug(knownxpaths)
         # Now run any necessary xpaths and get the element styles
         super().__init__()
         for sheet in svg.croot.stylesheets:
             for style in sheet:
+                # inkex.utils.debug(str(style))
                 try:
                     # els = svg.xpath(style.to_xpath())  # original code
                     if hasmatches:
-                        with warnings.catch_warnings():
-                            warnings.simplefilter("ignore", category=DeprecationWarning)
-                            xp = style.to_xpath()
+                        xp = (str(r) for r in style.rules)
                     else:
                         xp = style.to_xpath()
+                    # inkex.utils.debug(str(Style(style)))
                     stylev = Style(style)
+                    # inkex.utils.debug(stylev)
+                    if 'font-family' in stylev and '"' in stylev['font-family']:
+                        quotelocs = [ii for ii, v in enumerate(stylev['font-family']) if v in {'"',"'"}]
+                        if stylev['font-family'][quotelocs[0]]=='"':
+                            # inkex.utils.debug('hello')
+                            # inkex.utils.debug(stylev['font-family'])
+                            reversedv = stylev['font-family'].translate(str.maketrans({"'": '"', '"': "'"}))
+                            dict.__setitem__(stylev,'font-family',reversedv);
+                            # inkex.utils.debug((stylev))
+                            # inkex.utils.debug((Style({'font-family':"'Metro'"})))
+                    # inkex.utils.debug('font-family' in stylev and '"' in stylev['font-family'])
                     if xp in knownxpaths:
                         els = knownxpaths[xp]
                     else:
-                        els = svg.xpath(xp)
-                    
-                    if len(stylev)>0:
-                        idvs = [EBget(elem,"id", None) for elem in els if "id" in elem.attrib]
-                        newstys = {elid: stylev if elid not in self else self[elid]+stylev for elid in idvs}
+                        if not hasmatches:
+                            els = svg.xpath(xp)
+                        else:
+                            els = style.all_matches(svg)
+
+                    if len(stylev) > 0:
+                        idvs = [
+                            EBget(elem, "id", None)
+                            for elem in els
+                            if "id" in elem.attrib
+                        ]
+                        newstys = {
+                            elid: stylev if elid not in self else self[elid] + stylev
+                            for elid in idvs
+                        }
                         # Technically we should copy stylev, but as long as styles in cssdict are only used
                         # in get_cascaded_style, this is fine since that function adds (creating copies)
                         self.update(newstys)
@@ -808,7 +838,7 @@ inkex.SvgDocumentElement.cssdict = property(get_cssdict)
 # precede each element. (This is helpful for parsing text.)
 def descendants2(el, return_tails=False):
     if not return_tails:
-        return [el] + [d for d in el.iterdescendants() if d.tag != comment_tag] 
+        return [el] + [d for d in el.iterdescendants() if d.tag != comment_tag]
     else:
         descendants = [el]
         precedingtails = [[]]
@@ -824,7 +854,7 @@ def descendants2(el, return_tails=False):
                 else:
                     endsat.append((d, nsib))
                 descendants.append(d)
-        
+
         precedingtails.append([])
         while len(endsat) > 0:
             precedingtails[-1].append(endsat.pop()[0])
@@ -892,7 +922,7 @@ class bbox:
                     abs(bb[0][1] - bb[1][1]),
                 ]
             else:
-                self.sbb = bb[:] # standard bbox
+                self.sbb = bb[:]  # standard bbox
             self.x1, self.y1, self.w, self.h = self.sbb
             self.x2 = self.x1 + self.w
             self.y2 = self.y1 + self.h
@@ -952,7 +982,7 @@ class bbox:
         elif self.isnull and not bb2.isnull:
             return bb2
         else:
-            return self # bb2 is empty
+            return self  # bb2 is empty
 
     def intersection(self, bb2):
         if isinstance(bb2, list):
@@ -1365,16 +1395,15 @@ def delete_func(el, deleteup=False):
         d.croot = None
     if hasattr(svg, "_cd2"):
         svg.cdescendants2.delel(el)
-        
+
     if deleteup:
         # If set, remove empty ancestor groups
         myp = el.getparent()
         inkexdelete(el)
         if myp is not None and not len(myp):
-            delete_func(myp,True)
+            delete_func(myp, True)
     else:
         inkexdelete(el)
-    
 
 
 BaseElement.delete = delete_func  # type: ignore
@@ -1392,7 +1421,7 @@ def insert_func(g, index, el):
     el.cspecified_style = None
     el.ccomposed_transform = None
 
-    if EBget(el,"id") is None:
+    if EBget(el, "id") is None:
         # Make sure all elements have an ID (most assigned here)
         el.croot = newroot
         if newroot is not None:
@@ -1411,7 +1440,7 @@ def insert_func(g, index, el):
             if css is not None:
                 newroot.cssdict[el.get_id()] = css
         for k in list2(el):
-            el.append(k) # update children
+            el.append(k)  # update children
 
 
 inkex.BaseElement.insert = insert_func  # type: ignore
@@ -1429,7 +1458,7 @@ def append_func(g, el):
     el.cspecified_style = None
     el.ccomposed_transform = None
 
-    if EBget(el,"id") is None:
+    if EBget(el, "id") is None:
         # Make sure all elements have an ID (most assigned here)
         el.croot = newroot
         if newroot is not None:
@@ -1448,7 +1477,8 @@ def append_func(g, el):
             if css is not None:
                 newroot.cssdict[el.get_id()] = css
         for k in list2(el):
-            el.append(k) # update children
+            el.append(k)  # update children
+
 
 inkex.BaseElement.append = append_func  # type: ignore
 
@@ -1466,7 +1496,7 @@ def addnext_func(g, el):
     el.cspecified_style = None
     el.ccomposed_transform = None
 
-    if EBget(el,"id") is None:
+    if EBget(el, "id") is None:
         # Make sure all elements have an ID (most assigned here)
         el.croot = newroot
         if newroot is not None:
@@ -1485,7 +1515,7 @@ def addnext_func(g, el):
             if css is not None:
                 newroot.cssdict[el.get_id()] = css
         for k in list2(el):
-            el.append(k) # update children
+            el.append(k)  # update children
 
 
 inkex.BaseElement.addnext = addnext_func  # type: ignore
@@ -1500,25 +1530,29 @@ def duplicate_func(self):
     # svg.iddict    # disabled 2024-04-29
     # svg.cssdict   # disabled 2024-04-29
     # need to generate now to prevent problems in duplicate_fixed (self.addnext(elem) line, no idea why)
-    
+
     eltail = self.tail
     if eltail is not None:
         self.tail = None
     d = self.copy()
-    
+
     # After copying, duplicates have the original ID. Remove prior to insertion
-    origids = dict();
+    origids = dict()
     for dd in d.descendants2():
-        origids[dd] = dd.pop('id',None)
-        dd.croot = self.croot              # set now for speed
-    
+        origids[dd] = dd.pop("id", None)
+        dd.croot = self.croot  # set now for speed
+
     self.addnext(d)
     if eltail is not None:
         self.tail = eltail
     # Fix tail bug: https://gitlab.com/inkscape/extensions/-/issues/480
-    
+
     css = self.croot.cssdict
-    newids = {EBget(k,'id') : css.get(origids[k]) for k in d.descendants2() if origids[k] in css}
+    newids = {
+        EBget(k, "id"): css.get(origids[k])
+        for k in d.descendants2()
+        if origids[k] in css
+    }
     d.croot.cssdict.update(newids)
 
     if d.tag in clipmasktags:
