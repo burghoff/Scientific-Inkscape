@@ -372,7 +372,7 @@ class FlattenPlots(inkex.EffectExtension):
                         elif ff == repl:
                             pass
                         else:
-                            ff = [x.strip("'").strip() for x in ff.split(",")]
+                            ff = [x.strip("'").strip('"').strip() for x in ff.split(",")]
                             if not (ff[-1].lower() == repl.lower()):
                                 ff.append(repl)
                             el.cstyle["font-family"] = ",".join(ff)

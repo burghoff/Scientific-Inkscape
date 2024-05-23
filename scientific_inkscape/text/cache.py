@@ -681,24 +681,10 @@ hasmatches = hasattr(inkex.styles.ConditionalStyle, "matches")
 if hasmatches:
     import warnings
 
+
 class cssdict(dict):
     def __init__(self, svg):
         self.svg = svg
-
-        # if hasmatches:
-        #     for el in svg.descendants2():
-        #         stys = list(svg.stylesheets.lookup_specificity(el))
-        #         stys = sorted(stys, key=lambda item: item[1])
-        #         if len(stys)>0:
-        #             result = stys[0][0].copy()
-        #             for style, _ in stys[1:]:
-        #                 result.update(style)
-        #         else:
-        #             result = estyle;
-        #         self[el.get_id()] = result
-                
-        # else:
-                
 
         # For certain xpaths such as classes, we can avoid xpath calls
         # by checking the class attributes on a document's descendants directly.
@@ -708,43 +694,25 @@ class cssdict(dict):
         simpleids = dict()
         c1 = re.compile(r"\.([-\w]+)")
         c2 = re.compile(r"#(\w+)")
-        
-        # for sheet
-        
+
         for sheet in svg.stylesheets:
             for style in sheet:
-                if not hasmatches:
-                    xp = style.to_xpath()
-                    if xp == "//*":
-                        hasall = True
-                    elif all(
-                        [c1.sub(r"IAMCLASS", r.rule) == "IAMCLASS" for r in style.rules]
-                    ):  # all rules are classes
-                        simpleclasses[xp] = [c1.sub(r"\1", r.rule) for r in style.rules]
-                    elif all(
-                        [c2.sub(r"IAMID", r.rule) == "IAMID" for r in style.rules]
-                    ):  # all rules are ids
-                        simpleids[xp] = [c1.sub(r"\1", r.rule)[1:] for r in style.rules]
-                else:
-                    # The new Style doesn't use xpaths, it uses parsed rules
-                    rules = (str(r) for r in style.rules)
-                    if rules==['*']:
-                        hasall = True
-                    elif all([c1.match(r) for r in rules]):
-                        # all rules are classes
-                        simpleclasses[rules] = [c1.sub(r"\1", r) for r in rules]
-                    elif all([c2.match(r) for r in rules]):  # all rules are ids
-                        simpleids[rules] = [c2.sub(r"\1",r) for r in rules]
+                rules = tuple(str(r) for r in style.rules)
+                # inkex.utils.debug(rules)
+                if rules == ("*",):
+                    hasall = True
+                elif all([c1.match(r) for r in rules]):
+                    # all rules are classes
+                    simpleclasses[rules] = [c1.sub(r"\1", r) for r in rules]
+                elif all([c2.match(r) for r in rules]):  # all rules are ids
+                    simpleids[rules] = [c2.sub(r"\1", r) for r in rules]
 
         # Now, we make a dictionary of rules / xpaths we can do easily
-        knownxpaths = dict()
+        knownrules = dict()
         if hasall or len(simpleclasses) > 0:
             ds = svg.iddict.ds
             if hasall:
-                if not hasmatches:
-                    knownxpaths["//*"] = ds
-                else:
-                    knownxpaths[['*']] = ds
+                knownrules[("*",)] = ds
             cs = [EBget(d, "class") for d in ds]
             c2 = [(ii, c) for (ii, c) in enumerate(cs) if c is not None]
             cmatches = dict()
@@ -752,54 +720,39 @@ class cssdict(dict):
                 for c in clsval.split(" "):
                     cmatches[c] = cmatches.get(c, []) + [ds[ii]]
             kxp2 = {
-                xp: list(
+                rules: list(
                     dict.fromkeys(
                         [d for c in clslist if c in cmatches for d in cmatches[c]]
                     )
                 )
-                for xp, clslist in simpleclasses.items()
+                for rules, clslist in simpleclasses.items()
             }
-            knownxpaths.update(kxp2)
+            knownrules.update(kxp2)
 
-        for xp in simpleids:
-            knownxpaths[xp] = []
-            for sid in simpleids[xp]:
+        for rules in simpleids:
+            knownrules[rules] = []
+            for sid in simpleids[rules]:
                 idel = svg.getElementById(sid)
                 if idel is not None:
-                    knownxpaths[xp].append(idel)
+                    knownrules[rules].append(idel)
 
-        # inkex.utils.debug(knownxpaths)
         # Now run any necessary xpaths and get the element styles
         super().__init__()
         for sheet in svg.croot.stylesheets:
             for style in sheet:
-                # inkex.utils.debug(str(style))
                 try:
                     # els = svg.xpath(style.to_xpath())  # original code
-                    if hasmatches:
-                        xp = (str(r) for r in style.rules)
-                    else:
-                        xp = style.to_xpath()
-                    # inkex.utils.debug(str(Style(style)))
+                    rules = tuple(str(r) for r in style.rules)
                     stylev = Style(style)
-                    # inkex.utils.debug(stylev)
-                    if 'font-family' in stylev and '"' in stylev['font-family']:
-                        quotelocs = [ii for ii, v in enumerate(stylev['font-family']) if v in {'"',"'"}]
-                        if stylev['font-family'][quotelocs[0]]=='"':
-                            # inkex.utils.debug('hello')
-                            # inkex.utils.debug(stylev['font-family'])
-                            reversedv = stylev['font-family'].translate(str.maketrans({"'": '"', '"': "'"}))
-                            dict.__setitem__(stylev,'font-family',reversedv);
-                            # inkex.utils.debug((stylev))
-                            # inkex.utils.debug((Style({'font-family':"'Metro'"})))
-                    # inkex.utils.debug('font-family' in stylev and '"' in stylev['font-family'])
-                    if xp in knownxpaths:
-                        els = knownxpaths[xp]
+                    if rules in knownrules:
+                        els = knownrules[rules]
                     else:
-                        if not hasmatches:
-                            els = svg.xpath(xp)
-                        else:
+                        if hasmatches:
                             els = style.all_matches(svg)
+                        else:
+                            els = svg.xpath(style.to_xpath())
+                            if type(els) == float:
+                                els = []  # v1.0 returns nan when empty
 
                     if len(stylev) > 0:
                         idvs = [

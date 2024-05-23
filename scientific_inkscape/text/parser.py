@@ -3444,9 +3444,7 @@ class Character_Table:
     # Find all the characters in a list of elements
     def collect_characters(self, els):
         ctable = dict()
-        pctable = (
-            dict()
-        )  # a dictionary of preceding characters in the same style
+        pctable = dict()  # a dictionary of preceding characters in the same style
         rtable = dict()
 
         for el in els:

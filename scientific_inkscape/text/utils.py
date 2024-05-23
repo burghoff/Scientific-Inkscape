@@ -587,4 +587,4 @@ except:
         "writing-mode": "horizontal-tb",
         "-inkscape-font-specification": "sans-serif",
     }
-default_style_atts["font-variant-ligatures"]="normal"
+default_style_atts["font-variant-ligatures"] = "normal"
