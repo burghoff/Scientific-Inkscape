@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sch:schema xmlns:sch="http://www.ascc.net/xml/schematron">
+<sch:ns uri="http://www.inkscape.org/namespace/inkscape/extension" prefix="inx"/>
+  <sch:pattern name="duplicateOptionValues">
+    <sch:rule context="//inx:param/inx:option">
+      <sch:report test="preceding-sibling::inx:option/@value = @value">Warning: @value values should be unique for a given option.</sch:report>
+    </sch:rule>
+  </sch:pattern>
+</sch:schema>

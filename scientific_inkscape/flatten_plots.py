@@ -18,7 +18,9 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
+import dhelpers as dh
 import inkex
+
 from inkex import (
     TextElement,
     FlowRoot,
@@ -30,7 +32,6 @@ from inkex import (
     Rectangle,
     PathElement,
     Line,
-    Path,
     StyleElement,
     NamedView,
     Defs,
@@ -39,16 +40,9 @@ from inkex import (
     Group,
 )
 
-import os, sys
-
-sys.path.append(
-    os.path.dirname(os.path.realpath(sys.argv[0]))
-)  # make sure my directory is on the path
-import dhelpers as dh
 from inkex.text.utils import isrectangle
-
-import lxml, os
-import RemoveKerning
+import lxml
+from RemoveKerning import remove_kerning
 
 
 class FlattenPlots(inkex.EffectExtension):
@@ -380,7 +374,7 @@ class FlattenPlots(inkex.EffectExtension):
             if removemanualkerning or mergesubsuper or splitdistant or mergenearby:
                 jdict = {1: "middle", 2: "start", 3: "end", 4: None}
                 justification = jdict[self.options.justification]
-                ngs = RemoveKerning.remove_kerning(
+                ngs = remove_kerning(
                     ngs,
                     removemanualkerning,
                     mergesubsuper,

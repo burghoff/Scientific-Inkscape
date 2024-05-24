@@ -20,14 +20,9 @@
 DEBUGGING = False
 dispprofile = False
 
+import dhelpers as dh
 import inkex
 import os, sys, copy, subprocess
-
-sys.path.append(
-    os.path.dirname(os.path.realpath(sys.argv[0]))
-)  # make sure my directory is on the path
-import dhelpers as dh
-
 
 # Convenience functions
 def joinmod(dirc, f):

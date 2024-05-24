@@ -18,6 +18,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
+import dhelpers as dh
 import inkex
 from inkex import (
     TextElement,
@@ -30,12 +31,7 @@ from inkex import (
     Group,
     Polyline,
 )
-import os, sys, math, copy
-
-sys.path.append(
-    os.path.dirname(os.path.realpath(sys.argv[0]))
-)  # make sure my directory is on the path
-import dhelpers as dh
+import math, copy
 from dhelpers import bbox
 from inkex.text.utils import uniquetol
 

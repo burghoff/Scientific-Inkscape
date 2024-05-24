@@ -18,14 +18,9 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
+import dhelpers as dh
 import inkex
 from inkex import TextElement, FlowRoot, FlowPara, Tspan, Transform, Group, FlowSpan
-import os, sys
-
-sys.path.append(
-    os.path.dirname(os.path.realpath(sys.argv[0]))
-)  # make sure my directory is on the path
-import dhelpers as dh
 from inkex.text.utils import otp_support_tags
 
 from applytransform_mod import fuseTransform

@@ -21,8 +21,8 @@ bfn = input_options.inkscape_bfn
 sys.path += input_options.syspath
 guitype = input_options.guitype
 
-import inkex
 import dhelpers as dh  # noqa
+import inkex
 import inkex.text.parser  # needed to prevent GTK crashing
 
 import autoexporter

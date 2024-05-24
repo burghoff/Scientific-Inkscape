@@ -21,6 +21,7 @@ USE_TERMINAL = False
 DEBUGGING = False
 dispprofile = False
 
+import dhelpers as dh
 import subprocess
 import inkex
 from inkex import TextElement, Transform, PathElement, Vector2d
@@ -28,12 +29,8 @@ from inkex import TextElement, Transform, PathElement, Vector2d
 import os, sys, time, re, lxml
 import numpy as np
 
-sys.path.append(
-    os.path.dirname(os.path.realpath(sys.argv[0]))
-)  # make sure my directory is on the path
-import dhelpers as dh
 import image_helpers as ih
-from inkex.text.utils import otp_support_tags, default_style_atts, uniquetol, unique
+from inkex.text.utils import otp_support_tags, default_style_atts, unique
 import inkex.text.parser  # needed to prevent GTK crashing
 
 
@@ -795,8 +792,8 @@ class AutoExporter(inkex.EffectExtension):
 
             if (
                 (input_options.stroketopath or len(stps) > 0)
-                and inkex.ivp[0] >= 1
-                and inkex.ivp[1] > 0
+                and inkex.installed_ivp[0] >= 1
+                and inkex.installed_ivp[1] > 0
             ):
                 act = "object-stroke-to-path"
             else:

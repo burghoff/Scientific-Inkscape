@@ -50,7 +50,8 @@ if not hasattr(inkex, "text"):
     myloc, myname = os.path.split(mydir)
     oldpath = sys.path
     sys.path.append(myloc)
-    sys.modules["inkex.text"] = importlib.import_module(myname)
+    inkex.text = importlib.import_module(myname)
+    sys.modules["inkex.text"] = inkex.text
     sys.path = oldpath
 
 # Patches inkex functions for faster operation

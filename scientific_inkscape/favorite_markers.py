@@ -213,6 +213,7 @@ dflt = {
     ],
 }
 
+import dhelpers as dh
 import inkex
 from inkex import (
     TextElement,
@@ -246,12 +247,6 @@ from inkex import (
 )
 
 import os, sys
-
-sys.path.append(
-    os.path.dirname(os.path.realpath(sys.argv[0]))
-)  # make sure my directory is on the path
-import dhelpers as dh
-
 
 def get_script_path():
     return os.path.dirname(os.path.realpath(sys.argv[0]))

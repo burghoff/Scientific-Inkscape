@@ -24,7 +24,22 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+# Locate the installed Inkex so we can assess the version. Do not import!
+import pkgutil
+for finder in pkgutil.iter_importers():
+    if hasattr(finder, 'find_spec'):
+        try:
+            spec = finder.find_spec('inkex')
+            if spec and spec.origin:
+                installed_inkex = spec.origin
+        except TypeError:
+            continue
 
+# Import the packaged version of Inkex (currently v1.3.2)
+import sys, os
+si_dir = os.path.dirname(os.path.realpath(__file__)) # my install location
+sys.path.insert(0,os.path.join(si_dir,'packages'))
+sys.path.insert(1,os.path.join(si_dir,'packages','site-packages'))
 import inkex
 
 # For SI we override Inkex's Style with a modified version, Style0
@@ -33,7 +48,7 @@ import Style0
 
 inkex.Style = Style0.Style0
 
-# Next we make sure we have the text submodule. If not, we add it from SI
+# Next we make sure we have the text submodule
 import text  # noqa
 
 from inkex import Style
@@ -61,7 +76,6 @@ from applytransform_mod import fuseTransform
 import lxml, math, re, os, random, sys
 from functools import lru_cache
 
-
 # Returns non-comment children
 def list2(el):
     return [k for k in list(el) if not (k.tag == ctag)]
@@ -88,6 +102,12 @@ def count_callers():
     else:
         callinfo[lstr] = 1
 
+# Discover the version of Inkex installed, NOT the version packaged with SI
+with open(installed_inkex, 'r') as file:
+    content = file.read()
+match = re.search(r'__version__\s*=\s*"(.*?)"', content)
+vstr = match.group(1) if match else '1.0.0'
+inkex.installed_ivp = inkex.vparse(vstr)  # type: ignore
 
 # Replace an element with another one
 # Puts it in the same location, update the cache dicts
@@ -957,7 +977,7 @@ def visible_descendants(svg):
 
 # Get document location or prompt
 def Get_Current_File(ext, msgstr):
-    tooearly = inkex.ivp[0] <= 1 and inkex.ivp[1] < 1
+    tooearly = inkex.installed_ivp[0] <= 1 and inkex.installed_ivp[1] < 1
     if not (tooearly):
         myfile = ext.document_path()
     else:
@@ -976,9 +996,6 @@ def Get_Current_File(ext, msgstr):
         return None
     else:
         return myfile
-
-
-si_dir = os.path.dirname(os.path.realpath(__file__))
 
 
 # Generate a temporary file or folder in SI's location / tmp
