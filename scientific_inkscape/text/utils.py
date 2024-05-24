@@ -301,10 +301,24 @@ class Inkscape_System_Info:
     @property
     def binary_location(self):
         if not hasattr(self, "_binary_location"):
-            self._binary_location = self.Get_Binary_Loc()
+            self._binary_location = self.get_binary_location()
         return self._binary_location
 
-    def Get_Binary_Loc(self):
+    @property
+    def binary_version(self):
+        if not hasattr(self, "_binary_version"):
+            self._binary_version = self.get_binary_version()
+        return self._binary_version
+
+    def get_binary_version(self):
+        """Gets the binary location by calling with --version (slow)"""
+        p = subprocess_repeat([self.binary_location, "--version"])
+        import re  # Regular expression to find version number
+
+        match = re.search(r"Inkscape\s+(\S+)\s+\(", str(p.stdout))
+        return match.group(1) if match else None
+
+    def get_binary_location(self):
         """
         Gets the location of the Inkscape binary, checking the system
         path if necessary.
@@ -513,78 +527,13 @@ def subprocess_repeat(argin):
 
 
 # Get default style attributes
-try:
-    from inkex.properties import all_properties
+from inkex.properties import all_properties
 
+try:
     default_style_atts = {a: v[1] for a, v in all_properties.items()}  # type: ignore
-except:
-    # Older versions without inkex.properties
+except TypeError:
     default_style_atts = {
-        "alignment-baseline": "baseline",
-        "baseline-shift": "0",
-        "clip": "auto",
-        "clip-path": "none",
-        "clip-rule": "nonzero",
-        "color": "black",
-        "color-interpolation": "sRGB",
-        "color-interpolation-filters": "linearRGB",
-        "color-rendering": "auto",
-        "cursor": "auto",
-        "direction": "ltr",
-        "display": "inline",
-        "dominant-baseline": "auto",
-        "fill": "black",
-        "fill-opacity": "1",
-        "fill-rule": "nonzero",
-        "filter": "none",
-        "flood-color": "black",
-        "flood-opacity": "1",
-        "font": "",
-        "font-family": "sans-serif",
-        "font-size": "medium",
-        "font-size-adjust": "none",
-        "font-stretch": "normal",
-        "font-style": "normal",
-        "font-variant": "normal",
-        "font-weight": "normal",
-        "glyph-orientation-horizontal": "0deg",
-        "glyph-orientation-vertical": "auto",
-        "image-rendering": "auto",
-        "letter-spacing": "normal",
-        "lighting-color": "normal",
-        "line-height": "normal",
-        "marker": "",
-        "marker-end": "none",
-        "marker-mid": "none",
-        "marker-start": "none",
-        "mask": "none",
-        "opacity": "1",
-        "overflow": "visible",
-        "paint-order": "normal",
-        "pointer-events": "visiblePainted",
-        "shape-rendering": "visiblePainted",
-        "stop-color": "black",
-        "stop-opacity": "1",
-        "stroke": "none",
-        "stroke-dasharray": "none",
-        "stroke-dashoffset": "0",
-        "stroke-linecap": "butt",
-        "stroke-linejoin": "miter",
-        "stroke-miterlimit": "4",
-        "stroke-opacity": "1",
-        "stroke-width": "1",
-        "text-align": "start",
-        "text-anchor": "start",
-        "text-decoration": "none",
-        "text-overflow": "clip",
-        "text-rendering": "auto",
-        "unicode-bidi": "normal",
-        "vector-effect": "none",
-        "vertical-align": "baseline",
-        "visibility": "visible",
-        "white-space": "normal",
-        "word-spacing": "normal",
-        "writing-mode": "horizontal-tb",
-        "-inkscape-font-specification": "sans-serif",
-    }
-default_style_atts["font-variant-ligatures"] = "normal"
+        a: "".join([str(t.value) for t in v.default_value])
+        for a, v in all_properties.items()
+    }  # type: ignore
+default_style_atts["font-variant-ligatures"] = "normal"  # missing

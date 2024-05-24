@@ -42,7 +42,7 @@ from inkex import (
 
 from inkex.text.utils import isrectangle
 import lxml
-from RemoveKerning import remove_kerning
+from remove_kerning import remove_kerning
 
 
 class FlattenPlots(inkex.EffectExtension):

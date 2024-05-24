@@ -346,8 +346,6 @@ if not hasattr(inkex, "__version__"):
             inkex.__version__ = "0.92.4"
 inkex.vparse = lambda x: [int(v) for v in x.split(".")]  # type: ignore
 inkex.ivp = inkex.vparse(inkex.__version__)  # type: ignore
-# pre1p2 = inkex.ivp[0] <= 1 and inkex.ivp[1] < 2
-# pre1p1 = ivp[0] <= 1 and ivp[1] < 1
 
 
 # Implicit pixel function

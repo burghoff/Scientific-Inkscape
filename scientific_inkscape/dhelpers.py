@@ -44,9 +44,9 @@ import inkex
 
 # For SI we override Inkex's Style with a modified version, Style0
 # To do this we import Style0, then replace inkex.Style with it
-import Style0
+import styles0
 
-inkex.Style = Style0.Style0
+inkex.Style = styles0.Style0
 
 # Next we make sure we have the text submodule
 import text  # noqa
@@ -713,6 +713,69 @@ def tic():
 def toc():
     global lasttic
     idebug(time.time() - lasttic)
+    
+
+def benchmark_functions(func1, func2):
+    import numpy as np
+    differences = []
+    time1s = []
+    
+    MINIBATCH_TIME = .01
+    TOTAL_TIME = 10
+    
+    strt = time.time()
+    f1cnt = 0
+    while time.time()-strt < MINIBATCH_TIME:
+        func1()
+        f1cnt += 1
+    strt = time.time()
+    f2cnt = 0
+    while time.time()-strt < MINIBATCH_TIME:
+        func2()
+        f2cnt += 1
+        
+    for Nr in range(5):
+        strt = time.time()
+        for ii in range(f1cnt):
+            func1()
+        f1act = time.time()-strt         
+        strt = time.time()
+        for ii in range(f2cnt):
+            func2()
+        f2act = time.time()-strt
+        f1cnt = int(f1cnt*MINIBATCH_TIME/f1act)
+        f2cnt = int(f2cnt*MINIBATCH_TIME/f2act)
+        
+    
+    M = int(TOTAL_TIME/MINIBATCH_TIME/2)
+    N1 = f1cnt
+    N2 = f2cnt
+
+    for _ in range(M):
+        # Timing function 1
+        start_time = time.time()
+        for _ in range(N1):
+            func1()
+        end_time = time.time()
+        time_func1 = (end_time - start_time)/N1
+        time1s.append(time_func1)
+
+        # Timing function 2
+        start_time = time.time()
+        for _ in range(N2):
+            func2()
+        end_time = time.time()
+        time_func2 = (end_time - start_time)/N2
+
+        # Calculate the difference in times
+        time_difference = time_func2 - time_func1
+        differences.append(time_difference)
+
+    # Calculating mean and standard deviation of time differences
+    mean_difference = np.mean(differences)
+    std_deviation = np.std(differences)
+
+    return np.mean(time1s), mean_difference, std_deviation/np.sqrt(M)
 
 
 # style atts that could have urls
@@ -1091,14 +1154,14 @@ def Run_SI_Extension(effext, name):
                 from inkex.text import font_properties
                 from inkex.text import speedups
                 from inkex.text import cache
-                import RemoveKerning
+                import remove_kerning
                 from inspect import getmembers, isfunction, isclass, getmodule
 
                 fns = []
                 for m in [
                     sys.modules[__name__],
                     parser,
-                    RemoveKerning,
+                    remove_kerning,
                     Style,
                     font_properties,
                     inkex.transforms,
@@ -1275,7 +1338,7 @@ inkex.Style.__str__ = __str__
 
 def Version_Check(caller):
     siv = "v1.3.2"  # Scientific Inkscape version
-    maxsupport = "1.3.1"
+    maxsupport = "1.4.0"
     minsupport = "1.1.0"
 
     logname = "Log.txt"
