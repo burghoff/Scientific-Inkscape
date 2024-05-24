@@ -632,7 +632,8 @@ class AutoExporter(inkex.EffectExtension):
                 stps.append(elid)
 
             # Fix opacity bug for Office PDF saving
-            self.Opacity_Fix(el)
+            if len(ms)==0: # works poorly with markers
+                self.Opacity_Fix(el)
 
             # Disable connectors
             el.set("inkscape:connector-type", None)
