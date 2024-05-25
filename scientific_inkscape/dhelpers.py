@@ -35,11 +35,12 @@ for finder in pkgutil.iter_importers():
         except TypeError:
             continue
 
-# Import the packaged version of Inkex (currently v1.3.2)
+# Import the packaged version of Inkex (currently v1.3.0)
 import sys, os
+inkex_to_use = 'inkex1_3_0'
 si_dir = os.path.dirname(os.path.realpath(__file__)) # my install location
-sys.path.insert(0,os.path.join(si_dir,'packages'))
-sys.path.insert(1,os.path.join(si_dir,'packages','site-packages'))
+sys.path.insert(0,os.path.join(si_dir,inkex_to_use))
+sys.path.insert(1,os.path.join(si_dir,inkex_to_use,'site-packages'))
 import inkex
 
 # For SI we override Inkex's Style with a modified version, Style0

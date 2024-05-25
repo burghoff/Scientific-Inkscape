@@ -49,10 +49,7 @@ EBset = lxml.etree.ElementBase.set
 # Adds ctag to the inkex classes, which holds each class's corresponding tag
 # Checking the tag is usually much faster than instance checking, which can
 # substantially speed up low-level functions.
-try:
-    lt = dict(inkex.elements._parser.NodeBasedLookup.lookup_table)
-except:
-    lt = dict(inkex.elements._base.NodeBasedLookup.lookup_table)
+lt = dict(inkex.elements._parser.NodeBasedLookup.lookup_table)
 shapetags = set()
 for k, v in lt.items():
     for v2 in v:
