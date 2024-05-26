@@ -1323,19 +1323,19 @@ if not hasattr(inkex.Style,'to_xpath'):
     inkex.Style.to_xpath = to_xpath_func
 
 # Patch Style string conversion to restore single-quote strings
-FQUOTE = r'^[^\'"]*\"'
-def swap_quotes(s):
-    return s.translate(str.maketrans({"'": '"', '"': "'"}))
-def to_str(self, sep=";"):
-    return sep.join(
-        [f"{key}:{value}" if not re.search(FQUOTE, str(value)) else f"{key}:{swap_quotes(value)}" for key, value in self.items()]
-    )
-def __str__(self):
-    return ";".join(
-        [f"{key}:{value}" if not re.search(FQUOTE, str(value)) else f"{key}:{swap_quotes(value)}" for key, value in self.items()]
-    )
-inkex.Style.to_str = to_str
-inkex.Style.__str__ = __str__
+# FQUOTE = r'^[^\'"]*\"'
+# def swap_quotes(s):
+#     return s.translate(str.maketrans({"'": '"', '"': "'"}))
+# def to_str(self, sep=";"):
+#     return sep.join(
+#         [f"{key}:{value}" if not re.search(FQUOTE, str(value)) else f"{key}:{swap_quotes(value)}" for key, value in self.items()]
+#     )
+# def __str__(self):
+#     return ";".join(
+#         [f"{key}:{value}" if not re.search(FQUOTE, str(value)) else f"{key}:{swap_quotes(value)}" for key, value in self.items()]
+#     )
+# inkex.Style.to_str = to_str
+# inkex.Style.__str__ = __str__
 
 def Version_Check(caller):
     siv = "v1.3.2"  # Scientific Inkscape version

@@ -1357,8 +1357,8 @@ def delete_func(el, deleteup=False):
 BaseElement.delete = delete_func  # type: ignore
 
 # Insertion
-BEinsert = inkex.BaseElement.insert
-
+# BEinsert = inkex.BaseElement.insert
+BEinsert = lxml.etree.ElementBase.insert
 
 def insert_func(g, index, el):
     oldroot = el.croot
@@ -1394,7 +1394,8 @@ def insert_func(g, index, el):
 inkex.BaseElement.insert = insert_func  # type: ignore
 
 # Appending
-BEappend = inkex.BaseElement.append
+# BEappend = inkex.BaseElement.append
+BEappend = lxml.etree.ElementBase.append
 
 
 def append_func(g, el):
@@ -1432,7 +1433,8 @@ inkex.BaseElement.append = append_func  # type: ignore
 
 
 # addnext
-BEaddnext = inkex.BaseElement.addnext
+# BEaddnext = inkex.BaseElement.addnext
+BEaddnext = lxml.etree.ElementBase.addnext
 
 
 def addnext_func(g, el):
