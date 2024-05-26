@@ -50,7 +50,7 @@ import styles0
 inkex.Style = styles0.Style0
 
 # Next we make sure we have the text submodule
-import text  # noqa
+import inkex.text  # noqa
 
 from inkex import Style
 from inkex.text.cache import (
