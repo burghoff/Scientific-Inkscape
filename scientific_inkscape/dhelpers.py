@@ -77,6 +77,22 @@ from applytransform_mod import fuseTransform
 import lxml, math, re, os, random, sys
 from functools import lru_cache
 
+
+# Parsed Inkex version, with extension back to v0.92.4
+if not hasattr(inkex, "__version__"):
+    try:
+        tmp = BaseElement.unittouu  # introduced in 1.1
+        inkex.__version__ = "1.1.0"
+    except:
+        try:
+            from inkex.paths import Path, CubicSuperPath  # noqa
+
+            inkex.__version__ = "1.0.0"
+        except:
+            inkex.__version__ = "0.92.4"
+inkex.vparse = lambda x: [int(v) for v in x.split(".")]  # type: ignore
+inkex.ivp = inkex.vparse(inkex.__version__)  # type: ignore
+
 # Returns non-comment children
 def list2(el):
     return [k for k in list(el) if not (k.tag == ctag)]

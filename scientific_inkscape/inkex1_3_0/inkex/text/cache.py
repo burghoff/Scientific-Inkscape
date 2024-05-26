@@ -329,22 +329,6 @@ def set_ctransform(el, newt):
 BaseElement.ctransform = property(get_ctransform, set_ctransform)
 
 
-# Parsed Inkex version, with extension back to v0.92.4
-if not hasattr(inkex, "__version__"):
-    try:
-        tmp = BaseElement.unittouu  # introduced in 1.1
-        inkex.__version__ = "1.1.0"
-    except:
-        try:
-            from inkex.paths import Path, CubicSuperPath  # noqa
-
-            inkex.__version__ = "1.0.0"
-        except:
-            inkex.__version__ = "0.92.4"
-inkex.vparse = lambda x: [int(v) for v in x.split(".")]  # type: ignore
-inkex.ivp = inkex.vparse(inkex.__version__)  # type: ignore
-
-
 # Implicit pixel function
 # For many properties, a size specification of '1px' actually means '1uu'
 # Even if the size explicitly says '1mm' and the user units are mm, this will be
@@ -673,8 +657,6 @@ estyle = Style()  # keep separate in case Style was overridden
 
 # Check if v1.4 or later
 hasmatches = hasattr(inkex.styles.ConditionalStyle, "matches")
-if hasmatches:
-    import warnings
 
 
 class cssdict(dict):
@@ -1359,6 +1341,7 @@ BaseElement.delete = delete_func  # type: ignore
 # Insertion
 # BEinsert = inkex.BaseElement.insert
 BEinsert = lxml.etree.ElementBase.insert
+
 
 def insert_func(g, index, el):
     oldroot = el.croot
