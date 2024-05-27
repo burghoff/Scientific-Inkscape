@@ -21,7 +21,8 @@
 import dhelpers as dh
 import inkex
 from inkex import TextElement, FlowRoot, FlowPara, Tspan, Transform, Group, FlowSpan
-from inkex.text.utils import otp_support_tags
+from inkex.text.cache import BaseElementCache
+otp_support_tags = BaseElementCache.otp_support_tags
 
 from applytransform_mod import fuseTransform
 import math

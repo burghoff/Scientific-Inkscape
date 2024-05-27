@@ -30,7 +30,9 @@ import os, sys, time, re, lxml
 import numpy as np
 
 import image_helpers as ih
-from inkex.text.utils import otp_support_tags, default_style_atts, unique
+from inkex.text.utils import default_style_atts, unique
+from inkex.text.cache import BaseElementCache
+otp_support_tags = BaseElementCache.otp_support_tags
 import inkex.text.parser  # needed to prevent GTK crashing
 
 
@@ -1367,7 +1369,7 @@ class AutoExporter(inkex.EffectExtension):
         # In general I prefer split, so I do this for everything other than PDF
         for el in svg.descendants2():
             if el.tag in otp_support_tags and not (isinstance(el, (PathElement))):
-                dh.object_to_path(el)
+                el.object_to_path()
             d = el.get("d")
             if d is not None and any(
                 [cv in d for cv in ["h", "v", "l", "H", "V", "L"]]
@@ -1441,7 +1443,7 @@ class AutoExporter(inkex.EffectExtension):
     def Bezier_to_Split(self, el):
         # Converts the Bezier TLD to split (for the plain SVG)
         if el.tag in otp_support_tags and not (isinstance(el, (PathElement))):
-            dh.object_to_path(el)
+            el.object_to_path()
         d = el.get("d")
         if d is not None and any([cv in d for cv in ["c", "C"]]):
             if any([cv in d for cv in ["C"]]):
@@ -1912,7 +1914,7 @@ class AutoExporter(inkex.EffectExtension):
                             # STP cannot handle dashes correctly when upscaled
                             # See https://gitlab.com/inkscape/inbox/-/issues/7844
                             # Object to path doesn't currently support Inkscape-specific objects
-                            dh.object_to_path(el)
+                            el.object_to_path()
                             p = el.get("d")
 
                             # pts = list(Path(p).end_points)

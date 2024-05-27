@@ -64,12 +64,13 @@ from inkex.text.utils import (
     composed_width,
     composed_lineheight,
     default_style_atts,
-    otp_support_tags,
-    object_to_path,
     isrectangle,
     Get_Bounding_Boxes,
+    tags,
+    ipx,
+    bbox,
 )
-from inkex.text.cache import bbox, ipx, bounding_box2, tags
+from inkex.text.cache import BaseElementCache
 from inkex.text.font_properties import (
     PangoRenderer,
     haspango,
@@ -1299,7 +1300,7 @@ class ParsedText:
             # fuseTransform(dfr)
 
             # Fuse transform to path
-            object_to_path(dfr)
+            dfr.object_to_path()
             dfr.set("d", str(dfr.cpath.transform(dfr.ctransform)))
             dfr.cpath = None
             dfr.ctransform = None
@@ -1311,7 +1312,11 @@ class ParsedText:
         elif isflowroot:
             for d in self.textel.descendants2():
                 if isinstance(d, FlowRegion):
-                    pths = [p for p in d.descendants2() if p.tag in otp_support_tags]
+                    pths = [
+                        p
+                        for p in d.descendants2()
+                        if p.tag in BaseElementCache.otp_support_tags
+                    ]
                     if len(pths) > 0:
                         region = pths[0]
         elif isinlinesz:
@@ -1335,14 +1340,18 @@ class ParsedText:
         padding = ipx(self.textel.cspecified_style.get("shape-padding", "0"))
         isrect = isrectangle(region, includingtransform=False)
 
-        usesvt = not isrect and region.tag in otp_support_tags and padding == 0
+        usesvt = (
+            not isrect
+            and region.tag in BaseElementCache.otp_support_tags
+            and padding == 0
+        )
         if not isrect and not usesvt:
             # Flow region we cannot yet handle, parse as normal text
             # This works as long as the SVG1.1 fallback is being used
             self.isflow = False
             return self.Parse_Lines()
         if usesvt:
-            object_to_path(region)
+            region.object_to_path()
             try:
                 import svgpathtools as spt
             except ModuleNotFoundError:
@@ -1357,7 +1366,9 @@ class ParsedText:
                 sptregion.append(spt.Line(end, start))
                 sptregion.closed = True
 
-        bb = bounding_box2(region, dotransform=False, includestroke=False).sbb
+        bb = BaseElementCache.bounding_box2(
+            region, dotransform=False, includestroke=False
+        ).sbb
         if not padding == 0:
             bb = [
                 bb[0] + padding,

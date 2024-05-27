@@ -56,20 +56,14 @@ if not hasattr(inkex, "text"):
 
 # Patches inkex functions for faster operation
 # This is optional
-import inkex.text.speedups
+try:
+    import inkex.text.speedups
+except ModuleNotFoundError:
+    pass
 
 # Gives inkex elements some additional cached attributes, for further speedups
 # This is not optional
 import inkex.text.cache
-
-
-# Make sure Style can be hashed
-def __hash__mod(self):
-    # type: (inkex.Style) -> int
-    return hash(tuple(self.items()))
-
-
-inkex.Style.__hash__ = __hash__mod  # type: ignore
 
 
 # Add parsed_text property to text, which is used to get the properties of text

@@ -8,11 +8,11 @@
 import inkex
 from inkex.paths import CubicSuperPath, Path
 from inkex.transforms import Transform
-from inkex import Line, Rectangle, Polygon, Polyline, Ellipse, Circle
+from inkex import Rectangle, Ellipse, Circle
 
 import math
 import dhelpers as dh
-from inkex.text.utils import otp_support_tags
+from inkex.text.cache import BaseElementCache
 
 Itr = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
@@ -98,7 +98,7 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
     # When applytostroke enabled, transform goes onto stroke/dashes, keeping it looking the same
     # Without it, it is applied to the points only
 
-    if el.tag in otp_support_tags:  # supported types
+    if el.tag in BaseElementCache.otp_support_tags:  # supported types
         # Since transforms apply to an object's clips, before applying the transform
         # we will need to duplicate the clip path and transform it
         transform_clipmask(el, mask=False)
@@ -112,7 +112,7 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
             el, (Rectangle, Ellipse, Circle)
         ):
             # Rectangles, Ellipses, and Circles need to be converted to paths if there is shear/rotation
-            dh.object_to_path(el)
+            el.object_to_path()
 
         if not (transf == Itr and irange is None and trange is None):
             # Don't do anything if there is effectively no transform applied

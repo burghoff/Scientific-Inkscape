@@ -53,22 +53,16 @@ inkex.Style = styles0.Style0
 import inkex.text  # noqa
 
 from inkex import Style
-from inkex.text.cache import (
-    tags,
-    grouplike_tags,
-    ttags,
-    bb2_support_tags,
-    bounding_box2,
-    bbox,
-    ipx,
-)
+from inkex.text.cache import BaseElementCache
+CBE = BaseElementCache
+grouplike_tags , ttags  = CBE.grouplike_tags, CBE.ttags
+bb2_support_tags, bounding_box2 = CBE.bb2_support_tags, CBE.bounding_box2
 from inkex.text.utils import (
     composed_width,
     unique,
-    object_to_path,
     isrectangle,
     Get_Bounding_Boxes,
-    subprocess_repeat,
+    subprocess_repeat, tags, bbox, ipx
 )
 
 
@@ -951,7 +945,7 @@ def combine_paths(els, mergeii=0):
     # Set the path on the mergeiith element
     mel = els[mergeii]
     if mel.get("d") is None:  # Polylines and lines have to be converted to a path
-        object_to_path(mel)
+        mel.object_to_path()
     mel.set("d", str(pnew.transform(-mel.ccomposed_transform)))
 
     # Release clips/masks

@@ -335,7 +335,7 @@ class FlattenPlots(inkex.EffectExtension):
                                     el, includestroke=False, dotransform=False
                                 )
                                 if bb.w < bb.h * 0.1 and not sf.fill_isurl:
-                                    dh.object_to_path(el)
+                                    el.object_to_path()
                                     np = "m {0},{1} v {2}".format(bb.xc, bb.y1, bb.h)
                                     el.set("d", np)
                                     el.cstyle["stroke"] = sf.fill.to_rgb()
@@ -345,7 +345,7 @@ class FlattenPlots(inkex.EffectExtension):
                                     el.cstyle["fill"] = "none"
                                     el.cstyle["stroke-width"] = str(bb.w)
                                 elif bb.h < bb.w * 0.1:
-                                    dh.object_to_path(el)
+                                    el.object_to_path()
                                     np = "m {0},{1} h {2}".format(bb.x1, bb.yc, bb.w)
                                     el.set("d", np)
                                     el.cstyle["stroke"] = sf.fill
@@ -384,9 +384,9 @@ class FlattenPlots(inkex.EffectExtension):
                     self.options.debugparser,
                 )
             if removetextclips:
-                from inkex.text.cache import ttags
+                from inkex.text.cache import BaseElementCache
                 for el in ngs:
-                    if el.tag in ttags:
+                    if el.tag in BaseElementCache.ttags:
                         el.set('clip-path',None)
                         el.set('mask',None)
 

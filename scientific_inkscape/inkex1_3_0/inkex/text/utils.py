@@ -25,8 +25,7 @@ Utilities for text parsing
 """
 
 import inkex
-from inkex.text.cache import tags, ipx, cpath_support
-import math, re, sys, os
+import math, re, sys, os, lxml
 
 # For style components that represent a size (stroke-width, font-size, etc), calculate
 # the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
@@ -139,24 +138,20 @@ def uniquetol(A, tol):
     return ret
 
 
-otp_support = cpath_support
-otp_support_tags = tags(cpath_support)
-ptag = inkex.PathElement.ctag
-
-
-def object_to_path(el):
-    """
-    Converts specified elements to paths if supported. Adjusts the 'd' attribute and changes the element tag to a path.
-
-    Parameters:
-        el (Element): The element to convert to a path.
-
-    Note:
-        Only operates on elements within the `otp_support_tags` list.
-    """
-    if el.tag in otp_support_tags and not el.tag == ptag:
-        el.set("d", str(el.cpath))  # do this first so cpath is correct
-        el.tag = ptag
+# Adds ctag to the inkex classes, which holds each class's corresponding tag
+# Checking the tag is usually much faster than instance checking, which can
+# substantially speed up low-level functions.
+lt = dict(inkex.elements._parser.NodeBasedLookup.lookup_table)
+shapetags = set()
+for k, v in lt.items():
+    for v2 in v:
+        if isinstance(k, tuple):  # v1.0-1.3
+            v2.ctag = inkex.addNS(k[1], k[0])
+        else:  # v1.4+
+            v2.ctag = k
+        if issubclass(v2, inkex.ShapeElement):
+            shapetags.add(v2.ctag)
+tags = lambda x: set([v.ctag for v in x])  # converts class tuple to set of tags
 
 
 rectlike_tags = tags((inkex.PathElement, inkex.Rectangle, inkex.Line, inkex.Polyline))
@@ -537,3 +532,128 @@ except TypeError:
         for a, v in all_properties.items()
     }  # type: ignore
 default_style_atts["font-variant-ligatures"] = "normal"  # missing
+
+
+# Returns non-comment children
+comment_tag = lxml.etree.Comment
+
+
+def list2(el):
+    return [k for k in list(el) if not (k.tag == comment_tag)]
+
+
+# Implicit pixel function
+# For many properties, a size specification of '1px' actually means '1uu'
+# Even if the size explicitly says '1mm' and the user units are mm, this will be
+# first converted to px and then interpreted to mean user units. (So '1mm' would
+# up being bigger than 1 mm). This returns the size as Inkscape will interpret it (in uu).
+#   No unit: Assumes 'px'
+#   Invalid unit: Returns None (used to return 0, changed 2023.04.18)
+from inkex.units import CONVERSIONS, BOTH_MATCH
+
+conv2 = {k: CONVERSIONS[k] / CONVERSIONS["px"] for k, v in CONVERSIONS.items()}
+from functools import lru_cache
+
+
+@lru_cache(maxsize=None)
+def ipx(strin):
+    try:
+        ret = BOTH_MATCH.match(strin)
+        value = float(ret.groups()[0])
+        from_unit = ret.groups()[-1] or "px"
+        return value * conv2[from_unit]
+    except:
+        return None
+
+
+# A modified bounding box class
+class bbox:
+    __slots__ = ("isnull", "x1", "x2", "y1", "y2", "xc", "yc", "w", "h", "sbb")
+
+    def __init__(self, bb):
+        if bb is not None:
+            self.isnull = False
+            if len(bb) == 2:  # allow tuple of two points ((x1,y1),(x2,y2))
+                self.sbb = [
+                    min(bb[0][0], bb[1][0]),
+                    min(bb[0][1], bb[1][1]),
+                    abs(bb[0][0] - bb[1][0]),
+                    abs(bb[0][1] - bb[1][1]),
+                ]
+            else:
+                self.sbb = bb[:]  # standard bbox
+            self.x1, self.y1, self.w, self.h = self.sbb
+            self.x2 = self.x1 + self.w
+            self.y2 = self.y1 + self.h
+            self.xc = (self.x1 + self.x2) / 2
+            self.yc = (self.y1 + self.y2) / 2
+        else:
+            self.isnull = True
+
+    def copy(self):
+        ret = bbox.__new__(bbox)
+        ret.isnull = self.isnull
+        if not self.isnull:
+            ret.x1 = self.x1
+            ret.x2 = self.x2
+            ret.y1 = self.y1
+            ret.y2 = self.y2
+            ret.xc = self.xc
+            ret.yc = self.yc
+            ret.w = self.w
+            ret.h = self.h
+            ret.sbb = self.sbb[:]
+        return ret
+
+    def transform(self, xform):
+        if not (self.isnull) and xform is not None:
+            tr1 = xform.apply_to_point([self.x1, self.y1])
+            tr2 = xform.apply_to_point([self.x2, self.y2])
+            tr3 = xform.apply_to_point([self.x1, self.y2])
+            tr4 = xform.apply_to_point([self.x2, self.y1])
+            return bbox(
+                [
+                    min(tr1[0], tr2[0], tr3[0], tr4[0]),
+                    min(tr1[1], tr2[1], tr3[1], tr4[1]),
+                    max(tr1[0], tr2[0], tr3[0], tr4[0])
+                    - min(tr1[0], tr2[0], tr3[0], tr4[0]),
+                    max(tr1[1], tr2[1], tr3[1], tr4[1])
+                    - min(tr1[1], tr2[1], tr3[1], tr4[1]),
+                ]
+            )
+        else:
+            return bbox(None)
+
+    def intersect(self, bb2):
+        return (abs(self.xc - bb2.xc) * 2 < (self.w + bb2.w)) and (
+            abs(self.yc - bb2.yc) * 2 < (self.h + bb2.h)
+        )
+
+    def union(self, bb2):
+        if isinstance(bb2, list):
+            bb2 = bbox(bb2)
+        if not (self.isnull) and not bb2.isnull:
+            minx = min((self.x1, self.x2, bb2.x1, bb2.x2))
+            maxx = max((self.x1, self.x2, bb2.x1, bb2.x2))
+            miny = min((self.y1, self.y2, bb2.y1, bb2.y2))
+            maxy = max((self.y1, self.y2, bb2.y1, bb2.y2))
+            return bbox([minx, miny, maxx - minx, maxy - miny])
+        elif self.isnull and not bb2.isnull:
+            return bb2
+        else:
+            return self  # bb2 is empty
+
+    def intersection(self, bb2):
+        if isinstance(bb2, list):
+            bb2 = bbox(bb2)
+        if not (self.isnull):
+            minx = max([self.x1, bb2.x1])
+            maxx = min([self.x2, bb2.x2])
+            miny = max([self.y1, bb2.y1])
+            maxy = min([self.y2, bb2.y2])
+            return bbox([minx, miny, abs(maxx - minx), abs(maxy - miny)])
+        else:
+            return bbox(bb2.sbb)
+
+    def __mul__(self, scl):
+        return bbox([self.x1 * scl, self.y1 * scl, self.w * scl, self.h * scl])
