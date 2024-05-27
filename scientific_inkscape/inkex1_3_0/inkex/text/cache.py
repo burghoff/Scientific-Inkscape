@@ -42,7 +42,7 @@ import inkex
 from inkex import Style
 from inkex import BaseElement, SvgDocumentElement
 from text.utils import shapetags, tags, ipx, list2, bbox
-import lxml, re
+import lxml, re, inspect
 
 EBget = lxml.etree.ElementBase.get
 EBset = lxml.etree.ElementBase.set
@@ -77,6 +77,19 @@ def get_link_fcn(el, typestr, svg=None, llget=False):
 
 
 BE_set_id = BaseElement.set_id
+
+# Fast empty Style initialization
+if len(Style().__dict__) == 0:
+
+    def empty_style():
+        return Style.__new__(Style)
+else:
+    bstyle_dict = Style().__dict__
+
+    def empty_style():
+        ret = Style.__new__(Style)
+        ret.__dict__ = bstyle_dict
+        return ret
 
 
 class BaseElementCache(BaseElement):
@@ -234,26 +247,6 @@ class BaseElementCache(BaseElement):
     excludes = {"clip", "clip-path", "mask", "transform", "transform-origin"}
     style_atts = svgpres - excludes
 
-    # Fast empty Style initialization
-    bstyle_dict = Style().__dict__
-    if len(bstyle_dict) == 0:
-
-        def empty_style():
-            return Style.__new__(Style)
-    else:
-
-        def empty_style():
-            ret = Style.__new__(Style)
-            ret.__dict__ = BaseElementCache.bstyle_dict
-            return ret
-
-    # Adds three styles
-    if not hasattr(Style, "add3"):
-
-        def add3_fcn(x, y, z):
-            return x + y + z
-
-        Style.add3 = add3_fcn  # type: ignore
     # raw dict update
     dict_update = Style.__bases__[0].update  # type: ignore
 
@@ -265,7 +258,7 @@ class BaseElementCache(BaseElement):
             # CSS style (from stylesheet)
             csssty = getattr(el.croot, "cssdict", dict()).get(el.get_id())
             # Attribute style (from attributes other than "style")
-            attsty = BaseElementCache.empty_style()
+            attsty = empty_style()
             BaseElementCache.dict_update(
                 attsty,
                 (
@@ -406,7 +399,7 @@ class BaseElementCache(BaseElement):
         if sv is None and hasattr(el, "_cpath"):
             delattr(el, "_cpath")  # invalidate
 
-    BaseElement.cpath = property(get_path2, set_cpath_fcn)
+    cpath = property(get_path2, set_cpath_fcn)
     cpath_support = (
         inkex.Rectangle,
         inkex.Ellipse,
@@ -541,7 +534,7 @@ class BaseElementCache(BaseElement):
     # base functionality
 
     # Deletion
-    inkexdelete = inkex.BaseElement.delete
+    BE_delete = inkex.BaseElement.delete
 
     def delete(el, deleteup=False):
         svg = el.croot
@@ -560,21 +553,21 @@ class BaseElementCache(BaseElement):
         if deleteup:
             # If set, remove empty ancestor groups
             myp = el.getparent()
-            BaseElementCache.inkexdelete(el)
+            BaseElementCache.BE_delete(el)
             if myp is not None and not len(myp):
                 BaseElementCache.delete(myp, True)
         else:
-            BaseElementCache.inkexdelete(el)
+            BaseElementCache.BE_delete(el)
 
     # Insertion
-    # BEinsert = inkex.BaseElement.insert
-    BEinsert = lxml.etree.ElementBase.insert
+    # BE_insert = inkex.BaseElement.insert
+    BE_insert = lxml.etree.ElementBase.insert
 
     def insert(g, index, el):
         oldroot = el.croot
         newroot = g.croot
 
-        BaseElementCache.BEinsert(g, index, el)
+        BaseElementCache.BE_insert(g, index, el)
         el.ccascaded_style = None
         el.cspecified_style = None
         el.ccomposed_transform = None
@@ -601,14 +594,14 @@ class BaseElementCache(BaseElement):
                 el.append(k)  # update children
 
     # Appending
-    # BEappend = inkex.BaseElement.append
-    BEappend = lxml.etree.ElementBase.append
+    # BE_append = inkex.BaseElement.append
+    BE_append = lxml.etree.ElementBase.append
 
     def append(g, el):
         oldroot = el.croot
         newroot = g.croot
 
-        BaseElementCache.BEappend(g, el)
+        BaseElementCache.BE_append(g, el)
         el.ccascaded_style = None
         el.cspecified_style = None
         el.ccomposed_transform = None
@@ -635,14 +628,14 @@ class BaseElementCache(BaseElement):
                 el.append(k)  # update children
 
     # addnext
-    # BEaddnext = inkex.BaseElement.addnext
-    BEaddnext = lxml.etree.ElementBase.addnext
+    # BE_addnext = inkex.BaseElement.addnext
+    BE_addnext = lxml.etree.ElementBase.addnext
 
     def addnext(g, el):
         oldroot = el.croot
         newroot = g.croot
 
-        BaseElementCache.BEaddnext(g, el)
+        BaseElementCache.BE_addnext(g, el)
         el.ccascaded_style = None
         el.cspecified_style = None
         el.ccomposed_transform = None
@@ -846,7 +839,6 @@ class BaseElementCache(BaseElement):
             delattr(el, "_cbbox")
 
     cbbox = property(bounding_box2, set_cbbox)
-    # inkex.SvgDocumentElement.cbbox = property(bounding_box2, set_cbbox)
 
     bb2_support = (
         inkex.TextElement,
@@ -1329,39 +1321,26 @@ class StyleCache(Style):
     get_link = get_link_fcn
 
     def __hash__(self):
-        # type: (inkex.Style) -> int
+        # type: (dict) -> int
         return hash(tuple(self.items()))
 
+    # Adds three styles
+    def add3_fcn(x, y, z):
+        return x + y + z
 
-import inspect
+    add3 = add3_fcn if not hasattr(Style, "add3") else Style.add3
 
 
 def add_cache(base, derived):
-    base_m = {
-        name: m
-        for name, m in inspect.getmembers(
-            base,
-            predicate=lambda x: isinstance(x, property)
-            or inspect.isfunction(x)
-            or inspect.isdatadescriptor(x),
-        )
-    }
-    derived_m = {
-        name: m
-        for name, m in inspect.getmembers(
-            derived,
-            predicate=lambda x: isinstance(x, property)
-            or inspect.isfunction(x)
-            or inspect.isdatadescriptor(x),
-        )
-    }
-    unique_m = {
-        name: derived_m[name]
-        for name, m in derived_m.items()
-        if m not in base_m.values()
-    }
-    for name, m in unique_m.items():
-        setattr(base, name, m)
+    predfn = (
+        lambda x: isinstance(x, property)
+        or inspect.isfunction(x)
+        or inspect.isdatadescriptor(x)
+    )
+    base_m = {name: m for name, m in inspect.getmembers(base, predicate=predfn)}
+    for name, m in inspect.getmembers(derived, predicate=predfn):
+        if m not in base_m.values():
+            setattr(base, name, m)
 
 
 add_cache(BaseElement, BaseElementCache)
