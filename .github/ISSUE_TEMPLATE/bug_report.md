@@ -8,7 +8,7 @@ assignees: ''
 ---
 
 **Describe the bug**
-A clear and concise description of what the bug is.
+A clear and concise description of what the bug is. Before raising the issue, please try out the version of Scientific Inkscape on the [dev branch](https://github.com/burghoff/Scientific-Inkscape/tree/dev) to see if the issue was already fixed in pre-release.
 
 **To Reproduce**
 Steps to reproduce the behavior:
@@ -24,7 +24,7 @@ Please attach the SVG that caused the issue. If the issue is Autoexporter-relate
 If any messages were reported by Python, copy them here.
 
 **Screenshots**
-If applicable, add screenshots to help explain your problem. (Screenshots are not suitable replacements for SVGs.)
+If applicable, add screenshots to help explain your problem. (Screenshots are *not* suitable replacements for SVGs.)
 
 ** Inkscape version:**
  - Can be found from About Inkscape and clicking the bug icon, then pasting the result here
