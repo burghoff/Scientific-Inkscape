@@ -61,6 +61,7 @@ def Find_Plot_Area(els, gbbs):
     hl = dict()  # horizontal lines
     boxes = dict()
     solids = dict()
+    plotareas = dict()
     for el in list(reversed(els)):
         isrect = False
         if isinstance(el, (PathElement, Rectangle, Line, Polyline)):
@@ -87,6 +88,10 @@ def Find_Plot_Area(els, gbbs):
                 solids[el.get_id()] = gbb
             elif hasstroke:  # framed rectangle
                 boxes[el.get_id()] = gbb
+                
+        if el.get("inkscape-scientific-scaletype")=="plot_area":
+            plotareas[el.get_id()] = gbb
+            
 
     vels = dict()
     hels = dict()
@@ -95,6 +100,9 @@ def Find_Plot_Area(els, gbbs):
     for k, gbb in hl.items():
         hels[k] = gbb[2]
     for k, gbb in boxes.items():
+        hels[k] = gbb[2]
+        vels[k] = gbb[3]
+    for k, gbb in plotareas.items():
         hels[k] = gbb[2]
         vels[k] = gbb[3]
 
@@ -247,7 +255,8 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                 1: "scale_free",
                 2: "aspect_locked",
                 3: "normal",
-                4: None,
+                4: "plot_area",
+                5: None,
             }[self.options.marksf]
             for el in sel:
                 el.set("inkscape-scientific-scaletype", self.options.marksf)
@@ -303,7 +312,7 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                         + numgroup
                         + " selected plot (group ID "
                         + sel[i0].get_id()
-                        + ").\n\nDraw a box with a stroke to define the plot area."
+                        + ").\n\nDraw a box with a stroke to define the plot area or mark objects as plot area-determining in the Advanced tab."
                         + "\nScaling will still be performed, but the results may not be ideal."
                     )
             else:
@@ -423,7 +432,7 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                             + "first selected object (ID "
                             + firstsel.get_id()
                             + ").\n\nIts bounding box will be matched instead. If this is not ideal,"
-                            + " draw an outlined box to define the plot area.\n"
+                            + " draw an outlined box to define the plot area or mark objects as plot area-determining in the Advanced tab.\n"
                         )
                         bbmatch = bbox(gbbs[firstsel.get_id()])
                     else:

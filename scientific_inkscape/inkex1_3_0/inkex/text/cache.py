@@ -1321,8 +1321,7 @@ class StyleCache(Style):
     get_link = get_link_fcn
 
     def __hash__(self):
-        # type: (dict) -> int
-        return hash(tuple(self.items()))
+        return hash(tuple(self.items()))  # type: ignore
 
     # Adds three styles
     def add3_fcn(x, y, z):

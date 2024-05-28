@@ -145,10 +145,7 @@ lt = dict(inkex.elements._parser.NodeBasedLookup.lookup_table)
 shapetags = set()
 for k, v in lt.items():
     for v2 in v:
-        if isinstance(k, tuple):  # v1.0-1.3
-            v2.ctag = inkex.addNS(k[1], k[0])
-        else:  # v1.4+
-            v2.ctag = k
+        v2.ctag = inkex.addNS(k[1], k[0]) if isinstance(k, tuple) else k
         if issubclass(v2, inkex.ShapeElement):
             shapetags.add(v2.ctag)
 tags = lambda x: set([v.ctag for v in x])  # converts class tuple to set of tags

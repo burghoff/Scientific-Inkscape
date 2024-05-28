@@ -3,24 +3,35 @@
     <name>Scale plots</name>
     <id>burghoff.scaleplots</id>
     <param name="tab" type="notebook">
-        
-        <page name="scaling" gui-text="Scaling mode">
-            <label>Scale the lines and data of a plot without affecting text and groups.
-            Select the plot and run the Flattener with the recommended options, then run Scale Plots.</label>
-            <spacer/><label>To scale multiple plots at once, group each flattened plot's elements and select the groups.</label>
+    
+        <page name="correction" gui-text="Correction mode">
+            <label>Scale the lines and data of a plot without affecting text and groups.</label>
+            <label>This mode corrects the text and lines of plots that have already been manually scaled. To use, Flatten each plot and</label>
+            <label>1. Group each plot you wish to scale.</label>
+            <label>2. Manually scale the plot to its desired size. </label>
+            <label>3. Select each manually scaled plot and run in this mode.</label>
             
-            <param name="hscale" type="float" precision="0" min="1" max="9999" gui-text="Horizontal scaling (%)">100</param>
-            <param name="vscale" type="float" precision="0" min="1" max="9999" gui-text="Vertical scaling (%)">100</param>
-            <spacer/><param name="wholeplot1" type="bool" gui-text="Selection has no well-defined plot area"
+            <param name="figuremode" type="optiongroup" appearance="combo"
+                    gui-text="Maintain size of">
+                       <option value="1">Plot area (axis)</option>
+                       <option value="2">Bounding box (figure)</option>
+                    </param>
+            
+            <label appearance="header">Note</label>
+            <label>It is important that you scale the plot after grouping it, because the extension infers the scale from the group's properties. In addition, when scaling the default scale options should be selected, as shown below:</label>
+            <image>pngs/scale_options.png</image>
+            <label>Otherwise, the final stroke widths may change.</label>
+            <spacer/><param name="wholeplot3" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
             <spacer/>
             <label>Scientific Inkscape v1.3.2</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>David Burghoff, University of Texas at Austin</label>
-        </page> 
+        </page>
         
         <page name="matching" gui-text="Matching mode">
-            <label>Selections will be matched to the size of the first selected object.
+            <label>Scale the lines and data of a plot without affecting text and groups.</label>
+            <label>This mode matches selections to the size of the first selected object.
             Can be used to arrange subfigures using a template. (To match multiple plots at once, group each plot separately.)
             </label>
             <param name="hmatch" type="bool" gui-text="Match width?">true</param>
@@ -47,29 +58,24 @@
             <label>David Burghoff, University of Texas at Austin</label>
         </page>
         
-        <page name="correction" gui-text="Correction mode">
-            <label>Corrects the text and lines of plots that have already been manually scaled. To use, Flatten each plot as usual and</label>
-            <label>1. Group each plot you wish to scale.</label>
-            <label>2. Manually scale the plot to its desired size. </label>
-            <label>3. Select each manually scaled plot and run in this mode.</label>
+        <page name="scaling" gui-text="Fixed mode">
+            <label>Scale the lines and data of a plot without affecting text and groups.
+            Select the plot and run the Flattener with the recommended options, then run Scale Plots.</label>
+            <spacer/><label>To scale multiple plots at once, group each flattened plot's elements and select the groups.</label>
             
-            <param name="figuremode" type="optiongroup" appearance="combo"
-                    gui-text="Maintain size of">
-                       <option value="1">Plot area (axis)</option>
-                       <option value="2">Bounding box (figure)</option>
-                    </param>
-            
-            <label appearance="header">Note</label>
-            <label>It is important that you scale the plot after grouping it, because the extension infers the scale from the group's properties. In addition, when scaling the default scale options should be selected, as shown below:</label>
-            <image>pngs/scale_options.png</image>
-            <label>Otherwise, the final stroke widths may change.</label>
-            <spacer/><param name="wholeplot3" type="bool" gui-text="Selection has no well-defined plot area"
+            <param name="hscale" type="float" precision="0" min="1" max="9999" gui-text="Horizontal scaling (%)">100</param>
+            <param name="vscale" type="float" precision="0" min="1" max="9999" gui-text="Vertical scaling (%)">100</param>
+            <spacer/><param name="wholeplot1" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
             <spacer/>
             <label>Scientific Inkscape v1.3.2</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>David Burghoff, University of Texas at Austin</label>
-        </page>
+        </page> 
+        
+        
+        
+
         
         <page name="options" gui-text="Advanced">
             <label appearance="header">How to drag</label>
@@ -91,15 +97,18 @@
             <param name="tickcorrect" type="bool" gui-text="Auto tick correct?">true</param>
             <param name="tickthreshold" type="float" precision="0" min="0" max="100" gui-text="Tick threshold (% plot area)">10</param>
             
-            <label appearance="header">Exclusions</label>            
-            <label>By default, text and groups are excluded from scaling. To mark other objects to be excluded (such as plot markers), select them and run the extension with this tab selected.</label>
+            <label appearance="header">Markings</label>         
+            <label>Running with this tab selected adds hidden markings to objects.</label>
+            <label>Scaling: Changes whether objects are scaled. By default, text and groups are unscaled.</label>
+            <label>Plot area: Allows objects to be used in the determination of the plot area.</label>
             <param name="marksf" type="optiongroup" appearance="combo"
-                    gui-text="Selected objects should be" 
-                    gui-description="Unscaled: Will not be scaled at all &#13;Scaled with locked aspect ratio: Will be scaled without affecting aspect ratio &#13;Scaled: Will be scaled, even if a text or group &#13;Remove markings: Restore default settings">
+                    gui-text="Mark selection as" 
+                    gui-description="Unscaled: Will not be scaled at all &#13;Scaled with locked aspect ratio: Will be scaled without affecting aspect ratio &#13;Scaled: Will be scaled, even if a text or group &#13;Plot area-determining: Allows objects to determine plot area &#13;Remove markings: Restore default settings">
                        <option value="1">Unscaled</option>
                        <option value="2">Scaled with locked aspect ratio</option>
                        <option value="3">Scaled</option>
-                       <option value="4">Remove markings</option>
+                       <option value="4">Plot area-determining</option>
+                       <option value="5">Remove markings</option>
                     </param>
             <spacer/>
             <label>Scientific Inkscape v1.3.2</label>
