@@ -5,12 +5,14 @@
     <param name="tab" type="notebook">
     
         <page name="correction" gui-text="Correction mode">
-            <label>Scale the lines and data of a plot without affecting text and groups.</label>
-            <label>This mode corrects the text and lines of plots that have already been manually scaled. To use, Flatten each plot and</label>
-            <label>1. Group each plot you wish to scale.</label>
-            <label>2. Manually scale the plot to its desired size. </label>
-            <label>3. Select each manually scaled plot and run in this mode.</label>
+            <label>Scale the lines and data of a plot without affecting text, ticks, and groups.</label>
+            <label>Correction mode corrects plots that have already been manually scaled.</label>
+            <label>1. Flatten each plot and group its objects together.</label>
+            <label>2. Manually scale grouped plots to their desired size.</label>
+            <label>3. Select manually-scaled plots and click Apply.</label>
+            <label>Text, ticks, and groups are now restored to their original state. Note that multiple plots can be corrected at once.</label>
             
+            <spacer/>
             <param name="figuremode" type="optiongroup" appearance="combo"
                     gui-text="Maintain size of">
                        <option value="1">Plot area (axis)</option>
@@ -30,10 +32,13 @@
         </page>
         
         <page name="matching" gui-text="Matching mode">
-            <label>Scale the lines and data of a plot without affecting text and groups.</label>
-            <label>This mode matches selections to the size of the first selected object.
-            Can be used to arrange subfigures using a template. (To match multiple plots at once, group each plot separately.)
-            </label>
+            <label>Scale the lines and data of a plot without affecting text, ticks, and groups.</label>
+            <label>Matching mode matches plots to the size of the first selected plot, which is useful for subfigure generation.</label>
+            <label>1. Flatten each plot and group its objects together.</label>
+            <label>2. Select two or more grouped plots and click Apply.</label>
+            <label>Every selected plot will inherit the size of the first selected plot.</label>
+            
+            <spacer/>
             <param name="hmatch" type="bool" gui-text="Match width?">true</param>
             <param name="vmatch" type="bool" gui-text="Match height?">true</param>
                     
@@ -59,10 +64,13 @@
         </page>
         
         <page name="scaling" gui-text="Fixed mode">
-            <label>Scale the lines and data of a plot without affecting text and groups.
-            Select the plot and run the Flattener with the recommended options, then run Scale Plots.</label>
-            <spacer/><label>To scale multiple plots at once, group each flattened plot's elements and select the groups.</label>
+            <label>Scale the lines and data of a plot without affecting text, ticks, and groups.</label>
+            <label>Fixed mode applies a numerical scale factor to a plot.</label>
+            <label>1. Flatten each plot and group its objects together.</label>
+            <label>2. Select grouped plots and click Apply.</label>
+            <label>Every selected plot will be scaled according to the values set here.</label>
             
+            <spacer/>
             <param name="hscale" type="float" precision="0" min="1" max="9999" gui-text="Horizontal scaling (%)">100</param>
             <param name="vscale" type="float" precision="0" min="1" max="9999" gui-text="Vertical scaling (%)">100</param>
             <spacer/><param name="wholeplot1" type="bool" gui-text="Selection has no well-defined plot area"
@@ -77,21 +85,7 @@
         
 
         
-        <page name="options" gui-text="Advanced">
-            <label appearance="header">How to drag</label>
-            <param name="hdrag" type="optiongroup" appearance="combo"
-                    gui-text="Drag from">
-                       <option value="1">Right</option>
-                       <option value="2">Left</option>
-                       <option value="3">Center</option>
-                    </param>
-            <param name="vdrag" type="optiongroup" appearance="combo"
-                    gui-text="Drag from">
-                       <option value="1">Bottom</option>
-                       <option value="2">Top</option>
-                       <option value="3">Center</option>
-                    </param>
-                    
+        <page name="options" gui-text="Advanced">                
             <label appearance="header">Tick correction</label>
             <label>If tick correction is enabled, any horizontal or vertical lines smaller than the threshold will be corrected for size and position.</label>
             <param name="tickcorrect" type="bool" gui-text="Auto tick correct?">true</param>
@@ -99,16 +93,16 @@
             
             <label appearance="header">Markings</label>         
             <label>Running with this tab selected adds hidden markings to objects.</label>
-            <label>Scaling: Changes whether objects are scaled. By default, text and groups are unscaled.</label>
-            <label>Plot area: Allows objects to be used in the determination of the plot area.</label>
+            <label>Scale markings: Text and groups are unscaled by default, but other objects can be left unscaled or scaled with a fixed aspect ratio (useful for markers).</label>
+            <label>Plot area markings: Allows objects to be used in the determination of the plot area.</label>
             <param name="marksf" type="optiongroup" appearance="combo"
                     gui-text="Mark selection as" 
-                    gui-description="Unscaled: Will not be scaled at all &#13;Scaled with locked aspect ratio: Will be scaled without affecting aspect ratio &#13;Scaled: Will be scaled, even if a text or group &#13;Plot area-determining: Allows objects to determine plot area &#13;Remove markings: Restore default settings">
+                    gui-description="Unscaled: Will not be scaled at all &#13;Scaled with locked aspect ratio: Will be scaled without affecting aspect ratio &#13;Scaled: Will be scaled, even if a text or group &#13;Plot area-determining: Allows objects to determine plot area &#13;(Clear markings): Restore default settings">
                        <option value="1">Unscaled</option>
                        <option value="2">Scaled with locked aspect ratio</option>
                        <option value="3">Scaled</option>
                        <option value="4">Plot area-determining</option>
-                       <option value="5">Remove markings</option>
+                       <option value="5">(Clear markings)</option>
                     </param>
             <spacer/>
             <label>Scientific Inkscape v1.3.2</label>

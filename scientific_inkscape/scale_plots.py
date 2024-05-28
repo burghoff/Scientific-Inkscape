@@ -18,6 +18,10 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
+# Old Drag from options
+DRAG_FROM_HORIZONTAL = 'center'  # 'center', 'left', or 'right'
+DRAG_FROM_VERTICAL = 'center'    # 'center', 'top' , or 'bottom'
+
 import dhelpers as dh
 import inkex
 from inkex import (
@@ -145,8 +149,6 @@ class ScalePlots(inkex.EffectExtension):
             "--hscale", type=float, default=100, help="Horizontal scaling"
         )
         pars.add_argument("--vscale", type=float, default=100, help="Vertical scaling")
-        pars.add_argument("--hdrag", type=int, default=1, help="Horizontal scaling")
-        pars.add_argument("--vdrag", type=int, default=1, help="Vertical scaling")
 
         pars.add_argument(
             "--hmatch",
@@ -456,15 +458,15 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
 
             # Compute global transformation
             if self.options.tab != "correction":
-                if self.options.hdrag == 1:  # right
+                if DRAG_FROM_HORIZONTAL == 'right':  # right
                     refx = bba.g.x1
-                elif self.options.hdrag == 2:  # left
+                elif DRAG_FROM_HORIZONTAL == 'left':  # left
                     refx = bba.g.x2
                 else:  # center
                     refx = (bba.g.x1 + bba.g.x2) / 2
-                if self.options.vdrag == 1:  # bottom
+                if DRAG_FROM_HORIZONTAL == 'bottom':  # bottom
                     refy = bba.g.y1
-                elif self.options.vdrag == 2:  # top
+                elif DRAG_FROM_HORIZONTAL == 'top':  # top
                     refy = bba.g.y2
                 else:  # center
                     refy = (bba.g.y1 + bba.g.y2) / 2
