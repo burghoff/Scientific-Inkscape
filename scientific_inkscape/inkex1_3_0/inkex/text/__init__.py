@@ -66,54 +66,21 @@ except ModuleNotFoundError:
 import inkex.text.cache
 
 
-# Add parsed_text property to text, which is used to get the properties of text
-def get_parsed_text(el):
-    from inkex.text.parser import ParsedText  # import only if needed
-
-    if not (hasattr(el, "_parsed_text")):
-        el._parsed_text = ParsedText(el, el.croot.char_table)
-    return el._parsed_text
+import inspect
 
 
-def set_parsed_text(el, sv):
-    if hasattr(el, "_parsed_text") and sv is None:
-        delattr(el, "_parsed_text")
+def add_cache(base, derived):
+    predfn = (
+        lambda x: isinstance(x, property)
+        or inspect.isfunction(x)
+        or inspect.isdatadescriptor(x)
+    )
+    base_m = {name: m for name, m in inspect.getmembers(base, predicate=predfn)}
+    for name, m in inspect.getmembers(derived, predicate=predfn):
+        if m not in base_m.values():
+            setattr(base, name, m)
 
 
-inkex.TextElement.parsed_text = property(get_parsed_text, set_parsed_text)
-inkex.FlowRoot.parsed_text = property(get_parsed_text, set_parsed_text)
-
-# Add char_table property to SVGs, which are used to collect all of the
-# properties of fonts in the document. Alternatively, calling make_char_table
-# on a subset of elements will cause only those elements to be included.
-ttags = {inkex.TextElement.ctag, inkex.FlowRoot.ctag}
-
-
-def make_char_table_fcn(svg, els=None):
-    # Can be called with els argument to examine list of elements only
-    # (otherwise use entire SVG)
-    if els is None:
-        tels = [d for d in svg.iddict.ds if d.tag in ttags]
-    else:
-        tels = [d for d in els if d.tag in ttags]
-    if not (hasattr(svg, "_char_table")) or any(
-        [t not in svg._char_table.els for t in tels]
-    ):
-        from inkex.text.parser import Character_Table  # import if needed
-
-        svg._char_table = Character_Table(tels)
-
-
-def get_char_table(svg):
-    if not (hasattr(svg, "_char_table")):
-        svg.make_char_table()
-    return svg._char_table
-
-
-def set_char_table(svg, sv):
-    if sv is None and hasattr(svg, "_char_table"):
-        delattr(svg, "_char_table")
-
-
-inkex.SvgDocumentElement.make_char_table = make_char_table_fcn
-inkex.SvgDocumentElement.char_table = property(get_char_table, set_char_table)
+add_cache(inkex.BaseElement, inkex.text.cache.BaseElementCache)
+add_cache(inkex.SvgDocumentElement, inkex.text.cache.SvgDocumentElementCache)
+add_cache(inkex.Style, inkex.text.cache.StyleCache)
