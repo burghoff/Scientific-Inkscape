@@ -452,19 +452,19 @@ class AutoExporter(inkex.EffectExtension):
 
             os.remove(nf)
 
-    def export_all(self, bfn, fin, outtemplate, exp_fmts, input_options):
+    def export_all(self, bfn, fin, outtemplate, exp_fmts, opts):
         # Make a temp directory
         # import tempfile
         # tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
         tempdir = dh.si_tmp(dirbase="ae")
-        if input_options.debug:
-            if input_options.prints:
-                input_options.prints("\n    " + joinmod(tempdir, ""))
-        if hasattr(input_options, "aeThread"):
-            input_options.aeThread.tempdir = tempdir
+        if opts.debug:
+            if opts.prints:
+                opts.prints("\n    " + joinmod(tempdir, ""))
+        if hasattr(opts, "aeThread"):
+            opts.aeThread.tempdir = tempdir
 
         tempbase = joinmod(tempdir, "t")
-        input_options.input_file = fin
+        opts.input_file = fin
 
         # Make sure output directory exists
         outdir = os.path.dirname(outtemplate)
@@ -472,10 +472,10 @@ class AutoExporter(inkex.EffectExtension):
             os.makedirs(outdir)
 
         # Add a document margin
-        if input_options.margin != 0:
+        if opts.margin != 0:
             svg = get_svg(fin)
             tmp = tempbase + "_marg.svg"
-            self.Add_Margin(svg, input_options.margin, input_options.testmode)
+            self.Add_Margin(svg, opts.margin, opts.testmode)
             dh.overwrite_svg(svg, tmp)
             import copy
 
@@ -484,13 +484,13 @@ class AutoExporter(inkex.EffectExtension):
         # Do png before any preprocessing
         if "png" in exp_fmts:
             finished, myo = AutoExporter().export_file(
-                bfn, fin, outtemplate, "png", None, input_options, tempbase
+                bfn, fin, outtemplate, "png", None, opts, tempbase
             )
 
         # Do preprocessing
         if any([fmt in exp_fmts for fmt in ["pdf", "emf", "eps", "psvg"]]):
             ppoutput = self.preprocessing(
-                bfn, fin, outtemplate, input_options, tempbase
+                bfn, fin, outtemplate, opts, tempbase
             )
         else:
             ppoutput = None
@@ -500,7 +500,7 @@ class AutoExporter(inkex.EffectExtension):
         for fmt in exp_fmts:
             if fmt != "png":
                 finished, myo = AutoExporter().export_file(
-                    bfn, fin, outtemplate, fmt, ppoutput, input_options, tempbase
+                    bfn, fin, outtemplate, fmt, ppoutput, opts, tempbase
                 )
             if finished:
                 newfiles.append(myo)
@@ -508,16 +508,7 @@ class AutoExporter(inkex.EffectExtension):
 
         # Remove temporary outputs and directory
         failed_to_delete = None
-        if not (input_options.debug):
-            # # for t in list(set(tempoutputs)):
-            # #     os.remove(t)
-            # for t in list(set(os.listdir(tempdir))):
-            #     os.remove(joinmod(tempdir,t))
-            # if tempdir is not None:
-            #     try:
-            #         os.rmdir(tempdir)
-            #     except PermissionError:
-            #         failed_to_delete = tempdir
+        if not (opts.debug):
             Delete_Dir(tempdir)
         else:
             import warnings
@@ -529,18 +520,18 @@ class AutoExporter(inkex.EffectExtension):
         return failed_to_delete
 
     # Modifications that are done prior to conversion to any vector output
-    def preprocessing(self, bfn, fin, fout, input_options, tempbase):
+    def preprocessing(self, bfn, fin, fout, opts, tempbase):
         import os, time, copy
         import image_helpers as ih
 
-        if input_options.prints:
-            fname = os.path.split(input_options.input_file)[1]
+        if opts.prints:
+            fname = os.path.split(opts.input_file)[1]
             try:
                 offset = round(os.get_terminal_size().columns / 2)
             except:
                 offset = 40
             fname = fname + " " * max(0, offset - len(fname))
-            input_options.prints(fname + ": Preprocessing vector output", flush=True)
+            opts.prints(fname + ": Preprocessing vector output", flush=True)
             timestart = time.time()
 
         tempdir = os.path.split(tempbase)[0]
@@ -573,8 +564,8 @@ class AutoExporter(inkex.EffectExtension):
 
         # Embed linked images into the SVG. This should be done prior to clone unlinking
         # since some images may be cloned
-        if input_options.exportnow:
-            lls = input_options.linked_locations
+        if opts.exportnow:
+            lls = opts.linked_locations
         else:
             lls = ih.get_linked_locations_file(cfile, svg)
         for k in lls:
@@ -630,7 +621,7 @@ class AutoExporter(inkex.EffectExtension):
             # Fix marker export bug for PDFs
             ms = self.Marker_Fix(el)
             # Convert markers to path for Office
-            if len(ms) > 0 and input_options.usepsvg:
+            if len(ms) > 0 and opts.usepsvg:
                 stps.append(elid)
 
             # Fix opacity bug for Office PDF saving
@@ -686,22 +677,21 @@ class AutoExporter(inkex.EffectExtension):
                         
 
         # Fix Avenir/Whitney
-        tels = [el for el in vds if isinstance(el, (inkex.TextElement, inkex.FlowRoot))]
+        tetag = inkex.TextElement.ctag
+        frtag = inkex.FlowRoot.ctag
+        tels = [el for el in vds if el.tag in {tetag,frtag}]
         from inkex.text import parser
 
         parser.Character_Fixer2(tels)
 
-        # if not(input_options.reduce_images):
-        #     input_options.dpi_im = input_options.dpi
-
         # Strip all sodipodi:role lines from document
         # Conversion to plain SVG does this automatically but poorly
         excludetxtids = []
-        input_options.duplicatelabels = dict()
-        if input_options.usepsvg:
+        opts.duplicatelabels = dict()
+        if opts.usepsvg:
             if len(tels) > 0:
                 svg.make_char_table()
-                input_options.ctable = svg.char_table
+                opts.ctable = svg.char_table
                 # store for later
 
             nels = []
@@ -718,7 +708,7 @@ class AutoExporter(inkex.EffectExtension):
                 self.SubSuper_Fix(el)
 
                 # Preserve duplicate of text to be converted to paths
-                if input_options.texttopath and el.get("display") != "none":
+                if opts.texttopath and el.get("display") != "none":
                     d = el.duplicate()
                     excludetxtids.append(d.get_id())
                     g = dh.group([d])
@@ -730,7 +720,7 @@ class AutoExporter(inkex.EffectExtension):
                     te.text = "{0}: {1}".format(dup_key, el.get_id())
                     te.set("display", "none")
                     excludetxtids.append(te.get_id())
-                    input_options.duplicatelabels[te.get_id()] = el.get_id()
+                    opts.duplicatelabels[te.get_id()] = el.get_id()
 
                     # Make sure nested tspans have fill specified (STP bug)
                     for d in el.descendants2()[1:]:
@@ -743,14 +733,12 @@ class AutoExporter(inkex.EffectExtension):
         tmp = tempbase + "_mod.svg"
         dh.overwrite_svg(svg, tmp)
         cfile = tmp
-        input_options.excludetxtids = excludetxtids
+        opts.excludetxtids = excludetxtids
 
         do_rasterizations = len(raster_ids + image_ids) > 0
         do_stroketopaths = (
-            input_options.texttopath or input_options.stroketopath or len(stps) > 0
+            opts.texttopath or opts.stroketopath or len(stps) > 0
         )
-
-        do_rasterizations = do_rasterizations and not input_options.testmode
 
         allacts = []
         if do_stroketopaths:
@@ -759,12 +747,9 @@ class AutoExporter(inkex.EffectExtension):
 
             updatefile = False
             tels = []
-            if input_options.texttopath:
+            if opts.texttopath:
                 for el in vd:
-                    if (
-                        isinstance(el, (inkex.TextElement))
-                        and el.get_id() not in excludetxtids
-                    ):
+                    if el.tag==tetag and el.get_id() not in excludetxtids:
                         tels.append(el.get_id())
                         for d in el.descendants2():
                             # Fuse fill and stroke to account for STP bugs
@@ -775,15 +760,15 @@ class AutoExporter(inkex.EffectExtension):
                                 d.cstyle["stroke"] = d.cspecified_style["stroke"]
                                 updatefile = True
 
-            pels = []
-            if input_options.stroketopath or len(stps) > 0:
+            pels, dgroups = [], []
+            if opts.stroketopath or len(stps) > 0:
                 # Stroke to Path has a number of bugs, try to fix them
-                if input_options.stroketopath:
+                if opts.stroketopath:
                     stpels = vd
                 elif len(stps) > 0:
                     stpels = [el for el in vd if el.get_id() in stps]
                 stpels = [el for el in stpels if el.get_id() not in raster_ids]
-                pels = self.Stroke_to_Path_Fixes(stpels)
+                pels, dgroups = self.Stroke_to_Path_Fixes(stpels)
                 updatefile = True
 
             if updatefile:
@@ -793,7 +778,7 @@ class AutoExporter(inkex.EffectExtension):
             tmpstp = tempbase + "_stp.svg"
 
             if (
-                (input_options.stroketopath or len(stps) > 0)
+                (opts.stroketopath or len(stps) > 0)
                 and inkex.installed_ivp[0] >= 1
                 and inkex.installed_ivp[1] > 0
             ):
@@ -801,13 +786,11 @@ class AutoExporter(inkex.EffectExtension):
             else:
                 act = "object-to-path"
 
-            if not (input_options.testmode):
-                # Skip STP actions in testmode
-                allacts += [
-                    "select:{0}; {1}; export-filename:{2}; export-do;".format(
-                        celsj, act, tmpstp
-                    )
-                ]
+            allacts += [
+                "select:{0}; {1}; export-filename:{2}; export-do;".format(
+                    celsj, act, tmpstp
+                )
+            ]
 
         # Rasterizations
         if do_rasterizations:
@@ -824,12 +807,7 @@ class AutoExporter(inkex.EffectExtension):
                     imgs_trnp.append(tmpimg)
                     tmpimg2 = temphead + "_imbg_" + elid + "." + imgtype
                     imgs_opqe.append(tmpimg2)
-
-                    # if elid in raster_ids:
-                    #     mydpi = input_options.dpi
-                    # else:
-                    #     mydpi = input_options.dpi_im
-                    mydpi = input_options.dpi
+                    mydpi = opts.dpi
 
                     # export item only
                     fmt1 = (
@@ -850,11 +828,13 @@ class AutoExporter(inkex.EffectExtension):
 
         # To reduce the number of binary calls, we collect the stroke-to-path and rasterization
         # actions into a single call that also gets the Bounding Boxes
-        if len(allacts) > 0:
-            # Windows cannot handle arguments that are too long. If this happens,
-            # split the actions in half and run on each
-
+        # Skip binary call during testing
+        if len(allacts) > 0 and not opts.testmode:
             def Split_Select(fn, inkbin, acts, selii, reserved):
+                '''
+                Windows cannot handle arguments that are too long. If this happens,
+                split the actions in half and run on each
+                '''
                 import math, shutil
 
                 act = acts[selii]
@@ -980,7 +960,7 @@ class AutoExporter(inkex.EffectExtension):
                 # return to original dir so no problems in calling function
             except FileNotFoundError:
                 pass  # occasionally directory no longer exists (deleted by tempfile?)
-            if do_stroketopaths and not (input_options.testmode):
+            if do_stroketopaths:
                 cfile = tmpstp
 
         if do_rasterizations:
@@ -1027,18 +1007,18 @@ class AutoExporter(inkex.EffectExtension):
         if do_stroketopaths:
             svg = get_svg(cfile)
             # Remove temporary groups
-            if input_options.stroketopath:
-                for elid in pels:
+            if opts.stroketopath:
+                for elid in dgroups:
                     el = svg.getElementById(elid)
                     if el is not None:
-                        dh.ungroup(el.getparent())
+                        dh.ungroup(el)
 
             tmp = tempbase + '_poststp.svg'
             dh.overwrite_svg(svg, tmp)
             cfile = tmp
 
-        if input_options.prints:
-            input_options.prints(
+        if opts.prints:
+            opts.prints(
                 fname
                 + ": Preprocessing done ("
                 + str(round(1000 * (time.time() - timestart)) / 1000)
@@ -1047,19 +1027,19 @@ class AutoExporter(inkex.EffectExtension):
         return cfile
 
     # Use the Inkscape binary to export the file
-    def export_file(self, bfn, fin, fout, fformat, ppoutput, input_options, tempbase):
+    def export_file(self, bfn, fin, fout, fformat, ppoutput, opts, tempbase):
         import os, time, copy
 
         # original_file = fin;
         myoutput = fout[0:-4] + "." + fformat
-        if input_options.prints:
-            fname = os.path.split(input_options.input_file)[1]
+        if opts.prints:
+            fname = os.path.split(opts.input_file)[1]
             try:
                 offset = round(os.get_terminal_size().columns / 2)
             except:
                 offset = 40
             fname = fname + " " * max(0, offset - len(fname))
-            input_options.prints(fname + ": Converting to " + fformat, flush=True)
+            opts.prints(fname + ": Converting to " + fformat, flush=True)
         timestart = time.time()
 
         if ppoutput is not None:
@@ -1072,7 +1052,7 @@ class AutoExporter(inkex.EffectExtension):
         ispsvg = fformat == "psvg"
         notpng = not (fformat == "png")
 
-        if input_options.thinline and notpng:
+        if opts.thinline and notpng:
             svg = get_svg(fin)
             if fformat in ["pdf", "eps", "psvg"]:
                 self.Thinline_Dehancement(svg, "bezier")
@@ -1095,12 +1075,12 @@ class AutoExporter(inkex.EffectExtension):
                 "--export-background-opacity",
                 "1.0",
                 "--export-dpi",
-                str(input_options.dpi),
+                str(opts.dpi),
                 "--export-filename",
                 fileout,
                 filein,
             ]
-            if fileout.endswith(".pdf") and input_options.latexpdf:
+            if fileout.endswith(".pdf") and opts.latexpdf:
                 if os.path.exists(fileout + "_tex"):
                     os.remove(fileout + "_tex")
                 args = args[0:5] + ["--export-latex"] + args[5:]
@@ -1112,33 +1092,33 @@ class AutoExporter(inkex.EffectExtension):
                     + ["--export-plain-svg"]
                     + args[5:]
                 )
-            subprocess_check(args, input_options)
+            subprocess_check(args, opts)
 
         def make_output(filein, fileout):
             if fileout.endswith(".svg"):
-                if not (input_options.testmode):
+                if not (opts.testmode):
                     overwrite_output(filein, fileout)
                 else:
                     import shutil
 
                     shutil.copy(filein, fileout)  # skip conversion
-                input_options.made_outputs = [fileout]
+                opts.made_outputs = [fileout]
 
                 osvg = get_svg(filein)
                 # original has pages
-                # if hasattr(input_options,'ctable'):
-                #     osvg._char_table = input_options.ctable
+                # if hasattr(opts,'ctable'):
+                #     osvg._char_table = opts.ctable
 
                 pgs = osvg.cdocsize.pgs
                 haspgs = osvg.cdocsize.inkscapehaspgs
-                if (haspgs or input_options.testmode) and len(pgs) > 0:
+                if (haspgs or opts.testmode) and len(pgs) > 0:
                     bbs = dh.BB2(type("DummyClass", (), {"svg": osvg}))
-                    dl = input_options.duplicatelabels
+                    dl = opts.duplicatelabels
                     outputs = []
                     pgiis = (
                         range(len(pgs))
-                        if not (input_options.testmode)
-                        else [input_options.testpage - 1]
+                        if not (opts.testmode)
+                        else [opts.testpage - 1]
                     )
                     for ii in pgiis:
                         # match the viewbox to each page and delete them
@@ -1148,7 +1128,7 @@ class AutoExporter(inkex.EffectExtension):
 
                         self.Change_Viewbox_To_Page(psvg, pgs[ii])
                         # Only need to delete other Pages in testmode since plain SVGs have none
-                        if input_options.testmode:
+                        if opts.testmode:
                             for jj in reversed(range(len(pgs2))):
                                 pgs2[jj].delete()
 
@@ -1172,25 +1152,25 @@ class AutoExporter(inkex.EffectExtension):
                         pname = str(ii + 1) if pname is None else pname
                         addendum = (
                             "_page_" + pname
-                            if not (input_options.testmode or len(pgs) == 1)
+                            if not (opts.testmode or len(pgs) == 1)
                             else ""
                         )
                         outparts = fileout.split(".")
                         pgout = ".".join(outparts[:-1]) + addendum + "." + outparts[-1]
                         dh.overwrite_svg(psvg, pgout)
                         outputs.append(pgout)
-                    input_options.made_outputs = outputs
+                    opts.made_outputs = outputs
             else:
                 svg = get_svg(filein)
                 pgs = svg.cdocsize.pgs
 
                 haspgs = svg.cdocsize.inkscapehaspgs
-                if (haspgs or input_options.testmode) and len(pgs) > 1:
+                if (haspgs or opts.testmode) and len(pgs) > 1:
                     outputs = []
                     pgiis = (
                         range(len(pgs))
-                        if not (input_options.testmode)
-                        else [input_options.testpage - 1]
+                        if not (opts.testmode)
+                        else [opts.testpage - 1]
                     )
                     for ii in pgiis:
                         # match the viewbox to each page and delete them
@@ -1203,7 +1183,7 @@ class AutoExporter(inkex.EffectExtension):
                         pname = pgs[ii].get('inkscape:label')
                         pname = str(ii + 1) if pname is None else pname
                         addendum = (
-                            "_page_" + pname if not (input_options.testmode) else ""
+                            "_page_" + pname if not (opts.testmode) else ""
                         )
                         svgpgfn = tempbase + addendum + ".svg"
                         dh.overwrite_svg(svgpg, svgpgfn)
@@ -1212,24 +1192,23 @@ class AutoExporter(inkex.EffectExtension):
                         pgout = ".".join(outparts[:-1]) + addendum + "." + outparts[-1]
                         overwrite_output(svgpgfn, pgout)
                         outputs.append(pgout)
-                    input_options.made_outputs = outputs
+                    opts.made_outputs = outputs
                 else:
                     overwrite_output(filein, fileout)
-                    input_options.made_outputs = [fileout]
-            # dh.idebug(fileout)
+                    opts.made_outputs = [fileout]
 
         if not (ispsvg):
             make_output(fin, myoutput)
-            finalnames = input_options.made_outputs
+            finalnames = opts.made_outputs
         else:
             tmp = tempbase + "_tmp_small.svg"
             make_output(fin, tmp)
 
-            moutputs = input_options.made_outputs
+            moutputs = opts.made_outputs
             finalnames = []
             for ii, mout in enumerate(moutputs):
                 svg = get_svg(mout)
-                self.postprocessing(svg, input_options)
+                self.postprocessing(svg, opts)
                 finalname = myoutput
                 if len(moutputs) > 1:
                     pnum, _ = os.path.splitext(mout.split("_page_")[-1])
@@ -1238,8 +1217,6 @@ class AutoExporter(inkex.EffectExtension):
                     )
                 dh.overwrite_svg(svg, finalname)
                 finalnames.append(finalname)
-
-        # dh.idebug((myoutput,finalnames))
 
         # Remove any previous outputs that we did not just make
         directory, file_name = os.path.split(myoutput)
@@ -1264,9 +1241,9 @@ class AutoExporter(inkex.EffectExtension):
                 except:
                     pass
 
-        if input_options.prints:
+        if opts.prints:
             toc = time.time() - timestart
-            input_options.prints(
+            opts.prints(
                 fname
                 + ": Conversion to "
                 + fformat
@@ -1276,7 +1253,7 @@ class AutoExporter(inkex.EffectExtension):
             )
         return True, myoutput
 
-    def postprocessing(self, svg, input_options):
+    def postprocessing(self, svg, opts):
         # Postprocessing of SVGs, mainly for overcoming bugs in Office products
         vds = dh.visible_descendants(svg)
         
@@ -1292,9 +1269,9 @@ class AutoExporter(inkex.EffectExtension):
         for d in vds:
             if (
                 isinstance(d, (TextElement))
-                and d.get_id() not in input_options.excludetxtids
+                and d.get_id() not in opts.excludetxtids
             ):
-                scaleto = 100 if not input_options.testmode else 10
+                scaleto = 100 if not opts.testmode else 10
                 # Make 10 px in test mode so that errors are not unnecessarily large
                 self.Scale_Text(d, scaleto)
             elif isinstance(d, (inkex.Image)):
@@ -1308,10 +1285,10 @@ class AutoExporter(inkex.EffectExtension):
                 if len(d) == 0:
                     d.delete(deleteup=True)
 
-        if input_options.thinline:
+        if opts.thinline:
             for d in vds:
                 self.Bezier_to_Split(d)
-        # dh.idebug(input_options.svgtopdf_vbs)
+        # dh.idebug(opts.svgtopdf_vbs)
         # embed_original = False
         # if embed_original:
         #     def main_contents(svg):
@@ -1332,7 +1309,7 @@ class AutoExporter(inkex.EffectExtension):
 
         #     # Conversion to PDF changes the viewbox to pixels. Convert back to the
         #     # original viewbox by applying a transform
-        #     ds = input_options.svgtopdf_dss[ii]
+        #     ds = opts.svgtopdf_dss[ii]
         #     tfmt = 'matrix({0},{1},{2},{3},{4},{5})';
         #     T =inkex.Transform(tfmt.format(ds.uuw,0,0,ds.uuh,
         #                                       -ds.effvb[0]*ds.uuw,
@@ -1353,7 +1330,7 @@ class AutoExporter(inkex.EffectExtension):
             te = inkex.TextElement()
             svg.append(te)
         te.text = orig_key + ": {0}, hash: {1}".format(
-            input_options.original_file, hash_file(input_options.original_file)
+            opts.original_file, hash_file(opts.original_file)
         )
         te.set("style", "display:none")
         dh.clean_up_document(svg)  # Clean up
@@ -1625,7 +1602,6 @@ class AutoExporter(inkex.EffectExtension):
                 parser.xyset(d, "dy", [v * s for v in dyv])
 
             fs, sf = dh.composed_width(d, "font-size")
-            # dh.Set_Style_Comp(d, 'font-size', "{:.3f}".format(fs/sf*s))
             d.cstyle["font-size"] = "{:.3f}".format(fs / sf * s)
 
             otherpx = [
@@ -1644,10 +1620,8 @@ class AutoExporter(inkex.EffectExtension):
                     othv = default_style_atts[oth]
                 if othv is not None:
                     if "," not in othv:
-                        # dh.Set_Style_Comp(d, oth, str(dh.ipx(othv)*s))
                         d.cstyle[oth] = str((dh.ipx(othv) or 0) * s)
                     else:
-                        # dh.Set_Style_Comp(d, oth, ','.join([str(dh.ipx(v)*s) for v in othv.split(',')]))
                         d.cstyle[oth] = ",".join(
                             [str((dh.ipx(v) or 0) * s) for v in othv.split(",")]
                         )
@@ -1657,7 +1631,6 @@ class AutoExporter(inkex.EffectExtension):
                 dup = shape.duplicate()
                 svg.cdefs.append(dup)
                 dup.ctransform = inkex.Transform((s, 0, 0, s, 0, 0)) @ dup.ctransform
-                # dh.Set_Style_Comp(d, 'shape-inside', dup.get_id(as_url=2))
                 d.cstyle["shape-inside"] = dup.get_id(as_url=2)
 
         el.ctransform = inkex.Transform((1 / s, 0, 0, 1 / s, 0, 0))
@@ -1783,14 +1756,6 @@ class AutoExporter(inkex.EffectExtension):
             el.set("height", str((imgbbox[3] - imgbbox[1]) * myh))
         dh.ungroup(g)
 
-    # def Get_Pages(self,svg):
-    #     try:
-    #         nvs = [el for el in list(svg) if isinstance(el,inkex.NamedView)]
-    #         pgs = [el for nv in nvs for el in list(nv) if isinstance(el,inkex.Page)]
-    #     except:
-    #         pgs = [];
-    #     return pgs
-
     def Add_Margin(self, svg, amt_mm, testmode):
         m = inkex.units.convert_unit(str(amt_mm) + "mm", "px")
         uuw, uuh = svg.cdocsize.uuw, svg.cdocsize.uuh
@@ -1799,29 +1764,6 @@ class AutoExporter(inkex.EffectExtension):
         haspgs = svg.cdocsize.inkscapehaspgs or testmode
         if haspgs and len(svg.cdocsize.pgs) > 0:
             # Has Pages
-            # pgvbs = []
-            # for pg in pgs:
-            #     pgbb = [dh.ipx(pg.get('x')),    dh.ipx(pg.get('y')),
-            #             dh.ipx(pg.get('width')),dh.ipx(pg.get('height'))]
-            #     pgbbpx = svg.cdocsize.uutopx(pgbb);
-            #     newbb  = svg.cdocsize.pxtouu([pgbbpx[0]-m,pgbbpx[1]-m,pgbbpx[2]+2*m,pgbbpx[3]+2*m])
-            #     pg.set('x',     str(newbb[0]))
-            #     pg.set('y',     str(newbb[1]))
-            #     pg.set('width', str(newbb[2]))
-            #     pg.set('height',str(newbb[3]))
-
-            # x = dh.ipx(pg.get('x'))*uuw
-            # y = dh.ipx(pg.get('y'))*uuh
-            # w = dh.ipx(pg.get('width'))*uuw
-            # h = dh.ipx(pg.get('height'))*uuh
-
-            # pg.set('x',str((x-m)/uuw))
-            # pg.set('y',str((y-m)/uuh))
-            # pg.set('width', str((w+2*m)/uuw))
-            # pg.set('height',str((h+2*m)/uuh))
-
-            # pgvbs.append([])
-
             for pg in svg.cdocsize.pgs:
                 newbbuu = svg.cdocsize.pxtouupgs(
                     [
@@ -1870,7 +1812,8 @@ class AutoExporter(inkex.EffectExtension):
         # 3. Starting markers can be flipped.
         # 4. Markers on groups cause crashes
         # 5. Markers are given the wrong size
-        grouped = []
+        dummy_groups = []
+        path_els = []
         if len(els) > 0:
             svg = els[0].croot
         for el in els:
@@ -1886,33 +1829,28 @@ class AutoExporter(inkex.EffectExtension):
                         sty["stroke"] = "none"
                         el.cstyle = sty
                     else:
-                        # Clip and mask issues solved by moving to a dummy group
-                        grouped.append(el.get_id())
-                        dh.group([el], moveTCM=True)
+                        # Clip and mask issues solved by moving to a dummy parent group
+                        gp = dh.group([el], moveTCM=True)
+                        # Do it again so we can add transform later without messing up clip
+                        g = dh.group([el], moveTCM=True)
+                        
+                        path_els.append(el.get_id())
+                        dummy_groups.extend([gp.get_id(),g.get_id()])
 
                         # Scale up certain paths
-                        # SCALEBY = 1000
-                        
-                        bb = el.bounding_box2(dotransform=False, includestroke=False, roughpath=False)
-                        maxsz = max(bb.w,bb.h)
-                        SCALEBY = 1000 / maxsz if maxsz>0 else 1000
-                        
-                        if len(ms)>0:
+                        if len(ms)==0:
+                            # SCALEBY = 1000
+                            bb = el.bounding_box2(dotransform=False, includestroke=False, roughpath=False)
+                            maxsz = max(bb.w,bb.h)
+                            SCALEBY = 1000 / maxsz if maxsz>0 else 1000
+                        else:
                             # For paths with markers, scale to make stroke-width=1
                             # Prevents incorrect marker size
                             # https://gitlab.com/inkscape/inbox/-/issues/10506#note_1931910230
-                            SCALEBY = 1/dh.ipx(sw) 
+                            SCALEBY = 1/dh.ipx(sw)
+                            
                         
-                        if (
-                            not (
-                                "stroke-dasharray" in sty
-                                and sty["stroke-dasharray"] != "none"
-                            )
-                            and "{http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd}type"
-                            not in el.attrib
-                        ):
-                            # STP cannot handle dashes correctly when upscaled
-                            # See https://gitlab.com/inkscape/inbox/-/issues/7844
+                        if inkex.addNS('type','sodipodi') not in el.attrib:
                             # Object to path doesn't currently support Inkscape-specific objects
                             el.object_to_path()
                             p = el.get("d")
@@ -1944,12 +1882,10 @@ class AutoExporter(inkex.EffectExtension):
                                 )
                             el.set("d", p2)
 
-                            myt = el.ctransform
-                            t2 = Transform("scale({0})".format(1.0 / SCALEBY))
-                            if myt is not None:
-                                el.ctransform = myt @ t2
-                            else:
-                                el.ctransform = t2
+                            # Put transform on parent group since STP cannot convert
+                            # transformed paths correctly if they have dashes
+                            # See https://gitlab.com/inkscape/inbox/-/issues/7844
+                            g.ctransform =  Transform("scale({0})".format(1.0 / SCALEBY))
 
                             csty = el.cspecified_style
                             if "stroke-width" in csty:
@@ -1977,7 +1913,7 @@ class AutoExporter(inkex.EffectExtension):
                                     )
                                 sty["marker-start"] = d.get_id(as_url=2)
                                 el.cstyle = sty
-        return grouped
+        return path_els, dummy_groups
 
 
 if __name__ == "__main__":
@@ -2022,7 +1958,7 @@ if __name__ == "__main__":
 #         ScourInkscape().run(sargs, myoutput)
 #     except:  # Scour failed
 #         dh.idebug("\nWarning: Optimizer failed, making plain SVG instead")
-#         if not(input_options.usepdf):
+#         if not(opts.usepdf):
 #             # Convert to PDF
 #             tmp3 = basetemp.replace(".svg", "_tmp_small.pdf")
 #             arg2 = [
@@ -2032,7 +1968,7 @@ if __name__ == "__main__":
 #                 "--export-background-opacity",
 #                 "1.0",
 #                 "--export-dpi",
-#                 str(input_options.dpi),
+#                 str(opts.dpi),
 #                 "--export-filename",
 #                 tmp3,
 #                 fin,
@@ -2050,7 +1986,7 @@ if __name__ == "__main__":
 #             "--export-background-opacity",
 #             "1.0",
 #             "--export-dpi",
-#             str(input_options.dpi),
+#             str(opts.dpi),
 #             "--export-filename",
 #             myoutput,
 #             fin,

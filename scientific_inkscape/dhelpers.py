@@ -279,7 +279,6 @@ def ungroup(g,removetextclip=False):
 
 # Group a list of elements, placing the group in the location of the first element
 def group(el_list, moveTCM=False):
-    # g = el_list[0].croot.new_element(inkex.Group)
     g = inkex.Group()
     myi = list(el_list[0].getparent()).index(el_list[0])
     el_list[0].getparent().insert(myi + 1, g)
