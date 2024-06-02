@@ -739,7 +739,7 @@ class AutoExporter(inkex.EffectExtension):
                             and d.cspecified_style["fill"] != "#000000"
                         ):
                             d.cstyle["fill"] = d.cspecified_style["fill"]
-        # dh.flush_stylesheet_entries(svg)  # since we ungrouped
+
         tmp = tempbase + "_mod.svg"
         dh.overwrite_svg(svg, tmp)
         cfile = tmp
@@ -751,7 +751,6 @@ class AutoExporter(inkex.EffectExtension):
         )
 
         do_rasterizations = do_rasterizations and not input_options.testmode
-        do_stroketopaths = do_stroketopaths and not input_options.testmode
 
         allacts = []
         if do_stroketopaths:
@@ -803,12 +802,12 @@ class AutoExporter(inkex.EffectExtension):
                 act = "object-to-path"
 
             if not (input_options.testmode):
+                # Skip STP actions in testmode
                 allacts += [
                     "select:{0}; {1}; export-filename:{2}; export-do;".format(
                         celsj, act, tmpstp
                     )
                 ]
-                # arg2 = [bfn,"--actions",acts,cfile]
 
         # Rasterizations
         if do_rasterizations:
@@ -1021,7 +1020,6 @@ class AutoExporter(inkex.EffectExtension):
                         if embedimg:
                             self.Replace_with_Raster(el, tmpimg, bbs[el.get_id()], bbox)
 
-                # dh.flush_stylesheet_entries(svg)  # since we ungrouped
                 tmp = tempbase + "_eimg.svg"
                 dh.overwrite_svg(svg, tmp)
                 cfile = tmp
@@ -1035,7 +1033,7 @@ class AutoExporter(inkex.EffectExtension):
                     if el is not None:
                         dh.ungroup(el.getparent())
 
-            # dh.flush_stylesheet_entries(svg)  # since we ungrouped
+            tmp = tempbase + '_poststp.svg'
             dh.overwrite_svg(svg, tmp)
             cfile = tmp
 
@@ -1498,50 +1496,34 @@ class AutoExporter(inkex.EffectExtension):
 
     def Marker_Fix(self, el):
         # Fixes the marker bug that occurs with context-stroke and context-fill
-        svg = el.croot
+        mkrs = self.get_markers(el)
         sty = el.cspecified_style
-        mkrs = []
-        if "marker-start" in sty:
-            mkrs.append("marker-start")
-        if "marker-mid" in sty:
-            mkrs.append("marker-mid")
-        if "marker-end" in sty:
-            mkrs.append("marker-end")
-        for m in mkrs:
-            url = sty[m][5:-1]
-            mkrel = svg.getElementById(url)
-            if mkrel is not None:
-                dh.get_strokefill(el)
-                # sf = dh.get_strokefill(el)
-                # if sf.stroke is None:
-                #     # Clear marker on blank stroke
-                #     dh.Set_Style_Comp(el, m, None)
-                # else:
-                mkrds = mkrel.descendants2()
-                anycontext = any(
-                    [
-                        (a == "stroke" or a == "fill") and "context" in v
-                        for d in mkrds
-                        for a, v in d.cspecified_style.items()
-                    ]
-                )
-                if anycontext:
-                    handled = True
-                    dup = mkrel.duplicate()
-                    dupds = dup.descendants2()
-                    for d in dupds:
-                        dsty = d.cspecified_style
-                        for a, v in dsty.items():
-                            if (a == "stroke" or a == "fill") and "context" in v:
-                                if v == "context-stroke":
-                                    d.cstyle[a] = sty.get("stroke", "none")
-                                elif v == "context-fill":
-                                    d.cstyle[a] = sty.get("fill", "none")
-                                else:  # I don't know what this is
-                                    handled = False
-                    if handled:
-                        # dh.Set_Style_Comp(el, m, dup.get_id(as_url=2))
-                        el.cstyle[m] = dup.get_id(as_url=2)
+        for m, mkrel in mkrs.items():
+            dh.get_strokefill(el)
+            mkrds = mkrel.descendants2()
+            anycontext = any(
+                [
+                    (a == "stroke" or a == "fill") and "context" in v
+                    for d in mkrds
+                    for a, v in d.cspecified_style.items()
+                ]
+            )
+            if anycontext:
+                handled = True
+                dup = mkrel.duplicate()
+                dupds = dup.descendants2()
+                for d in dupds:
+                    dsty = d.cspecified_style
+                    for a, v in dsty.items():
+                        if (a == "stroke" or a == "fill") and "context" in v:
+                            if v == "context-stroke":
+                                d.cstyle[a] = sty.get("stroke", "none")
+                            elif v == "context-fill":
+                                d.cstyle[a] = sty.get("fill", "none")
+                            else:  # I don't know what this is
+                                handled = False
+                if handled:
+                    el.cstyle[m] = dup.get_id(as_url=2)
         return mkrs
 
     def Opacity_Fix(self, el):
@@ -1870,24 +1852,31 @@ class AutoExporter(inkex.EffectExtension):
         newvb = pg.croot.cdocsize.pxtouu(pg.bbpx)
         svg.set_viewbox(newvb)
 
+    def get_markers(self,el):
+        ''' Returns valid marker keys and corresponding elements '''
+        md = dict()
+        for m in ['marker',"marker-start", "marker-mid", "marker-end"]:
+            mv = el.cstyle.get_link(m, el.croot)
+            if mv is not None:
+                md[m] = mv
+        return md
+
     def Stroke_to_Path_Fixes(self, els):
-        # Stroke to Path has a number of bugs
-        # 1. Stroke to Path does not properly handle clips, so move clips and
+        # Stroke to Path has tons of bugs. Try to preempt them.
+        # 1. STP does not properly handle clips, so move clips and
         #    masks to a temp parent group.
         # 2. Densely-spaced nodes can be converted incorrectly, so scale paths up
         #    by a large amount to account for this.
         # 3. Starting markers can be flipped.
         # 4. Markers on groups cause crashes
+        # 5. Markers are given the wrong size
         grouped = []
         if len(els) > 0:
             svg = els[0].croot
         for el in els:
-            if isinstance(el, inkex.Group):
-                sty = el.cstyle
-                for m in ["marker-start", "marker-mid", "marker-end"]:
-                    mv = sty.get_link(m, svg)
-                    if mv is not None:
-                        dh.ungroup(el)
+            ms = self.get_markers(el)
+            if isinstance(el, inkex.Group) and len(ms)>0:
+                dh.ungroup(el)
             elif el.tag in otp_support_tags:
                 sty = el.cspecified_style
                 if "stroke" in sty and sty["stroke"] != "none":
@@ -1902,7 +1891,18 @@ class AutoExporter(inkex.EffectExtension):
                         dh.group([el], moveTCM=True)
 
                         # Scale up certain paths
-                        SCALEBY = 1000
+                        # SCALEBY = 1000
+                        
+                        bb = el.bounding_box2(dotransform=False, includestroke=False, roughpath=False)
+                        maxsz = max(bb.w,bb.h)
+                        SCALEBY = 1000 / maxsz if maxsz>0 else 1000
+                        
+                        if len(ms)>0:
+                            # For paths with markers, scale to make stroke-width=1
+                            # Prevents incorrect marker size
+                            # https://gitlab.com/inkscape/inbox/-/issues/10506#note_1931910230
+                            SCALEBY = 1/dh.ipx(sw) 
+                        
                         if (
                             not (
                                 "stroke-dasharray" in sty
@@ -1916,27 +1916,6 @@ class AutoExporter(inkex.EffectExtension):
                             # Object to path doesn't currently support Inkscape-specific objects
                             el.object_to_path()
                             p = el.get("d")
-
-                            # pts = list(Path(p).end_points)
-                            # xs = [p.x for p in pts]
-                            # if len(xs)>0:
-                            #     w = max(xs)-min(xs);
-                            # else:
-                            #     w = 0;
-                            # ys = [p.y for p in pts]
-                            # if len(ys)>0:
-                            #     h = max(ys)-min(ys);
-                            # else:
-                            #     h = 0;
-                            # dh.idebug((el.get_id(),w,h))
-                            # if w==0 and h!=0:
-                            #     SCALEBY = 1000/h;
-                            # elif w!=0 and h==0:
-                            #     SCALEBY = 1000/w;
-                            # elif w!=0 and h!=0:
-                            #     SCALEBY = min(1000/h,1000/w)
-                            # else:
-                            #     SCALEBY = 1;
 
                             number_template = "{:.6g}"
                             import re
