@@ -1808,7 +1808,7 @@ class AutoExporter(inkex.EffectExtension):
         # 1. STP does not properly handle clips, so move clips and
         #    masks to a temp parent group.
         # 2. Densely-spaced nodes can be converted incorrectly, so scale paths up
-        #    by a large amount to account for this.
+        #    to be size 1000 and position corner at (0,0)
         # 3. Starting markers can be flipped.
         # 4. Markers on groups cause crashes
         # 5. Markers are given the wrong size
@@ -1837,55 +1837,29 @@ class AutoExporter(inkex.EffectExtension):
                         path_els.append(el.get_id())
                         dummy_groups.extend([gp.get_id(),g.get_id()])
 
-                        # Scale up certain paths
-                        if len(ms)==0:
-                            # SCALEBY = 1000
-                            bb = el.bounding_box2(dotransform=False, includestroke=False, roughpath=False)
-                            maxsz = max(bb.w,bb.h)
-                            SCALEBY = 1000 / maxsz if maxsz>0 else 1000
-                        else:
-                            # For paths with markers, scale to make stroke-width=1
-                            # Prevents incorrect marker size
-                            # https://gitlab.com/inkscape/inbox/-/issues/10506#note_1931910230
-                            SCALEBY = 1/dh.ipx(sw)
-                            
-                        
+                        # Scale up most paths to be size 1000 and position corner at (0,0)
                         if inkex.addNS('type','sodipodi') not in el.attrib:
                             # Object to path doesn't currently support Inkscape-specific objects
                             el.object_to_path()
-                            p = el.get("d")
-
-                            number_template = "{:.6g}"
-                            import re
-                            from inkex.utils import strargs
-
-                            LEX_REX = re.compile(
-                                r"([MLHVCSQTAZmlhvcsqtaz])([^MLHVCSQTAZmlhvcsqtaz]*)"
-                            )
-                            p2 = ""
-                            for cmd, numbers in LEX_REX.findall(p):
-                                args = list(strargs(numbers))
-                                if cmd in ["A", "a"]:
-                                    args = [
-                                        args[ii]
-                                        * (
-                                            SCALEBY * (ii % 7 not in [2, 3, 4])
-                                            + 1 * (ii % 7 in [2, 3, 4])
-                                        )
-                                        for ii in range(len(args))
-                                    ]
-                                else:
-                                    args = [v * SCALEBY for v in args]
-                                p2 += (
-                                    f"{cmd} {' '.join([number_template] * len(args)).format(*args)}".strip()
-                                    + " "
-                                )
+                            bb = el.bounding_box2(dotransform=False, includestroke=False, roughpath=False)
+                            if len(ms)==0:
+                                # SCALEBY = 1000
+                                maxsz = max(bb.w,bb.h)
+                                SCALEBY = 1000 / maxsz if maxsz>0 else 1000
+                            else:
+                                # For paths with markers, scale to make stroke-width=1
+                                # Prevents incorrect marker size
+                                # https://gitlab.com/inkscape/inbox/-/issues/10506#note_1931910230
+                                SCALEBY = 1/dh.ipx(sw)
+                            
+                            tr = Transform("scale({0})".format(SCALEBY)) @ Transform("translate({0},{1})".format(-bb.x1,-bb.y1))
+                            p2 = str(el.cpath.transform(tr))
                             el.set("d", p2)
 
                             # Put transform on parent group since STP cannot convert
                             # transformed paths correctly if they have dashes
                             # See https://gitlab.com/inkscape/inbox/-/issues/7844
-                            g.ctransform =  Transform("scale({0})".format(1.0 / SCALEBY))
+                            g.ctransform = -tr
 
                             csty = el.cspecified_style
                             if "stroke-width" in csty:
