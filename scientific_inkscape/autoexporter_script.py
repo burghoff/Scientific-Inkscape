@@ -239,6 +239,9 @@ class monitorThread(threading.Thread):
                 AutoExporter().export_all(
                     bfn, self.file, self.outtemplate, opts.formats, opts
                 )
+            except SystemExit:
+                # Not an error, supposed to happen in delete_quit
+                pass
             except:
                 import traceback
 
