@@ -16,7 +16,7 @@ authors:
 identifiers:
   - type: url
     value: 'https://github.com/burghoff/Scientific-Inkscape'
-repository-code: 'https://github.com'
+repository-code: 'https://github.com/burghoff/Scientific-Inkscape'
 url: 'https://github.com/burghoff/Scientific-Inkscape'
 abstract: >-
   Scientific Inkscape is a set of Inkscape extensions for
