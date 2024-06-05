@@ -8,8 +8,8 @@ type: software
 authors:
   - given-names: David
     family-names: Burghoff
-    email: dburghoff@nd.edu
-    affiliation: University of Notre Dame
+    email: burghoff@utexas.edu
+    affiliation: University of Texas at Austin
     orcid: 'https://orcid.org/0000-0001-5848-2389'
-version: 1.4.10
-date-released: '2022-03-08'
+version: 1.3.2
+date-released: '2023-10-23'
