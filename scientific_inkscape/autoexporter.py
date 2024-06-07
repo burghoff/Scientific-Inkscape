@@ -649,6 +649,10 @@ class AutoExporter(inkex.EffectExtension):
                     jpgs.append(elid)
             if isinstance(el, (inkex.Image)):
                 image_ids.append(elid)
+                # Inkscape inappropriately clips non-'optimizeQuality' images
+                # when generating PDFs and calculating bounding boxes
+                el.cstyle['image-rendering'] = 'optimizeQuality'
+                
 
             # Remove style attributes with invalid URLs
             # (Office doesn't display the element while Inkscape ignores it)
@@ -1707,10 +1711,14 @@ class AutoExporter(inkex.EffectExtension):
         myh = dh.ipx(newel.get("height"))
         newel.set("xlink:href", el.get("xlink:href"))
 
-        sty = ""
-        ir = el.cstyle.get("image-rendering")
-        if ir is not None:
-            sty = "image-rendering:" + ir
+        # sty = ""
+        # ir = el.cstyle.get("image-rendering")
+        # if ir is not None:
+        #     sty = "image-rendering:" + ir
+            
+        # Inkscape inappropriately clips non-'optimizeQuality' images
+        # when generating PDFs
+        sty = 'image-rendering:optimizeQuality'
         el = newel
 
         pgo = [
@@ -1853,7 +1861,8 @@ class AutoExporter(inkex.EffectExtension):
                                 SCALEBY = 1/dh.ipx(sw)
                             
                             tr = Transform("scale({0})".format(SCALEBY)) @ Transform("translate({0},{1})".format(-bb.x1,-bb.y1))
-                            p2 = str(el.cpath.transform(tr))
+                            # relative paths seem to have some bugs
+                            p2 = str(el.cpath.to_absolute().transform(tr))
                             el.set("d", p2)
 
                             # Put transform on parent group since STP cannot convert
