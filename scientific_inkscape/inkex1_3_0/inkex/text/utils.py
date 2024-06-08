@@ -177,7 +177,7 @@ def isrectangle(el, includingtransform=True):
         pth = el.cpath
     elif el.tag in rectlike_tags:
         # Before parsing the path (possibly slow), make sure 4-5 path commands
-        if el.tag == pel_tag and not (4 <= cnt_pth_cmds(el.get("d", "")) <= 5):
+        if el.tag == pel_tag and not (1 <= cnt_pth_cmds(el.get("d", "")) <= 5):
             return False
         pth = el.cpath
         # if includingtransform:
@@ -213,7 +213,7 @@ def isrectangle(el, includingtransform=True):
         return False
 
     # Assume masks aren't rectangular
-    if el.get_link("mask", llget=True) is not None:
+    if el.get_link("mask", llget=True) is not None or el.cspecified_style.get_link('filter',el.croot) is not None:
         return False
     # Clipped rectangles may not be rectangular
     if el.get_link("clip-path", llget=True) is not None and any(

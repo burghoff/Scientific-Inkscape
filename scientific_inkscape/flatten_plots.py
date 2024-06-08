@@ -194,7 +194,6 @@ class FlattenPlots(inkex.EffectExtension):
             if el.get("inkscape-scientific-flattenexclude"):
                 seld.remove(el)
 
-
         # Move selected defs/clips/mask into global defs
         defstag = inkex.Defs.ctag
         clipmask = {inkex.addNS("mask", "svg"), inkex.ClipPath.ctag}
@@ -265,18 +264,21 @@ class FlattenPlots(inkex.EffectExtension):
                 elif dh.EBget(g, "mpl_comment") is not None:
                     pass
                 else:
-                    dh.ungroup(g,removetextclips)
+                    dh.ungroup(g, removetextclips)
             # dh.flush_stylesheet_entries(self.svg)
 
         if self.options.removerectw or reversions or self.options.revertpaths:
+            from inkex.text.utils import default_style_atts as dsa
+
             prltag = dh.tags((PathElement, Rectangle, Line))
             fltag = dh.tags((FlowPara, FlowRegion, FlowRoot))
-            nones = {None, "none", "None"}
+            nones = {None, "none"}
             wrects = []
 
             minusp = inkex.Path(
                 "M 106,355 H 732 V 272 H 106 Z"
             )  # Matplotlib minus sign
+            RECT_THRESHOLD = 2.49  # threshold ratio for rectangle reversion
             for ii, el in enumerate(ngs):
                 if el.tag in prltag:
                     myp = el.getparent()
@@ -286,8 +288,8 @@ class FlattenPlots(inkex.EffectExtension):
                         and isrectangle(el, includingtransform=False)
                     ):
                         sty = el.cspecified_style
-                        strk = sty.get("stroke", None)
-                        fill = sty.get("fill", None)
+                        strk = sty.get("stroke", dsa.get("stroke"))
+                        fill = sty.get("fill", dsa.get("fill"))
                         if strk in nones and fill not in nones:
                             sf = dh.get_strokefill(el)
                             if sf.fill is not None and tuple(sf.fill) == (
@@ -334,7 +336,7 @@ class FlattenPlots(inkex.EffectExtension):
                                 bb = dh.bounding_box2(
                                     el, includestroke=False, dotransform=False
                                 )
-                                if bb.w < bb.h * 0.1 and not sf.fill_isurl:
+                                if bb.w < bb.h / RECT_THRESHOLD and not sf.fill_isurl:
                                     el.object_to_path()
                                     np = "m {0},{1} v {2}".format(bb.xc, bb.y1, bb.h)
                                     el.set("d", np)
@@ -344,13 +346,18 @@ class FlattenPlots(inkex.EffectExtension):
                                         el.cstyle["opacity"] = 1
                                     el.cstyle["fill"] = "none"
                                     el.cstyle["stroke-width"] = str(bb.w)
-                                elif bb.h < bb.w * 0.1:
+                                    el.cstyle["stroke-linecap"] = "none"
+                                elif bb.h < bb.w / RECT_THRESHOLD:
                                     el.object_to_path()
                                     np = "m {0},{1} h {2}".format(bb.x1, bb.yc, bb.w)
                                     el.set("d", np)
-                                    el.cstyle["stroke"] = sf.fill
+                                    el.cstyle["stroke"] = sf.fill.to_rgb()
+                                    if sf.fill.alpha != 1.0:
+                                        el.cstyle["stroke-opacity"] = sf.fill.alpha
+                                        el.cstyle["opacity"] = 1
                                     el.cstyle["fill"] = "none"
                                     el.cstyle["stroke-width"] = str(bb.h)
+                                    el.cstyle["stroke-linecap"] = "none"
 
         if self.options.fixtext:
             if setreplacement:
@@ -366,7 +373,9 @@ class FlattenPlots(inkex.EffectExtension):
                         elif ff == repl:
                             pass
                         else:
-                            ff = [x.strip("'").strip('"').strip() for x in ff.split(",")]
+                            ff = [
+                                x.strip("'").strip('"').strip() for x in ff.split(",")
+                            ]
                             if not (ff[-1].lower() == repl.lower()):
                                 ff.append(repl)
                             el.cstyle["font-family"] = ",".join(ff)
@@ -385,10 +394,11 @@ class FlattenPlots(inkex.EffectExtension):
                 )
             if removetextclips:
                 from inkex.text.cache import BaseElementCache
+
                 for el in ngs:
                     if el.tag in BaseElementCache.ttags:
-                        el.set('clip-path',None)
-                        el.set('mask',None)
+                        el.set("clip-path", None)
+                        el.set("mask", None)
 
         if self.options.removerectw:
             ngset = set(ngs)

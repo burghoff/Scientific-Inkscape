@@ -26,10 +26,11 @@
 
 # Locate the installed Inkex so we can assess the version. Do not import!
 import pkgutil
+
 for finder in pkgutil.iter_importers():
-    if hasattr(finder, 'find_spec'):
+    if hasattr(finder, "find_spec"):
         try:
-            spec = finder.find_spec('inkex')
+            spec = finder.find_spec("inkex")
             if spec and spec.origin:
                 installed_inkex = spec.origin
         except TypeError:
@@ -37,10 +38,11 @@ for finder in pkgutil.iter_importers():
 
 # Import the packaged version of Inkex (currently v1.3.0)
 import sys, os
-inkex_to_use = 'inkex1_3_0'
-si_dir = os.path.dirname(os.path.realpath(__file__)) # my install location
-sys.path.insert(0,os.path.join(si_dir,inkex_to_use))
-sys.path.insert(1,os.path.join(si_dir,inkex_to_use,'site-packages'))
+
+inkex_to_use = "inkex1_3_0"
+si_dir = os.path.dirname(os.path.realpath(__file__))  # my install location
+sys.path.insert(0, os.path.join(si_dir, inkex_to_use))
+sys.path.insert(1, os.path.join(si_dir, inkex_to_use, "site-packages"))
 import inkex
 
 # For SI we override Inkex's Style with a modified version, Style0
@@ -54,15 +56,19 @@ import inkex.text  # noqa
 
 from inkex import Style
 from inkex.text.cache import BaseElementCache
+
 CBE = BaseElementCache
-grouplike_tags , ttags  = CBE.grouplike_tags, CBE.ttags
+grouplike_tags, ttags = CBE.grouplike_tags, CBE.ttags
 bb2_support_tags, bounding_box2 = CBE.bb2_support_tags, CBE.bounding_box2
 from inkex.text.utils import (
     composed_width,
     unique,
     isrectangle,
     Get_Bounding_Boxes,
-    subprocess_repeat, tags, bbox, ipx
+    subprocess_repeat,
+    tags,
+    bbox,
+    ipx,
 )
 
 
@@ -86,6 +92,7 @@ if not hasattr(inkex, "__version__"):
             inkex.__version__ = "0.92.4"
 inkex.vparse = lambda x: [int(v) for v in x.split(".")]  # type: ignore
 inkex.ivp = inkex.vparse(inkex.__version__)  # type: ignore
+
 
 # Returns non-comment children
 def list2(el):
@@ -113,12 +120,14 @@ def count_callers():
     else:
         callinfo[lstr] = 1
 
+
 # Discover the version of Inkex installed, NOT the version packaged with SI
-with open(installed_inkex, 'r') as file:
+with open(installed_inkex, "r") as file:
     content = file.read()
 match = re.search(r'__version__\s*=\s*"(.*?)"', content)
-vstr = match.group(1) if match else '1.0.0'
+vstr = match.group(1) if match else "1.0.0"
 inkex.installed_ivp = inkex.vparse(vstr)  # type: ignore
+
 
 # Replace an element with another one
 # Puts it in the same location, update the cache dicts
@@ -251,7 +260,7 @@ ctag = lxml.etree.Comment
 unungroupable.add(ctag)
 
 
-def ungroup(g,removetextclip=False):
+def ungroup(g, removetextclip=False):
     # Ungroup a group, preserving style, clipping, and masking
     # Remove any comments
 
@@ -268,11 +277,13 @@ def ungroup(g,removetextclip=False):
             if el.tag == ctag:  # remove comments
                 g.remove(el)
             if el.tag not in unungroupable:
-                clippedout = compose_all(el, gclip, gmask, gtransform, gstyle,removetextclip=removetextclip)
+                clippedout = compose_all(
+                    el, gclip, gmask, gtransform, gstyle, removetextclip=removetextclip
+                )
                 if clippedout:
                     el.delete()
                 else:
-                    gparent.insert(gindex + 1, el) # places above
+                    gparent.insert(gindex + 1, el)  # places above
         if len(g) == 0:
             g.delete()
 
@@ -312,7 +323,7 @@ def compose_all(el, clip, mask, transform, style, removetextclip=False):
 
     if removetextclip and el.tag in ttags:
         el.set("clip-path", None)
-        el.set("mask",      None)
+        el.set("mask", None)
         cout = False
     else:
         if clip is not None:
@@ -344,10 +355,16 @@ def fix_css_clipmask(el, mask=False):
     svg = el.croot
     if svg is not None:
         mycss = svg.cssdict.get(el.get_id())
-        if mycss is not None and mycss.get(cm) is not None and mycss.get(cm) != el.get(cm):
-                sty = el.croot.crootsty
-                sty.text = (sty.text or "") + "\n#{0}{{{1}:{2}}}".format(el.get_id(), cm, el.get(cm))
-                mycss[cm] = el.get(cm)
+        if (
+            mycss is not None
+            and mycss.get(cm) is not None
+            and mycss.get(cm) != el.get(cm)
+        ):
+            sty = el.croot.crootsty
+            sty.text = (sty.text or "") + "\n#{0}{{{1}:{2}}}".format(
+                el.get_id(), cm, el.get(cm)
+            )
+            mycss[cm] = el.get(cm)
     if el.cstyle.get(cm) is not None:  # also clear local style
         el.cstyle[cm] = None
 
@@ -429,7 +446,9 @@ def merge_clipmask(node, newclip, mask=False):
                 if newclipisrect and oldclipisrect and mask == False:
                     # For rectangular clips, we can compose them easily
                     # Since most clips are rectangles this semi-fixes the PDF clip export bug
-                    newclippth = list(newclip)[0].cpath.transform(list(newclip)[0].ctransform)
+                    newclippth = list(newclip)[0].cpath.transform(
+                        list(newclip)[0].ctransform
+                    )
                     oldclippth = k.cpath.transform(k.ctransform)
                     cout = compose_clips(k, newclippth, oldclippth)
                 else:
@@ -723,41 +742,41 @@ def tic():
 def toc():
     global lasttic
     idebug(time.time() - lasttic)
-    
+
 
 def benchmark_functions(func1, func2):
     import numpy as np
+
     differences = []
     time1s = []
-    
-    MINIBATCH_TIME = .01
+
+    MINIBATCH_TIME = 0.01
     TOTAL_TIME = 10
-    
+
     strt = time.time()
     f1cnt = 0
-    while time.time()-strt < MINIBATCH_TIME:
+    while time.time() - strt < MINIBATCH_TIME:
         func1()
         f1cnt += 1
     strt = time.time()
     f2cnt = 0
-    while time.time()-strt < MINIBATCH_TIME:
+    while time.time() - strt < MINIBATCH_TIME:
         func2()
         f2cnt += 1
-        
+
     for Nr in range(5):
         strt = time.time()
         for ii in range(f1cnt):
             func1()
-        f1act = time.time()-strt         
+        f1act = time.time() - strt
         strt = time.time()
         for ii in range(f2cnt):
             func2()
-        f2act = time.time()-strt
-        f1cnt = int(f1cnt*MINIBATCH_TIME/f1act)
-        f2cnt = int(f2cnt*MINIBATCH_TIME/f2act)
-        
-    
-    M = int(TOTAL_TIME/MINIBATCH_TIME/2)
+        f2act = time.time() - strt
+        f1cnt = int(f1cnt * MINIBATCH_TIME / f1act)
+        f2cnt = int(f2cnt * MINIBATCH_TIME / f2act)
+
+    M = int(TOTAL_TIME / MINIBATCH_TIME / 2)
     N1 = f1cnt
     N2 = f2cnt
 
@@ -767,7 +786,7 @@ def benchmark_functions(func1, func2):
         for _ in range(N1):
             func1()
         end_time = time.time()
-        time_func1 = (end_time - start_time)/N1
+        time_func1 = (end_time - start_time) / N1
         time1s.append(time_func1)
 
         # Timing function 2
@@ -775,7 +794,7 @@ def benchmark_functions(func1, func2):
         for _ in range(N2):
             func2()
         end_time = time.time()
-        time_func2 = (end_time - start_time)/N2
+        time_func2 = (end_time - start_time) / N2
 
         # Calculate the difference in times
         time_difference = time_func2 - time_func1
@@ -785,7 +804,7 @@ def benchmark_functions(func1, func2):
     mean_difference = np.mean(differences)
     std_deviation = np.std(differences)
 
-    return np.mean(time1s), mean_difference, std_deviation/np.sqrt(M)
+    return np.mean(time1s), mean_difference, std_deviation / np.sqrt(M)
 
 
 # style atts that could have urls
@@ -965,13 +984,16 @@ def combine_paths(els, mergeii=0):
 # Gets all of the stroke and fill properties from a style
 # Alpha is its effective alpha including opacity
 # Note to self: inkex.Color inherits from list
+from inkex.text.utils import default_style_atts as dsa
+
+
 def get_strokefill(el):
     sty = el.cspecified_style
-    strk = sty.get("stroke", None)
-    fill = sty.get("fill", None)
+    strk = sty.get("stroke", dsa.get("stroke"))
+    fill = sty.get("fill", dsa.get("fill"))
     op = float(sty.get("opacity", 1.0))
-    nones = [None, "none", "None"]
-    strk_isurl, fill_isurl = False , False
+    nones = [None, "none"]
+    strk_isurl, fill_isurl = False, False
     if not (strk in nones):
         try:
             strk = inkex.Color(strk).to_rgb()
@@ -983,7 +1005,7 @@ def get_strokefill(el):
             strk.efflightness = strkl
         except:  # inkex.colors.ColorIdError:
             if "url(#" in strk:
-                strk = sty.get_link("stroke",el.croot)
+                strk = sty.get_link("stroke", el.croot)
                 strk_isurl = True
             else:
                 strk = None
@@ -1000,7 +1022,7 @@ def get_strokefill(el):
             fill.efflightness = filll
         except:  # inkex.colors.ColorIdError:
             if "url(#" in fill:
-                fill = sty.get_link("fill",el.croot)
+                fill = sty.get_link("fill", el.croot)
                 fill_isurl = True
             else:
                 fill = None
@@ -1031,7 +1053,7 @@ def get_strokefill(el):
                 self.markermid,
                 self.markerend,
                 self.strk_isurl,
-                self.fill_isurl
+                self.fill_isurl,
             ) = args
 
     return StrokeFill(strk, fill, sw, sd, ms, mm, me, strk_isurl, fill_isurl)
@@ -1176,7 +1198,8 @@ def Run_SI_Extension(effext, name):
                     font_properties,
                     inkex.transforms,
                     getmodule(effext),
-                    speedups,cache
+                    speedups,
+                    cache,
                 ]:
                     fns += [v[1] for v in getmembers(m, isfunction)]
                     for c in getmembers(m, isclass):
@@ -1326,9 +1349,10 @@ def to_xpath_func(sty):
 
     return style_to_xpath(sty)
 
-if not hasattr(Style,'to_xpath'):
+
+if not hasattr(Style, "to_xpath"):
     Style.to_xpath = to_xpath_func
-if not hasattr(inkex.Style,'to_xpath'):
+if not hasattr(inkex.Style, "to_xpath"):
     inkex.Style.to_xpath = to_xpath_func
 
 # Patch Style string conversion to restore single-quote strings
@@ -1345,6 +1369,7 @@ if not hasattr(inkex.Style,'to_xpath'):
 #     )
 # inkex.Style.to_str = to_str
 # inkex.Style.__str__ = __str__
+
 
 def Version_Check(caller):
     siv = "v1.3.2"  # Scientific Inkscape version
