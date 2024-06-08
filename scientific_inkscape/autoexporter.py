@@ -24,7 +24,7 @@ dispprofile = False
 import dhelpers as dh
 import subprocess
 import inkex
-from inkex import TextElement, Transform, PathElement, Vector2d
+from inkex import TextElement, Transform, Vector2d
 
 import os, sys, time, re, lxml
 import numpy as np
@@ -32,7 +32,9 @@ import numpy as np
 import image_helpers as ih
 from inkex.text.utils import default_style_atts, unique
 from inkex.text.cache import BaseElementCache
+
 otp_support_tags = BaseElementCache.otp_support_tags
+peltag = inkex.PathElement.ctag
 import inkex.text.parser  # needed to prevent GTK crashing
 
 
@@ -489,9 +491,7 @@ class AutoExporter(inkex.EffectExtension):
 
         # Do preprocessing
         if any([fmt in exp_fmts for fmt in ["pdf", "emf", "eps", "psvg"]]):
-            ppoutput = self.preprocessing(
-                bfn, fin, outtemplate, opts, tempbase
-            )
+            ppoutput = self.preprocessing(bfn, fin, outtemplate, opts, tempbase)
         else:
             ppoutput = None
 
@@ -542,25 +542,31 @@ class AutoExporter(inkex.EffectExtension):
         svg = get_svg(cfile)
 
         # Prune hidden items and remove language switching
-        stag = inkex.addNS('switch','svg')
+        stag = inkex.addNS("switch", "svg")
         todelete, todelang = [], []
         for el in dh.visible_descendants(svg):
             if el.cspecified_style.get("display") == "none":
                 todelete.append(el)
-            if el.get('systemLanguage') is not None:
+            if el.get("systemLanguage") is not None:
                 lang = inkex.inkscape_system_info.language
-                if el.get('systemLanguage')==lang:
+                if el.get("systemLanguage") == lang:
                     todelang.append(el)
                     # Remove other languages from switches
                     if el.getparent().tag == stag:
-                        todelete.extend([k for k in el.getparent() if k.get('systemLanguage')!=lang])
+                        todelete.extend(
+                            [
+                                k
+                                for k in el.getparent()
+                                if k.get("systemLanguage") != lang
+                            ]
+                        )
                 else:
                     # Remove non-matching languages
                     todelete.append(el)
         for el in unique(todelete):
             el.delete()
         for el in todelang:
-            el.set('systemLanguage',None)
+            el.set("systemLanguage", None)
 
         # Embed linked images into the SVG. This should be done prior to clone unlinking
         # since some images may be cloned
@@ -625,7 +631,7 @@ class AutoExporter(inkex.EffectExtension):
                 stps.append(elid)
 
             # Fix opacity bug for Office PDF saving
-            if len(ms)==0: # works poorly with markers
+            if len(ms) == 0:  # works poorly with markers
                 self.Opacity_Fix(el)
 
             # Disable connectors
@@ -651,8 +657,7 @@ class AutoExporter(inkex.EffectExtension):
                 image_ids.append(elid)
                 # Inkscape inappropriately clips non-'optimizeQuality' images
                 # when generating PDFs and calculating bounding boxes
-                el.cstyle['image-rendering'] = 'optimizeQuality'
-                
+                el.cstyle["image-rendering"] = "optimizeQuality"
 
             # Remove style attributes with invalid URLs
             # (Office doesn't display the element while Inkscape ignores it)
@@ -671,19 +676,17 @@ class AutoExporter(inkex.EffectExtension):
                 trivial = True
                 for pt in pth.end_points:
                     if firstpt is None:
-                        firstpt = (pt.x,pt.y)
-                    elif (pt.x,pt.y)!=firstpt:
+                        firstpt = (pt.x, pt.y)
+                    elif (pt.x, pt.y) != firstpt:
                         trivial = False
                         break
                 if trivial:
                     el.delete(deleteup=True)
-                        
-                        
 
         # Fix Avenir/Whitney
         tetag = inkex.TextElement.ctag
         frtag = inkex.FlowRoot.ctag
-        tels = [el for el in vds if el.tag in {tetag,frtag}]
+        tels = [el for el in vds if el.tag in {tetag, frtag}]
         from inkex.text import parser
 
         parser.Character_Fixer2(tels)
@@ -740,9 +743,7 @@ class AutoExporter(inkex.EffectExtension):
         opts.excludetxtids = excludetxtids
 
         do_rasterizations = len(raster_ids + image_ids) > 0
-        do_stroketopaths = (
-            opts.texttopath or opts.stroketopath or len(stps) > 0
-        )
+        do_stroketopaths = opts.texttopath or opts.stroketopath or len(stps) > 0
 
         allacts = []
         if do_stroketopaths:
@@ -753,7 +754,7 @@ class AutoExporter(inkex.EffectExtension):
             tels = []
             if opts.texttopath:
                 for el in vd:
-                    if el.tag==tetag and el.get_id() not in excludetxtids:
+                    if el.tag == tetag and el.get_id() not in excludetxtids:
                         tels.append(el.get_id())
                         for d in el.descendants2():
                             # Fuse fill and stroke to account for STP bugs
@@ -834,11 +835,12 @@ class AutoExporter(inkex.EffectExtension):
         # actions into a single call that also gets the Bounding Boxes
         # Skip binary call during testing
         if len(allacts) > 0 and not opts.testmode:
+
             def Split_Select(fn, inkbin, acts, selii, reserved):
-                '''
+                """
                 Windows cannot handle arguments that are too long. If this happens,
                 split the actions in half and run on each
-                '''
+                """
                 import math, shutil
 
                 act = acts[selii]
@@ -1017,7 +1019,7 @@ class AutoExporter(inkex.EffectExtension):
                     if el is not None:
                         dh.ungroup(el)
 
-            tmp = tempbase + '_poststp.svg'
+            tmp = tempbase + "_poststp.svg"
             dh.overwrite_svg(svg, tmp)
             cfile = tmp
 
@@ -1048,17 +1050,13 @@ class AutoExporter(inkex.EffectExtension):
 
         if ppoutput is not None:
             fin = ppoutput
-        # else:
-        #     tmpoutputs = []
-        # tempdir = None
 
-        # try:
         ispsvg = fformat == "psvg"
         notpng = not (fformat == "png")
 
         if opts.thinline and notpng:
             svg = get_svg(fin)
-            if fformat in ["pdf", "eps", "psvg"]:
+            if fformat in ["pdf", "eps"]:
                 self.Thinline_Dehancement(svg, "bezier")
             else:
                 self.Thinline_Dehancement(svg, "split")
@@ -1109,9 +1107,6 @@ class AutoExporter(inkex.EffectExtension):
                 opts.made_outputs = [fileout]
 
                 osvg = get_svg(filein)
-                # original has pages
-                # if hasattr(opts,'ctable'):
-                #     osvg._char_table = opts.ctable
 
                 pgs = osvg.cdocsize.pgs
                 haspgs = osvg.cdocsize.inkscapehaspgs
@@ -1120,9 +1115,7 @@ class AutoExporter(inkex.EffectExtension):
                     dl = opts.duplicatelabels
                     outputs = []
                     pgiis = (
-                        range(len(pgs))
-                        if not (opts.testmode)
-                        else [opts.testpage - 1]
+                        range(len(pgs)) if not (opts.testmode) else [opts.testpage - 1]
                     )
                     for ii in pgiis:
                         # match the viewbox to each page and delete them
@@ -1152,7 +1145,7 @@ class AutoExporter(inkex.EffectExtension):
                                 if el is not None:
                                     el.delete()
 
-                        pname = pgs[ii].get('inkscape:label')
+                        pname = pgs[ii].get("inkscape:label")
                         pname = str(ii + 1) if pname is None else pname
                         addendum = (
                             "_page_" + pname
@@ -1172,9 +1165,7 @@ class AutoExporter(inkex.EffectExtension):
                 if (haspgs or opts.testmode) and len(pgs) > 1:
                     outputs = []
                     pgiis = (
-                        range(len(pgs))
-                        if not (opts.testmode)
-                        else [opts.testpage - 1]
+                        range(len(pgs)) if not (opts.testmode) else [opts.testpage - 1]
                     )
                     for ii in pgiis:
                         # match the viewbox to each page and delete them
@@ -1184,11 +1175,9 @@ class AutoExporter(inkex.EffectExtension):
                         for jj in reversed(range(len(pgs2))):
                             pgs2[jj].delete()
 
-                        pname = pgs[ii].get('inkscape:label')
+                        pname = pgs[ii].get("inkscape:label")
                         pname = str(ii + 1) if pname is None else pname
-                        addendum = (
-                            "_page_" + pname if not (opts.testmode) else ""
-                        )
+                        addendum = "_page_" + pname if not (opts.testmode) else ""
                         svgpgfn = tempbase + addendum + ".svg"
                         dh.overwrite_svg(svgpg, svgpgfn)
 
@@ -1260,21 +1249,18 @@ class AutoExporter(inkex.EffectExtension):
     def postprocessing(self, svg, opts):
         # Postprocessing of SVGs, mainly for overcoming bugs in Office products
         vds = dh.visible_descendants(svg)
-        
+
         # Shift viewbox corner to (0,0) by translating top-level elements
         evb = svg.cdocsize.effvb
-        if not(evb[0]==0 and evb[1]==0):
+        if not (evb[0] == 0 and evb[1] == 0):
             newtr = Transform("translate(" + str(-evb[0]) + ", " + str(-evb[1]) + ")")
-            svg.set_viewbox([0,0,evb[2],evb[3]])
+            svg.set_viewbox([0, 0, evb[2], evb[3]])
             ndefs = [el for el in list(svg) if not (el.tag in dh.unungroupable)]
             for el in ndefs:
                 el.ctransform = newtr @ el.ctransform
-        
+
         for d in vds:
-            if (
-                isinstance(d, (TextElement))
-                and d.get_id() not in opts.excludetxtids
-            ):
+            if isinstance(d, (TextElement)) and d.get_id() not in opts.excludetxtids:
                 scaleto = 100 if not opts.testmode else 10
                 # Make 10 px in test mode so that errors are not unnecessarily large
                 self.Scale_Text(d, scaleto)
@@ -1289,9 +1275,10 @@ class AutoExporter(inkex.EffectExtension):
                 if len(d) == 0:
                     d.delete(deleteup=True)
 
-        if opts.thinline:
-            for d in vds:
-                self.Bezier_to_Split(d)
+        # if opts.thinline:
+        #     for d in vds:
+        #         self.Bezier_to_Split(d)  # moved to deprecated
+
         # dh.idebug(opts.svgtopdf_vbs)
         # embed_original = False
         # if embed_original:
@@ -1344,136 +1331,60 @@ class AutoExporter(inkex.EffectExtension):
         # 'bezier' mode converts h,v,l path commands to trivial Beziers
         # 'split' mode splits h,v,l path commands into two path commands
         # The Office PDF renderer removes trivial Beziers, as does conversion to EMF
-        # The Inkscape PDF renderer removes split commands
-        # In general I prefer split, so I do this for everything other than PDF
+        # The Inkscape PDF/EPS renderer removes split commands
+        # Split is more general, so apply it to everything but PDFs/EPS
+
+        command_chars = {"h", "v", "l", "H", "V", "L"}
         for el in svg.descendants2():
-            if el.tag in otp_support_tags and not (isinstance(el, (PathElement))):
+            if el.tag in otp_support_tags and not el.tag == peltag:
                 el.object_to_path()
+
             d = el.get("d")
-            if d is not None and any(
-                [cv in d for cv in ["h", "v", "l", "H", "V", "L"]]
-            ):
-                if any([cv in d for cv in ["H", "V", "L"]]):
+            if d and any(char in d for char in command_chars):
+                if any(char in d for char in {"H", "V", "L"}):
                     d = str(inkex.Path(d).to_relative())
-                ds = d.replace(",", " ").split(" ")
-                ds = [v for v in ds if v != ""]
-                nexth = False
-                nextv = False
-                nextl = False
+
+                ds = [v for v in d.replace(",", " ").split(" ") if v]
+
+                current_command = None
+
                 ii = 0
                 while ii < len(ds):
-                    if ds[ii] == "v":
-                        nextv = True
-                        nexth = False
-                        nextl = False
+                    token = ds[ii]
+                    if token in {"v", "h", "l"}:
+                        current_command = token
                         ds[ii] = ""
-                    elif ds[ii] == "h":
-                        nexth = True
-                        nextv = False
-                        nextl = False
-                        ds[ii] = ""
-                    elif ds[ii] == "l":
-                        nextl = True
-                        nextv = False
-                        nexth = False
-                        ds[ii] = ""
-                    elif ds[ii] in PTH_COMMANDS:
-                        nextv = False
-                        nexth = False
-                        nextl = False
+                    elif token in PTH_COMMANDS:
+                        current_command = None
                     else:
-                        if nexth:
+                        if current_command == "h":
                             if mode == "split":
-                                hval = float(ds[ii])
-                                ds[ii] = "h " + str(hval / 2) + " " + str(hval / 2)
+                                hval = float(token)
+                                ds[ii] = f"h {hval / 2} {hval / 2}"
                             else:
-                                ds[ii] = "c " + " ".join([ds[ii] + ",0"] * 3)
-                        elif nextv:
+                                ds[ii] = f"c {token},0 {token},0 {token},0"
+                        elif current_command == "v":
                             if mode == "split":
-                                vval = float(ds[ii])
-                                ds[ii] = "v " + str(vval / 2) + " " + str(vval / 2)
+                                vval = float(token)
+                                ds[ii] = f"v {vval / 2} {vval / 2}"
                             else:
-                                ds[ii] = "c " + " ".join(["0," + ds[ii]] * 3)
-                        elif nextl:
+                                ds[ii] = f"c 0,{token} 0,{token} 0,{token}"
+                        elif current_command == "l":
                             if mode == "split":
-                                lx = float(ds[ii])
+                                lx = float(token)
                                 ly = float(ds[ii + 1])
-                                ds[ii] = (
-                                    "l "
-                                    + str(lx / 2)
-                                    + ","
-                                    + str(ly / 2)
-                                    + " "
-                                    + str(lx / 2)
-                                    + ","
-                                    + str(ly / 2)
-                                )
+                                ds[ii] = f"l {lx / 2},{ly / 2} {lx / 2},{ly / 2}"
                             else:
-                                ds[ii] = "c " + " ".join(
-                                    [ds[ii] + "," + ds[ii + 1]] * 3
+                                ds[ii] = (
+                                    f"c {token},{ds[ii + 1]} {token},{ds[ii + 1]} {token},{ds[ii + 1]}"
                                 )
                             ds[ii + 1] = ""
                             ii += 1
-                    ii += 1
-                newd = " ".join([v for v in ds if v != ""])
-                newd = newd.replace("  ", " ")
-                el.set("d", newd)
 
-    def Bezier_to_Split(self, el):
-        # Converts the Bezier TLD to split (for the plain SVG)
-        if el.tag in otp_support_tags and not (isinstance(el, (PathElement))):
-            el.object_to_path()
-        d = el.get("d")
-        if d is not None and any([cv in d for cv in ["c", "C"]]):
-            if any([cv in d for cv in ["C"]]):
-                d = str(inkex.Path(d).to_relative())
-            ds = d.replace(",", " ").split(" ")
-            ds = [v for v in ds if v != ""]
-            nextc = False
-            ii = 0
-            while ii < len(ds):
-                if ds[ii] == "c":
-                    nextc = True
-                    ds[ii] = ""
-                elif ds[ii] in PTH_COMMANDS:
-                    nextc = False
-                else:
-                    if nextc:
-                        cvs = ds[ii : ii + 6]
-                        if cvs[0] == cvs[2] == cvs[4] and cvs[1] == cvs[3] == cvs[5]:
-                            lx = float(cvs[0])
-                            ly = float(cvs[1])
-                            ds[ii] = (
-                                "l "
-                                + str(lx / 2)
-                                + ","
-                                + str(ly / 2)
-                                + " l "
-                                + str(lx / 2)
-                                + ","
-                                + str(ly / 2)
-                            )
-                        else:
-                            ds[ii] = (
-                                "c "
-                                + cvs[0]
-                                + ","
-                                + cvs[1]
-                                + " "
-                                + cvs[2]
-                                + ","
-                                + cvs[3]
-                                + " "
-                                + cvs[4]
-                                + ","
-                                + cvs[5]
-                            )
-                        ds[ii + 1 : ii + 6] = [""] * 5
-                        ii += 5
-                ii += 1
-            newd = " ".join([v for v in ds if v != ""])
-            newd = newd.replace("  ", " ")
-            el.set("d", newd)
+                    ii += 1
+
+                newd = " ".join(v for v in ds if v).replace("  ", " ")
+                el.set("d", newd)
 
     def Marker_Fix(self, el):
         # Fixes the marker bug that occurs with context-stroke and context-fill
@@ -1511,7 +1422,11 @@ class AutoExporter(inkex.EffectExtension):
         # Fuse opacity onto fill and stroke for path-like elements
         # Helps prevent rasterization-at-PDF for Office products
         sty = el.cspecified_style
-        if sty.get("opacity") is not None and float(sty.get("opacity", 1.0)) != 1.0 and el.tag in otp_support_tags:
+        if (
+            sty.get("opacity") is not None
+            and float(sty.get("opacity", 1.0)) != 1.0
+            and el.tag in otp_support_tags
+        ):
             sf = dh.get_strokefill(el)  # fuses opacity and stroke-opacity/fill-opacity
             if sf.stroke is not None and sf.fill is None:
                 el.cstyle["stroke-opacity"] = sf.stroke.alpha
@@ -1715,10 +1630,10 @@ class AutoExporter(inkex.EffectExtension):
         # ir = el.cstyle.get("image-rendering")
         # if ir is not None:
         #     sty = "image-rendering:" + ir
-            
+
         # Inkscape inappropriately clips non-'optimizeQuality' images
         # when generating PDFs
-        sty = 'image-rendering:optimizeQuality'
+        sty = "image-rendering:optimizeQuality"
         el = newel
 
         pgo = [
@@ -1802,10 +1717,10 @@ class AutoExporter(inkex.EffectExtension):
         newvb = pg.croot.cdocsize.pxtouu(pg.bbpx)
         svg.set_viewbox(newvb)
 
-    def get_markers(self,el):
-        ''' Returns valid marker keys and corresponding elements '''
+    def get_markers(self, el):
+        """Returns valid marker keys and corresponding elements"""
         md = dict()
-        for m in ['marker',"marker-start", "marker-mid", "marker-end"]:
+        for m in ["marker", "marker-start", "marker-mid", "marker-end"]:
             mv = el.cstyle.get_link(m, el.croot)
             if mv is not None:
                 md[m] = mv
@@ -1826,7 +1741,7 @@ class AutoExporter(inkex.EffectExtension):
             svg = els[0].croot
         for el in els:
             ms = self.get_markers(el)
-            if isinstance(el, inkex.Group) and len(ms)>0:
+            if isinstance(el, inkex.Group) and len(ms) > 0:
                 dh.ungroup(el)
             elif el.tag in otp_support_tags:
                 sty = el.cspecified_style
@@ -1841,26 +1756,30 @@ class AutoExporter(inkex.EffectExtension):
                         gp = dh.group([el], moveTCM=True)
                         # Do it again so we can add transform later without messing up clip
                         g = dh.group([el], moveTCM=True)
-                        
+
                         path_els.append(el.get_id())
-                        dummy_groups.extend([gp.get_id(),g.get_id()])
+                        dummy_groups.extend([gp.get_id(), g.get_id()])
 
                         # Scale up most paths to be size 1000 and position corner at (0,0)
-                        if inkex.addNS('type','sodipodi') not in el.attrib:
+                        if inkex.addNS("type", "sodipodi") not in el.attrib:
                             # Object to path doesn't currently support Inkscape-specific objects
                             el.object_to_path()
-                            bb = el.bounding_box2(dotransform=False, includestroke=False, roughpath=False)
-                            if len(ms)==0:
+                            bb = el.bounding_box2(
+                                dotransform=False, includestroke=False, roughpath=False
+                            )
+                            if len(ms) == 0:
                                 # SCALEBY = 1000
-                                maxsz = max(bb.w,bb.h)
-                                SCALEBY = 1000 / maxsz if maxsz>0 else 1000
+                                maxsz = max(bb.w, bb.h)
+                                SCALEBY = 1000 / maxsz if maxsz > 0 else 1000
                             else:
                                 # For paths with markers, scale to make stroke-width=1
                                 # Prevents incorrect marker size
                                 # https://gitlab.com/inkscape/inbox/-/issues/10506#note_1931910230
-                                SCALEBY = 1/dh.ipx(sw)
-                            
-                            tr = Transform("scale({0})".format(SCALEBY)) @ Transform("translate({0},{1})".format(-bb.x1,-bb.y1))
+                                SCALEBY = 1 / dh.ipx(sw)
+
+                            tr = Transform("scale({0})".format(SCALEBY)) @ Transform(
+                                "translate({0},{1})".format(-bb.x1, -bb.y1)
+                            )
                             # relative paths seem to have some bugs
                             p2 = str(el.cpath.to_absolute().transform(tr))
                             el.set("d", p2)
@@ -1901,77 +1820,3 @@ class AutoExporter(inkex.EffectExtension):
 
 if __name__ == "__main__":
     dh.Run_SI_Extension(AutoExporter(), "Autoexporter")
-
-
-# Scour calling
-# from output_scour import ScourInkscape
-
-
-# SCOUR_OPTIONS = (
-#     "--tab=Options",
-#     "--set-precision=5",
-#     "--simplify-colors=true",
-#     "--style-to-xml=true",
-#     "--group-collapsing=true",
-#     "--create-groups=true",
-#     "--keep-editor-data=false",
-#     "--keep-unreferenced-defs=false",
-#     "--renderer-workaround=true",
-#     "--strip-xml-prolog=false",
-#     "--remove-metadata=false",
-#     "--enable-comment-stripping=false",
-#     "--embed-rasters=true",
-#     "--enable-viewboxing=false",
-#     "--line-breaks=true",
-#     "--indent=space",
-#     "--nindent=1",
-#     "--strip-xml-space=false",
-#     "--enable-id-stripping=true",
-#     "--shorten-ids=true",
-#     "--protect-ids-noninkscape=true",
-#     "--scour-version=0.31",
-#     "--scour-version-warn-old=false",
-# )
-
-# sargs = SCOUR_OPTIONS + (fin,)
-
-
-# if fformat == "svg":
-#     try:
-#         ScourInkscape().run(sargs, myoutput)
-#     except:  # Scour failed
-#         dh.idebug("\nWarning: Optimizer failed, making plain SVG instead")
-#         if not(opts.usepdf):
-#             # Convert to PDF
-#             tmp3 = basetemp.replace(".svg", "_tmp_small.pdf")
-#             arg2 = [
-#                 bfn,
-#                 "--export-background",
-#                 "#ffffff",
-#                 "--export-background-opacity",
-#                 "1.0",
-#                 "--export-dpi",
-#                 str(opts.dpi),
-#                 "--export-filename",
-#                 tmp3,
-#                 fin,
-#             ]
-#             dh.subprocess_repeat(arg2)
-#             fin = copy.copy(tmp3)
-#             tmpoutputs.append(tmp3)
-#         else:
-#             fin = myoutput.replace("_optimized.svg",".pdf")
-#         # Convert back to SVG
-#         arg2 = [
-#             bfn,
-#             "--export-background",
-#             "#ffffff",
-#             "--export-background-opacity",
-#             "1.0",
-#             "--export-dpi",
-#             str(opts.dpi),
-#             "--export-filename",
-#             myoutput,
-#             fin,
-#         ]
-#         dh.subprocess_repeat(arg2)
