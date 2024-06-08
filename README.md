@@ -1,5 +1,5 @@
 # Scientific Inkscape: Extensions for figure editing and resizing
-The Scientific Inkscape extensions let you and edit and export beautiful fully-vector scientific figures.
+The Scientific Inkscape extensions helps you and edit and export beautiful fully-vector scientific figures.
 <p align="center"><img src="https://github.com/burghoff/Scientific-Inkscape/blob/dev/examples/Resize_Optica.gif" alt="drawing" width="70%"></img></p>
 
 The core extensions are:
