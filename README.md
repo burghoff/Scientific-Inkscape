@@ -6,7 +6,7 @@ The core extensions are:
 1. **Scale Plots**: Changes the size or aspect ratio of a plot without modifying its text and ticks, making it easy to assemble multi-panel figures. Also works on non-plots.
 2. **Homogenizer**: Sets uniform fonts, font sizes, and stroke widths in a selection.
 3. **Flattener**: Eliminates the structure of imported figures, making them easier to edit. For most imports, this should be the first thing you run.
-4. **Autoexporter**: Automatically refreshes exports of SVGs in a folder. Also produces exports immune to the rendering bugs of Office and Acrobat.
+4. **Autoexporter**: Automatically refreshes exports of SVGs in a folder, while producing exports immune to the rendering bugs of Office and Acrobat.
 5. **Gallery Viewer**: Quickly view and edit all SVGs in a file or folder.
 
 It also includes the following utilities:
