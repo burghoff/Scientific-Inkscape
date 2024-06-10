@@ -5,8 +5,7 @@
     <param name="tab" type="notebook">        
         <page name="scaling" gui-text="Options">
         <label>Launches the Autoexporter, a background program that watches a directory for changes to any SVG and then writes exports in the selected formats.</label>
-        <label>Mac users: You may get a security prompt asking whether to allow the program to run.</label>
-        <label>Linux users: AppImages and Snap installations may not be able to see folders outside the installation folder.</label>
+        <label>If you encounter a security prompt, please be sure to allow the program to run.</label>
         <label appearance="header">Formats to export</label>
         <param name="usepdf" type="bool" gui-text="PDF"
          gui-description="Filters and gradients will be rasterized.">true</param>   

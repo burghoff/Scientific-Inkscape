@@ -359,6 +359,12 @@ class AutoExporter(inkex.EffectExtension):
                 optcopy.watchdir = os.path.dirname(pth)
                 optcopy.writedir = os.path.dirname(pth)
 
+            
+            if not os.path.exists(optcopy.watchdir):
+                dh.idebug("Watch directory could not be found. Please be sure the selected location is valid.\n")
+                dh.idebug("Note: Linux AppImage and Snap installations of Inkscape cannot see locations outside the installation directory.")
+                sys.exit()
+
             # Pass settings using a config file. Include the current path so Inkex can be called if needed.
             import pickle
 
@@ -372,6 +378,8 @@ class AutoExporter(inkex.EffectExtension):
                 with warnings.catch_warnings():
                     # Ignore ImportWarning for Gtk/Pango
                     warnings.simplefilter("ignore")
+                    #Prevent Gtk-Message: Failed to load module "xapp-gtk3-module"
+                    os.environ['GTK_MODULES'] = ""
                     import gi
 
                     gi.require_version("Gtk", "3.0")
@@ -835,134 +843,17 @@ class AutoExporter(inkex.EffectExtension):
         # actions into a single call that also gets the Bounding Boxes
         # Skip binary call during testing
         if len(allacts) > 0 and not opts.testmode:
-
-            def Split_Select(fn, inkbin, acts, selii, reserved):
-                """
-                Windows cannot handle arguments that are too long. If this happens,
-                split the actions in half and run on each
-                """
-                import math, shutil
-
-                act = acts[selii]
-
-                m1 = re.search(
-                    r"export-filename:(.+?); export-background-opacity:", act
-                )
-                m2 = re.search(r"export-filename:(.+?); export-do;", act)
-                if m1:
-                    actfn = m1.group(1)
-                elif m2:
-                    actfn = m2.group(1)
-                else:
-                    actfn = None
-
-                match = re.search(r"select:(.*?); object-stroke-to-path", act)
-                selects = match.group(1).split(",")
-                after = re.search(r"; object-stroke-to-path(.*)", act).group(1)
-                mp = math.ceil(len(selects) / 2)
-
-                reserved.update({fn, actfn})
-                isreserved = True
-                cnt = 0
-                while isreserved:
-                    actfna = actfn.strip(".svg") + str(cnt) + ".svg"
-                    isreserved = actfna in reserved
-                    cnt += 1
-                reserved.update({actfna})
-
-                if len(selects) == 1:
-                    # cannot split, fact that we failed means there is a STP crash
-                    # dh.idebug('failed: '+str(selects))
-                    shutil.copy(fn, actfn)
-                    return Split_Acts(
-                        fn=fn,
-                        inkbin=inkbin,
-                        acts=acts[:selii] + acts[selii + 1 :],
-                        reserved=reserved,
-                    )
-                else:
-                    act1 = (
-                        "select:"
-                        + ",".join(selects[:mp])
-                        + "; object-stroke-to-path"
-                        + after
-                    )
-                    act1 = act1.replace(actfn, actfna)
-                    act2 = (
-                        "select:"
-                        + ",".join(selects[mp:])
-                        + "; object-stroke-to-path"
-                        + after
-                    )
-
-                    acts1 = (
-                        acts[:selii] + [act1] if len(selects[:mp]) > 0 else acts[:selii]
-                    )
-                    acts2 = (
-                        [act2] + acts[selii + 1 :]
-                        if len(selects[mp:]) > 0
-                        else acts[selii + 1 :]
-                    )
-
-                    bbs = Split_Acts(
-                        fn=fn, inkbin=inkbin, acts=acts1, reserved=reserved
-                    )
-                    bbs = Split_Acts(
-                        fn=actfna, inkbin=inkbin, acts=acts2, reserved=reserved
-                    )
-                    return bbs
-
-            def Split_Acts(fn, inkbin, acts, reserved=set()):
-                import math
-
-                try:
-                    eargs = ["--actions", "".join(acts)]
-                    bbs = dh.Get_Bounding_Boxes(
-                        filename=fn, inkscape_binary=inkbin, extra_args=eargs
-                    )
-                    for ii, act in enumerate(acts):
-                        if "export-filename" and "export-do" in act:
-                            m1 = re.search(
-                                r"export-filename:(.+?); export-background-opacity:",
-                                act,
-                            )
-                            m2 = re.search(r"export-filename:(.+?); export-do;", act)
-                            if m1:
-                                actfn = m1.group(1)
-                            elif m2:
-                                actfn = m2.group(1)
-                            else:
-                                actfn = None
-                            if actfn is not None and not os.path.exists(actfn):
-                                if "select" in act and "object-stroke-to-path" in act:
-                                    return Split_Select(
-                                        fn, inkbin, acts, ii, reserved=reserved
-                                    )
-                except FileNotFoundError:
-                    if len(acts) == 1:
-                        if "select" in acts[0] and "object-stroke-to-path" in acts[0]:
-                            return Split_Select(fn, inkbin, acts, 0, reserved=reserved)
-                        else:
-                            inkex.utils.errormsg("Argument too long and cannot split")
-                            quit()
-                    else:
-                        acts1 = acts[: math.ceil(len(acts) / 2)]
-                        acts2 = acts[math.ceil(len(acts) / 2) :]
-                    bbs = Split_Acts(
-                        fn=fn, inkbin=inkbin, acts=acts1, reserved=reserved
-                    )
-                    bbs = Split_Acts(
-                        fn=fn, inkbin=inkbin, acts=acts2, reserved=reserved
-                    )
-                return bbs
-
-            oldwd = os.getcwd()
+            try:
+                oldwd = os.getcwd()
+            except FileNotFoundError:
+                oldwd = None
             os.chdir(tempdir)
             # use relative paths to reduce arg length
 
-            bbs = Split_Acts(fn=cfile, inkbin=bfn, acts=allacts)
+            bbs = self.Split_Acts(fn=cfile, inkbin=bfn, acts=allacts)
             try:
-                os.chdir(oldwd)
+                if oldwd is not None:
+                    os.chdir(oldwd)
                 # return to original dir so no problems in calling function
             except FileNotFoundError:
                 pass  # occasionally directory no longer exists (deleted by tempfile?)
@@ -1031,6 +922,126 @@ class AutoExporter(inkex.EffectExtension):
                 + " s)"
             )
         return cfile
+    
+    def Split_Select(self,fn, inkbin, acts, selii, reserved):
+        """
+        Windows cannot handle arguments that are too long. If this happens,
+        split the actions in half and run on each
+        """
+        import math, shutil
+
+        act = acts[selii]
+
+        m1 = re.search(
+            r"export-filename:(.+?); export-background-opacity:", act
+        )
+        m2 = re.search(r"export-filename:(.+?); export-do;", act)
+        if m1:
+            actfn = m1.group(1)
+        elif m2:
+            actfn = m2.group(1)
+        else:
+            actfn = None
+
+        match = re.search(r"select:(.*?); object-stroke-to-path", act)
+        selects = match.group(1).split(",")
+        after = re.search(r"; object-stroke-to-path(.*)", act).group(1)
+        mp = math.ceil(len(selects) / 2)
+
+        reserved.update({fn, actfn})
+        isreserved = True
+        cnt = 0
+        while isreserved:
+            actfna = actfn.strip(".svg") + str(cnt) + ".svg"
+            isreserved = actfna in reserved
+            cnt += 1
+        reserved.update({actfna})
+
+        if len(selects) == 1:
+            # cannot split, fact that we failed means there is a STP crash
+            # dh.idebug('failed: '+str(selects))
+            shutil.copy(fn, actfn)
+            return self.Split_Acts(
+                fn=fn,
+                inkbin=inkbin,
+                acts=acts[:selii] + acts[selii + 1 :],
+                reserved=reserved,
+            )
+        else:
+            act1 = (
+                "select:"
+                + ",".join(selects[:mp])
+                + "; object-stroke-to-path"
+                + after
+            )
+            act1 = act1.replace(actfn, actfna)
+            act2 = (
+                "select:"
+                + ",".join(selects[mp:])
+                + "; object-stroke-to-path"
+                + after
+            )
+
+            acts1 = (
+                acts[:selii] + [act1] if len(selects[:mp]) > 0 else acts[:selii]
+            )
+            acts2 = (
+                [act2] + acts[selii + 1 :]
+                if len(selects[mp:]) > 0
+                else acts[selii + 1 :]
+            )
+
+            bbs = self.Split_Acts(
+                fn=fn, inkbin=inkbin, acts=acts1, reserved=reserved
+            )
+            bbs = self.Split_Acts(
+                fn=actfna, inkbin=inkbin, acts=acts2, reserved=reserved
+            )
+            return bbs
+
+    def Split_Acts(self,fn, inkbin, acts, reserved=set()):
+        import math
+
+        try:
+            eargs = ["--actions", "".join(acts)]
+            bbs = dh.Get_Bounding_Boxes(
+                filename=fn, inkscape_binary=inkbin, extra_args=eargs
+            )
+            for ii, act in enumerate(acts):
+                if "export-filename" and "export-do" in act:
+                    m1 = re.search(
+                        r"export-filename:(.+?); export-background-opacity:",
+                        act,
+                    )
+                    m2 = re.search(r"export-filename:(.+?); export-do;", act)
+                    if m1:
+                        actfn = m1.group(1)
+                    elif m2:
+                        actfn = m2.group(1)
+                    else:
+                        actfn = None
+                    if actfn is not None and not os.path.exists(actfn):
+                        if "select" in act and "object-stroke-to-path" in act:
+                            return self.Split_Select(
+                                fn, inkbin, acts, ii, reserved=reserved
+                            )
+        except FileNotFoundError:
+            if len(acts) == 1:
+                if "select" in acts[0] and "object-stroke-to-path" in acts[0]:
+                    return self.Split_Select(fn, inkbin, acts, 0, reserved=reserved)
+                else:
+                    inkex.utils.errormsg("Argument too long and cannot split")
+                    quit()
+            else:
+                acts1 = acts[: math.ceil(len(acts) / 2)]
+                acts2 = acts[math.ceil(len(acts) / 2) :]
+            bbs = self.Split_Acts(
+                fn=fn, inkbin=inkbin, acts=acts1, reserved=reserved
+            )
+            bbs = self.Autoexporter.Split_Acts(
+                fn=fn, inkbin=inkbin, acts=acts2, reserved=reserved
+            )
+        return bbs
 
     # Use the Inkscape binary to export the file
     def export_file(self, bfn, fin, fout, fformat, ppoutput, opts, tempbase):

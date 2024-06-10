@@ -3,7 +3,7 @@
 # automatically to another folder in multiple formats.
 
 DEBUG = False
-WHILESLEEP = 0.25
+WHILESLEEP = 0.5
 
 import sys, platform, os, threading, time, copy, pickle
 
@@ -84,6 +84,121 @@ def get_modtimes(dirin):
     else:
         return None
 
+class Watcher:
+    ''' Class that watches a folder for changes to SVGs '''
+    def __init__(self, directory_to_watch, createfcn=None, modfcn=None, deletefcn=None):
+        import re, sys
+        from threading import Timer
+        import warnings
+        warnings.filterwarnings("ignore", message="Failed to import fsevents. Fall back to kqueue")
+        mydir = os.path.dirname(os.path.abspath(__file__))
+        packages = os.path.join(mydir, "packages")
+        if packages not in sys.path:
+            sys.path.append(packages)
+        from watchdog.observers import Observer
+        from watchdog.events import FileSystemEventHandler
+
+        class Handler(FileSystemEventHandler):
+            def __init__(self, createfcn=None, modfcn=None, deletefcn=None):
+                # Dictionary to store the last event and debounce timers for each file
+                self.debounce_timers = {}
+                self.last_event = {}
+                self.file_mod_times = {}
+                self.createfcn = createfcn
+                self.modfcn = modfcn
+                self.deletefcn = deletefcn
+                # Initialize file modification times
+                self.initialize_mod_times(directory_to_watch)
+
+            @staticmethod
+            def is_target_file(file_name):
+                excludes = ["_portable.svg", "_plain.svg"]
+                pattern = r"\.(\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.\d{1,6})\.svg$"
+                if any(file_name.endswith(ex) for ex in excludes):
+                    return False
+                if re.search(pattern, file_name):
+                    return False
+                return file_name.endswith('.svg')
+
+            @staticmethod
+            def get_mod_time(file_path):
+                try:
+                    return os.path.getmtime(file_path)
+                except FileNotFoundError:
+                    return None
+
+            def initialize_mod_times(self, directory):
+                for file in os.listdir(directory):
+                    file_path = os.path.join(directory, file)
+                    if os.path.isfile(file_path) and self.is_target_file(file_path):
+                        mod_time = self.get_mod_time(file_path)
+                        if mod_time:
+                            self.file_mod_times[file_path] = mod_time
+
+            def debounce(self, event):
+                # Process the last event
+                if event.event_type == 'created':
+                    if self.createfcn is not None:
+                        self.createfcn(event.src_path)
+                elif event.event_type == 'modified':
+                    if self.modfcn is not None:
+                        self.modfcn(event.src_path)
+                elif event.event_type == 'deleted':
+                    if self.deletefcn is not None:
+                        self.deletefcn(event.src_path)
+
+            def handle_event(self, event):
+                if event.is_directory:
+                    return None
+                if self.is_target_file(event.src_path):
+                    # Cancel existing timer if present
+                    if event.src_path in self.debounce_timers:
+                        self.debounce_timers[event.src_path].cancel()
+                    # Store the event
+                    self.last_event[event.src_path] = event
+                    # Set a new timer
+                    self.debounce_timers[event.src_path] = Timer(1.0, self.debounce, [event])
+                    self.debounce_timers[event.src_path].start()
+
+            def on_created(self, event):
+                self.handle_event(event)
+
+            def on_modified(self, event):
+                if event.is_directory:
+                    return None
+
+                if self.is_target_file(event.src_path):
+                    new_mod_time = self.get_mod_time(event.src_path)
+                    old_mod_time = self.file_mod_times.get(event.src_path)
+
+                    # Only handle the event if the file modification time has changed
+                    if new_mod_time and new_mod_time != old_mod_time:
+                        self.file_mod_times[event.src_path] = new_mod_time
+                        self.handle_event(event)
+
+            def on_deleted(self, event):
+                if event.src_path in self.file_mod_times:
+                    del self.file_mod_times[event.src_path]
+                self.handle_event(event)
+
+        self.Handler = Handler  # Make Handler an attribute of Watcher
+        self.observer = Observer()
+        self.directory_to_watch = directory_to_watch
+        self.createfcn = createfcn
+        self.modfcn = modfcn
+        self.deletefcn = deletefcn
+        self.start()
+
+    def start(self):
+        event_handler = self.Handler(createfcn=self.createfcn, modfcn=self.modfcn, deletefcn=self.deletefcn)
+        self.observer.schedule(event_handler, self.directory_to_watch, recursive=False)
+        self.observer.start()
+
+    def stop(self):
+        self.observer.stop()
+        self.observer.join()
+
+
 
 # Threading class
 class monitorThread(threading.Thread):
@@ -100,12 +215,31 @@ class monitorThread(threading.Thread):
         self.running_threads = []
         self.finished_threads = []
         self.promptpending = True
+        self.watcher = None
+        
+    def queue_thread(self,f):
+        for t in self.thread_queue + self.running_threads:
+            # Stop exports already in progress
+            if t.file == f:
+                t.stopped = True
+        fthr = monitorThread("autoexporter")
+        fthr.file = f
+        fthr.outtemplate = autoexporter.joinmod(
+            self.writedir, os.path.split(f)[1]
+        )
+        self.thread_queue.append(fthr)
+        
+    def start_watcher(self):
+        if self.watcher is not None: # Stop existing watcher
+            self.watcher.stop()
+        mfcn = lambda x : self.queue_thread(os.path.abspath(x))
+        self.watcher = Watcher(self.watchdir,createfcn=mfcn,modfcn=mfcn)
 
     def run(self):
         if self.threadID == "filechecker":
             # Main thread
-            ltm = time.time()
-            # genfiles = []
+            self.start_watcher()
+            
             while not (self.stopped):
                 self.checkongoing = True
                 if self.nf:
@@ -118,77 +252,62 @@ class monitorThread(threading.Thread):
                     mprint("Write directory: " + self.writedir)
                     lastmod = get_modtimes(self.watchdir)
                     self.nf = False
-                if time.time() > ltm + WHILESLEEP:
-                    ltm = time.time()
 
-                    updatefiles = []
+                if self.watcher.directory_to_watch != self.watchdir:
+                    self.start_watcher()
+
+                if self.ea:  # export all
+                    self.ea = False
+                    lastmod = get_modtimes(self.watchdir)
                     if lastmod is not None:
-                        newmod = get_modtimes(self.watchdir)
-                        if newmod is not None:
-                            for n in newmod:
-                                if n not in lastmod or newmod[n] > lastmod[n] + 1:
-                                    updatefiles.append(n)
-                            lastmod = newmod
+                        updatefiles = list(lastmod.keys())
                     else:
-                        lastmod = get_modtimes(self.watchdir)
+                        mprint("Cannot access watch directory.")
+                elif self.es:
+                    self.es = False
+                    updatefiles = [self.selectedfile]
+                else:
+                    updatefiles = []
 
-                    if self.ea:  # export all
-                        self.ea = False
-                        if lastmod is not None:
-                            updatefiles = list(lastmod.keys())
-                        else:
-                            mprint("Cannot access watch directory.")
-                    elif self.es:
-                        self.es = False
-                        updatefiles = [self.selectedfile]
+                loopme = True
+                while loopme:
+                    for f in sorted(updatefiles):
+                        self.queue_thread(f)
 
-                    loopme = True
-                    while loopme:
-                        for f in sorted(updatefiles):
-                            for x in self.thread_queue + self.running_threads:
-                                # Stop exports already in progress
-                                if x.file == f:
-                                    x.stopped = True
-                            fthr = monitorThread("autoexporter")
-                            fthr.file = f
-                            fthr.outtemplate = autoexporter.joinmod(
-                                self.writedir, os.path.split(f)[1]
-                            )
-                            self.thread_queue.append(fthr)
-
-                        MAXTHREADS = 10
-                        while (
-                            len(self.thread_queue) > 0
-                            and len(self.running_threads) < MAXTHREADS
-                            and not (self.stopped)
-                        ):
-                            self.thread_queue[0].start()
-                            self.running_threads.append(self.thread_queue[0])
-                            self.thread_queue.remove(self.thread_queue[0])
-                            time.sleep(WHILESLEEP)
-                        for thr in reversed(self.running_threads):
-                            if not (thr.is_alive()):
-                                self.running_threads.remove(thr)
-                                self.finished_threads.append(thr)
-                                self.promptpending = True
-
-                        # Debug mode: infinite loop
-                        while self.dm and any(
-                            [thr.is_alive() for thr in self.running_threads]
-                        ):
-                            time.sleep(WHILESLEEP)
-                        loopme = self.dm
-
-                    if (
-                        self.promptpending
-                        and len(self.running_threads) + len(self.thread_queue) == 0
+                    MAXTHREADS = 10
+                    while (
+                        len(self.thread_queue) > 0
+                        and len(self.running_threads) < MAXTHREADS
+                        and not (self.stopped)
                     ):
-                        if guitype == "terminal":
-                            mprint(promptstring)
-                        self.promptpending = False
+                        self.thread_queue[0].start()
+                        self.running_threads.append(self.thread_queue[0])
+                        self.thread_queue.remove(self.thread_queue[0])
+                        time.sleep(WHILESLEEP)
+                    for thr in reversed(self.running_threads):
+                        if not (thr.is_alive()):
+                            self.running_threads.remove(thr)
+                            self.finished_threads.append(thr)
+                            self.promptpending = True
+
+                    # Debug mode: infinite loop
+                    while self.dm and any(
+                        [thr.is_alive() for thr in self.running_threads]
+                    ):
+                        time.sleep(WHILESLEEP)
+                    loopme = self.dm
+
+                if (
+                    self.promptpending
+                    and len(self.running_threads) + len(self.thread_queue) == 0
+                ):
+                    if guitype == "terminal":
+                        mprint(promptstring)
+                    self.promptpending = False
                 time.sleep(WHILESLEEP)
 
             # Stop any threads still running after exit
+            self.watcher.stop()
             for t in self.running_threads:
                 t.stopped = True
             while any([thr.is_alive() for thr in self.running_threads]):
@@ -244,7 +363,6 @@ class monitorThread(threading.Thread):
                 pass
             except:
                 import traceback
-
                 error_message = f"Exception in {fname}\n"
                 error_message += traceback.format_exc()
                 mprint(error_message)
@@ -363,7 +481,7 @@ if guitype == "gtk":
             for ln in lns:
                 if "Export formats: " in ln or "Rasterization DPI: " in ln or exception:
                     continue
-                if ":" in ln and len(ln.split(":")) == 2:
+                if ":" in ln and len(ln.split(":")) == 2 and 'Inkscape binary' not in ln and 'Python interpreter' not in ln:
                     ln2 = [v.strip(" ") for v in ln.split(":")]
                     self.liststore.append(ln2)
                     # time.sleep(0.25)
