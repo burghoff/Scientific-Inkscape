@@ -347,7 +347,7 @@ class FlattenPlots(inkex.EffectExtension):
                                     el.cstyle["fill"] = "none"
                                     el.cstyle["stroke-width"] = str(bb.w)
                                     el.cstyle["stroke-linecap"] = "none"
-                                elif bb.h < bb.w / RECT_THRESHOLD:
+                                elif bb.h < bb.w / RECT_THRESHOLD and not sf.fill_isurl:
                                     el.object_to_path()
                                     np = "m {0},{1} h {2}".format(bb.x1, bb.yc, bb.w)
                                     el.set("d", np)
