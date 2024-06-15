@@ -668,6 +668,14 @@ with warnings.catch_warnings():
                                 os.environ["GI_TYPELIB_PATH"] = (
                                     cval + os.pathsep + newpath
                                 )
+                # Windows doesn't have the XDG_DATA_HOME directory set, which is
+                # needed for /etc/fonts.conf to find the user fonts directory:
+                #   <dir prefix="xdg">fonts</dir>
+                # Set it based on the location of preferences.xml
+                if os.environ.get("XDG_DATA_HOME") is None:
+                    os.environ["XDG_DATA_HOME"] = os.path.dirname(
+                        inkex.inkscape_system_info.find_preferences()
+                    )
 
             import gi
 

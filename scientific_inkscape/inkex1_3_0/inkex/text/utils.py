@@ -213,7 +213,10 @@ def isrectangle(el, includingtransform=True):
         return False
 
     # Assume masks aren't rectangular
-    if el.get_link("mask", llget=True) is not None or el.cspecified_style.get_link('filter',el.croot) is not None:
+    if (
+        el.get_link("mask", llget=True) is not None
+        or el.cspecified_style.get_link("filter", el.croot) is not None
+    ):
         return False
     # Clipped rectangles may not be rectangular
     if el.get_link("clip-path", llget=True) is not None and any(
