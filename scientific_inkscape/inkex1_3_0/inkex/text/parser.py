@@ -1001,7 +1001,7 @@ class ParsedText:
         newfams = []
         for ln in self.lns:
             for c in ln.cs:
-                newfam = (c.sty.get("font-family"), c, c.loc.sel)
+                newfam = (c.fsty, c, c.loc.sel)
                 if c.c in ft[c.fsty] and newfam[0] != ft[c.fsty][c.c]:
                     newfam = (ft[c.fsty][c.c], c, c.loc.sel)
 
@@ -1035,9 +1035,10 @@ class ParsedText:
         # Replace fonts
         for el, rlst in torepl.items():
             # For the most common family, set the element style itself
-            if not el.ccascaded_style.get("font-family") == rlst[0][0]:
+            if not font_style(el.ccascaded_style) == rlst[0][0]:
                 el.cstyle = el.ccascaded_style
-                el.cstyle["font-family"] = rlst[0][0]
+                for k, v in rlst[0][0].items():
+                    el.cstyle[k] = v
                 el.cstyle["-inkscape-font-specification"] = None
                 for c in rlst[0][1]:
                     c.sty = el.cstyle
@@ -1045,7 +1046,7 @@ class ParsedText:
             for r in rlst[1:]:
                 for c in r[1]:
                     c.add_style(
-                        {"font-family": r[0], "baseline-shift": "0%"}, setdefault=False
+                        {"font-family": r[0]["font-family"], "font-weight": r[0]["font-weight"],  "font-style": r[0]["font-style"], "font-stretch": r[0]["font-stretch"], "baseline-shift": "0%"}, setdefault=False
                     )
 
     # Convert flowed text into normal text
@@ -3797,6 +3798,12 @@ class Character_Table:
     # for when a family does not have a character and a default is used
     @property
     def font_table(self):
+        '''
+        Return a dict whose keys are the font styles (i.e., style reduced to the four
+        attributes that define a font), and whose values are dicts whose keys are
+        the characters present with that font and whose values are the true styles
+        that those characters are rendered as by Inkscape.
+        '''
         if not hasattr(self, "_ftable"):
             ctable2 = dict()
             self._ftable = dict()
@@ -3805,7 +3812,7 @@ class Character_Table:
                 allcs = set("".join(self.rtable[s]))
                 tfbc = fcfg.get_true_font_by_char(s, allcs)
                 tfbc = {k: v for k, v in tfbc.items() if v is not None}
-                self._ftable[s] = {k: v["font-family"] for k, v in tfbc.items()}
+                self._ftable[s] = {k: v for k, v in tfbc.items()}
 
                 for k, v in tfbc.items():
                     v2 = ";".join([f"{key}:{value}" for key, value in v.items()])

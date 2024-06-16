@@ -123,10 +123,21 @@ class FontConfig:
         if nftuple not in self.truefonts:
             pat = self.css_to_fc_pattern(reducedsty)
             conf = fc.Config.get_current()
+            
             conf.substitute(pat, FC.MatchPattern)
             pat.default_substitute()
             found, status = conf.font_match(pat)
             truefont = self.fcfound_to_css(found)
+            
+            if truefont not in self.font_list_css:
+                # font_match rarely returns missing fonts, usually variable-weight
+                # fonts where not all are installed. In that case, use the fallback
+                # font_match method
+                found, total_coverage, status = conf.font_sort(
+                    pat, trim=True, want_coverage=False
+                )
+                found = found[0]
+                truefont = self.fcfound_to_css(found)
 
             self.truefonts[nftuple] = truefont
             self.truefontsfc[nftuple] = found
@@ -220,6 +231,28 @@ class FontConfig:
                     ("font-stretch", nearest_val(lu.FCWDT_to_CSSSTR, fcwdt)),
                 ]
             )
+        
+    @property
+    def font_list(self):
+        ''' Finds all fonts known to FontConfig '''
+        if not hasattr(self, "_font_list"):
+            pattern = fc.Pattern.create() # blank pattern
+            properties = ["family", 'weight', "slant", 'width', "style","file"]
+            # style is a nice name for the weight/slant/width combo
+            # e.g., Arial Narrow Bold
+            conf = fc.Config.get_current()
+            self._font_list = conf.font_list(pattern, properties)
+            self._font_list = sorted(
+                self._font_list, key=lambda x: x.get('family',0)[0]
+            )  # Sort by family
+        return self._font_list
+    
+    @property
+    def font_list_css(self):
+        ''' Finds all fonts known to FontConfig in css form '''
+        if not hasattr(self, "_font_list_css"):
+            self._font_list_css = [self.fcfound_to_css(f) for f in self.font_list]
+        return self._font_list_css
 
     # For testing purposes
     def Flow_Test_Doc(self):
@@ -688,15 +721,15 @@ with warnings.catch_warnings():
         except:
             haspango = False
 
-        try:
-            # May require some typelibs we do not have
-            gi.require_version("PangoFT2", "1.0")
-            from gi.repository import PangoFT2
-
-            haspangoFT2 = True
-        except:
-            haspangoFT2 = False
-            if haspango:
+        if haspango:
+            try:
+                # May require some typelibs we do not have
+                gi.require_version("PangoFT2", "1.0")
+                from gi.repository import PangoFT2
+    
+                haspangoFT2 = True
+            except:
+                haspangoFT2 = False
                 from gi.repository import Gdk
 
 if pangoenv in ["True", "False"]:
@@ -803,12 +836,12 @@ class PangoRenderer:
             csty = [k for k, v in lu.CSSSTY_to_PSTY.items() if v == fd.get_style()]
 
             s = (("font-family", fd.get_family()),)
-            if len(cs) > 0:
-                s += (("font-stretch", cs[0]),)
             if len(cw) > 0:
                 s += (("font-weight", cw[0]),)
             if len(csty) > 0:
                 s += (("font-style", csty[0]),)
+            if len(cs) > 0:
+                s += (("font-stretch", cs[0]),)
             return Style(s)
 
         self.pango_to_css = pango_to_css_func
@@ -849,6 +882,26 @@ class PangoRenderer:
         if not hasattr(self, "_face_css"):
             self._face_css = [self.pango_to_css(fd) for fd in self.face_descriptions]
         return self._face_css
+
+    def str_to_face_description(self,fstr):
+        '''
+        Look up a face's description based on its string representation.
+        This function is meant to be forgiving, allowing a user to vary punctuation
+        and capitalization, trying to find a match in the system's faces.
+        '''
+        def clean_str(strin):
+            ret = strin.replace(',',"").replace('"',"").replace("'","")
+            ret = ret.strip().lower()
+            if ret.endswith('normal'):
+                ret = ret[:-len('normal')]
+            return ret.strip()
+            
+        matches = [ii for ii,fs in enumerate(self.face_strings) if clean_str(fstr)==clean_str(fs)]
+        if matches:
+            return self.face_descriptions[matches[0]]
+        else:
+            return None
+            
 
     # Search the /etc/fonts/conf.d folder for the default sans-serif font
     # Not currently used

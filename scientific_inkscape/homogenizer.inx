@@ -10,8 +10,9 @@
             </label>
             <label appearance="header">Text options</label>
             <param name="fixtextdistortion" type="bool" gui-text="Correct distorted text?">true</param>
-            <param name="setfontfamily" type="bool" gui-text="Set font family?">true</param>
-            <param name="fontfamily" type="string" gui-text="Font family"></param>  
+            <param name="setfontfamily" type="bool" gui-text="Set font?">true</param>
+            <param name="fontfamily" type="string" gui-text="Font family"
+                    gui-description="Style can also be specified (after the family, separated by a space)"></param>  
             
             <param name="setfontsize" type="bool" gui-text="Set font size?">true</param>
             <param name="fontmodes" type="optiongroup" appearance="combo"

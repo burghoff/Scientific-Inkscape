@@ -703,47 +703,47 @@ class AutoExporter(inkex.EffectExtension):
         # Conversion to plain SVG does this automatically but poorly
         excludetxtids = []
         opts.duplicatelabels = dict()
-        if opts.usepsvg:
-            if len(tels) > 0:
-                svg.make_char_table()
-                opts.ctable = svg.char_table
-                # store for later
+        # if opts.usepsvg:
+        if len(tels) > 0:
+            svg.make_char_table()
+            opts.ctable = svg.char_table
+            # store for later
 
-            nels = []
-            for el in reversed(tels):
-                if el.parsed_text.isflow:
-                    nels += el.parsed_text.Flow_to_Text()
-                    tels.remove(el)
-            tels += nels
+        nels = []
+        for el in reversed(tels):
+            if el.parsed_text.isflow:
+                nels += el.parsed_text.Flow_to_Text()
+                tels.remove(el)
+        tels += nels
 
-            for el in tels:
-                el.parsed_text.Strip_Text_BaselineShift()
-                el.parsed_text.Strip_Sodipodirole_Line()
-                el.parsed_text.Fuse_Fonts()
-                self.SubSuper_Fix(el)
+        for el in tels:
+            el.parsed_text.Strip_Text_BaselineShift()
+            el.parsed_text.Strip_Sodipodirole_Line()
+            el.parsed_text.Fuse_Fonts()
+            self.SubSuper_Fix(el)
 
-                # Preserve duplicate of text to be converted to paths
-                if opts.texttopath and el.get("display") != "none":
-                    d = el.duplicate()
-                    excludetxtids.append(d.get_id())
-                    g = dh.group([d])
-                    g.set("display", "none")
+            # Preserve duplicate of text to be converted to paths
+            if opts.texttopath and el.get("display") != "none":
+                d = el.duplicate()
+                excludetxtids.append(d.get_id())
+                g = dh.group([d])
+                g.set("display", "none")
 
-                    # te = svg.new_element(inkex.TextElement, svg)
-                    te = inkex.TextElement()
-                    g.append(te)  # Remember the original ID
-                    te.text = "{0}: {1}".format(dup_key, el.get_id())
-                    te.set("display", "none")
-                    excludetxtids.append(te.get_id())
-                    opts.duplicatelabels[te.get_id()] = el.get_id()
+                # te = svg.new_element(inkex.TextElement, svg)
+                te = inkex.TextElement()
+                g.append(te)  # Remember the original ID
+                te.text = "{0}: {1}".format(dup_key, el.get_id())
+                te.set("display", "none")
+                excludetxtids.append(te.get_id())
+                opts.duplicatelabels[te.get_id()] = el.get_id()
 
-                    # Make sure nested tspans have fill specified (STP bug)
-                    for d in el.descendants2()[1:]:
-                        if (
-                            "fill" in d.cspecified_style
-                            and d.cspecified_style["fill"] != "#000000"
-                        ):
-                            d.cstyle["fill"] = d.cspecified_style["fill"]
+                # Make sure nested tspans have fill specified (STP bug)
+                for d in el.descendants2()[1:]:
+                    if (
+                        "fill" in d.cspecified_style
+                        and d.cspecified_style["fill"] != "#000000"
+                    ):
+                        d.cstyle["fill"] = d.cspecified_style["fill"]
 
         tmp = tempbase + "_mod.svg"
         dh.overwrite_svg(svg, tmp)
