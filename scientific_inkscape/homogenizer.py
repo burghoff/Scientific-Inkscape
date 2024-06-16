@@ -218,28 +218,16 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                 dh.global_transform(el, (ctnew @ (-ct)))
 
         if setfontfamily:
-            from inkex.text.font_properties import PangoRenderer, haspangoFT2, true_style
-            if haspangoFT2:
-                pr = PangoRenderer()
-                fd = pr.str_to_face_description(fontfamily)
-                if fd is not None:
-                    fsty = pr.pango_to_css(fd)
-                    for el in reversed(sel):
-                        for k,v in fsty.items():
-                            el.cstyle[k] = v
-                        el.cstyle["-inkscape-font-specification"] = None
-                else:
-                    dh.idebug('Font not found. Check its spelling.')
-                    import sys
-                    sys.exit()
-            else:
-                for el in reversed(sel):
-                    tsty = true_style(inkex.Style({'font-family':fontfamily}))
-                    for k,v in tsty.items():
-                        if k=='font-family':
-                            v = v.strip("'")
-                        el.cstyle[k] = v
-                    el.cstyle["-inkscape-font-specification"] = None
+            from inkex.text.font_properties import inkscape_spec_to_css
+            sty = inkscape_spec_to_css(fontfamily)
+            if sty is None:
+                dh.idebug('Font seems to be invalid—check its spelling.')
+                import sys
+                sys.exit()
+            for el in reversed(sel):
+                for k,v in sty.items():
+                    el.cstyle[k] = v
+                el.cstyle["-inkscape-font-specification"] = None
 
             from inkex.text import parser
 

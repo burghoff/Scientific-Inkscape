@@ -4,6 +4,7 @@
 
 DEBUG = False
 WHILESLEEP = 0.5
+MAXTHREADS = 10
 
 import sys, platform, os, threading, time, copy, pickle
 
@@ -274,7 +275,6 @@ class monitorThread(threading.Thread):
                     for f in sorted(updatefiles):
                         self.queue_thread(f)
 
-                    MAXTHREADS = 10
                     while (
                         len(self.thread_queue) > 0
                         and len(self.running_threads) < MAXTHREADS

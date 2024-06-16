@@ -245,6 +245,7 @@ class FontConfig:
             self._font_list = sorted(
                 self._font_list, key=lambda x: x.get('family',0)[0]
             )  # Sort by family
+            # inkex.utils.debug(self._font_list)
         return self._font_list
     
     @property
@@ -253,6 +254,7 @@ class FontConfig:
         if not hasattr(self, "_font_list_css"):
             self._font_list_css = [self.fcfound_to_css(f) for f in self.font_list]
         return self._font_list_css
+    
 
     # For testing purposes
     def Flow_Test_Doc(self):
@@ -883,26 +885,6 @@ class PangoRenderer:
             self._face_css = [self.pango_to_css(fd) for fd in self.face_descriptions]
         return self._face_css
 
-    def str_to_face_description(self,fstr):
-        '''
-        Look up a face's description based on its string representation.
-        This function is meant to be forgiving, allowing a user to vary punctuation
-        and capitalization, trying to find a match in the system's faces.
-        '''
-        def clean_str(strin):
-            ret = strin.replace(',',"").replace('"',"").replace("'","")
-            ret = ret.strip().lower()
-            if ret.endswith('normal'):
-                ret = ret[:-len('normal')]
-            return ret.strip()
-            
-        matches = [ii for ii,fs in enumerate(self.face_strings) if clean_str(fstr)==clean_str(fs)]
-        if matches:
-            return self.face_descriptions[matches[0]]
-        else:
-            return None
-            
-
     # Search the /etc/fonts/conf.d folder for the default sans-serif font
     # Not currently used
     def Find_Default_Sanserifs(self):
@@ -1480,6 +1462,41 @@ class FontAttributeLookups:
             FC.WIDTH_EXTRAEXPANDED: "extra-expanded",
             FC.WIDTH_ULTRAEXPANDED: "ultra-expanded",
         }
+        
+        # Pango style string description to CSS
+        # Needed for matching the name of styles shown in Inkscape
+        self.PWGTSTR_to_CSSWGT = {
+            'Ultra-Light': "200",
+            'Light': "300",
+            'Semi-Light': "350",  # Assumed, not in the original CSSWGT_to_PWGT dictionary
+            'Medium': "500",
+            'Semi-Bold': "600",
+            'Bold': "bold",
+            'Ultra-Bold': "800",
+            'Heavy': "900",
+            'Normal': "normal",
+            'Book': "380",  # Assumed, not in the original CSSWGT_to_PWGT dictionary
+            'Thin': "100",
+            'Ultra-Heavy': "1000",  # Assumed, not in the original CSSWGT_to_PWGT dictionary
+        }
+        self.PSTRSTR_to_CSSSTR = {
+            'Ultra-Condensed': "ultra-condensed",
+            'Extra-Condensed': "extra-condensed",
+            'Condensed': "condensed",
+            'Semi-Condensed': "semi-condensed",
+            'Normal': "normal",
+            'Semi-Expanded': "semi-expanded",
+            'Expanded': "expanded",
+            'Extra-Expanded': "extra-expanded",
+            'Ultra-Expanded': "ultra-expanded"
+        }
+        self.PSTYSTR_to_CSSSTY = {
+            'Italic': "italic",
+            'Oblique': "oblique",
+            'Normal': "normal"
+        }
+
+        
 
         if haspango:
             # Pango to fontconfig
@@ -1522,6 +1539,7 @@ class FontAttributeLookups:
                 Pango.Stretch.EXTRA_EXPANDED: FC.WIDTH_EXTRAEXPANDED,
                 Pango.Stretch.ULTRA_EXPANDED: FC.WIDTH_ULTRAEXPANDED,
             }
+            
             # CSS to Pango
             self.CSSVAR_to_PVAR = {
                 "normal": Pango.Variant.NORMAL,
@@ -1575,3 +1593,82 @@ class FontAttributeLookups:
 
 
 lu = FontAttributeLookups()
+
+def inkscape_spec_to_css(fstr,usepango=False):
+    '''
+    Look up a CSS style based on its Inkscape font specification, which is
+    similar (identical?) to the Pango description's string representation.
+    This function is meant to be forgiving, allowing a user to vary punctuation
+    and capitalization, and tries to find a match in the system's families.
+    It does NOT require Pango.
+    '''
+    def clean_str(strin):
+        ret = re.sub(r'[^\w\s]', '', strin)
+        ret = re.sub(r'\s+', ' ', ret)
+        return ret.strip().lower()
+    
+    cstr = clean_str(fstr)
+    if usepango and haspango:
+        fullfams = [fm.get_name() for fm in PangoRenderer().families]
+    else:
+        fullfams = [f.get('family',0)[0] for f in fcfg.font_list]
+        fullfams += ['Serif','Sans','System-ui','Monospace'] # from Inkscape
+    
+    # Split the input into words and find the longest match to an installed 
+    # family at the beginning or end of the string
+    fmnames = [clean_str(f) for f in fullfams]
+    words = cstr.split()
+    longest_match = ""
+    match_length = 0
+    match_type = None  # 'prefix' or 'suffix'
+    # Check for the longest prefix match
+    for i in range(1, len(words) + 1):
+        current_match = ' '.join(words[:i])
+        if current_match in fmnames and len(current_match) > len(longest_match):
+            longest_match = current_match
+            match_length = i
+            match_type = 'prefix'
+    # Check for the longest suffix match
+    for i in range(1, len(words) + 1):
+        current_match = ' '.join(words[-i:])
+        if current_match in fmnames and len(current_match) > len(longest_match):
+            longest_match = current_match
+            match_length = i
+            match_type = 'suffix'
+    if longest_match:
+        fam = fullfams[fmnames.index(longest_match)]
+        if match_type == 'prefix':
+            stylews = words[match_length:]
+        elif match_type == 'suffix':
+            stylews = words[:-match_length]
+        if not stylews:
+            stylews = None
+    else:
+        fam = None
+        stylews = words
+        
+    sty = {}
+    if fam:
+        sty['font-family'] = fam
+    if stylews:
+        pwgtstrs = {clean_str(k):v for k,v in lu.PWGTSTR_to_CSSWGT.items()}
+        pstrstrs = {clean_str(k):v for k,v in lu.PSTRSTR_to_CSSSTR.items()}
+        pstystrs = {clean_str(k):v for k,v in lu.PSTYSTR_to_CSSSTY.items()}
+        for w in stylews:
+            understood = False
+            if w in pwgtstrs:
+                sty['font-weight'] = pwgtstrs[w]
+                understood = True
+            elif 'weight' in w:
+                sty['font-weight'] = re.search(r'weight(\d+)', w).group(1)
+                understood = True
+            if w in pstystrs:
+                sty["font-style"] = pstystrs[w]
+                understood = True
+            if w in pstrstrs:
+                sty["font-stretch"] = pstrstrs[w]
+                understood = True
+            if not understood:
+                return None
+    sty = {key: sty[key] for key in fontatt if key in sty} # order
+    return sty
