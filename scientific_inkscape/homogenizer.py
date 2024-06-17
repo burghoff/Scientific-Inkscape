@@ -23,6 +23,7 @@ import inkex
 from inkex import TextElement, FlowRoot, FlowPara, Tspan, Transform, Group, FlowSpan
 from inkex.text.cache import BaseElementCache
 otp_support_tags = BaseElementCache.otp_support_tags
+from inkex.text.utils import default_style_atts
 
 from applytransform_mod import fuseTransform
 import math
@@ -224,6 +225,11 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                 dh.idebug('Font seems to be invalid—check its spelling.')
                 import sys
                 sys.exit()
+            # If any type of Font Style is being set, reset the others to default
+            if any(k in sty for k in ["font-weight", "font-style", "font-stretch"]):
+                for k in ["font-weight", "font-style", "font-stretch"]:
+                    sty.setdefault(k, default_style_atts[k])
+
             for el in reversed(sel):
                 for k,v in sty.items():
                     el.cstyle[k] = v

@@ -12,7 +12,7 @@
             <param name="fixtextdistortion" type="bool" gui-text="Correct distorted text?">true</param>
             <param name="setfontfamily" type="bool" gui-text="Set font?">true</param>
             <param name="fontfamily" type="string" gui-text="New font"
-                    gui-description="Accepts both Font Family and Font Style. If specifying both, separate them with a space."></param>  
+                    gui-description="Can be used to set Font Family and Font Style. If specifying both, separate them with a space."></param>  
             
             <param name="setfontsize" type="bool" gui-text="Set font size?">true</param>
             <param name="fontmodes" type="optiongroup" appearance="combo"
