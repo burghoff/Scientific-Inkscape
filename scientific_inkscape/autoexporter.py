@@ -1038,7 +1038,7 @@ class AutoExporter(inkex.EffectExtension):
             bbs = self.Split_Acts(
                 fn=fn, inkbin=inkbin, acts=acts1, reserved=reserved
             )
-            bbs = self.Autoexporter.Split_Acts(
+            bbs = self.Split_Acts(
                 fn=fn, inkbin=inkbin, acts=acts2, reserved=reserved
             )
         return bbs

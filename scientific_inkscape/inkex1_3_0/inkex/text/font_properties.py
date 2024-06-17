@@ -99,6 +99,7 @@ class FontConfig:
         self.truefontsft = dict()  # fonttools
         self.fontcharsets = dict()
         self.disable_lcctype()
+        self.conf = fc.Config.get_current()
 
     # MacOS can throw a warning if LC_CTYPE not disabled
     def disable_lcctype(self):
@@ -116,18 +117,17 @@ class FontConfig:
         nftuple = tuple(reducedsty.items())  # for hashing
         if nftuple not in self.truefonts:
             pat = self.css_to_fcpattern(reducedsty)
-            conf = fc.Config.get_current()
 
-            conf.substitute(pat, FC.MatchPattern)
+            self.conf.substitute(pat, FC.MatchPattern)
             pat.default_substitute()
-            found, status = conf.font_match(pat)
+            found, status = self.conf.font_match(pat)
             truefont = self.fcfont_to_css(found)
 
             if truefont not in self.font_list_css:
                 # font_match rarely returns missing fonts, usually variable-weight
                 # fonts where not all are installed. In that case, use the fallback
                 # font_match method
-                found, total_coverage, status = conf.font_sort(
+                found, total_coverage, status = self.conf.font_sort(
                     pat, trim=True, want_coverage=False
                 )
                 found = found[0]
@@ -159,11 +159,10 @@ class FontConfig:
 
         if len(d) < len(chars):
             pat = self.css_to_fcpattern(reducedsty)
-            conf = fc.Config.get_current()
-            conf.substitute(pat, FC.MatchPattern)
+            self.conf.substitute(pat, FC.MatchPattern)
             pat.default_substitute()
 
-            found, total_coverage, status = conf.font_sort(
+            found, total_coverage, status = self.conf.font_sort(
                 pat, trim=True, want_coverage=False
             )
             for f in found:
@@ -233,8 +232,7 @@ class FontConfig:
             properties = ["family", "weight", "slant", "width", "style", "file"]
             # style is a nice name for the weight/slant/width combo
             # e.g., Arial Narrow Bold
-            conf = fc.Config.get_current()
-            self._font_list = conf.font_list(pattern, properties)
+            self._font_list = self.conf.font_list(pattern, properties)
             self._font_list = sorted(
                 self._font_list, key=lambda x: x.get("family", 0)[0]
             )  # Sort by family
@@ -482,10 +480,9 @@ class PangoRenderer:
         pat.add(fc.PROP.WEIGHT, fcweight)
         pat.add(fc.PROP.SLANT, fcslant)
 
-        conf = fc.Config.get_current()
-        conf.substitute(pat, FC.MatchPattern)
+        self.conf.substitute(pat, FC.MatchPattern)
         pat.default_substitute()
-        found, status = conf.font_match(pat)
+        found, status = self.conf.font_match(pat)
         return found
 
     def Set_Text_Style(self, stystr):
