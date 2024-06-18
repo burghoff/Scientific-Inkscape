@@ -226,9 +226,9 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                 import sys
                 sys.exit()
             # If any type of Font Style is being set, reset the others to default
-            if any(k in sty for k in ["font-weight", "font-style", "font-stretch"]):
-                for k in ["font-weight", "font-style", "font-stretch"]:
-                    sty.setdefault(k, default_style_atts[k])
+            # if any(k in sty for k in ["font-weight", "font-style", "font-stretch"]):
+            #     for k in ["font-weight", "font-style", "font-stretch"]:
+            #         sty.setdefault(k, default_style_atts[k])
 
             for el in reversed(sel):
                 for k,v in sty.items():
