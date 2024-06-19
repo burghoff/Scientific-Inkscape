@@ -63,11 +63,9 @@ def composed_width(el, comp):
 
         return tsz * sc, sf
     else:
-        utsz = (
-            ipx(sc)
-            or ipx(flookup.get(sc) if comp == "font-size" else None)
-            or ipx(default_style_atts[comp])
-        )
+        utsz = ipx(sc)
+        if utsz is None:
+            utsz = utsz or ipx(flookup.get(sc) if comp == "font-size" else None) or ipx(default_style_atts[comp])
         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))  # scale factor
         return utsz * sf, sf
 

@@ -931,13 +931,15 @@ def global_transform(el, trnsfrm, irange=None, trange=None, preserveStroke=True)
         if sw is not None:
             neww, sf = composed_width(el, "stroke-width")
             # Set_Style_Comp(el, "stroke-width", str(sw / sf))
-            el.cstyle["stroke-width"] = str(sw / sf)
+            if sf!=0:
+                el.cstyle["stroke-width"] = str(sw / sf)
             # fix width
         if not (sd in [None, "none"]):
             nd, sf = composed_list(el, "stroke-dasharray")
-            el.cstyle["stroke-dasharray"] = (
-                str([sdv / sf for sdv in sd]).strip("[").strip("]")
-            )
+            if sf!=0:
+                el.cstyle["stroke-dasharray"] = (
+                    str([sdv / sf for sdv in sd]).strip("[").strip("]")
+                )
             # fix dash
 
 

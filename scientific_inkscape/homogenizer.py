@@ -207,16 +207,17 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             for el in sel:
                 ct = el.ccomposed_transform
                 detv = ct.a * ct.d - ct.b * ct.c
-                signdet = -1 * (detv < 0) + (detv >= 0)
-                sqrtdet = math.sqrt(abs(detv))
-                magv = math.sqrt(ct.b**2 + ct.a**2)
-                ctnew = Transform(
-                    [
-                        [ct.a * sqrtdet / magv, -ct.b * sqrtdet * signdet / magv, ct.e],
-                        [ct.b * sqrtdet / magv, ct.a * sqrtdet * signdet / magv, ct.f],
-                    ]
-                )
-                dh.global_transform(el, (ctnew @ (-ct)))
+                if detv!=0:
+                    signdet = -1 * (detv < 0) + (detv >= 0)
+                    sqrtdet = math.sqrt(abs(detv))
+                    magv = math.sqrt(ct.b**2 + ct.a**2)
+                    ctnew = Transform(
+                        [
+                            [ct.a * sqrtdet / magv, -ct.b * sqrtdet * signdet / magv, ct.e],
+                            [ct.b * sqrtdet / magv, ct.a * sqrtdet * signdet / magv, ct.f],
+                        ]
+                    )
+                    dh.global_transform(el, (ctnew @ (-ct)))
 
         if setfontfamily:
             from inkex.text.font_properties import inkscape_spec_to_css

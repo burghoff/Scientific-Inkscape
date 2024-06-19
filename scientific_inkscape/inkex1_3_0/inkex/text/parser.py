@@ -2881,7 +2881,7 @@ class tchar:
         self.c = c
         self.tfs = tfs
         # transformed font size (uu)
-        utfs = tfs / sf
+        utfs = tfs / sf if sf!=0 else 0
         self.utfs = utfs
         # untransformed font size
         self.sf = sf
