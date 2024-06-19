@@ -59,15 +59,15 @@ def composed_width(el, comp):
             # figure out ancestor where % is coming from
 
         sc = float(sc.strip("%")) / 100
-        tsz, sf = composed_width(cel.getparent(), comp)
+        tsz, sf, utsz = composed_width(cel.getparent(), comp)
 
-        return tsz * sc, sf
+        return tsz * sc, sf, utsz
     else:
         utsz = ipx(sc)
         if utsz is None:
             utsz = utsz or ipx(flookup.get(sc) if comp == "font-size" else None) or ipx(default_style_atts[comp])
         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))  # scale factor
-        return utsz * sf, sf
+        return utsz * sf, sf, utsz
 
 
 def composed_lineheight(el):
@@ -91,9 +91,9 @@ def composed_lineheight(el):
             # Lines have no unit, em treated the same
             sc = float(sc.strip("em"))
         except:
-            fs, sf = composed_width(el, "font-size")
+            fs, sf, utfs = composed_width(el, "font-size")
             sc = ipx(sc) / (fs / sf)
-    fs, _ = composed_width(el, "font-size")
+    fs, _, _ = composed_width(el, "font-size")
     return sc * fs
 
 

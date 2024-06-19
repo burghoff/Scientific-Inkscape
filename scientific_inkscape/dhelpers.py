@@ -921,7 +921,7 @@ def global_transform(el, trnsfrm, irange=None, trange=None, preserveStroke=True)
             for ii in range(len(trange)):
                 trange[ii] = (-prt) @ trange[ii] @ prt @ Transform(myt)
 
-    sw, _ = composed_width(el, "stroke-width")
+    sw, _, _ = composed_width(el, "stroke-width")
     sd, _ = composed_list(el, "stroke-dasharray")
 
     el.ctransform = newtr  # Add the new transform
@@ -929,7 +929,7 @@ def global_transform(el, trnsfrm, irange=None, trange=None, preserveStroke=True)
 
     if preserveStroke:
         if sw is not None:
-            neww, sf = composed_width(el, "stroke-width")
+            neww, sf, _ = composed_width(el, "stroke-width")
             # Set_Style_Comp(el, "stroke-width", str(sw / sf))
             if sf!=0:
                 el.cstyle["stroke-width"] = str(sw / sf)
@@ -1031,7 +1031,7 @@ def get_strokefill(el):
     else:
         fill = None
 
-    sw, _ = composed_width(el, "stroke-width")
+    sw, _, _ = composed_width(el, "stroke-width")
     sd, _ = composed_list(el, "stroke-dasharray")
     if sd in nones:
         sd = None

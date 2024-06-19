@@ -443,7 +443,7 @@ class ParsedText:
             if (txt is not None and len(txt) > 0) or newsprl:
                 sty = sel.cspecified_style
                 ct = sel.ccomposed_transform
-                fs, sf = composed_width(sel, "font-size")
+                fs, sf, utfs = composed_width(sel, "font-size")
 
                 if newsprl:
                     lh = max(
@@ -561,7 +561,7 @@ class ParsedText:
                 if txt is not None:
                     for jj, c in enumerate(txt):
                         prop = self.ctable.get_prop(c, tsty)
-                        tchar(c, fs, sf, prop, sty, tsty, cloc(tel, tt, jj), lns[-1])
+                        tchar(c, fs, sf, utfs, prop, sty, tsty, cloc(tel, tt, jj), lns[-1])
 
                         if jj == 0:
                             lsp0 = lns[-1].cs[-1].lsp
@@ -1389,7 +1389,7 @@ class ParsedText:
         def Height_AboveBelow_Baseline(el):
             lh = composed_lineheight(el)
             lsty = true_style(el.cspecified_style)
-            fs, sf = composed_width(el, "font-size")
+            fs, sf, _ = composed_width(el, "font-size")
 
             absp = (0.5000 * (lh / fs - 1) + self.ctable.flowy(lsty)) * (
                 fs / sf
@@ -1437,7 +1437,7 @@ class ParsedText:
                 sty = sel.cspecified_style
                 tsty = true_style(sty)
                 ct = sel.ccomposed_transform
-                fs, sf = composed_width(sel, "font-size")
+                fs, sf, utfs = composed_width(sel, "font-size")
                 absp, bbsp, mrfs = Height_AboveBelow_Baseline(sel)
                 lsty = true_style(sel.cspecified_style)
                 fabsp = max(rabsp, absp)
@@ -1486,7 +1486,7 @@ class ParsedText:
 
                 for jj, c in enumerate(txt):
                     prop = self.ctable.get_prop(c, tsty)
-                    tc = tchar(c, fs, sf, prop, sty, tsty, cloc(tel, tt, jj), cln)
+                    tc = tchar(c, fs, sf, utfs, prop, sty, tsty, cloc(tel, tt, jj), cln)
                     tc.lhs = (fabsp, fbbsp)
                     if jj == 0:
                         lsp0 = tc.lsp
@@ -1804,7 +1804,7 @@ class ParsedText:
                     cln.effbbsp = maxbbsp
                     blns.append(cln)
                     for c in cs:
-                        lc = tchar(c.c, c.tfs, c.sf, c.prop, c._sty, c.tsty, c.loc, cln)
+                        lc = tchar(c.c, c.tfs, c.sf, c.utfs, c.prop, c._sty, c.tsty, c.loc, cln)
 
                     if len(cs) > 0:
                         af = cln.anchfrac
@@ -2877,7 +2877,7 @@ class tchar:
     #     "lhs",
     # )
 
-    def __init__(self, c, tfs, sf, prop, sty, tsty, loc, ln):
+    def __init__(self, c, tfs, sf, utfs, prop, sty, tsty, loc, ln):
         self.c = c
         self.tfs = tfs
         # transformed font size (uu)
@@ -3085,7 +3085,7 @@ class tchar:
         elif bshft == "sub":
             bshft = "-20%"
         if "%" in bshft:  # relative to parent
-            fs2, sf2 = composed_width(fsel, "font-size")
+            fs2, sf2, _ = composed_width(fsel, "font-size")
             bshft = fs2 / sf2 * float(bshft.strip("%")) / 100
         else:
             bshft = ipx(bshft) or 0
@@ -3235,7 +3235,7 @@ class tchar:
         t.cstyle = styset
         self.sty = styset
         if newfs:
-            fs, sf = composed_width(self.loc.sel, "font-size")
+            fs, sf, _ = composed_width(self.loc.sel, "font-size")
             self.utfs = fs / sf
             self.tfs = fs
 
