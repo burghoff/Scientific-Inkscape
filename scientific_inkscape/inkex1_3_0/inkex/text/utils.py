@@ -42,7 +42,7 @@ def composed_width(el, comp):
         comp (str): The component of the style to compute, such as 'stroke-width' or 'font-size'.
 
     Returns:
-        tuple: A tuple containing the true size in user units and the scale factor.
+        tuple: A tuple containing the true size in user units, the scale factor, and the untransformed size
     """
     cs = el.cspecified_style
     ct = el.ccomposed_transform
@@ -52,7 +52,7 @@ def composed_width(el, comp):
     if sc is None:
         sc = default_style_atts[comp]
 
-    if "%" in sc:  # relative width, get parent width
+    if "%" in sc:  # relative width, get ancestor width
         cel = el
         while sc != cel.cstyle.get(comp) and sc != cel.get(comp):
             cel = cel.getparent()
@@ -61,7 +61,9 @@ def composed_width(el, comp):
         sc = float(sc.strip("%")) / 100
         tsz, sf, utsz = composed_width(cel.getparent(), comp)
 
-        return tsz * sc, sf, utsz
+        # Since relative widths have no untransformed width, we assign
+        # it to be a scaled version of the ancestor's ut width
+        return tsz * sc, sf, utsz * sc
     else:
         utsz = ipx(sc)
         if utsz is None:

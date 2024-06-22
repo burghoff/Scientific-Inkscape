@@ -185,7 +185,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                 for d in reversed(el.descendants2()):
                     sty = d.cspecified_style
                     if el == d or "font-size" in sty:
-                        dfs, sf, _ = dh.composed_width(d, "font-size")
+                        dfs, sf, utdfs = dh.composed_width(d, "font-size")
                         bshift = parser.tchar.get_baseline(sty, d.getparent())
                         if bshift != 0 or "%" in sty.get("font-size", ""):
                             # Convert sub/superscripts into relative size
@@ -198,7 +198,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                                 if not fixedscale
                                 else fontsize / 100
                             )
-                            nfs = dfs * scl / sf
+                            nfs = utdfs * scl
                             nfs = f"{nfs:.2f}" if abs(nfs) > 1 else "{:.3g}".format(nfs)
                             d.cstyle["font-size"] = nfs.rstrip("0").rstrip(".") + "px"
 
@@ -360,7 +360,6 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                         newsize = setstrokew
                     else:
                         newsize = szd[elid] * (setstrokew / 100)
-                    # dh.Set_Style_Comp(el, "stroke-width", str(newsize / sfd[elid]) + "px")
                     el.cstyle["stroke-width"] = str(newsize / sfd[elid]) + "px"
 
         if self.options.fusetransforms:

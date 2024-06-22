@@ -143,10 +143,8 @@ def Change_Justification(els, justification):
             ):  # skip Inkscape-generated text
                 for ln in ll.lns:
                     ln.change_alignment(justification)
-                # dh.Set_Style_Comp(ll.textel, "text-anchor", justification)
                 # ll.textel.cstyle["text-anchor"] = justification
                 alignd = {"start": "start", "middle": "center", "end": "end"}
-                # dh.Set_Style_Comp(ll.textel, "text-align", alignd[justification])
                 # ll.textel.cstyle["text-align"] = alignd[justification]
                 
                 

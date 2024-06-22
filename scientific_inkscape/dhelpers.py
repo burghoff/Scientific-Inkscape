@@ -930,7 +930,6 @@ def global_transform(el, trnsfrm, irange=None, trange=None, preserveStroke=True)
     if preserveStroke:
         if sw is not None:
             neww, sf, _ = composed_width(el, "stroke-width")
-            # Set_Style_Comp(el, "stroke-width", str(sw / sf))
             if sf!=0:
                 el.cstyle["stroke-width"] = str(sw / sf)
             # fix width

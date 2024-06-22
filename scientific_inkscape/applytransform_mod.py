@@ -224,10 +224,8 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
                     except ZeroDivisionError:
                         p2 = str(Path(p))
                     el.set("d", p2)
-                    # inkex.utils.debug(el.get('d'))
 
             el.cpath = None
-            # inkex.utils.debug(el.cpath)
 
             if applytostroke:
                 applyToStrokes(el, transf)
@@ -237,7 +235,6 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
                 sfel = el.cstyle.get_link(sf, svg=el.croot)
                 if sfel is not None and "gradient" in sfel.tag.lower():
                     d = sfel.duplicate()
-                    # dh.Set_Style_Comp(el,sf,'url(#{0})'.format(d.get_id()))
                     el.cstyle[sf] = "url(#{0})".format(d.get_id())
                     gt = d.get("gradientTransform")
                     gt = Transform(gt) if gt is not None else Itr
