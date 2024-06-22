@@ -561,7 +561,9 @@ class ParsedText:
                 if txt is not None:
                     for jj, c in enumerate(txt):
                         prop = self.ctable.get_prop(c, tsty)
-                        tchar(c, fs, sf, utfs, prop, sty, tsty, cloc(tel, tt, jj), lns[-1])
+                        tchar(
+                            c, fs, sf, utfs, prop, sty, tsty, cloc(tel, tt, jj), lns[-1]
+                        )
 
                         if jj == 0:
                             lsp0 = lns[-1].cs[-1].lsp
@@ -1046,7 +1048,14 @@ class ParsedText:
             for r in rlst[1:]:
                 for c in r[1]:
                     c.add_style(
-                        {"font-family": r[0]["font-family"], "font-weight": r[0]["font-weight"],  "font-style": r[0]["font-style"], "font-stretch": r[0]["font-stretch"], "baseline-shift": "0%"}, setdefault=False
+                        {
+                            "font-family": r[0]["font-family"],
+                            "font-weight": r[0]["font-weight"],
+                            "font-style": r[0]["font-style"],
+                            "font-stretch": r[0]["font-stretch"],
+                            "baseline-shift": "0%",
+                        },
+                        setdefault=False,
                     )
 
     # Convert flowed text into normal text
@@ -1804,7 +1813,9 @@ class ParsedText:
                     cln.effbbsp = maxbbsp
                     blns.append(cln)
                     for c in cs:
-                        lc = tchar(c.c, c.tfs, c.sf, c.utfs, c.prop, c._sty, c.tsty, c.loc, cln)
+                        lc = tchar(
+                            c.c, c.tfs, c.sf, c.utfs, c.prop, c._sty, c.tsty, c.loc, cln
+                        )
 
                     if len(cs) > 0:
                         af = cln.anchfrac
@@ -3797,12 +3808,12 @@ class Character_Table:
     # for when a family does not have a character and a default is used
     @property
     def font_table(self):
-        '''
+        """
         Return a dict whose keys are the font styles (i.e., style reduced to the four
         attributes that define a font), and whose values are dicts whose keys are
         the characters present with that font and whose values are the true styles
         that those characters are rendered as by Inkscape.
-        '''
+        """
         if not hasattr(self, "_ftable"):
             ctable2 = dict()
             self._ftable = dict()
