@@ -29,11 +29,16 @@ Three libraries are used:
               the same layout for all rendering.
 """
 
+import os
+import warnings
+import sys
+import re
+import ctypes
+from unittest.mock import patch
+from functools import lru_cache
 import inkex
-import os, warnings, sys, re, ctypes
 from inkex.text.utils import default_style_atts
 from inkex import Style
-from unittest.mock import patch
 
 # The fontconfig library is used to select a font given its CSS specs
 # This library should work starting with v1.0
@@ -44,8 +49,11 @@ original_load_library = ctypes.cdll.LoadLibrary
 
 
 def custom_load_library(name):
+    """
+    Custom function to load a library based on the platform.
+    """
     if name in ["libfontconfig.so.1", "libfreetype.so.6"]:
-        LIBNAME = {
+        libname = {
             "linux": {
                 "libfreetype.so.6": "libfreetype.so.6",
                 "libfontconfig.so.1": "libfontconfig.so.1",
@@ -65,24 +73,23 @@ def custom_load_library(name):
         }[sys.platform][name]
 
         if "SI_FC_DIR" in os.environ:
-            fpath = os.path.abspath(os.path.join(os.environ["SI_FC_DIR"], LIBNAME))
+            fpath = os.path.abspath(os.path.join(os.environ["SI_FC_DIR"], libname))
             ret = original_load_library(fpath)
         else:
             try:
-                ret = original_load_library(LIBNAME)
+                ret = original_load_library(libname)
             except FileNotFoundError:
-                bloc = inkex.inkscape_system_info.binary_location  # type: ignore
-                blocdir = os.path.dirname(bloc)
-                fpath = os.path.abspath(os.path.join(blocdir, LIBNAME))
+                biloc = inkex.inkscape_system_info.binary_location  # type: ignore
+                blocdir = os.path.dirname(biloc)
+                fpath = os.path.abspath(os.path.join(blocdir, libname))
                 ret = original_load_library(fpath)
         return ret
-    elif name == "libc.so.6":
+    if name == "libc.so.6":
         # Do not need to load, return a blank class consistent with fontconfig
         libc = type("libc", (object,), {"free": staticmethod(lambda ptr: None)})()
         libc.free.argtypes = (ctypes.c_void_p,)
         return libc
-    else:
-        return original_load_library(name)
+    return original_load_library(name)
 
 
 with patch("ctypes.cdll.LoadLibrary", side_effect=custom_load_library):
@@ -94,6 +101,10 @@ with patch("ctypes.cdll.LoadLibrary", side_effect=custom_load_library):
 
 
 class FontConfig:
+    """
+    Class to handle FontConfig functionalities.
+    """
+
     def __init__(self):
         self.truefonts = dict()  # css
         self.truefontsfc = dict()  # fontconfig
@@ -101,15 +112,21 @@ class FontConfig:
         self.fontcharsets = dict()
         self.disable_lcctype()
         self.conf = fc.Config.get_current()
+        self._font_list = None
+        self._font_list_css = None
 
-    # MacOS can throw a warning if LC_CTYPE not disabled
     def disable_lcctype(self):
+        """
+        Disables LC_CTYPE to suppress Mac warnings.
+        """
         self.lcctype = os.environ.get("LC_CTYPE")
         if self.lcctype is not None and sys.platform == "darwin":
             del os.environ["LC_CTYPE"]  # suppress Mac warning
 
-    # Not actually needed since env vars won't persist
     def enable_lcctype(self):
+        """
+        Enables LC_CTYPE if it was previously disabled.
+        """
         if self.lcctype is not None and sys.platform == "darwin":
             os.environ["LC_CTYPE"] = self.lcctype
 
@@ -117,22 +134,20 @@ class FontConfig:
         """Use fontconfig to get the true font that most text will be rendered as"""
         nftuple = tuple(reducedsty.items())  # for hashing
         if nftuple not in self.truefonts:
-            pat = self.css_to_fcpattern(reducedsty)
+            pat = FontConfig.css_to_fcpattern(reducedsty)
 
             self.conf.substitute(pat, FC.MatchPattern)
             pat.default_substitute()
-            found, status = self.conf.font_match(pat)
-            truefont = self.fcfont_to_css(found)
+            found, _ = self.conf.font_match(pat)
+            truefont = FontConfig.fcfont_to_css(found)
 
             if truefont not in self.font_list_css:
                 # font_match rarely returns missing fonts, usually variable-weight
                 # fonts where not all are installed. In that case, use the fallback
                 # font_match method
-                found, total_coverage, status = self.conf.font_sort(
-                    pat, trim=True, want_coverage=False
-                )
+                found, _, _ = self.conf.font_sort(pat, trim=True, want_coverage=False)
                 found = found[0]
-                truefont = self.fcfont_to_css(found)
+                truefont = FontConfig.fcfont_to_css(found)
 
             self.truefonts[nftuple] = truefont
             self.truefontsfc[nftuple] = found
@@ -150,44 +165,46 @@ class FontConfig:
         nftuple = tuple(reducedsty.items())
         if nftuple in self.truefonts:
             truefont = self.truefonts[nftuple]
-            d = {
+            cd1 = {
                 k: truefont
                 for k in chars
                 if ord(k) in self.fontcharsets[tuple(truefont.items())]
             }
         else:
-            d = {}
+            cd1 = {}
 
-        if len(d) < len(chars):
-            pat = self.css_to_fcpattern(reducedsty)
+        if len(cd1) < len(chars):
+            pat = FontConfig.css_to_fcpattern(reducedsty)
             self.conf.substitute(pat, FC.MatchPattern)
             pat.default_substitute()
 
-            found, total_coverage, status = self.conf.font_sort(
-                pat, trim=True, want_coverage=False
-            )
-            for f in found:
-                truefont = self.fcfont_to_css(f)
-                cs = f.get(fc.PROP.CHARSET, 0)[0]
-                self.fontcharsets[tuple(truefont.items())] = cs
-                d2 = {k: truefont for k in chars if ord(k) in cs and k not in d}
-                d.update(d2)
-                if len(d) == len(chars):
+            found, _, _ = self.conf.font_sort(pat, trim=True, want_coverage=False)
+            for fnt in found:
+                truefont = FontConfig.fcfont_to_css(fnt)
+                cset = fnt.get(fc.PROP.CHARSET, 0)[0]
+                self.fontcharsets[tuple(truefont.items())] = cset
+                cd2 = {k: truefont for k in chars if ord(k) in cset and k not in cd1}
+                cd1.update(cd2)
+                if len(cd1) == len(chars):
                     break
-            if len(d) < len(chars):
-                d.update({c: None for c in chars if c not in d})
-        return d
+            if len(cd1) < len(chars):
+                cd1.update({c: None for c in chars if c not in cd1})
+        return cd1
 
     def get_fonttools_font(self, reducedsty):
+        """
+        Get a FontTools font instance based on the reduced style.
+        """
         nftuple = tuple(reducedsty.items())  # for hashing
         if nftuple not in self.truefontsft:
             if nftuple not in self.truefontsfc:
                 self.get_true_font(reducedsty)
             found = self.truefontsfc[nftuple]
-            self.truefontsft[nftuple] = FontTools_FontInstance(found)
+            self.truefontsft[nftuple] = FontToolsFontInstance(found)
         return self.truefontsft[nftuple]
 
-    def css_to_fcpattern(self, sty):
+    @staticmethod
+    def css_to_fcpattern(sty):
         """Convert a style dictionary to an fc search pattern"""
         pat = fc.Pattern.name_parse(
             re.escape(sty["font-family"].replace("'", "").replace('"', ""))
@@ -205,30 +222,30 @@ class FontConfig:
         )
         return pat
 
-    def fcfont_to_css(self, f):
+    @staticmethod
+    def fcfont_to_css(fnt):
         """Convert an fc font to a Style"""
         # For CSS, enclose font family in single quotes
         # Needed for fonts like Modern No. 20 with periods in the family
-        fcfam = f.get(fc.PROP.FAMILY, 0)[0]
-        fcwgt = f.get(fc.PROP.WEIGHT, 0)[0]
-        fcsln = f.get(fc.PROP.SLANT, 0)[0]
-        fcwdt = f.get(fc.PROP.WIDTH, 0)[0]
-        if any([isinstance(v, tuple) for v in [fcfam, fcwgt, fcsln, fcwdt]]):
+        fcfam = fnt.get(fc.PROP.FAMILY, 0)[0]
+        fcwgt = fnt.get(fc.PROP.WEIGHT, 0)[0]
+        fcsln = fnt.get(fc.PROP.SLANT, 0)[0]
+        fcwdt = fnt.get(fc.PROP.WIDTH, 0)[0]
+        if any(isinstance(v, tuple) for v in [fcfam, fcwgt, fcsln, fcwdt]):
             return None
-        else:
-            return Style(
-                [
-                    ("font-family", "'" + fcfam.strip("'") + "'"),
-                    ("font-weight", nearest_val(C.FCWGT_CSSWGT, fcwgt)),
-                    ("font-style", C.FCSLN_CSSSTY[fcsln]),
-                    ("font-stretch", nearest_val(C.FCWDT_CSSSTR, fcwdt)),
-                ]
-            )
+        return Style(
+            [
+                ("font-family", "'" + fcfam.strip("'") + "'"),
+                ("font-weight", nearest_val(C.FCWGT_CSSWGT, fcwgt)),
+                ("font-style", C.FCSLN_CSSSTY[fcsln]),
+                ("font-stretch", nearest_val(C.FCWDT_CSSSTR, fcwdt)),
+            ]
+        )
 
     @property
     def font_list(self):
         """Finds all fonts known to FontConfig"""
-        if not hasattr(self, "_font_list"):
+        if self._font_list is None:
             pattern = fc.Pattern.create()  # blank pattern
             properties = ["family", "weight", "slant", "width", "style", "file"]
             # style is a nice name for the weight/slant/width combo
@@ -242,15 +259,14 @@ class FontConfig:
     @property
     def font_list_css(self):
         """Finds all fonts known to FontConfig in css form"""
-        if not hasattr(self, "_font_list_css"):
-            self._font_list_css = [self.fcfont_to_css(f) for f in self.font_list]
+        if self._font_list_css is None:
+            self._font_list_css = [FontConfig.fcfont_to_css(f) for f in self.font_list]
         return self._font_list_css
 
 
 fcfg = FontConfig()
 fontatt = ["font-family", "font-weight", "font-style", "font-stretch"]
 dfltatt = [(k, default_style_atts[k]) for k in fontatt]
-from functools import lru_cache
 
 
 @lru_cache(maxsize=None)
@@ -276,8 +292,8 @@ def true_style(sty):
     fontconfig selected. This is the actual font that Inkscape will draw.
     """
     sty2 = font_style(sty)
-    tf = fcfg.get_true_font(sty2)
-    return tf
+    tfnt = fcfg.get_true_font(sty2)
+    return tfnt
 
 
 def nearest_val(dictv, inputval):
@@ -291,10 +307,10 @@ with warnings.catch_warnings():
     # Ignore ImportWarning for Gtk/Pango
     warnings.simplefilter("ignore")
 
-    haspango = False
-    haspangoFT2 = False
+    HASPANGO = False
+    HASPANGOFT2 = False
     pangoenv = os.environ.get("USEPANGO", "")
-    if not (pangoenv == "False"):
+    if pangoenv != "False":
         try:
             import platform
 
@@ -316,7 +332,7 @@ with warnings.catch_warnings():
                     ]
                     # If any typelibs are missing, try adding the typelibs subdirectory
                     if any(
-                        [not (os.path.exists(os.path.join(girepo, t))) for t in tlibs]
+                        not (os.path.exists(os.path.join(girepo, t))) for t in tlibs
                     ):
                         tlibsub = os.path.join(
                             os.path.dirname(os.path.abspath(__file__)), "typelibs"
@@ -342,39 +358,46 @@ with warnings.catch_warnings():
             import gi
 
             gi.require_version("Gtk", "3.0")
-            # from gi.repository import GLib  # only needed by _none
             from gi.repository import Pango
 
-            Pango.Variant.NORMAL  # make sure this exists
-            haspango = True
-        except:
-            haspango = False
+            try:
+                HASPANGO = hasattr(Pango, "Variant") and hasattr(
+                    Pango.Variant, "NORMAL"
+                )
+            except ValueError:
+                HASPANGO = False
+        except ImportError:
+            HASPANGO = False
 
-        if haspango:
+        if HASPANGO:
             try:
                 # May require some typelibs we do not have
                 gi.require_version("PangoFT2", "1.0")
                 from gi.repository import PangoFT2
 
-                haspangoFT2 = True
-            except:
-                haspangoFT2 = False
+                HASPANGOFT2 = True
+            except ValueError:
+                HASPANGOFT2 = False
                 from gi.repository import Gdk
 
 if pangoenv in ["True", "False"]:
-    os.environ["HASPANGO"] = str(haspango)
-    os.environ["HASPANGOFT2"] = str(haspangoFT2)
+    os.environ["HASPANGO"] = str(HASPANGO)
+    os.environ["HASPANGOFT2"] = str(HASPANGOFT2)
     with open("env_vars.txt", "w") as f:
         f.write(f"HASPANGO={os.environ['HASPANGO']}")
         f.write(f"\nHASPANGOFT2={os.environ['HASPANGOFT2']}")
 
 
 class PangoRenderer:
+    """
+    Class to handle Pango rendering functionalities.
+    """
+
     def __init__(self):
-        self.PANGOSIZE = 1024 * 4
+        self.pangosize = 1024 * 4
         # size of text to render. 1024 is good
 
-        if haspangoFT2:
+        if HASPANGOFT2:
             self.ctx = Pango.Context.new()
             self.ctx.set_font_map(PangoFT2.FontMap.new())
         else:
@@ -383,66 +406,92 @@ class PangoRenderer:
         self.pufd = Pango.units_from_double
         self.putd = Pango.units_to_double
         self.scale = Pango.SCALE
+        self._families = None
+        self._faces = None
+        self._face_descriptions = None
+        self._face_strings = None
+        self._face_css = None
 
-    def css_to_pango(self, sty, key):
+    @staticmethod
+    def css_attribute_to_pango(sty, key):
+        """
+        Convert CSS style attributes to Pango attributes.
+        """
         val = sty.get(key)
         if key == "font-weight":
             return C.CSSWGT_PWGT.get(val, Pango.Weight.NORMAL)
-        elif key == "font-style":
+        if key == "font-style":
             return C.CSSSTY_PSTY.get(val, Pango.Style.NORMAL)
-        elif key == "font-stretch":
+        if key == "font-stretch":
             return C.CSSSTR_PSTR.get(val, Pango.Stretch.NORMAL)
-        elif key == "font-variant":
+        if key == "font-variant":
             return C.CSSVAR_PVAR.get(val, Pango.Variant.NORMAL)
         return None
 
-    def css_to_pango_description(self, sty):
-        from gi.repository import Pango
-
-        fd = Pango.FontDescription(sty["font-family"].strip("'").strip('"') + ",")
+    @staticmethod
+    def css_to_pango_description(sty):
+        """
+        Convert CSS style to Pango FontDescription.
+        """
+        fdesc = Pango.FontDescription(sty["font-family"].strip("'").strip('"') + ",")
         # The comma above is very important for font-families like Rockwell Condensed.
-        # Without it, Pango will interpret it as the Condensed font-stretch of the Rockwell font-family,
-        # rather than the Rockwell Condensed font-family.
-        fd.set_weight(C.CSSWGT_PWGT.get(sty.get("font-weight"), Pango.Weight.NORMAL))
-        fd.set_variant(C.CSSVAR_PVAR.get(sty.get("font-variant"), Pango.Variant.NORMAL))
-        fd.set_style(C.CSSSTY_PSTY.get(sty.get("font-style"), Pango.Style.NORMAL))
-        fd.set_stretch(C.CSSSTR_PSTR.get(sty.get("font-stretch"), Pango.Stretch.NORMAL))
-        return fd
+        # Without it, Pango will interpret it as the Condensed font-stretch of the
+        # Rockwell font-family, rather than the Rockwell Condensed font-family.
+        fdesc.set_weight(C.CSSWGT_PWGT.get(sty.get("font-weight"), Pango.Weight.NORMAL))
+        fdesc.set_variant(
+            C.CSSVAR_PVAR.get(sty.get("font-variant"), Pango.Variant.NORMAL)
+        )
+        fdesc.set_style(C.CSSSTY_PSTY.get(sty.get("font-style"), Pango.Style.NORMAL))
+        fdesc.set_stretch(
+            C.CSSSTR_PSTR.get(sty.get("font-stretch"), Pango.Stretch.NORMAL)
+        )
+        return fdesc
 
-    def pango_to_fc(self, pstretch, pweight, pstyle):
+    @staticmethod
+    def pango_to_fc(pstretch, pweight, pstyle):
+        """
+        Convert Pango attributes to FontConfig attributes.
+        """
         fcwidth = C.PSTR_FCWDT[pstretch]
         fcweight = C.PWGT_FCWGT[pweight]
         fcslant = C.PSTY_FCSLN[pstyle]
         return fcwidth, fcweight, fcslant
 
-    def pango_to_css(self, pdescription):
-        fd = pdescription
+    @staticmethod
+    def pango_to_css(pdescription):
+        """
+        Convert Pango FontDescription to CSS Style.
+        """
+        fdesc = pdescription
 
-        def isnumeric(s):
+        def isnumeric(strv):
             try:
-                float(s)
+                float(strv)
                 return True
             except ValueError:
                 return False
 
-        cs = [k for k, v in C.CSSSTR_PSTR.items() if v == fd.get_stretch()]
-        cw = [
-            k for k, v in C.CSSWGT_PWGT.items() if v == fd.get_weight() and isnumeric(k)
+        cstr = [k for k, v in C.CSSSTR_PSTR.items() if v == fdesc.get_stretch()]
+        cwgt = [
+            k
+            for k, v in C.CSSWGT_PWGT.items()
+            if v == fdesc.get_weight() and isnumeric(k)
         ]
-        csty = [k for k, v in C.CSSSTY_PSTY.items() if v == fd.get_style()]
+        csty = [k for k, v in C.CSSSTY_PSTY.items() if v == fdesc.get_style()]
 
-        s = (("font-family", fd.get_family()),)
-        if len(cw) > 0:
-            s += (("font-weight", cw[0]),)
+        sty = (("font-family", fdesc.get_family()),)
+        if len(cwgt) > 0:
+            sty += (("font-weight", cwgt[0]),)
         if len(csty) > 0:
-            s += (("font-style", csty[0]),)
-        if len(cs) > 0:
-            s += (("font-stretch", cs[0]),)
-        return Style(s)
+            sty += (("font-style", csty[0]),)
+        if len(cstr) > 0:
+            sty += (("font-stretch", cstr[0]),)
+        return Style(sty)
 
     @property
     def families(self):
-        if not hasattr(self, "_families"):
+        """List all font families available in Pango context."""
+        if self._families is None:
             families = self.ctx.get_font_map().list_families()
             self._families = sorted(
                 families, key=lambda x: x.get_name()
@@ -451,72 +500,82 @@ class PangoRenderer:
 
     @property
     def faces(self):
-        if not hasattr(self, "_faces"):
+        """List all font faces available in Pango context."""
+        if self._faces is None:
             self._faces = [fc for fm in self.families for fc in fm.list_faces()]
         return self._faces
 
     @property
     def face_descriptions(self):
-        if not hasattr(self, "_face_descriptions"):
+        """List all font face descriptions available in Pango context."""
+        if self._face_descriptions is None:
             self._face_descriptions = [fc.describe() for fc in self.faces]
         return self._face_descriptions
 
     @property
     def face_strings(self):
-        if not hasattr(self, "_face_strings"):
+        """List all font face strings available in Pango context."""
+        if self._face_strings is None:
             self._face_strings = [fd.to_string() for fd in self.face_descriptions]
         return self._face_strings
 
     @property
     def face_css(self):
-        if not hasattr(self, "_face_css"):
-            self._face_css = [self.pango_to_css(fd) for fd in self.face_descriptions]
+        """List all font face CSS styles available in Pango context."""
+        if self._face_css is None:
+            self._face_css = [
+                PangoRenderer.pango_to_css(fd) for fd in self.face_descriptions
+            ]
         return self._face_css
 
-    def fc_match_pango(self, family, pstretch, pweight, pstyle):
+    @staticmethod
+    def fc_match_pango(family, pstretch, pweight, pstyle):
         """Look up a font by its Pango properties"""
         pat = fc.Pattern.name_parse(re.escape(family.replace("'", "").replace('"', "")))
-        fcwidth, fcweight, fcslant = self.pango_to_fc(pstretch, pweight, pstyle)
+        fcwidth, fcweight, fcslant = PangoRenderer.pango_to_fc(
+            pstretch, pweight, pstyle
+        )
         pat.add(fc.PROP.WIDTH, fcwidth)
         pat.add(fc.PROP.WEIGHT, fcweight)
         pat.add(fc.PROP.SLANT, fcslant)
 
-        self.conf.substitute(pat, FC.MatchPattern)
+        fcfg.conf.substitute(pat, FC.MatchPattern)
         pat.default_substitute()
-        found, status = self.conf.font_match(pat)
+        found, _ = fcfg.conf.font_match(pat)
         return found
 
-    def Set_Text_Style(self, stystr):
+    def set_text_style(self, stystr):
+        """Set the text style for rendering based on the provided style string."""
         sty2 = stystr.split(";")
         sty2 = {s.split(":")[0]: s.split(":")[1] for s in sty2}
 
         msty = fontatt + ["font-variant"]  # mandatory style
-        for m in msty:
-            if m not in sty2:
-                sty2[m] = default_style_atts[m]
+        for matt in msty:
+            if matt not in sty2:
+                sty2[matt] = default_style_atts[matt]
 
-        fd = self.css_to_pango_description(sty2)
-        fd.set_absolute_size(self.pufd(self.PANGOSIZE))
-        fnt = self.ctx.get_font_map().load_font(self.ctx, fd)
+        fdesc = PangoRenderer.css_to_pango_description(sty2)
+        fdesc.set_absolute_size(self.pufd(self.pangosize))
+        fnt = self.ctx.get_font_map().load_font(self.ctx, fdesc)
 
-        if not (haspangoFT2):
+        if not HASPANGOFT2:
             success = fnt is not None
         else:
             success = fnt is not None
             # PangoFT2 sometimes gives mysterious errors that are actually fine
 
         if success:
-            self.pangolayout.set_font_description(fd)
-            fm = fnt.get_metrics()
-            fm = [
-                self.putd(v) / self.PANGOSIZE
-                for v in [fm.get_height(), fm.get_ascent(), fm.get_descent()]
+            self.pangolayout.set_font_description(fdesc)
+            fam = fnt.get_metrics()
+            fam = [
+                self.putd(v) / self.pangosize
+                for v in [fam.get_height(), fam.get_ascent(), fam.get_descent()]
             ]
-            return success, fm
-        else:
-            return success, None
+            return success, fam
+        return success, None
 
-    def Render_Text(self, texttorender):
+    def render_text(self, texttorender):
+        """Render text using Pango layout."""
         self.pangolayout.set_text(texttorender, -1)
 
     def process_extents(self, ext, ascent):
@@ -524,14 +583,20 @@ class PangoRenderer:
         Scale extents and return extents as standard bboxes
         (0:logical, 1:ink, 2: ink relative to anchor/baseline)
         """
-        lr = ext.logical_rect
-        lr = [self.putd(v) / self.PANGOSIZE for v in [lr.x, lr.y, lr.width, lr.height]]
-        ir = ext.ink_rect
-        ir = [self.putd(v) / self.PANGOSIZE for v in [ir.x, ir.y, ir.width, ir.height]]
-        ir_rel = [ir[0] - lr[0], ir[1] - lr[1] - ascent, ir[2], ir[3]]
-        return lr, ir, ir_rel
+        logr = ext.logical_rect
+        logr = [
+            self.putd(v) / self.pangosize
+            for v in [logr.x, logr.y, logr.width, logr.height]
+        ]
+        inkr = ext.ink_rect
+        inkr = [
+            self.putd(v) / self.pangosize
+            for v in [inkr.x, inkr.y, inkr.width, inkr.height]
+        ]
+        ir_rel = [inkr[0] - logr[0], inkr[1] - logr[1] - ascent, inkr[2], inkr[3]]
+        return logr, inkr, ir_rel
 
-    def Get_Character_Extents(self, ascent, needexts):
+    def get_character_extents(self, ascent, needexts):
         """
         Iterate through the layout to get the logical width of each character
         If there is differential kerning applied, it is applied to the
@@ -540,39 +605,49 @@ class PangoRenderer:
         Units: relative to font size
         """
         loi = self.pangolayout.get_iter()
-        ws = []
-        ii = -1
+        wds = []
+        i = -1
         lastpos = True
         unwrapper = 0
         moved = True
         while moved:
-            ce = loi.get_cluster_extents()
-            ii += 1
-            if needexts[ii] == "1":
-                ext = self.process_extents(ce, ascent)
+            cext = loi.get_cluster_extents()
+            i += 1
+            if needexts[i] == "1":
+                ext = self.process_extents(cext, ascent)
                 if ext[0][0] < 0 and lastpos:
-                    unwrapper += 2**32 / (self.scale * self.PANGOSIZE)
+                    unwrapper += 2**32 / (self.scale * self.pangosize)
                 lastpos = ext[0][0] >= 0
                 ext[0][0] += unwrapper  # account for 32-bit overflow
                 ext[1][0] += unwrapper
-                ws.append(ext)
+                wds.append(ext)
             else:
-                ws.append(None)
+                wds.append(None)
             moved = loi.next_char()
 
         numunknown = self.pangolayout.get_unknown_glyphs_count()
-        return ws, numunknown
+        return wds, numunknown
 
+# pylint:disable=import-outside-toplevel
+class FontToolsFontInstance:
+    """Class to handle FontTools font instances."""
 
-class FontTools_FontInstance:
     def __init__(self, fcfont):
-        self.font = self.font_from_fc(fcfont)
+        self.font = FontToolsFontInstance.font_from_fc(fcfont)
         self.head = self.font["head"]
         self.os2 = self.font["OS/2"] if "OS/2" in self.font else None
         self.find_font_metrics()
+        self.cmap = None
+        self.hmtx = None
+        self.kern = None
+        self.gsub = None
+        self.glyf = None
+        self.glyph_names = None
+        self.ligatures = None
 
-    # Find a FontTools font from a found FontConfig font
-    def font_from_fc(self, found):
+    @staticmethod
+    def font_from_fc(found):
+        """Find a FontTools font from a FontConfig font."""
         fname = found.get(fc.PROP.FILE, 0)[0]
 
         try:
@@ -659,72 +734,73 @@ class FontTools_FontInstance:
         Uses FontTools, which is Pythonic
         """
         font = self.font
-        unitsPerEm = self.head.unitsPerEm
+        units_per_em = self.head.unitsPerEm
         os2 = self.os2
         if os2:
-            self._ascent = abs(os2.sTypoAscender / unitsPerEm)
-            self._descent = abs(os2.sTypoDescender / unitsPerEm)
+            self._ascent = abs(os2.sTypoAscender / units_per_em)
+            self._descent = abs(os2.sTypoDescender / units_per_em)
         else:
-            self._ascent = abs(font["hhea"].ascent / unitsPerEm)
-            self._descent = abs(font["hhea"].descent / unitsPerEm)
-        self._ascent_max = abs(font["hhea"].ascent / unitsPerEm)
-        self._descent_max = abs(font["hhea"].descent / unitsPerEm)
-        self._design_units = unitsPerEm
-        em = self._ascent + self._descent
-        if em > 0.0:
-            self._ascent /= em
-            self._descent /= em
+            self._ascent = abs(font["hhea"].ascent / units_per_em)
+            self._descent = abs(font["hhea"].descent / units_per_em)
+        self._ascent_max = abs(font["hhea"].ascent / units_per_em)
+        self._descent_max = abs(font["hhea"].descent / units_per_em)
+        self._design_units = units_per_em
+        emv = self._ascent + self._descent
+        if emv > 0.0:
+            self._ascent /= emv
+            self._descent /= emv
 
         if os2 and os2.version >= 0x0002 and os2.version != 0xFFFF:
-            self._xheight = abs(os2.sxHeight / unitsPerEm)
+            self._xheight = abs(os2.sxHeight / units_per_em)
         else:
             glyph_set = font.getGlyphSet()
             self._xheight = (
-                abs(glyph_set["x"].height / unitsPerEm)
+                abs(glyph_set["x"].height / units_per_em)
                 if "x" in glyph_set and glyph_set["x"].height is not None
                 else 0.5
             )
         self._baselines = [0] * 8
-        self.SP_CSS_BASELINE_IDEOGRAPHIC = 0
-        self.SP_CSS_BASELINE_HANGING = 1
-        self.SP_CSS_BASELINE_MATHEMATICAL = 2
-        self.SP_CSS_BASELINE_CENTRAL = 3
-        self.SP_CSS_BASELINE_MIDDLE = 4
-        self.SP_CSS_BASELINE_TEXT_BEFORE_EDGE = 5
-        self.SP_CSS_BASELINE_TEXT_AFTER_EDGE = 6
-        self.SP_CSS_BASELINE_ALPHABETIC = 7
-        self._baselines[self.SP_CSS_BASELINE_IDEOGRAPHIC] = -self._descent
-        self._baselines[self.SP_CSS_BASELINE_HANGING] = 0.8 * self._ascent
-        self._baselines[self.SP_CSS_BASELINE_MATHEMATICAL] = 0.8 * self._xheight
-        self._baselines[self.SP_CSS_BASELINE_CENTRAL] = 0.5 - self._descent
-        self._baselines[self.SP_CSS_BASELINE_MIDDLE] = 0.5 * self._xheight
-        self._baselines[self.SP_CSS_BASELINE_TEXT_BEFORE_EDGE] = self._ascent
-        self._baselines[self.SP_CSS_BASELINE_TEXT_AFTER_EDGE] = -self._descent
+        self.sp_css_baseline_ideographic = 0
+        self.sp_css_baseline_hanging = 1
+        self.sp_css_baseline_mathematical = 2
+        self.sp_css_baseline_central = 3
+        self.sp_css_baseline_middle = 4
+        self.sp_css_baseline_text_beforeedge = 5
+        self.sp_css_baseline_text_after_edge = 6
+        self.sp_css_baseline_alphabetic = 7
+        self._baselines[self.sp_css_baseline_ideographic] = -self._descent
+        self._baselines[self.sp_css_baseline_hanging] = 0.8 * self._ascent
+        self._baselines[self.sp_css_baseline_mathematical] = 0.8 * self._xheight
+        self._baselines[self.sp_css_baseline_central] = 0.5 - self._descent
+        self._baselines[self.sp_css_baseline_middle] = 0.5 * self._xheight
+        self._baselines[self.sp_css_baseline_text_beforeedge] = self._ascent
+        self._baselines[self.sp_css_baseline_text_after_edge] = -self._descent
 
         # Get capital height
         if os2 and hasattr(os2, "sCapHeight") and os2.sCapHeight not in [0, None]:
-            self.cap_height = os2.sCapHeight / unitsPerEm
+            self.cap_height = os2.sCapHeight / units_per_em
         elif "glyf" in font and "I" in font.getGlyphNames():
             glyf_table = font["glyf"]
             i_glyph = glyf_table["I"]
-            self.cap_height = (i_glyph.yMax - 0 * i_glyph.yMin) / unitsPerEm
+            self.cap_height = (i_glyph.yMax - 0 * i_glyph.yMin) / units_per_em
         else:
             self.cap_height = 1
 
     def get_char_advances(self, chars, pchars):
-        unitsPerEm = self.head.unitsPerEm
-        if not hasattr(self, "cmap"):
+        """Get the advance width and bounding boxes of characters."""
+        units_per_em = self.head.unitsPerEm
+        if self.cmap is None:
             self.cmap = self.font.getBestCmap()
-        if not hasattr(self, "htmx"):
+        if self.hmtx is None:
             self.hmtx = self.font["hmtx"]
-        if not hasattr(self, "kern"):
+        if self.kern is None:
             self.kern = self.font["kern"] if "kern" in self.font else None
-        if not hasattr(self, "GSUB"):
+        if self.gsub is None:
             self.gsub = self.font["GSUB"] if "GSUB" in self.font else None
-        if not hasattr(self, "glyf"):
+        if self.glyf is None:
             self.glyf = self.font["glyf"] if "glyf" in self.font else None
-        if not hasattr(self, "GlyphNames"):
-            self.GlyphNames = self.font.getGlyphNames()
+        if self.glyph_names is None:
+            self.glyph_names = self.font.getGlyphNames()
 
         if self.cmap is None:
             # Certain symbol fonts don't have a cmap table
@@ -736,32 +812,33 @@ class FontTools_FontInstance:
             glyph1 = self.cmap.get(ord(c))
             if glyph1 is not None:
                 if glyph1 in self.hmtx.metrics:
-                    advance_width, lsb = self.hmtx.metrics[glyph1]
-                    advs[c] = advance_width / unitsPerEm
+                    advance_width, _ = self.hmtx.metrics[glyph1]
+                    advs[c] = advance_width / units_per_em
 
                 try:
                     glyph = self.glyf[glyph1]
-                    bb = [
+                    bbx = [
                         glyph.xMin,
                         -glyph.yMax,
                         glyph.xMax - glyph.xMin,
                         glyph.yMax - glyph.yMin,
                     ]
-                    bbs[c] = [v / unitsPerEm for v in bb]
+                    bbs[c] = [v / units_per_em for v in bbx]
                 except:
                     bbs[c] = [0, 0, 0, 0]
             else:
                 advs[c] = None
 
         # Get ligature table
-        if not hasattr(self, "ligatures"):
+        if self.ligatures is None:
             if self.gsub:
                 gsub_table = self.gsub.table
+                # This section was derived from the output of an LLM
                 # Iterate over each LookupList in the GSUB table
                 self.ligatures = dict()
-                for lookup_index, lookup in enumerate(gsub_table.LookupList.Lookup):
+                for lookup in gsub_table.LookupList.Lookup:
                     # Each Lookup can contain multiple SubTables
-                    for subtable_index, subtable in enumerate(lookup.SubTable):
+                    for subtable in lookup.SubTable:
                         # Handle extension lookups
                         if (
                             lookup.LookupType == 7
@@ -781,14 +858,17 @@ class FontTools_FontInstance:
                                 first_glyph,
                                 ligature_set,
                             ) in ext_subtable.ligatures.items():
-                                # The ligature set contains all ligatures that start with the first glyph
-                                # Each ligature is a sequence of glyphs that it replaces
+                                # The ligature set contains all ligatures that start
+                                # with the first glyph. Each ligature is a sequence
+                                # of glyphs that it replaces
                                 for ligature in ligature_set:
-                                    # The 'Component' field is a list of glyphs that make up the ligature
+                                    # The 'Component' field is a list of glyphs that
+                                    # make up the ligature
                                     component_glyphs = [
                                         first_glyph
                                     ] + ligature.Component
-                                    # The 'LigGlyph' field is the glyph that the components are replaced with
+                                    # The 'LigGlyph' field is the glyph that the
+                                    # components are replaced with
                                     ligature_glyph = ligature.LigGlyph
                                     self.ligatures[tuple(component_glyphs)] = (
                                         ligature_glyph
@@ -799,14 +879,14 @@ class FontTools_FontInstance:
         dadvs = dict()
         for c in pchars:
             glyph2 = self.cmap.get(ord(c))
-            for pc in pchars[c]:
-                glyph1 = self.cmap.get(ord(pc))
+            for pchar in pchars[c]:
+                glyph1 = self.cmap.get(ord(pchar))
                 kerning_value = None
                 if (glyph1, glyph2) in self.ligatures:
                     ligglyph = self.ligatures[(glyph1, glyph2)]
-                    awlig, lsb = self.hmtx.metrics[ligglyph]
-                    aw1, lsb = self.hmtx.metrics[glyph1]
-                    aw2, lsb = self.hmtx.metrics[glyph2]
+                    awlig, _ = self.hmtx.metrics[ligglyph]
+                    aw1, _ = self.hmtx.metrics[glyph1]
+                    aw2, _ = self.hmtx.metrics[glyph2]
                     kerning_value = awlig - aw1 - aw2
                 else:
                     if self.kern is not None:
@@ -816,9 +896,9 @@ class FontTools_FontInstance:
                                 break
                 if kerning_value is None:
                     kerning_value = 0
-                dadvs[(pc, c)] = kerning_value / unitsPerEm
+                dadvs[(pchar, c)] = kerning_value / units_per_em
         return advs, dadvs, bbs
-
+# pylint:enable=import-outside-toplevel
 
 class Conversions:
     """
@@ -991,7 +1071,7 @@ class Conversions:
         1000: FC.WEIGHT_ULTRABLACK,
     }
 
-    if haspango:
+    if HASPANGO:
         # Pango to fontconfig
         PWGT_FCWGT = {
             Pango.Weight.THIN: FC.WEIGHT_THIN,
@@ -1103,7 +1183,7 @@ def inkscape_spec_to_css(fstr, usepango=False):
         return ret.strip().lower()
 
     cstr = clean_str(fstr)
-    if usepango and haspango:
+    if usepango and HASPANGO:
         fullfams = [fm.get_name() for fm in PangoRenderer().families]
     else:
         fullfams = [f.get("family", 0)[0] for f in fcfg.font_list]
@@ -1149,19 +1229,19 @@ def inkscape_spec_to_css(fstr, usepango=False):
         pwgtstrs = {clean_str(k): v for k, v in C.PWGTSTR_CSSWGT.items()}
         pstrstrs = {clean_str(k): v for k, v in C.PSTRSTR_CSSSTR.items()}
         pstystrs = {clean_str(k): v for k, v in C.PSTYSTR_CSSSTY.items()}
-        for w in stylews:
+        for wrd in stylews:
             understood = False
-            if w in pwgtstrs:
-                sty["font-weight"] = pwgtstrs[w]
+            if wrd in pwgtstrs:
+                sty["font-weight"] = pwgtstrs[wrd]
                 understood = True
-            elif "weight" in w:
-                sty["font-weight"] = re.search(r"weight(\d+)", w).group(1)
+            elif "weight" in wrd:
+                sty["font-weight"] = re.search(r"weight(\d+)", wrd).group(1)
                 understood = True
-            if w in pstystrs:
-                sty["font-style"] = pstystrs[w]
+            if wrd in pstystrs:
+                sty["font-style"] = pstystrs[wrd]
                 understood = True
-            if w in pstrstrs:
-                sty["font-stretch"] = pstrstrs[w]
+            if wrd in pstrstrs:
+                sty["font-stretch"] = pstrstrs[wrd]
                 understood = True
             if not understood:
                 return None

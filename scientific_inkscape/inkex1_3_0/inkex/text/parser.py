@@ -73,7 +73,7 @@ from inkex.text.utils import (
 from inkex.text.cache import BaseElementCache
 from inkex.text.font_properties import (
     PangoRenderer,
-    haspango,
+    HASPANGO,
     fcfg,
     font_style,
     true_style,
@@ -3403,7 +3403,7 @@ class Character_Table:
         self.root = els[0].croot if len(els) > 0 else None
         ct, pct, self.rtable = self.collect_characters(els)
 
-        if haspango:
+        if HASPANGO:
             # Prefer to measure with Pango if we have it (faster, more accurate)
             self.ctable = self.measure_characters(ct, pct, self.rtable)
         else:
@@ -3564,7 +3564,7 @@ class Character_Table:
         # We add pI as test characters because p gives the font's descender (how much the tail descends)
         # and I gives its cap height (how tall capital letters are).
 
-        usepango = haspango and not (forcecommand)
+        usepango = HASPANGO and not (forcecommand)
         # usepango = False
         # inkex.utils.debug(usepango)
         cnt = 0
@@ -3667,7 +3667,7 @@ class Character_Table:
                             if type(v[1]) == Style and v[1] == sty
                         ]
 
-                        success, fm = pr.Set_Text_Style(
+                        success, fm = pr.set_text_style(
                             str(sty) + ";font-size:" + str(TEXTSIZE) + "px"
                         )
                         if not (success):
@@ -3697,8 +3697,8 @@ class Character_Table:
                         needexts2 = "0".join(needexts) + "1" + "1" * len(prefix)
                         # needexts2 = '1'*len(joinedstr)
 
-                        pr.Render_Text(joinedstr)
-                        exts, nu = pr.Get_Character_Extents(fm[1], needexts2)
+                        pr.render_text(joinedstr)
+                        exts, nu = pr.get_character_extents(fm[1], needexts2)
                         # if nu>0: # Removed 2023.06.16
                         #     pangolocked = False
                         #     return self.measure_characters(ct, pct, rt, forcecommand=True)
