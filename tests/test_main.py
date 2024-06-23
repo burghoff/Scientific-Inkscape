@@ -10,18 +10,19 @@ MAXPAPERS = 0
 flattentext = 'Text_tests.svg'
 flattenrest = 'Acid_tests.svg';
 flattenflow = 'Flow_tests.svg';
+flattenfonts = 'Font_variants_all.svg'
 priority_flatten = ['']
 exclude_flatten = ['Ohtani_SA_2019_Deep_group.svg',flattentext,flattenrest,fname,aename]
 
 flattenerargs = ("--id=layer1","--testmode=True")
 aeargs = ("--testmode=True",)
 
-version = '1.4'
+version = '1.0'
 usepango = True
 lprofile = False
 
 testflattentext,testflattentextdebug, testflattenrest,testflattenflow,testflattenpapers,testscalecorrection,testscalecorrection2,\
-testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp = (False,)*16
+testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp, testflattenfonts = (False,)*17
 
 testflattentext     = True;
 testflattentextdebug = True;
@@ -39,6 +40,8 @@ testhomogenizer     = True;
 testhomogenizer2    = True;
 testaemp            = True;
 testae              = True;
+
+# testflattenfonts     = True; 
 
 import os, sys, re
 vpaths = {'1.0' : 'D:\\Inkscapes\\inkscape-1.0.2-2-x64',
@@ -105,6 +108,13 @@ if testflattenrest:
         compare_filters = [CompareNumericFuzzy2(),]
         comparisons = [flattenerargs]
         compare_file = ['svg/'+flattenrest]
+        
+if testflattenfonts:
+    class TestFlattenerFonts(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        comparisons = [flattenerargs]
+        compare_file = ['svg/'+flattenfonts]
 
     
 if testflattenpapers:

@@ -141,14 +141,6 @@ class FontConfig:
             found, _ = self.conf.font_match(pat)
             truefont = FontConfig.fcfont_to_css(found)
 
-            if truefont not in self.font_list_css:
-                # font_match rarely returns missing fonts, usually variable-weight
-                # fonts where not all are installed. In that case, use the fallback
-                # font_match method
-                found, _, _ = self.conf.font_sort(pat, trim=True, want_coverage=False)
-                found = found[0]
-                truefont = FontConfig.fcfont_to_css(found)
-
             self.truefonts[nftuple] = truefont
             self.truefontsfc[nftuple] = found
             self.fontcharsets[tuple(truefont.items())] = found.get(fc.PROP.CHARSET, 0)[
@@ -244,7 +236,12 @@ class FontConfig:
 
     @property
     def font_list(self):
-        """Finds all fonts known to FontConfig"""
+        """
+        Finds all fonts known to FontConfig
+        Note that this does not appear to be completely comprehensive currently
+        A few fonts are missing, such as HoloLens MDL2 Assets Bold on Windows
+        These fonts can still be found using get_true_font
+        """
         if self._font_list is None:
             pattern = fc.Pattern.create()  # blank pattern
             properties = ["family", "weight", "slant", "width", "style", "file"]
@@ -628,9 +625,15 @@ class PangoRenderer:
         numunknown = self.pangolayout.get_unknown_glyphs_count()
         return wds, numunknown
 
+
 # pylint:disable=import-outside-toplevel
 class FontToolsFontInstance:
-    """Class to handle FontTools font instances."""
+    """
+    Class to handle FontTools font instances.
+    Note that this is rarely used (only if Pango fails, or for getting the 
+    ascent for text flows). The imports are fairly time-consuming, so
+    they are only performed conditionally.
+    """
 
     def __init__(self, fcfont):
         self.font = FontToolsFontInstance.font_from_fc(fcfont)
@@ -898,7 +901,10 @@ class FontToolsFontInstance:
                     kerning_value = 0
                 dadvs[(pchar, c)] = kerning_value / units_per_em
         return advs, dadvs, bbs
+
+
 # pylint:enable=import-outside-toplevel
+
 
 class Conversions:
     """
@@ -915,6 +921,7 @@ class Conversions:
     # CSS to fontconfig
     # For weights, Inkscape ignores anything commented out below
     # See ink_font_description_from_style in libnrtype/font-factory.cpp
+    # And yet Semi-Light seems to work anyway
     CSSWGT_FCWGT = {
         # 'thin'      : FC.WEIGHT_THIN,
         # 'ultralight': FC.WEIGHT_EXTRALIGHT,
@@ -931,7 +938,7 @@ class Conversions:
         "100": FC.WEIGHT_THIN,
         "200": FC.WEIGHT_EXTRALIGHT,
         "300": FC.WEIGHT_LIGHT,
-        # '350'       : FC.WEIGHT_SEMILIGHT,
+        "350": FC.WEIGHT_SEMILIGHT,
         # '380'       : FC.WEIGHT_BOOK,
         "400": FC.WEIGHT_NORMAL,
         "500": FC.WEIGHT_MEDIUM,
@@ -963,12 +970,12 @@ class Conversions:
     # Fontconfig to CSS
     # Semi-Light, Book, and Ultra-Black are mapped to Light, Normal, Heavy
     # See FontFactory::GetUIStyles in libnrtype/font-factory.cpp
+    # Despite this, Semi-Light seems to be valid
     FCWGT_CSSWGT = {
         FC.WEIGHT_THIN: "100",
         FC.WEIGHT_EXTRALIGHT: "200",
         FC.WEIGHT_LIGHT: "300",
-        # FC.WEIGHT_SEMILIGHT  : '350',
-        FC.WEIGHT_SEMILIGHT: "300",
+        FC.WEIGHT_SEMILIGHT: "350",
         # FC.WEIGHT_BOOK       : '380',
         FC.WEIGHT_BOOK: "400",
         FC.WEIGHT_NORMAL: "400",
@@ -1130,7 +1137,7 @@ class Conversions:
             # 'thin'       : Pango.Weight.THIN,
             # 'ultralight' : Pango.Weight.ULTRALIGHT,
             # 'light'      : Pango.Weight.LIGHT,
-            # 'semilight'  : Pango.Weight.SEMILIGHT,
+            "semilight": Pango.Weight.SEMILIGHT,
             # 'book'       : Pango.Weight.BOOK,
             "normal": Pango.Weight.NORMAL,
             # 'medium'     : Pango.Weight.MEDIUM,
@@ -1142,7 +1149,7 @@ class Conversions:
             "100": Pango.Weight.THIN,
             "200": Pango.Weight.ULTRALIGHT,
             "300": Pango.Weight.LIGHT,
-            # '350'        : Pango.Weight.SEMILIGHT,
+            "350": Pango.Weight.SEMILIGHT,
             # '380'        : Pango.Weight.BOOK,
             "400": Pango.Weight.NORMAL,
             "500": Pango.Weight.MEDIUM,
