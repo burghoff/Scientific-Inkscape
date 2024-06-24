@@ -17,7 +17,7 @@ exclude_flatten = ['Ohtani_SA_2019_Deep_group.svg',flattentext,flattenrest,fname
 flattenerargs = ("--id=layer1","--testmode=True")
 aeargs = ("--testmode=True",)
 
-version = '1.0'
+version = '1.4'
 usepango = True
 lprofile = False
 

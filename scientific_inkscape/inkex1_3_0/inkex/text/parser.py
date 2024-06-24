@@ -91,16 +91,21 @@ TEFRtags = {TEtag, FRtag}
 
 
 class ParsedTextList:
+    """A list of parsed text elements, which can be processed vectorially."""
     def __init__(self, pts):
+        """Initializes ParsedTextList with a list of parsed texts."""
         self.pts = pts
 
     def precalcs(self):
-        # Calculate parsed_bb, parsed_pts_ut, parsed_pts_t for all chunks simultaneously
+        '''
+        Calculate parsed_bb, parsed_pts_ut, parsed_pts_t for all chunks
+        simultaneously
+        '''
         tws = [w for pt in self.pts for ln in pt.lns for w in ln.ws]
         N = sum(tw.Ncs for tw in tws)
 
         # Preallocate arrays
-        wadj, cw, dxeff, dy, bshft, ch, us, af = np.zeros((8, N), dtype=float)
+        wadj, cwd, dxeff, dy, bshft, ch, us, af = np.zeros((8, N), dtype=float)
         fidx, lidx, widx = np.zeros((3, N)).astype(int)
 
         us = np.array([tw.unrenderedspace for tw in tws], dtype=float)
@@ -114,47 +119,40 @@ class ParsedTextList:
         )
         lx2, rx2, by2, ty2 = np.zeros((4, len(tws))).astype(float)
 
-        # Collect values for wadj, cw, dxeff, dy, bshft, and ch
+        # Collect values for wadj, cwd, dxeff, dy, bshft, and ch
         idx = 0
-        for jj, tw in enumerate(tws):
+        for j, tw in enumerate(tws):
             if KERN_TABLE:
-                for ii in range(1, tw.Ncs):
-                    wadj[idx + ii] = tw.cs[ii].dkerns(tw.cs[ii - 1].c, tw.cs[ii].c)
+                for i in range(1, tw.Ncs):
+                    wadj[idx + i] = tw.cs[i].dkerns(tw.cs[i - 1].c, tw.cs[i].c)
 
-            for ii in range(tw.Ncs):
-                cw[idx + ii] = tw.cw[ii]
-                dxeff[idx + ii] = tw.dxeff[ii]
-                dy[idx + ii] = tw.dy[ii]
-                bshft[idx + ii] = tw.bshft[ii]
-                ch[idx + ii] = tw.ch[ii]
+            for i in range(tw.Ncs):
+                cwd[idx + i] = tw.cwd[i]
+                dxeff[idx + i] = tw.dxeff[i]
+                dy[idx + i] = tw.dy[i]
+                bshft[idx + i] = tw.bshft[i]
+                ch[idx + i] = tw.ch[i]
             fidx[idx : idx + tw.Ncs] = idx
             lidx[idx : idx + tw.Ncs] = idx + tw.Ncs - 1
-            widx[idx : idx + tw.Ncs] = jj
+            widx[idx : idx + tw.Ncs] = j
             idx += tw.Ncs
 
         # Calculate ws, cstop, and cstrt
-        ws = cw + dxeff + wadj
+        ws = cwd + dxeff + wadj
         cstop = np.array(list(itertools.accumulate(ws)), dtype=float)
         cstop += ws[fidx] - cstop[fidx]
-        cstrt = cstop - cw
+        cstrt = cstop - cwd
 
         # # Calculate adyl
         adyl = np.array(list(itertools.accumulate(dy)), dtype=float)
         adyl += dy[fidx] - adyl[fidx]
 
         # Calculate ww, offx, lx, and rx
-        offx = -af[widx] * (cstop[lidx] - us[widx] * cw[lidx])
+        offx = -af[widx] * (cstop[lidx] - us[widx] * cwd[lidx])
         lx = wx[widx] + cstrt + offx
         rx = wx[widx] + cstop + offx
         by = wy[widx] + adyl - bshft
         ty = by - ch
-
-        # idx_Ncs = np.cumsum([0] + [tw.Ncs for tw in tws])
-        # for i, tw in enumerate(tws):
-        #     lx2[i] = min(lx[idx_Ncs[i]:idx_Ncs[i+1]]-dxeff[idx_Ncs[i]])
-        #     rx2[i] = lx2[i] + cstop[idx_Ncs[i+1]-1]
-        #     by2[i] = max(by[idx_Ncs[i]:idx_Ncs[i+1]])
-        #     ty2[i] = min(ty[idx_Ncs[i]:idx_Ncs[i+1]])
 
         idx_Ncs = np.cumsum([0] + [tw.Ncs for tw in tws])
         starts = idx_Ncs[:-1]
@@ -218,27 +216,29 @@ class ParsedTextList:
             ]
 
             tw.parsed_bb = tw.bb.copy()
-            for jj, c in enumerate(tw.cs):
+            for j, c in enumerate(tw.cs):
                 c.parsed_pts_ut = [
-                    (float(tw._cpts_ut[0][jj][0]), float(tw._cpts_ut[0][jj][1])),
-                    (float(tw._cpts_ut[1][jj][0]), float(tw._cpts_ut[1][jj][1])),
-                    (float(tw._cpts_ut[2][jj][0]), float(tw._cpts_ut[2][jj][1])),
-                    (float(tw._cpts_ut[3][jj][0]), float(tw._cpts_ut[3][jj][1])),
+                    (float(tw._cpts_ut[0][j][0]), float(tw._cpts_ut[0][j][1])),
+                    (float(tw._cpts_ut[1][j][0]), float(tw._cpts_ut[1][j][1])),
+                    (float(tw._cpts_ut[2][j][0]), float(tw._cpts_ut[2][j][1])),
+                    (float(tw._cpts_ut[3][j][0]), float(tw._cpts_ut[3][j][1])),
                 ]
                 c.parsed_pts_t = [
-                    (float(tw._cpts_t[0][jj][0]), float(tw._cpts_t[0][jj][1])),
-                    (float(tw._cpts_t[1][jj][0]), float(tw._cpts_t[1][jj][1])),
-                    (float(tw._cpts_t[2][jj][0]), float(tw._cpts_t[2][jj][1])),
-                    (float(tw._cpts_t[3][jj][0]), float(tw._cpts_t[3][jj][1])),
+                    (float(tw._cpts_t[0][j][0]), float(tw._cpts_t[0][j][1])),
+                    (float(tw._cpts_t[1][j][0]), float(tw._cpts_t[1][j][1])),
+                    (float(tw._cpts_t[2][j][0]), float(tw._cpts_t[2][j][1])),
+                    (float(tw._cpts_t[3][j][0]), float(tw._cpts_t[3][j][1])),
                 ]
 
 
-# Multiplies M times (x;y) in a way compatible with vectorization
+
 def vmult(M, x, y):
+    '''Multiplies M times (x;y) in a way compatible with vectorization'''
     return (M[0][0] * x + M[0][1] * y + M[0][2], M[1][0] * x + M[1][1] * y + M[1][2])
 
 
 def vmultI(M, x, y):
+    """Performs inverse matrix multiplication with vectors."""
     det = M[0][0] * M[1][1] - M[0][1] * M[1][0]
     inv_det = 1 / det
     sx = x - M[0][2]
@@ -249,9 +249,10 @@ def vmultI(M, x, y):
     )
 
 
-# A text element that has been parsed into a list of lines
 class ParsedText:
+    ''' A text element that has been parsed into a list of lines  '''
     def __init__(self, el, ctable, debug=False):
+        """Initializes ParsedText with an element and a character table."""
         self.ctable = ctable
         self.textel = el
 
@@ -284,7 +285,7 @@ class ParsedText:
         # multi-line Inkscape
 
     def duplicate(self):
-        # Duplicates a PT and its text without reparsing
+        ''' Duplicates a PT and its text without reparsing '''
         ret = copy(self)
         ret.textel = self.textel.duplicate()
         ret.tree = None
@@ -308,19 +309,26 @@ class ParsedText:
         return ret
 
     def txt(self):
+        """Returns the text content of the parsed lines."""
         return [v.txt() for v in self.lns]
 
     def reparse(self):
+        """Reparses the text element."""
         self.__init__(self.textel, self.ctable)
 
     @property
     def cs(self):
+        """Returns a list of characters in the parsed lines."""
         return [c for ln in self.lns for c in ln.cs]
 
-    # Every text element in an SVG can be thought of as a group of lines.
-    # A line is a collection of text that gets its position from a single source element.
-    # This position may be directly set, continued from a previous line, or inherited from a previous line
+
     def Parse_Lines(self, srcsonly=False):
+        '''
+        Every text element in an SVG can be thought of as a group of lines.
+        A line is a collection of text that gets its position from a single
+        source element. This position may be directly set, continued from a
+        previous line, or inherited from a previous line.
+        '''
         el = self.textel
         # First we get the tree structure of the text and do all our gets
         ds, pts, pd = self.tree.ds, self.tree.ptails, self.tree.pdict
@@ -336,43 +344,43 @@ class ParsedText:
         nspr = [d.get("sodipodi:role") for d in ds]
         nspr[0] = None
         sprl = [
-            nspr[ii] == "line" and len(xs[ii]) == 1 and len(ys[ii]) == 1
-            for ii in range(len(ds))
+            nspr[i] == "line" and len(xs[i]) == 1 and len(ys[i]) == 1
+            for i in range(len(ds))
         ]
 
         # Find effective sprls (ones that are not disabled)
         esprl = sprl[:]
-        for ii, d in enumerate(ds):
+        for i, d in enumerate(ds):
             # Any non-sprl ancestor disables spr:l on me
             # cel = d
-            # while esprl[ii] and cel != el:
-            #     esprl[ii] = esprl[ii] and sprl[ds.index(cel)]
+            # while esprl[i] and cel != el:
+            #     esprl[i] = esprl[i] and sprl[ds.index(cel)]
             #     cel = pd[cel]
 
             # If I don't have text and any descendants have position, disables spr:l
-            if esprl[ii] and (text[ii] == "" or text[ii] is None):
-                dstop = [jj for jj in range(len(pts)) if ds[ii] in pts[jj]][0]
+            if esprl[i] and (text[i] == "" or text[i] is None):
+                dstop = [j for j in range(len(pts)) if ds[i] in pts[j]][0]
                 # should exist
-                for di in range(ii + 1, dstop):
+                for di in range(i + 1, dstop):
                     if xs[di][0] is not None or ys[di][0] is not None:
                         if text[di] is not None and text[di] != "":
-                            esprl[ii] = False
+                            esprl[i] = False
 
             # Only top-level tspans are sprl
-            esprl[ii] = esprl[ii] and ds[ii] in ks
+            esprl[i] = esprl[i] and ds[i] in ks
 
         # Figure out which effective sprls are top-level
         types = ["normal"] * len(ds)
-        for ii in [ii for ii in range(len(ds)) if esprl[ii]]:
-            if len(ptail[ii]) > 0 and ptail[ii][-1] is not None:
-                types[ii] = "precededsprl"
-            elif ds[ii] == ks[0] and text[0] is not None:  # and len(text[0])>0:
+        for i in [i for i in range(len(ds)) if esprl[i]]:
+            if len(ptail[i]) > 0 and ptail[i][-1] is not None:
+                types[i] = "precededsprl"
+            elif ds[i] == ks[0] and text[0] is not None:  # and len(text[0])>0:
                 # 2022.08.17: I am not sure if the len(text[0])==0 condition should be included
                 # Inkscape prunes text='', so not relevant most of the time
                 # It does seem to make a difference though
-                types[ii] = "precededsprl"
+                types[i] = "precededsprl"
             else:
-                types[ii] = "tlvlsprl"
+                types[i] = "tlvlsprl"
 
         # Position has a property of bidirectional inheritance. A tspan can inherit
         # position from its parent or its descendant unless there is text in between.
@@ -403,13 +411,13 @@ class ParsedText:
         def inheritNone(iin, xy):
             if xy[iin][0] is None:
                 imin, imax = inherits_from(iin)
-                vld = [ii for ii in range(imin, imax + 1) if xy[ii][0] is not None]
+                vld = [i for i in range(imin, imax + 1) if xy[i][0] is not None]
                 if len(vld) > 0:
-                    if any([ii <= iin for ii in vld]):
-                        vld = [ii for ii in vld if ii <= iin]
+                    if any([i <= iin for i in vld]):
+                        vld = [i for i in vld if i <= iin]
                         # inherit up if possible
-                    dist = [abs(ii - iin) for ii in vld]
-                    ic = [vld[ii] for ii in range(len(vld)) if dist[ii] == min(dist)][0]
+                    dist = [abs(i - iin) for i in vld]
+                    ic = [vld[i] for i in range(len(vld)) if dist[i] == min(dist)][0]
                     return xy[ic], ds[ic]
             return xy[iin], ds[iin]
 
@@ -419,16 +427,16 @@ class ParsedText:
         xsrcs = ds[:]
         ysrcs = ds[:]
 
-        for ii in [ii for ii in range(0, len(ds)) if ixs[ii][0] is None]:
-            ixs[ii], xsrcs[ii] = inheritNone(ii, xs)
-        for ii in [ii for ii in range(0, len(ds)) if iys[ii][0] is None]:
-            iys[ii], ysrcs[ii] = inheritNone(ii, ys)
+        for i in [i for i in range(0, len(ds)) if ixs[i][0] is None]:
+            ixs[i], xsrcs[i] = inheritNone(i, xs)
+        for i in [i for i in range(0, len(ds)) if iys[i][0] is None]:
+            iys[i], ysrcs[i] = inheritNone(i, ys)
 
-        # for ii in range(0, len(ds)):
-        #     if ixs[ii][0] is None:
-        #         ixs[ii], xsrcs[ii] = inheritNone(ii, xs)
-        #     if iys[ii][0] is None:
-        #         iys[ii], ysrcs[ii] = inheritNone(ii, ys)
+        # for i in range(0, len(ds)):
+        #     if ixs[i][0] is None:
+        #         ixs[i], xsrcs[i] = inheritNone(i, xs)
+        #     if iys[i][0] is None:
+        #         iys[i], ysrcs[i] = inheritNone(i, ys)
 
         if ixs[0][0] is None:
             ixs[0] = [0]  # at least the parent needs a position
@@ -559,13 +567,13 @@ class ParsedText:
                         sprl_inherits = lns[-1]
 
                 if txt is not None:
-                    for jj, c in enumerate(txt):
+                    for j, c in enumerate(txt):
                         prop = self.ctable.get_prop(c, tsty)
                         tchar(
-                            c, fs, sf, utfs, prop, sty, tsty, cloc(tel, tt, jj), lns[-1]
+                            c, fs, sf, utfs, prop, sty, tsty, cloc(tel, tt, j), lns[-1]
                         )
 
-                        if jj == 0:
+                        if j == 0:
                             lsp0 = lns[-1].cs[-1].lsp
                             bshft0 = lns[-1].cs[-1].bshft
                         else:
@@ -574,6 +582,7 @@ class ParsedText:
         return lns
 
     def Finish_Lines(self):
+        """Finalizes the parsed lines by calculating deltas and chunks."""
         if self.lns is not None:
             self.Get_Delta(self.lns, self.textel, "dx")
             self.Get_Delta(self.lns, self.textel, "dy")
@@ -586,8 +595,8 @@ class ParsedText:
             self._dychange = False
             self._hasdy = any([dyv != 0 for dyv in self.dys])
 
-            for ii in range(len(self.lns)):
-                ln = self.lns[ii]
+            for i in range(len(self.lns)):
+                ln = self.lns[i]
                 ln.pt = self
                 ln.parse_chunks()
 
@@ -601,24 +610,24 @@ class ParsedText:
             tol = 0.001
             for uy in uniquetol(ys, tol):
                 samey = [
-                    self.lns[ii]
-                    for ii in range(len(self.lns))
-                    if abs(ys[ii] - uy) < tol
+                    self.lns[i]
+                    for i in range(len(self.lns))
+                    if abs(ys[i] - uy) < tol
                 ]
                 sameyws = [w for ln in samey for w in ln.ws]
                 xs = [w.x for ln in samey for w in ln.ws]
                 sws = [
                     x for _, x in sorted(zip(xs, sameyws), key=lambda pair: pair[0])
                 ]  # chunks sorted in ascending x
-                for ii in range(1, len(sws)):
-                    sws[ii - 1].nextw = sws[ii]
-                    sws[ii].prevw = sws[ii - 1]
-                    sws[ii].prevsametspan = (
-                        sws[ii - 1].cs[-1].loc.sel == sws[ii].cs[0].loc.sel
+                for i in range(1, len(sws)):
+                    sws[i - 1].nextw = sws[i]
+                    sws[i].prevw = sws[i - 1]
+                    sws[i].prevsametspan = (
+                        sws[i - 1].cs[-1].loc.sel == sws[i].cs[0].loc.sel
                     )
 
-    # Strip every sodipodi:role line from an element without changing positions
     def Strip_Sodipodirole_Line(self):
+        ''' Strip every sodipodi:role line from an element without changing positions '''
         if any([d.get("sodipodi:role") == "line" for d in self.tree.ds]):
             # Store old positions
             oxs = [c.pts_ut[0][0] for ln in self.lns for c in ln.cs]
@@ -630,7 +639,7 @@ class ParsedText:
 
             # Correct the position of the first character
             cs = [c for ln in self.lns for c in ln.cs]
-            for ii, ln in enumerate(self.lns):
+            for i, ln in enumerate(self.lns):
                 myi = cs.index(ln.cs[0])
                 dx = oxs[myi] - cs[myi].pts_ut[0][0]
                 dy = oys[myi] - cs[myi].pts_ut[0][1]
@@ -653,21 +662,21 @@ class ParsedText:
             # Fix non-first dxs
             ndxs = [c.dx for ln in self.lns for c in ln.cs]
             ndys = [c.dy for ln in self.lns for c in ln.cs]
-            for ii, c in enumerate(cs):
+            for i, c in enumerate(cs):
                 if c.lnindex > 0:
                     if (
-                        abs(odxs[ii] - ndxs[ii]) > 0.001
-                        or abs(odys[ii] - ndys[ii]) > 0.001
+                        abs(odxs[i] - ndxs[i]) > 0.001
+                        or abs(odys[i] - ndys[i]) > 0.001
                     ):
-                        c.dx = odxs[ii]
-                        c.dy = odys[ii]
+                        c.dx = odxs[i]
+                        c.dy = odys[i]
             self.Update_Delta()
             for ln in self.lns:
                 for w in ln.ws:
                     w.charpos = None
 
-    # Remove baseline-shift if applied to the whole element
     def Strip_Text_BaselineShift(self):
+        ''' Remove baseline-shift if applied to the whole element '''
         if "baseline-shift" in self.textel.cspecified_style:
             if len(self.lns) > 0 and len(self.lns[0].cs) > 0:
                 lny = self.lns[0].y[:]
@@ -679,13 +688,14 @@ class ParsedText:
 
     @staticmethod
     def GetXY(el, xy):
+        """Gets the x or y coordinate values from an element."""
         val = EBget(el, xy)  # fine for 'x','y','dx','dy'
         if not val:
             return [None]  # None forces inheritance
         return [None if x == "none" else ipx(x) for x in val.split()]
 
-    # Traverse the tree to find where deltas need to be located relative to the top-level text
     def Get_DeltaNum(self):
+        ''' Traverse the tree to find where deltas need to be located relative to the top-level text '''
         allcs = [c for ln in self.lns for c in ln.cs]
         topcnt = 0
         for di, tt, d, sel, txt in self.tree.dgenerator():
@@ -697,12 +707,13 @@ class ParsedText:
             ):
                 topcnt += 1  # top-level Tspans have an implicit CR at the beginning of the tail
             if txt is not None:
-                for ii, v in enumerate(txt):
-                    thec = next((c for c in allcs if c.loc == cloc(d, tt, ii)), None)
+                for i, v in enumerate(txt):
+                    thec = next((c for c in allcs if c.loc == cloc(d, tt, i)), None)
                     thec.deltanum = topcnt
                     topcnt += 1
 
     def Get_Delta(self, lns, el, xy):
+        """Calculates the delta values for the text lines."""
         for do in self.tree.ds:
             dxy = ParsedText.GetXY(do, xy)
             # Objects lower in the descendant list override ancestors
@@ -719,9 +730,9 @@ class ParsedText:
                     ):
                         cnt += 1  # top-level Tspans have an implicit CR at the beginning of the tail
                     if txt is not None:
-                        for ii, v in enumerate(txt):
+                        for i, v in enumerate(txt):
                             thec = next(
-                                (c for c in allcs if c.loc == cloc(d, tt, ii)), None
+                                (c for c in allcs if c.loc == cloc(d, tt, i)), None
                             )
                             if cnt < len(dxy):
                                 if xy == "dx":
@@ -732,9 +743,12 @@ class ParsedText:
                     if cnt >= len(dxy):
                         break
 
-    # After dx/dy has changed, call this to write them to the text element
-    # For simplicity, this is best done at the ParsedText level all at once
+
     def Update_Delta(self, forceupdate=False):
+        '''
+        After dx/dy has changed, call this to write them to the text element
+        For simplicity, this is best done at the ParsedText level all at once
+        '''
         if self._dxchange or self._dychange or forceupdate:
             dxs = [c.dx for ln in self.lns for c in ln.cs]
             dys = [c.dy for ln in self.lns for c in ln.cs]
@@ -777,9 +791,11 @@ class ParsedText:
             self._hasdy = any([dyv != 0 for dyv in dys])
             self._dychange = False
 
-    # Text is hard to edit unless xml:space is set to preserve and sodipodi:role is set to line
-    # Should usually be called last
     def Make_Editable(self):
+        '''
+        Text is hard to edit unless xml:space is set to preserve and sodipodi:role is set to line
+        Should usually be called last
+        '''
         el = self.textel
         el.set("xml:space", "preserve")
         if (
@@ -804,9 +820,9 @@ class ParsedText:
                 # reenable sodipodi so we can insert returns
 
                 if self._hasdx or self._hasdy:
-                    for ii in range(len(self.lns[0].cs)):
-                        self.lns[0].cs[ii].dx = olddx[ii]
-                        self.lns[0].cs[ii].dy = olddy[ii]
+                    for i in range(len(self.lns[0].cs)):
+                        self.lns[0].cs[i].dx = olddx[i]
+                        self.lns[0].cs[i].dy = olddy[i]
                     self.Update_Delta(forceupdate=True)
                     # may have deleted spr lines
 
@@ -871,6 +887,7 @@ class ParsedText:
             k.cstyle = v
 
     def Split_Off_Chunks(self, ws):
+        """Splits off specified chunks of text into a new element."""
         nll = self.duplicate()
         newtxt = nll.textel
 
@@ -901,9 +918,9 @@ class ParsedText:
                 nll.lns[il2].dell()
             else:
                 nln = nll.lns[il2]
-                for jj in reversed(range(len(nln.ws))):
-                    if not (jj in wiis):
-                        nln.ws[jj].delw()
+                for j in reversed(range(len(nln.ws))):
+                    if not (j in wiis):
+                        nln.ws[j].delw()
 
         cnt = 0
         for l2 in nll.lns:
@@ -917,6 +934,7 @@ class ParsedText:
         return newtxt
 
     def Split_Off_Characters(self, cs):
+        """Splits off specified characters into a new element."""
         nll = self.duplicate()
         newtxt = nll.textel
 
@@ -945,9 +963,9 @@ class ParsedText:
                 nll.lns[il2].dell()
             else:
                 nln = nll.lns[il2]
-                for jj in reversed(range(len(nln.cs))):
-                    if jj not in ciis:
-                        nln.cs[jj].delc()
+                for j in reversed(range(len(nln.cs))):
+                    if j not in ciis:
+                        nln.cs[j].delc()
 
         # Deletion of text can cause the srcs to be wrong. Reparse to find where it is now
         nln.xsrc, nln.ysrc = nll.Parse_Lines(srcsonly=True)
@@ -978,8 +996,8 @@ class ParsedText:
         newtxt._parsed_text = nll
         return newtxt
 
-    # Deletes empty elements from the doc. Generally this is done last
     def Delete_Empty(self):
+        ''' Deletes empty elements from the doc. Generally this is done last '''
         dxl = [c.dx for ln in self.lns for c in ln.cs]
         dyl = [c.dy for ln in self.lns for c in ln.cs]
         dltd = deleteempty(self.textel)
@@ -1129,7 +1147,7 @@ class ParsedText:
             exts = self.get_line_ink()
         else:  # 'all'
             exts = [self.get_full_extent()]
-        for ii, ext in enumerate(exts):
+        for i, ext in enumerate(exts):
             r = inkex.Rectangle()
             r.set("x", ext.x1)
             r.set("y", ext.y1)
@@ -1138,7 +1156,7 @@ class ParsedText:
             r.set("transform", self.textel.ccomposed_transform)
             sty = (
                 ParsedText.HIGHLIGHT_STYLE
-                if ii % 2 == 0
+                if i % 2 == 0
                 else ParsedText.HIGHLIGHT_STYLE.replace("0.4675", "0.5675")
             )
             r.set("style", sty)
@@ -1427,8 +1445,8 @@ class ParsedText:
             if txt is not None and len(txt) > 0:
                 if isflowroot:
                     lnno = [
-                        ii
-                        for ii, fpv in enumerate(fparas)
+                        i
+                        for i, fpv in enumerate(fparas)
                         if fpv in tel.ancestors2(includeme=True)
                     ]
                     if len(lnno) == 0:
@@ -1493,11 +1511,11 @@ class ParsedText:
                 else:
                     cln = lns[lnno]
 
-                for jj, c in enumerate(txt):
+                for j, c in enumerate(txt):
                     prop = self.ctable.get_prop(c, tsty)
-                    tc = tchar(c, fs, sf, utfs, prop, sty, tsty, cloc(tel, tt, jj), cln)
+                    tc = tchar(c, fs, sf, utfs, prop, sty, tsty, cloc(tel, tt, j), cln)
                     tc.lhs = (fabsp, fbbsp)
-                    if jj == 0:
+                    if j == 0:
                         lsp0 = tc.lsp
                         bshft0 = tc.bshft
                     else:
@@ -1509,15 +1527,15 @@ class ParsedText:
 
         # Figure out where to break lines
         # Currently only works for rectangular flows
-        ii = 0
+        i = 0
         breakcs = " -—!}|/?"
         lncs = [ln.cs for ln in lns]
         blns = []
         lc = None
         y = 0
-        while ii < len(lncs):
-            if len(lncs[ii]) > 0:
-                fc = lncs[ii][0]
+        while i < len(lncs):
+            if len(lncs[i]) > 0:
+                fc = lncs[i][0]
 
                 lh = None
                 getxintervals = True
@@ -1558,10 +1576,10 @@ class ParsedText:
                             ]
                         )
                         intervals = []
-                        for jj in range(int(len(pts10) / 2)):
-                            int10 = (pts10[2 * jj], pts10[2 * jj + 1])
-                            for kk in range(int(len(pts90) / 2)):
-                                int90 = (pts90[2 * kk], pts90[2 * kk + 1])
+                        for j in range(int(len(pts10) / 2)):
+                            int10 = (pts10[2 * j], pts10[2 * j + 1])
+                            for k in range(int(len(pts90) / 2)):
+                                int90 = (pts90[2 * k], pts90[2 * k + 1])
                                 intrsc = (
                                     max(int10[0], int90[0]),
                                     min(int10[1], int90[1]),
@@ -1713,34 +1731,34 @@ class ParsedText:
                         breakaft = None
                         hardbreak = False
                         strt = 0 if len(breaks) == 0 else breaks[-1] + 1
-                        csleft = lncs[ii][strt:]
-                        for jj, c in enumerate(csleft):
-                            if jj == 0:
+                        csleft = lncs[i][strt:]
+                        for j, c in enumerate(csleft):
+                            if j == 0:
                                 fcrun = c
                             if not isflowroot and c.c == "\n":
-                                breakaft = jj
+                                breakaft = j
                                 hardbreak = True
                                 break
                             elif c.pts_ut[3][0] - fcrun.pts_ut[0][0] > xlim[1]:
-                                spcs = [cv for cv in csleft[:jj] if cv.c in breakcs]
-                                # inkex.utils.debug('Break on '+str((c.c,jj)))
+                                spcs = [cv for cv in csleft[:j] if cv.c in breakcs]
+                                # inkex.utils.debug('Break on '+str((c.c,j)))
                                 if c.c == " ":
-                                    breakaft = jj
+                                    breakaft = j
                                     # inkex.utils.debug('Break overflow space')
                                 elif len(spcs) > 0:
                                     breakaft = [
-                                        kk
-                                        for kk, cv in enumerate(csleft)
+                                        k
+                                        for k, cv in enumerate(csleft)
                                         if spcs[-1] == cv
                                     ][0]
                                     # inkex.utils.debug('Break chunk')
                                 elif (
                                     xlim[1] > 4 * (c.ln.effabsp + c.ln.effbbsp)
-                                    and jj > 0
+                                    and j > 0
                                 ):
                                     # When the flowregion width is > 4*line height, allow intraword break
                                     # https://gitlab.com/inkscape/inkscape/-/blob/master/src/libnrtype/Layout-TNG-Compute.cpp#L1989
-                                    breakaft = jj - 1
+                                    breakaft = j - 1
                                     # inkex.utils.debug('Break intraword')
                                 else:
                                     # Break whole line and hope that the next line is wider
@@ -1760,14 +1778,14 @@ class ParsedText:
                     # Use break points to split the line, pushing text after the
                     # last break to the next line
                     if not breaks:
-                        splitcs = [lncs[ii]]
+                        splitcs = [lncs[i]]
                     else:
                         splitcs = []
                         prev_index = -1
                         for index in breaks:
-                            splitcs.append(lncs[ii][prev_index + 1 : index + 1])
+                            splitcs.append(lncs[i][prev_index + 1 : index + 1])
                             prev_index = index
-                        splitcs.append(lncs[ii][prev_index + 1 :])
+                        splitcs.append(lncs[i][prev_index + 1 :])
                     nextcs = None
                     if len(splitcs) > 1:
                         nextcs = splitcs.pop(-1)  # push to next line
@@ -1789,9 +1807,9 @@ class ParsedText:
                         getxintervals = True
 
                 if nextcs is not None:
-                    lncs = lncs[0:ii] + [mycs, nextcs] + lncs[ii + 1 :]
+                    lncs = lncs[0:i] + [mycs, nextcs] + lncs[i + 1 :]
                 y += maxabsp
-                for jj, cs in enumerate(splitcs):
+                for j, cs in enumerate(splitcs):
                     ln = fc.ln
                     cln = tline(
                         self,
@@ -1819,8 +1837,8 @@ class ParsedText:
 
                     if len(cs) > 0:
                         af = cln.anchfrac
-                        x = xlims[jj][0] * (1 - af) + (xlims[jj][0] + xlims[jj][1]) * af
-                        if ii == 0 and isinlinesz and iszy is not None:
+                        x = xlims[j][0] * (1 - af) + (xlims[j][0] + xlims[j][1]) * af
+                        if i == 0 and isinlinesz and iszy is not None:
                             y += ipx(iszy) - cln.effabsp
                         if isinlinesz and iszx is not None:
                             x += ipx(iszx)
@@ -1831,15 +1849,15 @@ class ParsedText:
                 if y - 0.1 * (maxabsp + maxbbsp) > bb[3] and not isinlinesz:
                     # When we reached the end of the flow region, add the remaining
                     # characters to a line that is given a NaN y position
-                    cln.cs = [c for lnc in lncs[ii:] for c in lnc]
-                    for jj, c in enumerate(cln.cs):
+                    cln.cs = [c for lnc in lncs[i:] for c in lnc]
+                    for j, c in enumerate(cln.cs):
                         c.ln = cln
-                        c.lnindex = jj
+                        c.lnindex = j
                     cln.y = [float("nan")]
                     break
 
-            ii += 1
-            if ii > 1000:
+            i += 1
+            if i > 1000:
                 # inkex.utils.debug('Infinite loop')
                 break
 
@@ -1872,7 +1890,7 @@ class txttree:
             subel = self.ds[0]
         else:
             starti = self.ds.index(subel)
-            stopi = [ii for ii, pt in enumerate(self.ptails) if subel in pt][0]
+            stopi = [i for i, pt in enumerate(self.ptails) if subel in pt][0]
 
         for di, tt in ttgenerator(len(self.ds), starti, stopi):
             srcs = self.ptails[di] if tt == TT_TAIL else [self.ds[di]]
@@ -2032,12 +2050,12 @@ class tline:
             return self._x
         if self.pt is None:
             return [0]
-        ii = self.pt.lns.index(self)
-        if ii > 0 and len(self.pt.lns[ii - 1].ws) > 0:
+        i = self.pt.lns.index(self)
+        if i > 0 and len(self.pt.lns[i - 1].ws) > 0:
             xf = self.anchfrac
-            xanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[3][
+            xanch = (1 + xf) * self.pt.lns[i - 1].ws[-1].pts_ut[3][
                 0
-            ] - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0][0]
+            ] - xf * self.pt.lns[i - 1].ws[-1].pts_ut[0][0]
             return [xanch]
         else:
             return [0]
@@ -2053,12 +2071,12 @@ class tline:
             return self._y
         if self.pt is None:
             return [0]
-        ii = self.pt.lns.index(self)
-        if ii > 0 and len(self.pt.lns[ii - 1].ws) > 0:
+        i = self.pt.lns.index(self)
+        if i > 0 and len(self.pt.lns[i - 1].ws) > 0:
             xf = self.anchfrac
-            yanch = (1 + xf) * self.pt.lns[ii - 1].ws[-1].pts_ut[3][
+            yanch = (1 + xf) * self.pt.lns[i - 1].ws[-1].pts_ut[3][
                 1
-            ] - xf * self.pt.lns[ii - 1].ws[-1].pts_ut[0][1]
+            ] - xf * self.pt.lns[i - 1].ws[-1].pts_ut[0][1]
             return [yanch]
         else:
             return [0]
@@ -2084,25 +2102,25 @@ class tline:
         # the line parser has gotten all the characters
         w = None
         self.ws = []
-        for ii in range(len(self.cs)):
-            if ii == 0:
-                w = tchunk(ii, self.x[0], self.y[0], self)
+        for i in range(len(self.cs)):
+            if i == 0:
+                w = tchunk(i, self.x[0], self.y[0], self)
                 # open new chunk
-            elif ii < len(self.x) and not (
-                self.x[ii] is None
+            elif i < len(self.x) and not (
+                self.x[i] is None
             ):  # None means keep the same chunk
                 self.addw(w)  # close previous chunk
-                w = tchunk(ii, self.x[ii], self.y[0], self)
+                w = tchunk(i, self.x[i], self.y[0], self)
                 # open new chunk
             else:
-                w.addc(ii)
+                w.addc(i)
                 # add to existing chunk
         if w is not None:
             self.addw(w)
 
     def dell(self):  # deletes the whole line
         self.change_pos(self.x[:1])
-        for ii, c in enumerate(reversed(self.cs)):
+        for i, c in enumerate(reversed(self.cs)):
             if c.loc.tt == TT_TEXT:
                 c.loc.el.text = (
                     c.loc.el.text[: c.loc.ind] + c.loc.el.text[c.loc.ind + 1 :]
@@ -2130,11 +2148,11 @@ class tline:
                 # Note that it's impossible to change one line without affecting the others
 
             for w in self.ws:
-                minx = min([w.pts_ut[ii][0] for ii in range(4)])
-                maxx = max([w.pts_ut[ii][0] for ii in range(4)])
+                minx = min([w.pts_ut[i][0] for i in range(4)])
+                maxx = max([w.pts_ut[i][0] for i in range(4)])
 
                 if w.unrenderedspace and self.cs[-1] in w.cs:
-                    maxx -= w.cs[-1].cw
+                    maxx -= w.cs[-1].cwd
 
                 xf = get_anchorfrac(newanch)
                 newx = (1 - xf) * minx + xf * maxx
@@ -2248,7 +2266,7 @@ class tchunk:
         "txt",
         "lsp",
         "dxeff",
-        "cw",
+        "cwd",
         "dy",
         "ch",
         "bshft",
@@ -2260,11 +2278,11 @@ class tchunk:
         "bb_big",
     )
 
-    def __init__(self, ii, x, y, ln):
-        c = ln.cs[ii]
+    def __init__(self, i, x, y, ln):
+        c = ln.cs[i]
         self.cs = [c]
         c.windex = 0
-        self.iis = [ii]
+        self.iis = [i]
         # character index in chunk
         self.Ncs = len(self.iis)
         self._x = x
@@ -2287,7 +2305,7 @@ class tchunk:
         self.dxeff = [c.dx, c.lsp]
         # Effective dx (with letter-spacing). Note that letter-spacing adds space
         # after the char, so dxeff ends up being longer than the number of chars by 1
-        self.cw = [c.cw]
+        self.cwd = [c.cwd]
         self.dy = [c.dy]
         self.ch = [c.ch]
         self.bshft = [c.bshft]
@@ -2315,7 +2333,7 @@ class tchunk:
         ret.txt = self.txt
         ret.lsp = self.lsp[:]
         ret.dxeff = self.dxeff[:]
-        ret.cw = self.cw[:]
+        ret.cwd = self.cwd[:]
         ret.dy = self.dy[:]
         ret.ch = self.ch[:]
         ret.bshft = self.bshft[:]
@@ -2323,7 +2341,7 @@ class tchunk:
         # ret.__dict__.update(self.__dict__)
         # ret.lsp = self.lsp[:]
         # ret.dxeff = self.dxeff[:]
-        # ret.cw = self.cw[:]
+        # ret.cwd = self.cwd[:]
         # ret.dy = self.dy[:]
         # ret.ch = self.ch[:]
         # ret.bshft = self.bshft[:]
@@ -2342,12 +2360,12 @@ class tchunk:
         ret.ln = memo[self.ln]
         return ret
 
-    def addc(self, ii):  # adds an existing char to a chunk based on line index
-        c = self.ln.cs[ii]
+    def addc(self, i):  # adds an existing char to a chunk based on line index
+        c = self.ln.cs[i]
         c.w = None  # avoid problems in character properties
         self.cs.append(c)
         self.cchange()
-        self.iis.append(ii)
+        self.iis.append(i)
         self.Ncs = len(self.iis)
         c.windex = self.Ncs - 1
 
@@ -2355,33 +2373,33 @@ class tchunk:
         self.lsp.append(c.lsp)
         self.dxeff[-1] += c.dx
         self.dxeff.append(c.lsp)
-        self.cw.append(c.cw)
+        self.cwd.append(c.cwd)
         self.dy.append(c.dy)
         self.ch.append(c.ch)
         self.bshft.append(c.bshft)
         c.w = self
 
     def removec(self, c):  # removes a char from a chunk based on chunk index
-        ii = c.windex
-        for c2 in self.cs[ii + 1 :]:
+        i = c.windex
+        for c2 in self.cs[i + 1 :]:
             c2.windex -= 1
         c.windex = None
         c.w = None
-        self.cs = del2(self.cs, ii)
-        self.iis.pop(ii)
+        self.cs = del2(self.cs, i)
+        self.iis.pop(i)
         self.Ncs = len(self.iis)
         self.cchange()
 
-        self.txt = del2(self.txt, ii)
-        self.lsp.pop(ii)
-        self.dxeff.pop(ii)
-        self.dxeff[ii] = (self.cs[ii].dx if ii < self.Ncs else 0) + (
-            self.cs[ii - 1].lsp if ii > 0 else 0
+        self.txt = del2(self.txt, i)
+        self.lsp.pop(i)
+        self.dxeff.pop(i)
+        self.dxeff[i] = (self.cs[i].dx if i < self.Ncs else 0) + (
+            self.cs[i - 1].lsp if i > 0 else 0
         )
-        self.cw.pop(ii)
-        self.dy.pop(ii)
-        self.ch.pop(ii)
-        self.bshft.pop(ii)
+        self.cwd.pop(i)
+        self.dy.pop(i)
+        self.ch.pop(i)
+        self.bshft.pop(i)
 
         if len(self.cs) == 0:  # chunk now empty
             self.delw()
@@ -2444,7 +2462,7 @@ class tchunk:
         c = copy(lc)
         c.c = ncv
         c.prop = ncprop
-        c.cw = ncprop.charw * c.utfs
+        c.cwd = ncprop.charw * c.utfs
         c.dx = ndx
         c.dy = ndy
 
@@ -2462,10 +2480,10 @@ class tchunk:
             self.ln.change_pos(newx)
 
         self.ln.insertc(c, myi)
-        for ii in range(
+        for i in range(
             myi + 1, len(self.ln.cs)
         ):  # need to increment index of subsequent objects with the same parent
-            ca = self.ln.cs[ii]
+            ca = self.ln.cs[i]
             if ca.loc.tt == c.loc.tt and ca.loc.el == c.loc.el:
                 ca.loc.ind += 1
             if ca.w is not None:
@@ -2475,7 +2493,7 @@ class tchunk:
 
         # Adding a character causes the chunk to move if it's center- or right-justified
         # Need to fix this by adjusting position
-        deltax = -self.ln.anchfrac * self.ln.cs[myi].cw
+        deltax = -self.ln.anchfrac * self.ln.cs[myi].cwd
         if deltax != 0:
             newx = self.ln.x
             newx[self.cs[0].lnindex] -= deltax
@@ -2496,7 +2514,7 @@ class tchunk:
             if maxspaces is not None:
                 numsp = min(numsp, maxspaces)
 
-            for ii in range(numsp):
+            for i in range(numsp):
                 self.appendc(" ", lc.ln.pt.ctable.get_prop(" ", lc.tsty), -lc.lsp, 0)
 
             fc = nw.cs[0]
@@ -2579,22 +2597,22 @@ class tchunk:
 
         mv = float("inf")
         ci = None
-        for ii in range(len(w2.cs)):
-            if c2uts[ii] is not None:
-                if c2uts[ii][0][0] < mv:
-                    mv = c2uts[ii][0][0]
-                    ci = ii
+        for i in range(len(w2.cs)):
+            if c2uts[i] is not None:
+                if c2uts[i][0][0] < mv:
+                    mv = c2uts[i][0][0]
+                    ci = i
 
         bl2 = vmultI(self.transform.matrix, c2ts[ci][0][0], c2ts[ci][0][1])
         tl2 = vmultI(self.transform.matrix, c2ts[ci][1][0], c2ts[ci][1][1])
 
         mv = float("-inf")
         ci = None
-        for ii in range(len(self.cs)):
-            if c1uts[ii] is not None:
-                if c1uts[ii][3][0] > mv:
-                    mv = c1uts[ii][3][0]
-                    ci = ii
+        for i in range(len(self.cs)):
+            if c1uts[i] is not None:
+                if c1uts[i][3][0] > mv:
+                    mv = c1uts[i][3][0]
+                    ci = i
 
         tr1 = c1uts[ci][2]
         br1 = c1uts[ci][3]
@@ -2667,20 +2685,20 @@ class tchunk:
         if self._charpos is None:
             wadj = [0] * self.Ncs
             if KERN_TABLE:
-                for ii in range(1, self.Ncs):
-                    wadj[ii] = self.cs[ii].dkerns(self.cs[ii - 1].c, self.cs[ii].c)
+                for i in range(1, self.Ncs):
+                    wadj[i] = self.cs[i].dkerns(self.cs[i - 1].c, self.cs[i].c)
                     # default to 0 for chars of different style
 
-            ws = [self.cw[ii] + self.dxeff[ii] + wadj[ii] for ii in range(self.Ncs)]
+            ws = [self.cwd[i] + self.dxeff[i] + wadj[i] for i in range(self.Ncs)]
             cstop = list(itertools.accumulate(ws))
-            # cumulative width up to and including the iith char
-            cstrt = [cstop[ii] - self.cw[ii] for ii in range(self.Ncs)]
+            # cumulative width up to and including the ith char
+            cstrt = [cstop[i] - self.cwd[i] for i in range(self.Ncs)]
 
             cstrt = np.array(cstrt, dtype=float)
             cstop = np.array(cstop, dtype=float)
 
             ww = cstop[-1]
-            offx = -self.ln.anchfrac * (ww - self.unrenderedspace * self.cs[-1].cw)
+            offx = -self.ln.anchfrac * (ww - self.unrenderedspace * self.cs[-1].cwd)
             # offset of the left side of the chunk from the anchor
             wx = self.x
             wy = self.y
@@ -2865,7 +2883,7 @@ class tchar:
     #     "utfs",
     #     "sf",
     #     "prop",
-    #     "cw",
+    #     "cwd",
     #     "_sty",
     #     "tsty",
     #     "fsty",
@@ -2898,7 +2916,7 @@ class tchar:
         # transform scale
         self.prop = prop
         # properties of a 1 uu character
-        self.cw = prop.charw * utfs
+        self.cwd = prop.charw * utfs
         # ut character width
         self._sty = sty
         # actual style
@@ -2944,7 +2962,7 @@ class tchar:
         # ret.sf = self.sf
         # ret.utfs = self.utfs
         # ret.prop = self.prop
-        # ret.cw = self.cw
+        # ret.cwd = self.cwd
         # ret._sty = self._sty
         # ret.tsty = self.tsty
         # ret.fsty = self.fsty
@@ -2979,10 +2997,10 @@ class tchar:
             self._dx = di
             if self.w is not None:
                 self.w.charpos = None  # invalidate
-                ii = self.windex
+                i = self.windex
                 w = self.w
-                w.dxeff[ii] = (w.cs[ii].dx if ii < w.Ncs else 0) + (
-                    w.cs[ii - 1].lsp if ii > 0 else 0
+                w.dxeff[i] = (w.cs[i].dx if i < w.Ncs else 0) + (
+                    w.cs[i - 1].lsp if i > 0 else 0
                 )
             self.ln.pt._dxchange = True
 
@@ -3040,11 +3058,11 @@ class tchar:
             self._lsp = sv
             if self.w is not None:
                 self.w.charpos = None
-                ii = self.windex
+                i = self.windex
                 w = self.w
-                w.lsp[ii] = sv
-                w.dxeff[ii + 1] = (w.cs[ii + 1].dx if ii < w.Ncs - 1 else 0) + (
-                    w.cs[ii].lsp if ii < w.Ncs else 0
+                w.lsp[i] = sv
+                w.dxeff[i + 1] = (w.cs[i + 1].dx if i < w.Ncs - 1 else 0) + (
+                    w.cs[i].lsp if i < w.Ncs else 0
                 )
 
     @staticmethod
@@ -3117,7 +3135,7 @@ class tchar:
             dko1 = self.dkerns(lncs[myi - 1].c, lncs[myi].c)  # old from left
         dk = dko1 + dko2 - dkn
 
-        cwo = self.cw + dk + self._dx + self.lsp * (self.windex != 0)
+        cwo = self.cwd + dk + self._dx + self.lsp * (self.windex != 0)
         if self.w.unrenderedspace and self.w.cs[-1] == self:
             if len(self.w.cs) > 1 and self.w.cs[-2].c != " ":
                 cwo = dk
@@ -3132,7 +3150,7 @@ class tchar:
         lnx = [v for v in self.ln.x]
         changedx = False
         if deltax != 0:
-            nnii = [ii for ii, x in enumerate(lnx) if x is not None]  # non-None
+            nnii = [i for i, x in enumerate(lnx) if x is not None]  # non-None
             lnx[nnii[self.ln.ws.index(self.w)]] -= deltax
             changedx = True
 
@@ -3226,12 +3244,12 @@ class tchar:
 
         # myi = self.ln.cs.index(self)
         myi = self.lnindex
-        for ii in range(
+        for i in range(
             myi + 1, len(self.ln.cs)
         ):  # for characters after, update location
-            ca = self.ln.cs[ii]
+            ca = self.ln.cs[i]
             if ca.loc.el == self.loc.el and ca.loc.tt == self.loc.tt:
-                ca.loc = cloc(t, TT_TAIL, ii - myi - 1)
+                ca.loc = cloc(t, TT_TAIL, i - myi - 1)
         self.loc = cloc(t, TT_TEXT, 0)  # update my own location
 
         # When the specified style has something new span doesn't, are inheriting and
@@ -3308,17 +3326,17 @@ def extendind(x, ind, val, default=None):  # indexes a matrix, extending it if n
 def sortnone(x):  # sorts an x with Nones (skip Nones)
     rem = list(range(len(x)))
     minxrem = min([x[r] for r in rem if x[r] is not None])
-    ii = min([r for r in rem if x[r] == minxrem])
-    so = [ii]
-    rem.remove(ii)
+    i = min([r for r in rem if x[r] == minxrem])
+    so = [i]
+    rem.remove(i)
     while len(rem) > 0:
-        if ii == len(x) - 1 or x[ii + 1] is not None:
+        if i == len(x) - 1 or x[i + 1] is not None:
             minxrem = min([x[r] for r in rem if x[r] is not None])
-            ii = min([r for r in rem if x[r] == minxrem])
-            so += [ii]
+            i = min([r for r in rem if x[r] == minxrem])
+            so += [i]
         else:
-            ii += 1
-        rem.remove(ii)
+            i += 1
+        rem.remove(i)
     return so
 
 
@@ -3327,9 +3345,9 @@ def sortnone(x):  # sorts an x with Nones (skip Nones)
 class cprop:
     __slots__ = ("char", "charw", "spacew", "caph", "dkerns", "inkbb")
 
-    def __init__(self, char, cw, sw, ch, dkerns, inkbb):
+    def __init__(self, char, cwd, sw, ch, dkerns, inkbb):
         self.char = char
-        self.charw = cw
+        self.charw = cwd
         # character width
         self.spacew = sw
         # space width
@@ -3481,9 +3499,9 @@ class Character_Table:
                     rtable[fsty] = unique(rtable.get(fsty, []) + list(txt))
                     if tsty not in pctable:
                         pctable[tsty] = dict()
-                    for jj in range(1, len(txt)):
-                        pctable[tsty][txt[jj]] = unique(
-                            pctable[tsty].get(txt[jj], []) + [txt[jj - 1]]
+                    for j in range(1, len(txt)):
+                        pctable[tsty][txt[j]] = unique(
+                            pctable[tsty].get(txt[j], []) + [txt[j - 1]]
                         )
 
         for tsty in ctable:  # make sure they have spaces
@@ -3520,13 +3538,13 @@ class Character_Table:
                     advs, dkern, inkbbs = fnt.get_char_advances(fntcs[chrfnt], pct2)
                     if advs is None:
                         return self.measure_characters(ct, pct, rt)
-                    for ii in range(len(fntcs[chrfnt])):
-                        c = fntcs[chrfnt][ii]
-                        cw = advs[c]
+                    for i in range(len(fntcs[chrfnt])):
+                        c = fntcs[chrfnt][i]
+                        cwd = advs[c]
                         ch = fnt.cap_height
                         # dr = 0
                         inkbb = inkbbs[c]
-                        ct2[ts][c] = cprop(c, cw, None, ch, dkern, inkbb)
+                        ct2[ts][c] = cprop(c, cwd, None, ch, dkern, inkbb)
                 spc = ct2[ts][" "]
                 for c in ct2[ts]:
                     ct2[ts][c].spacew = spc.charw
@@ -3613,15 +3631,15 @@ class Character_Table:
         bareids = []
         for s in ct:
             ct2[s] = dict()
-            for ii in range(len(ct[s])):
-                myc = ct[s][ii]
+            for i in range(len(ct[s])):
+                myc = ct[s][i]
                 t = Make_String(prefix + effc(myc) + suffix, s)
                 tb = Make_String(effc(myc), s)
                 bareids.append(tb)
                 dkern = dict()
                 if KERN_TABLE:
-                    for jj in range(len(ct[s])):
-                        pc = ct[s][jj]
+                    for j in range(len(ct[s])):
+                        pc = ct[s][j]
                         if myc in pct[s] and pc in pct[s][myc]:
                             t2 = Make_String(prefix + effc(pc) + effc(myc) + suffix, s)
                             # precede by all chars of the same style
@@ -3683,16 +3701,16 @@ class Character_Table:
                         modw = [
                             any(
                                 len(mystrs[i]) == 1
-                                for i in range(ii, ii + 2)
+                                for i in range(i, i + 2)
                                 if 0 <= i < len(mystrs)
                             )
-                            for ii in range(len(mystrs))
+                            for i in range(len(mystrs))
                         ]
                         needexts = [
                             "1"
                             if len(s) == 1
-                            else "1" + "0" * (len(s) - 2) + ("1" if modw[ii] else "0")
-                            for ii, s in enumerate(mystrs)
+                            else "1" + "0" * (len(s) - 2) + ("1" if modw[i] else "0")
+                            for i, s in enumerate(mystrs)
                         ]
                         needexts2 = "0".join(needexts) + "1" + "1" * len(prefix)
                         # needexts2 = '1'*len(joinedstr)
@@ -3706,9 +3724,9 @@ class Character_Table:
                         sw = exts[-len(prefix) - 1][0][2]
                         cnt = 0
                         x = 0
-                        for ii, mystr in enumerate(mystrs):
+                        for i, mystr in enumerate(mystrs):
                             # w = sum(ws[cnt:cnt+len(mystr)])
-                            if modw[ii]:
+                            if modw[i]:
                                 altw = (
                                     exts[cnt + len(mystr) - 1][0][0]
                                     + exts[cnt + len(mystr) - 1][0][2]
@@ -3724,14 +3742,14 @@ class Character_Table:
 
                             firstch = exts[cnt]
                             (xb, yb, wb, hb) = tuple(firstch[2])
-                            if myids[ii] not in bareids:
+                            if myids[i] not in bareids:
                                 xb = x
                                 wb = w
                                 # use logical width
                             # if mystr==blnk:
                             #     ycorr = hb+yb
 
-                            nbb[myids[ii]] = [v * TEXTSIZE for v in [xb, yb, wb, hb]]
+                            nbb[myids[i]] = [v * TEXTSIZE for v in [xb, yb, wb, hb]]
                             cnt += len(mystr) + len(joinch)
                             x += w
 
@@ -3739,33 +3757,33 @@ class Character_Table:
                         # The ascent+descent of a font is supposed to match its logical height,
                         # but this is not always the case. Correct using the top of the 'I' character.
                         # Removed 2023.06.16
-                        # for ii in range(len(mystrs)):
-                        #     # if myids[ii] in bareids:
-                        #     nbb[myids[ii]][1] -= ycorr*TEXTSIZE
+                        # for i in range(len(mystrs)):
+                        #     # if myids[i] in bareids:
+                        #     nbb[myids[i]][1] -= ycorr*TEXTSIZE
                     pangolocked = False
                     finished = True
 
         dkern = dict()
         for s in ct:
-            for ii in ct[s]:
-                ct[s][ii].bb = bbox(nbb[ct[s][ii].strid])
+            for i in ct[s]:
+                ct[s][i].bb = bbox(nbb[ct[s][i].strid])
                 if KERN_TABLE:
                     precwidth = dict()
-                    for jj in ct[s][ii].dkern:
-                        precwidth[jj] = bbox(nbb[ct[s][ii].dkern[jj]]).w
+                    for j in ct[s][i].dkern:
+                        precwidth[j] = bbox(nbb[ct[s][i].dkern[j]]).w
                         # width including the preceding character and extra kerning
-                    ct[s][ii].precwidth = precwidth
+                    ct[s][i].precwidth = precwidth
 
             if KERN_TABLE:
                 dkern[s] = dict()
-                for ii in ct[s]:
-                    mcw = ct[s][ii].bb.w - ct[s][blnk].bb.w  # my character width
-                    for jj in ct[s][ii].precwidth:
-                        pcw = ct[s][jj].bb.w - ct[s][blnk].bb.w  # preceding char width
+                for i in ct[s]:
+                    mcw = ct[s][i].bb.w - ct[s][blnk].bb.w  # my character width
+                    for j in ct[s][i].precwidth:
+                        pcw = ct[s][j].bb.w - ct[s][blnk].bb.w  # preceding char width
                         bcw = (
-                            ct[s][ii].precwidth[jj] - ct[s][blnk].bb.w
+                            ct[s][i].precwidth[j] - ct[s][blnk].bb.w
                         )  # both char widths
-                        dkern[s][jj, ct[s][ii].strval] = (
+                        dkern[s][j, ct[s][i].strval] = (
                             bcw - pcw - mcw
                         )  # preceding char, then next char
 
@@ -3779,24 +3797,24 @@ class Character_Table:
                 for k in dkern[s]:
                     dkernscl[k] = dkern[s][k] / TEXTSIZE
 
-            for ii in ct[s]:
-                cw = (
-                    ct[s][ii].bb.w - blnkwd
+            for i in ct[s]:
+                cwd = (
+                    ct[s][i].bb.w - blnkwd
                 )  # character width (full, including extra space on each side)
-                if ct[s][ii].bareid in nbb:
-                    inkbb = nbb[ct[s][ii].bareid]
+                if ct[s][i].bareid in nbb:
+                    inkbb = nbb[ct[s][i].bareid]
                 else:
                     inkbb = [
-                        ct[s][ii].bb.x1,
-                        ct[s][ii].bb.y1,
+                        ct[s][i].bb.x1,
+                        ct[s][i].bb.y1,
                         0,
                         0,
                     ]  # whitespace: make zero-width
-                if ct[s][ii].strval in badchars:
-                    cw = 0
-                ct[s][ii] = cprop(
-                    ct[s][ii].strval,
-                    cw / TEXTSIZE,
+                if ct[s][i].strval in badchars:
+                    cwd = 0
+                ct[s][i] = cprop(
+                    ct[s][i].strval,
+                    cwd / TEXTSIZE,
                     sw / TEXTSIZE,
                     ch / TEXTSIZE,
                     dkernscl,
@@ -3946,22 +3964,22 @@ def Character_Fixer2(els):
                         sel.cstyle["font-family"] = fixw
                     else:
                         prev_nonascii = False
-                        for jj, c in enumerate(reversed(txt)):
-                            ii = len(txt) - 1 - jj
+                        for j, c in enumerate(reversed(txt)):
+                            i = len(txt) - 1 - j
                             if fixcondition(c):
                                 if not prev_nonascii:
                                     # t = tel.croot.new_element(Tspan, tel)
                                     t = Tspan()
                                     t.text = c
                                     if tt == TT_TEXT:
-                                        tbefore = tel.text[0:ii]
-                                        tafter = tel.text[ii + 1 :]
+                                        tbefore = tel.text[0:i]
+                                        tafter = tel.text[i + 1 :]
                                         tel.text = tbefore
                                         tel.insert(0, t)
                                         t.tail = tafter
                                     else:
-                                        tbefore = tel.tail[0:ii]
-                                        tafter = tel.tail[ii + 1 :]
+                                        tbefore = tel.tail[0:i]
+                                        tafter = tel.tail[i + 1 :]
                                         tel.tail = tbefore
                                         gp = tel.getparent()
                                         # parent is a Tspan, so insert it into the grandparent
@@ -3975,9 +3993,9 @@ def Character_Fixer2(els):
                                 else:
                                     t.text = c + t.text
                                     if tt == TT_TEXT:
-                                        tel.text = tel.text[0:ii]
+                                        tel.text = tel.text[0:i]
                                     else:
-                                        tel.tail = tel.tail[0:ii]
+                                        tel.tail = tel.tail[0:i]
                                 if tel.text is not None and tel.text == "":
                                     tel.text = None
                                 if tel.tail is not None and tel.tail == "":
@@ -4020,12 +4038,12 @@ def Replace_Non_Ascii_Font(el, newfont, *args):
             elif isinstance(t, str):
                 ws = []
                 si = 0
-                for ii in range(
+                for i in range(
                     1, len(t)
                 ):  # split into chunks based on whether unicode or not
-                    if nonletter(t[ii - 1]) != nonletter(t[ii]):
-                        ws.append(t[si:ii])
-                        si = ii
+                    if nonletter(t[i - 1]) != nonletter(t[i]):
+                        ws.append(t[si:i])
+                        si = i
                 ws.append(t[si:])
                 sty = "baseline-shift:0%;"
                 for w in ws:

@@ -298,8 +298,7 @@ def nearest_val(dictv, inputval):
     return dictv[min(dictv.keys(), key=lambda x: abs(x - inputval))]
 
 
-# The Pango library is only available starting with v1.1 (when Inkscape added
-# the Python bindings for the gtk library).
+# Attempt to import the Pango bindings for the gi repository
 with warnings.catch_warnings():
     # Ignore ImportWarning for Gtk/Pango
     warnings.simplefilter("ignore")
@@ -630,7 +629,7 @@ class PangoRenderer:
 class FontToolsFontInstance:
     """
     Class to handle FontTools font instances.
-    Note that this is rarely used (only if Pango fails, or for getting the 
+    Note that this is rarely used (only if Pango fails, or for getting the
     ascent for text flows). The imports are fairly time-consuming, so
     they are only performed conditionally.
     """
@@ -654,11 +653,11 @@ class FontToolsFontInstance:
         fname = found.get(fc.PROP.FILE, 0)[0]
 
         try:
-            from fontTools.ttLib import TTFont
+            from fontTools.ttLib import TTFont, TTLibFileIsCollectionError
         except ModuleNotFoundError:
             current_script_directory = os.path.dirname(os.path.abspath(__file__))
             sys.path += [os.path.join(current_script_directory, "packages")]
-            from fontTools.ttLib import TTFont
+            from fontTools.ttLib import TTFont, TTLibFileIsCollectionError
         import logging
 
         logging.getLogger("fontTools").setLevel(logging.ERROR)
@@ -682,8 +681,7 @@ class FontToolsFontInstance:
 
                     font = mutator.instantiateVariableFont(font, location)
 
-        except:
-            # fcfam = found.get(fc.PROP.FAMILY,0)[0]
+        except TTLibFileIsCollectionError:
             fcwgt = found.get(fc.PROP.WEIGHT, 0)[0]
             fcsln = found.get(fc.PROP.SLANT, 0)[0]
             fcwdt = found.get(fc.PROP.WIDTH, 0)[0]
@@ -827,7 +825,7 @@ class FontToolsFontInstance:
                         glyph.yMax - glyph.yMin,
                     ]
                     bbs[c] = [v / units_per_em for v in bbx]
-                except:
+                except (AttributeError, TypeError):
                     bbs[c] = [0, 0, 0, 0]
             else:
                 advs[c] = None
