@@ -712,14 +712,14 @@ class AutoExporter(inkex.EffectExtension):
         nels = []
         for el in reversed(tels):
             if el.parsed_text.isflow:
-                nels += el.parsed_text.Flow_to_Text()
+                nels += el.parsed_text.flow_to_text()
                 tels.remove(el)
         tels += nels
 
         for el in tels:
-            el.parsed_text.Strip_Text_BaselineShift()
-            el.parsed_text.Strip_Sodipodirole_Line()
-            el.parsed_text.Fuse_Fonts()
+            el.parsed_text.strip_text_baseline_shift()
+            el.parsed_text.strip_sodipodi_role_line()
+            el.parsed_text.fuse_fonts()
             self.SubSuper_Fix(el)
 
             # Preserve duplicate of text to be converted to paths
@@ -1517,10 +1517,10 @@ class AutoExporter(inkex.EffectExtension):
         g = dh.group([el], moveTCM=True)
 
         for d in reversed(el.descendants2()):
-            xv = parser.ParsedText.GetXY(d, "x")
-            yv = parser.ParsedText.GetXY(d, "y")
-            dxv = parser.ParsedText.GetXY(d, "dx")
-            dyv = parser.ParsedText.GetXY(d, "dy")
+            xv = parser.ParsedText.get_xy(d, "x")
+            yv = parser.ParsedText.get_xy(d, "y")
+            dxv = parser.ParsedText.get_xy(d, "dx")
+            dyv = parser.ParsedText.get_xy(d, "dy")
 
             if xv[0] is not None:
                 parser.xyset(d, "x", [v * s for v in xv])

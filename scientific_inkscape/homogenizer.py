@@ -152,7 +152,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             onept = self.svg.cdocsize.unittouu("1pt")
             szs = dict()
             for el in tels:
-                cszs = [c.tfs / onept for ln in el.parsed_text.lns for c in ln.cs]
+                cszs = [c.tfs / onept for ln in el.parsed_text.lns for c in ln.chrs]
                 if len(cszs) > 0:
                     szs[el] = max(cszs)
 
