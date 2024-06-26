@@ -697,7 +697,7 @@ class AutoExporter(inkex.EffectExtension):
         tels = [el for el in vds if el.tag in {tetag, frtag}]
         from inkex.text import parser
 
-        parser.Character_Fixer2(tels)
+        parser.character_fixer2(tels)
 
         # Strip all sodipodi:role lines from document
         # Conversion to plain SVG does this automatically but poorly

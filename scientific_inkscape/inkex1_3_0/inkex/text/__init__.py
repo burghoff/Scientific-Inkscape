@@ -31,21 +31,21 @@ following on some text:
 Rectangles should appear surrounding the logical extents of each character.
 
 Before parsing is done, a character table must be generated to determine the properties
-of all the characters present. This is done automatically by the first invocation of .parsed_text,
-which automatically analyzes the whole document and adds it to the SVG. If you are only
-parsing a few text elements, this can be sped up by calling svg.make_char_table(els).
-On the rare occasions this fails, a command call may be performed as a fallback.
+of all the characters present. This is done automatically by the first invocation of
+.parsed_text, which automatically analyzes the whole document and adds it to the SVG.
+If you are only parsing a few text elements, this can be sped up by calling
+svg.make_char_table(els). On the rare occasions this fails, a command call may
+be performed as a fallback.
 """
 
 # Give inkex an inkex.text submodule that refers to this directory
-import inkex, sys, os
+import sys
+import os
+import inspect
+import inkex
 
 if not hasattr(inkex, "text"):
     import importlib
-
-    # mymodname = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
-    # sys.modules["inkex.text"] = importlib.import_module(mymodname)
-
     mydir = os.path.dirname(os.path.abspath(__file__))
     myloc, myname = os.path.split(mydir)
     oldpath = sys.path
@@ -65,20 +65,21 @@ except ModuleNotFoundError:
 # This is not optional
 import inkex.text.cache
 
-
-import inspect
-
-
 def add_cache(base, derived):
+    """
+    Adds the cache capabilities from a derived class to a base class by dynamically
+    attaching methods, properties, and data descriptors that are unique to the derived
+    class to the base class.
+    """
     predfn = (
         lambda x: isinstance(x, property)
         or inspect.isfunction(x)
         or inspect.isdatadescriptor(x)
     )
-    base_m = {name: m for name, m in inspect.getmembers(base, predicate=predfn)}
-    for name, m in inspect.getmembers(derived, predicate=predfn):
-        if m not in base_m.values():
-            setattr(base, name, m)
+    base_m = dict(inspect.getmembers(base, predicate=predfn))
+    for name, memb in inspect.getmembers(derived, predicate=predfn):
+        if memb not in base_m.values():
+            setattr(base, name, memb)
 
 
 add_cache(inkex.BaseElement, inkex.text.cache.BaseElementCache)

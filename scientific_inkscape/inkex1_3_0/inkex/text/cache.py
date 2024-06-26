@@ -38,24 +38,24 @@ use the cache. For example, getElementById uses svg.iddict to avoid xpath
 calls.
 """
 
+import re
+from typing import Optional, List
 import inkex
 from inkex import Style
 from inkex import BaseElement, SvgDocumentElement
 from text.utils import shapetags, tags, ipx, list2, bbox
-import lxml, re
+import lxml
 
 EBget = lxml.etree.ElementBase.get
 EBset = lxml.etree.ElementBase.set
 
 
-# Version of get_unique_id that removes randomness by keeping a running count
-from typing import Optional, List
-
-
-# Function that references URLs, returning the referenced element
-# Returns None if it does not exist or is invalid
-# Accepts both elements and styles as inputs
 def get_link_fcn(el, typestr, svg=None, llget=False):
+    """
+    Function that references URLs, returning the referenced element
+    Returns None if it does not exist or is invalid
+    Accepts both elements and styles as inputs
+    """
     if llget:
         tv = EBget(el, typestr)
         # fine for 'clip-path' & 'mask'
@@ -82,22 +82,29 @@ BE_set_id = BaseElement.set_id
 if len(Style().__dict__) == 0:
 
     def empty_style():
+        """Instantiates an empty Style object."""
         return Style.__new__(Style)
 else:
     bstyle_dict = Style().__dict__
 
     def empty_style():
+        """Instantiates an empty Style object."""
         ret = Style.__new__(Style)
         ret.__dict__ = bstyle_dict
         return ret
 
 
 class BaseElementCache(BaseElement):
+    """Adds caching of style and transformation properties of base elements."""
+
     get_link = get_link_fcn
 
-    # Cached style attribute that invalidates the cached cascaded / specified
-    # style whenever the style is changed. Always use this when setting styles.
     class CStyle(Style):
+        """
+        Cached style attribute that invalidates the cached cascaded / specified
+        style whenever the style is changed. Always use this when setting styles.
+        """
+
         # Delete key when value set to None
         def __init__(self, val, el):
             self.el = el
@@ -128,6 +135,8 @@ class BaseElementCache(BaseElement):
                     self.el.cstyle = self
 
     class CStyleDescriptor:
+        """Descriptor for caching and managing style changes."""
+
         def __get__(self, el, owner):
             if not hasattr(el, "_cstyle") and el is not None:
                 el._cstyle = BaseElementCache.CStyle(EBget(el, "style"), el)
@@ -159,6 +168,7 @@ class BaseElementCache(BaseElement):
     cstytags = shapetags | {SvgDocumentElement.ctag}
 
     def get_cspecified_style(self):
+        """Returns the cached specified style, calculating it if not cached."""
         if not (hasattr(self, "_cspecified_style")):
             parent = self.getparent()
             if parent is not None and parent.tag in BaseElementCache.cstytags:
@@ -169,6 +179,7 @@ class BaseElementCache(BaseElement):
         return self._cspecified_style
 
     def set_cspecified_style(self, si):
+        """Invalidates the cached specified style."""
         if si is None:
             try:
                 delattr(self, "_cspecified_style")
@@ -251,7 +262,7 @@ class BaseElementCache(BaseElement):
     dict_update = Style.__bases__[0].update  # type: ignore
 
     def get_cascaded_style(self):
-        # Object's style including any CSS
+        """Returns the cached cascaded (CSS) style, calculating it if not cached."""
         if not (hasattr(self, "_ccascaded_style")):
             # Local style (in "style" attribute)
             locsty = self.cstyle
@@ -280,6 +291,7 @@ class BaseElementCache(BaseElement):
         return self._ccascaded_style
 
     def set_ccascaded_style(self, si):
+        """Invalidates the cached cascaded style."""
         if si is None:
             try:
                 delattr(self, "_ccascaded_style")
@@ -288,9 +300,11 @@ class BaseElementCache(BaseElement):
 
     ccascaded_style = property(get_cascaded_style, set_ccascaded_style)
 
-    # Cached composed_transform, which can be invalidated by changes to
-    # transform of any ancestor.
     def get_ccomposed_transform(self):
+        """
+        Cached composed_transform, which can be invalidated by changes to
+        transform of any ancestor.
+        """
         if not (hasattr(self, "_ccomposed_transform")):
             myp = self.getparent()
             if myp is None:
@@ -300,6 +314,7 @@ class BaseElementCache(BaseElement):
         return self._ccomposed_transform
 
     def set_ccomposed_transform(self, si):
+        """Invalidates the cached composed transform."""
         if si is None and hasattr(self, "_ccomposed_transform"):
             delattr(self, "_ccomposed_transform")  # invalidate
             for k in list2(self):
@@ -307,29 +322,33 @@ class BaseElementCache(BaseElement):
 
     ccomposed_transform = property(get_ccomposed_transform, set_ccomposed_transform)
 
-    # Cached transform property
-    # Note: Can be None
     def get_ctransform(self):
+        """
+        Cached transform property
+        Note: Can be None
+        """
         if not (hasattr(self, "_ctransform")):
             self._ctransform = self.transform
         return self._ctransform
 
     def set_ctransform(self, newt):
+        """Sets and caches a new transform, invalidating composed transforms."""
         self.transform = newt
-        # wrapped_setattr(self, 'transform', newt)
         self._ctransform = newt
         self.ccomposed_transform = None
 
     ctransform = property(get_ctransform, set_ctransform)
 
-    # Cached get_path, modified to correctly calculate path for rectangles and ellipses
-    # Caches Path of an object (set el.cpath to None to reset)
     rect_tag = inkex.Rectangle.ctag
     round_tags = tags((inkex.Circle, inkex.Ellipse))
     line_tag = inkex.Line.ctag
     path_tag = inkex.PathElement.ctag
 
     def get_path2(self):
+        """
+        Cached get_path, modified to correctly calculate path for rectangles and ellipses
+        Caches Path of an object (set el.cpath to None to reset)
+        """
         if not hasattr(self, "_cpath"):
             # mostly from inkex.elements._polygons
             if self.tag == BaseElementCache.path_tag:
@@ -396,6 +415,7 @@ class BaseElementCache(BaseElement):
         return self._cpath
 
     def set_cpath_fcn(self, sv):
+        """Invalidates the cached path."""
         if sv is None and hasattr(self, "_cpath"):
             delattr(self, "_cpath")  # invalidate
 
@@ -435,6 +455,7 @@ class BaseElementCache(BaseElement):
     svgtag = SvgDocumentElement.ctag
 
     def get_croot(self):
+        """Returns the cached root of the SVG document."""
         try:
             return self._croot
         except AttributeError:
@@ -447,6 +468,7 @@ class BaseElementCache(BaseElement):
             return self._croot
 
     def set_croot(self, ri):
+        """Sets the cached root of the SVG document."""
         self._croot = ri
 
     croot = property(get_croot, set_croot)
@@ -459,14 +481,17 @@ class BaseElementCache(BaseElement):
         backlinks: bool = False,
         blacklist: Optional[List[str]] = None,
     ):
+        """Assigns a unique ID to the element, using the cached root."""
         prefix = str(self) if prefix is None else prefix
         self.set_id(
             self.croot.get_unique_id(prefix, size=size, blacklist=blacklist),
             backlinks=backlinks,
         )
 
-    # Version of get_id that uses the low-level get
     def get_id(self, as_url=0):
+        """
+        Version of get_id that uses the low-level get
+        """
         if "id" not in self.attrib:
             self.set_random_id(self.TAG)
         eid = EBget(self, "id")
@@ -480,17 +505,15 @@ class BaseElementCache(BaseElement):
         """Set the id and update backlinks to xlink and style urls if needed"""
         if self.croot is not None:
             self.croot.iddict[new_id] = self
-        # old_id = self.get('id')
         BE_set_id(self, new_id, backlinks=backlinks)
-        # Deleting the old value doesn't currently work properly (abandoned references?)
-        # if old_id is not None and old_id in self.croot.iddict:
-        #     del self.croot.iddict[old_id]
 
-    # A version of descendants that also returns a list of elements whose tails
-    # precede each element. (This is helpful for parsing text.)
     comment_tag = lxml.etree.Comment
 
     def descendants2(self, return_tails=False):
+        """
+        A version of descendants that also returns a list of elements whose tails
+        precede each element. (This is helpful for parsing text.)
+        """
         if not return_tails:
             return [self] + [
                 d
@@ -518,8 +541,8 @@ class BaseElementCache(BaseElement):
                 precedingtails[-1].append(endsat.pop()[0])
             return descendants, precedingtails
 
-    # Version of ancestors that can stop before/after encountering an element
     def ancestors2(self, includeme=False, stopbefore=None, stopafter=None):
+        """Version of ancestors that can stop before/after encountering an element"""
         anc = []
         cel = self if includeme else self.getparent()
         while cel is not None and cel != stopbefore:
@@ -538,6 +561,7 @@ class BaseElementCache(BaseElement):
     BE_delete = inkex.BaseElement.delete
 
     def delete(self, deleteup=False):
+        """Deletes the element and optionally cleans up empty parent groups."""
         svg = self.croot
         for d in reversed(self.descendants2()):
             did = d.get_id()
@@ -555,7 +579,7 @@ class BaseElementCache(BaseElement):
             # If set, remove empty ancestor groups
             myp = self.getparent()
             BaseElementCache.BE_delete(self)
-            if myp is not None and not len(myp):
+            if myp is not None and len(myp) == 0:
                 BaseElementCache.delete(myp, True)
         else:
             BaseElementCache.BE_delete(self)
@@ -565,6 +589,7 @@ class BaseElementCache(BaseElement):
     BE_insert = lxml.etree.ElementBase.insert
 
     def insert(g, index, el):
+        """Inserts an element at a specified index, managing caching."""
         oldroot = el.croot
         newroot = g.croot
 
@@ -599,6 +624,7 @@ class BaseElementCache(BaseElement):
     BE_append = lxml.etree.ElementBase.append
 
     def append(g, el):
+        """Appends an element, managing caching and ID conflicts."""
         oldroot = el.croot
         newroot = g.croot
 
@@ -633,6 +659,7 @@ class BaseElementCache(BaseElement):
     BE_addnext = lxml.etree.ElementBase.addnext
 
     def addnext(g, el):
+        """Adds an element next to the specified element, managing caching."""
         oldroot = el.croot
         newroot = g.croot
 
@@ -666,12 +693,7 @@ class BaseElementCache(BaseElement):
     clipmasktags = {inkex.addNS("mask", "svg"), inkex.ClipPath.ctag}
 
     def duplicate(self):
-        # type: (BaseElement) -> BaseElement
-        # svg = self.croot
-        # svg.iddict    # disabled 2024-04-29
-        # svg.cssdict   # disabled 2024-04-29
-        # need to generate now to prevent problems in duplicate_fixed (self.addnext(elem) line, no idea why)
-
+        """Creates a duplicate of the element, managing ID and caching."""
         eltail = self.tail
         if eltail is not None:
             self.tail = None
@@ -701,11 +723,6 @@ class BaseElementCache(BaseElement):
             d.croot.cdefs.append(d)
         return d
 
-    # Cached bounding box that requires no command call
-    # Uses extents for text
-    # dotransform: whether or not we want the element's bbox or its true transformed bbox
-    # includestroke: whether or not to add the stroke to the calculation
-    # roughpath: use control points for a path's bbox, which is faster and an upper bound for the true bbox
     ttags = tags((inkex.TextElement, inkex.FlowRoot))
     line_tag = inkex.Line.ctag
     cpath_support_tags = tags(cpath_support)
@@ -724,6 +741,15 @@ class BaseElementCache(BaseElement):
     def bounding_box2(
         self, dotransform=True, includestroke=True, roughpath=False, parsed=False
     ):
+        """
+        Cached bounding box that requires no command call
+        Uses extents for text
+        dotransform: whether or not we want the element's bbox or its true
+                     transformed bbox
+        includestroke: whether or not to add the stroke to the calculation
+        roughpath: use control points for a path's bbox, which is faster and an
+                   upper bound for the true bbox
+        """
         if not (hasattr(self, "_cbbox")):
             self._cbbox = dict()
         if (dotransform, includestroke, roughpath, parsed) not in self._cbbox:
@@ -836,6 +862,7 @@ class BaseElementCache(BaseElement):
         return self._cbbox[(dotransform, includestroke, roughpath, parsed)]
 
     def set_cbbox(self, val):
+        """Invalidates the cached bounding box."""
         if val is None and hasattr(self, "_cbbox"):
             delattr(self, "_cbbox")
 
@@ -852,8 +879,9 @@ class BaseElementCache(BaseElement):
     ) + cpath_support
     bb2_support_tags = tags(bb2_support)
 
-    # Add parsed_text property to text, which is used to get the properties of text
     def get_parsed_text(self):
+        """Add parsed_text property to text, which is used to get the
+        properties of text"""
         from inkex.text.parser import ParsedText  # import only if needed
 
         if not (hasattr(self, "_parsed_text")):
@@ -861,6 +889,7 @@ class BaseElementCache(BaseElement):
         return self._parsed_text
 
     def set_parsed_text(self, sv):
+        """Invalidates the cached parsed text."""
         if hasattr(self, "_parsed_text") and sv is None:
             delattr(self, "_parsed_text")
 
@@ -868,8 +897,10 @@ class BaseElementCache(BaseElement):
 
 
 class SvgDocumentElementCache(SvgDocumentElement):
-    # Cached def directly under root
+    """Adds caching for SVG document elements."""
+
     def cdefs_func(self):
+        """Cached def directly under root"""
         if not (hasattr(self, "_cdefs")):
             for k in list(self):
                 if isinstance(k, (inkex.Defs)):
@@ -882,10 +913,10 @@ class SvgDocumentElementCache(SvgDocumentElement):
 
     cdefs = property(cdefs_func)
 
-    # Cached style element directly under root
     styletag = inkex.addNS("style", "svg")
 
     def crootsty_func(self):
+        """Cached style element directly under root"""
         if not hasattr(self, "_crootsty"):
             rootstys = [
                 sty for sty in list(self) if sty.tag == SvgDocumentElementCache.styletag
@@ -899,9 +930,8 @@ class SvgDocumentElementCache(SvgDocumentElement):
 
     crootsty = property(crootsty_func)
 
-    # Version of get_ids that uses iddict
     def get_ids(self):
-        """Returns a set of unique document ids"""
+        """Version of get_ids that uses iddict"""
         return set(self.iddict.keys())
 
     def get_unique_id(
@@ -910,6 +940,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
         size: Optional[int] = None,
         blacklist: Optional[List[str]] = None,
     ):
+        """Version of get_unique_id that removes randomness by keeping a running count"""
         new_id = None
         cnt = self.iddict.prefixcounter.get(prefix, 0)
         if blacklist is None:
@@ -928,12 +959,14 @@ class SvgDocumentElementCache(SvgDocumentElement):
     urlpat = re.compile(r"^url\(#(.*)\)$|^#")
 
     def getElementById(self, eid: str, elm="*", literal=False):
+        """Returns an element by ID using cached data for efficiency."""
         if eid is not None and not literal:
             eid = SvgDocumentElementCache.urlpat.sub(r"\1", eid.strip())
         return self.iddict.get(eid)
 
-    # Add iddict, which keeps track of the IDs in a document
     class iddict_cls(dict):
+        """Add iddict, which keeps track of the IDs in a document"""
+
         def __init__(self, svg):
             self.svg = svg
             self.prefixcounter = dict()
@@ -959,6 +992,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
                 BE_set_id(el, new_id)
 
         def add(self, el):
+            """Add an element to the ID dict"""
             elid = el.get_id()  # fine since el should have a croot to get called here
             if elid in self and not self[elid] == el:
                 # Make a new id when there's a conflict
@@ -967,28 +1001,32 @@ class SvgDocumentElementCache(SvgDocumentElement):
             self[elid] = el
 
         @property
-        def ds(self):  # all svg descendants, not necessarily in order
+        def ds(self):
+            """all svg descendants, not necessarily in order"""
             return list(self.values())
 
         def remove(self, el):
+            """Remove from ID dict"""
             elid = el.get_id()
             if elid in self:
                 del self[elid]
 
     def get_iddict(self):
+        """Returns the ID dictionary that caches all elements by ID."""
         if not (hasattr(self, "_iddict")):
             self._iddict = SvgDocumentElementCache.iddict_cls(self)
         return self._iddict
 
     iddict = property(get_iddict)
 
-    # A dict that keeps track of the CSS style for each element
     estyle = Style()  # keep separate in case Style was overridden
 
     # Check if v1.4 or later
     hasmatches = hasattr(inkex.styles.ConditionalStyle, "matches")
 
     class cssdict_cls(dict):
+        """A dict that keeps track of the CSS style for each element"""
+
         def __init__(self, svg):
             self.svg = svg
 
@@ -1079,11 +1117,13 @@ class SvgDocumentElementCache(SvgDocumentElement):
                         pass
 
         def dupe_entry(self, oldid, newid):
+            """Duplicate entry in cssdict"""
             csssty = self.get(oldid)
             if csssty is not None:
                 self[newid] = csssty
 
     def get_cssdict(self):
+        """Returns the CSS dictionary that caches styles by element ID."""
         try:
             return self._cssdict
         except:
@@ -1092,8 +1132,8 @@ class SvgDocumentElementCache(SvgDocumentElement):
 
     cssdict = property(get_cssdict)
 
-    # Cached document size function
     def document_size(self):
+        """Calculates and caches the size of the SVG document in various units."""
         if not (hasattr(self, "_cdocsize")):
             rvb = self.get_viewbox()
             wstr = self.get("width")
@@ -1206,6 +1246,8 @@ class SvgDocumentElementCache(SvgDocumentElement):
                 ]
 
             class DocSize:
+                """Contains the properties relating to document size"""
+
                 def __init__(
                     self,
                     rawvb,
@@ -1239,9 +1281,8 @@ class SvgDocumentElementCache(SvgDocumentElement):
                     except:
                         self.inkscapehaspgs = False
 
-                def uutopx(
-                    self, v
-                ):  # Converts a bounding box specified in uu to pixels
+                def uutopx(self, v):
+                    """Converts a bounding box specified in uu to pixels"""
                     vo = [
                         (v[0] - self.effvb[0]) * self.uuw,
                         (v[1] - self.effvb[1]) * self.uuh,
@@ -1250,9 +1291,8 @@ class SvgDocumentElementCache(SvgDocumentElement):
                     ]
                     return vo
 
-                def pxtouu(
-                    self, v
-                ):  # Converts a bounding box specified in pixels to uu
+                def pxtouu(self, v):
+                    """Converts a bounding box specified in pixels to uu"""
                     vo = [
                         v[0] / self.uuw + self.effvb[0],
                         v[1] / self.uuh + self.effvb[1],
@@ -1262,14 +1302,15 @@ class SvgDocumentElementCache(SvgDocumentElement):
                     return vo
 
                 def unittouu(self, x):
-                    # Converts any unit into uu
+                    """Converts any unit into uu"""
                     return (
                         inkex.units.convert_unit(x, "px") / self.uupx
                         if self.uupx is not None
                         else None
                     )
 
-                def uutopxpgs(self, v):  # Version that applies to Pages
+                def uutopxpgs(self, v):
+                    """Version that applies to Pages"""
                     return [
                         v[0] * self.rawxf,
                         v[1] * self.rawyf,
@@ -1277,7 +1318,8 @@ class SvgDocumentElementCache(SvgDocumentElement):
                         v[3] * self.rawyf,
                     ]
 
-                def pxtouupgs(self, v):  # Version that applies to Pages
+                def pxtouupgs(self, v):
+                    """Version that applies to Pages"""
                     return [
                         v[0] / self.rawxf,
                         v[1] / self.rawyf,
@@ -1291,13 +1333,14 @@ class SvgDocumentElementCache(SvgDocumentElement):
         return self._cdocsize
 
     def set_cdocsize(self, si):
+        """Invalidates the cached document size."""
         if si is None and hasattr(self, "_cdocsize"):  # invalidate
             delattr(self, "_cdocsize")
 
     cdocsize = property(document_size, set_cdocsize)
 
     def set_viewbox(self, newvb):
-        # self.set_viewbox(vb)
+        """Sets a new viewbox for the SVG, updating dimensions appropriately."""
         uuw, uuh, wunit, hunit = (
             self.cdocsize.uuw,
             self.cdocsize.uuh,
@@ -1316,7 +1359,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
         self.cdocsize = None
 
     def standardize_viewbox(self):
-        # Converts viewbox to pixels, removing any non-uniform scaling appropriately
+        """Converts viewbox to pixels, removing any non-uniform scaling appropriately"""
         pgbbs = [pg.bbpx for pg in self.cdocsize.pgs]
         self.set("viewBox", " ".join([str(v) for v in self.cdocsize.effvb]))
         self.set("width", str(self.cdocsize.wpx))
@@ -1336,8 +1379,10 @@ class SvgDocumentElementCache(SvgDocumentElement):
     # on a subset of elements will cause only those elements to be included.
 
     def make_char_table(self, els=None):
-        # Can be called with els argument to examine list of elements only
-        # (otherwise use entire SVG)
+        """
+        Can be called with els argument to examine list of elements only
+        (otherwise use entire SVG)
+        """
         ttags = tags((inkex.TextElement, inkex.FlowRoot))
         if els is None:
             tels = [d for d in self.iddict.ds if d.tag in ttags]
@@ -1346,16 +1391,18 @@ class SvgDocumentElementCache(SvgDocumentElement):
         if not (hasattr(self, "_char_table")) or any(
             [t not in self._char_table.els for t in tels]
         ):
-            from inkex.text.parser import Character_Table  # import if needed
+            from inkex.text.parser import CharacterTable  # import if needed
 
-            self._char_table = Character_Table(tels)
+            self._char_table = CharacterTable(tels)
 
     def get_char_table(self):
+        """Returns the cached character table, creating it if necessary."""
         if not (hasattr(self, "_char_table")):
             self.make_char_table()
         return self._char_table
 
     def set_char_table(self, sv):
+        """Invalidates the cached character table."""
         if sv is None and hasattr(self, "_char_table"):
             delattr(self, "_char_table")
 
@@ -1363,13 +1410,17 @@ class SvgDocumentElementCache(SvgDocumentElement):
 
 
 class StyleCache(Style):
+    """Caches and manages style data with enhanced functionality."""
+
     get_link = get_link_fcn
 
     def __hash__(self):
+        """Generates a hash based on the style items."""
         return hash(tuple(self.items()))  # type: ignore
 
     # Adds three styles
     def add3_fcn(x, y, z):
+        """Adds three style objects together."""
         return x + y + z
 
     add3 = add3_fcn if not hasattr(Style, "add3") else Style.add3

@@ -68,9 +68,9 @@ def remove_kerning(
     else:
         # Do merges first (deciding based on original position)
         tels = [el for el in els if isinstance(el, (inkex.TextElement,))]
-        lls = [el.parsed_text for el in tels]
         # dh.idebug(len([1 for ptxt in lls if ptxt.isflow]))
-        tp.ParsedTextList(lls).precalcs()
+        ptl=tp.ParsedTextList(tels)
+        ptl.precalcs()
         if removemanual:
             tels = Remove_Manual_Kerning(tels, mergesupersub)
         if mergenearby or mergesupersub:
@@ -192,8 +192,8 @@ def Split_Distant_Chunks(els):
                     w2 = sws[ii]
 
                     trl_spcs, ldg_spcs = trailing_leading(w, w2)
-                    dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs)
-                    xtol = XTOLSPLIT * w.sw
+                    dx = w.spw * (NUM_SPACES - trl_spcs - ldg_spcs)
+                    xtol = XTOLSPLIT * w.spw
 
                     tr1, br1, tl2, bl2 = w.get_ut_pts(w2, current_pts=True)
 
@@ -243,8 +243,8 @@ def Split_Distant_Intrachunk(els):
                                 br1 = c.pts_ut[3]
 
                                 # trl_spcs, ldg_spcs = trailing_leading(w,w2)
-                                dx = w.sw * (NUM_SPACES)
-                                xtol = XTOLSPLIT * w.sw
+                                dx = w.spw * (NUM_SPACES)
+                                xtol = XTOLSPLIT * w.spw
 
                                 # If this character is splitting two numbers, should always split in case they are ticks
                                 import re
@@ -302,14 +302,14 @@ def Remove_Manual_Kerning(els, mergesupersub):
         w2 = w.nextw
         if w2 is not None and w2 in chks and not (twospaces(w, w2)):
             trl_spcs, ldg_spcs = trailing_leading(w, w2)
-            dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs)
-            xtoln = XTOLMKN * w.sw
-            xtolp = XTOLMKP * w.sw
+            dx = w.spw * (NUM_SPACES - trl_spcs - ldg_spcs)
+            xtoln = XTOLMKN * w.spw
+            xtolp = XTOLMKP * w.spw
 
             tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
 
             if isnumeric(w.txt) and isnumeric(w2.txt, True):
-                dx = w.sw * 0
+                dx = w.spw * 0
 
             previoussp = w.txt == " " and w.prevw is not None
             validmerge = br1[0] - xtoln <= bl2[0] <= br1[0] + dx + xtolp
@@ -318,7 +318,7 @@ def Remove_Manual_Kerning(els, mergesupersub):
                 validmerge
             ):  # reconsider in case previous space was weirdly-kerned
                 tr1p, br1p, tl2p, bl2p = w.prevw.get_ut_pts(w2)
-                dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs + 1)
+                dx = w.spw * (NUM_SPACES - trl_spcs - ldg_spcs + 1)
                 validmerge = br1p[0] - xtoln <= bl2p[0] <= br1p[0] + dx + xtolp
 
             if validmerge:
@@ -364,7 +364,7 @@ def External_Merges(els, mergenearby, mergesupersub):
         # ll.Position_Check()
     for w in chks:
         dx = (
-            w.sw * w.scf * (NUM_SPACES + XTOLEXT)
+            w.spw * w.scf * (NUM_SPACES + XTOLEXT)
         )  # a big bounding box that includes the extra space
         if w.parsed_bb is not None:
             w.bb_big = tp.bbox(
@@ -422,8 +422,8 @@ def External_Merges(els, mergenearby, mergesupersub):
 
         trl_spcs, ldg_spcs = trailing_leading(w, w2)
 
-        dx = w.sw * (NUM_SPACES - trl_spcs - ldg_spcs)
-        xtol = XTOLEXT * w.sw
+        dx = w.spw * (NUM_SPACES - trl_spcs - ldg_spcs)
+        xtol = XTOLEXT * w.spw
         ytol = YTOLEXT * w.mch
 
         # calculate 2's coords in 1's system
@@ -440,7 +440,7 @@ def External_Merges(els, mergenearby, mergesupersub):
                 and mergenearby
             ):
                 if isnumeric(w.line.txt()) and isnumeric(w2.line.txt(), True):
-                    numsp = (bl2[0] - br1[0]) / (w.sw)
+                    numsp = (bl2[0] - br1[0]) / (w.spw)
                     if abs(numsp) < 0.25:
                         # only merge numbers if very close (could be x ticks)
                         type = "same"
@@ -638,7 +638,7 @@ def Perform_Merges(chks, mk=False):
                     maxspaces = 0
 
                 mels.append(w.merges[ii].line.ptxt.textel)
-                w.appendw(w.merges[ii], w.wtypes[ii + 1], maxspaces)
+                w.append_chk(w.merges[ii], w.wtypes[ii + 1], maxspaces)
 
             # Union clips if necessary
             mels = dh.unique([w.line.ptxt.textel] + mels)

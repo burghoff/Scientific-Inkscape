@@ -186,7 +186,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                     sty = d.cspecified_style
                     if el == d or "font-size" in sty:
                         dfs, sf, utdfs = dh.composed_width(d, "font-size")
-                        bshift = parser.tchar.get_baseline(sty, d.getparent())
+                        bshift = parser.TChar.get_baseline(sty, d.getparent())
                         if bshift != 0 or "%" in sty.get("font-size", ""):
                             # Convert sub/superscripts into relative size
                             pfs, sf, _ = dh.composed_width(d.getparent(), "font-size")
@@ -238,7 +238,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
 
             from inkex.text import parser
 
-            parser.Character_Fixer2(tels)
+            parser.character_fixer2(tels)
 
         if setfontfamily or setfontsize or fixtextdistortion:
             bbs2 = dh.BB2(self, tels, True)

@@ -588,8 +588,9 @@ def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
                 from inkex.text import parser  # noqa
 
                 slf.svg.make_char_table(els=tels)
-                pts = [el.parsed_text for el in tels]
-                parser.ParsedTextList(pts).precalcs()
+                # pts = [el.parsed_text for el in tels]
+                ptl = parser.ParsedTextList(tels)
+                ptl.precalcs()
         ret = dict()
         for d in els:
             if d.tag in bb2_support_tags and hasbbox(d):
