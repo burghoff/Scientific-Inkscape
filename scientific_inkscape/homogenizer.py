@@ -80,6 +80,9 @@ class Homogenizer(inkex.EffectExtension):
             "--strokemodes", type=int, default=1, help="Stroke width options"
         )
         pars.add_argument(
+            "--clearclipmasks", type=inkex.Boolean, default=False, help="Clear clips and masks"
+        )
+        pars.add_argument(
             "--fusetransforms",
             type=inkex.Boolean,
             default=False,
@@ -369,6 +372,12 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                     el.ctransform = el.ccomposed_transform
                     fuseTransform(el)
                     el.ctransform = -el.getparent().ccomposed_transform
+                    
+                    
+        if self.options.clearclipmasks:
+            for el in sela:
+                el.cstyle['clip-path'] = 'none'
+                el.cstyle['mask'] = 'none'
 
         if dispprofile:
             pr.disable()

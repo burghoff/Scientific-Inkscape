@@ -46,6 +46,7 @@ import inkex
 
 if not hasattr(inkex, "text"):
     import importlib
+
     mydir = os.path.dirname(os.path.abspath(__file__))
     myloc, myname = os.path.split(mydir)
     oldpath = sys.path
@@ -64,6 +65,7 @@ except ModuleNotFoundError:
 # Gives inkex elements some additional cached attributes, for further speedups
 # This is not optional
 import inkex.text.cache
+
 
 def add_cache(base, derived):
     """

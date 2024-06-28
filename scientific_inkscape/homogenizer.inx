@@ -45,6 +45,11 @@
             </param>                
             <param name="setstrokew" type="float" precision="2" min="0" max="10000" gui-text="Stroke width value (if applicable)">1</param>     
 
+            <label appearance="header">Other options</label>
+            <param name="clearclipmasks"  type="bool" gui-text="Remove clips and masks?"
+             gui-description="Deletes all clips and masks without releasing them">false</param>
+             
+             
             <spacer/>
             <label>Scientific Inkscape v1.3.2</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
