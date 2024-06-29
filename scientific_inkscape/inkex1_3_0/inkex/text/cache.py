@@ -719,7 +719,6 @@ class BaseElementCache(BaseElement):
             dup.croot.cdefs.append(dup)
         return dup
 
-
     def get_parsed_text(self):
         """Add parsed_text property to text, which is used to get the
         properties of text"""
@@ -1268,4 +1267,3 @@ class StyleCache(Style):
         return self + y + z
 
     add3 = add3_fcn if not hasattr(Style, "add3") else getattr(Style, "add3")
-    

@@ -525,7 +525,7 @@ def subprocess_repeat(argin):
                 timeout=timeout,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
-                check=True
+                check=True,
             )
             break
         except subprocess.TimeoutExpired:
@@ -586,6 +586,7 @@ def ipx(strin):
         return value * conv2[from_unit]
     except AttributeError:
         return None
+
 
 # pylint:disable=invalid-name
 class bbox:
@@ -686,5 +687,6 @@ class bbox:
     def __mul__(self, scl):
         """Scale the bounding box."""
         return bbox([self.x1 * scl, self.y1 * scl, self.w * scl, self.h * scl])
- # pylint:enable=invalid-name
- 
+
+
+# pylint:enable=invalid-name

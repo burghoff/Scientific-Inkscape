@@ -97,6 +97,7 @@ TEFRtags = {TEtag, FRtag}
 
 LOCK = threading.Lock()
 
+
 class ParsedTextList(list):
     """
     A list of parsed text whose coordinates are computed
@@ -470,15 +471,13 @@ class ParsedText:
 
                 # Make a new line if we're sprl or if we have a new x or y
                 makeline = len(lns) == 0
-                makeline |= (
-                    typ == TYP_TEXT
-                    and (
-                        newsprl
-                        or (
-                            types[ddi] == "normal"
-                            and (ixs[ddi][0] is not None or iys[ddi][0] is not None)
-                        )
-                    ))
+                makeline |= typ == TYP_TEXT and (
+                    newsprl
+                    or (
+                        types[ddi] == "normal"
+                        and (ixs[ddi][0] is not None or iys[ddi][0] is not None)
+                    )
+                )
                 if makeline:
                     edi = ddi
                     if typ == TYP_TAIL:
@@ -1392,7 +1391,7 @@ class ParsedText:
                 sptregion.closed = True
 
         bbx = region.cpath.bounding_box()
-        bbx = [bbx.left,bbx.top,bbx.width,bbx.height]
+        bbx = [bbx.left, bbx.top, bbx.width, bbx.height]
         if not padding == 0:
             bbx = [
                 bbx[0] + padding,
@@ -2196,7 +2195,7 @@ class TLine:
 
                 self.anchor = newanch
                 self.anchfrac = anfr
-                chk.charpos = None # invalidate chunk positions
+                chk.charpos = None  # invalidate chunk positions
 
     def disablesodipodi(self, force=False):
         """Disables sodipodi:role=line."""
@@ -2430,7 +2429,7 @@ class TChunk:
 
     @property
     def x(self):
-        ''' Get effective x value'''
+        """Get effective x value"""
         if self.line and self.ncs > 0:
             lnx = self.line._xv if not self.line.continuex else self.line.x
             # checking for continuex early eliminates most unnecessary calls
@@ -2440,7 +2439,7 @@ class TChunk:
 
     @property
     def y(self):
-        ''' Get effective y value'''
+        """Get effective y value"""
         if self.line and self.ncs > 0:
             lny = self.line._yv if not self.line.continuey else self.line.y
             # checking for continuex early eliminates most unnecessary calls
@@ -3641,7 +3640,8 @@ class CharacterTable:
             return "text" + str(cnt)
 
         class StringInfo:
-            ''' Stores metadata on strings'''
+            """Stores metadata on strings"""
+
             def __init__(self, strval, strid, dkern, bareid=None):
                 self.strval = strval
                 self.strid = strid
@@ -3749,9 +3749,7 @@ class CharacterTable:
                             )
                         else:
                             altw = (
-                                exts[cnt + len(mystr) + 1][0][0]
-                                - exts[cnt][0][0]
-                                - spw
+                                exts[cnt + len(mystr) + 1][0][0] - exts[cnt][0][0] - spw
                             )
                         wdt = altw
 
@@ -3762,9 +3760,7 @@ class CharacterTable:
                             wbr = wdt
                             # use logical width
 
-                        nbb[myids[i]] = [
-                            val * TEXTSIZE for val in [xbr, ybr, wbr, hbr]
-                        ]
+                        nbb[myids[i]] = [val * TEXTSIZE for val in [xbr, ybr, wbr, hbr]]
                         cnt += len(mystr) + len(joinch)
                         x += wdt
             finally:
