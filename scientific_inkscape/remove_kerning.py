@@ -156,7 +156,6 @@ def Change_Justification(els, justification):
 
 # Split different lines
 def Split_Lines(els, ignoreinkscape=True):
-    # newlls = []
     ptxts = [el.parsed_text for el in els]
     for jj in range(len(ptxts)):
         ptxt = ptxts[jj]
@@ -169,13 +168,11 @@ def Split_Lines(els, ignoreinkscape=True):
             for il in reversed(range(1, len(ptxt.lns))):
                 newtxt = ptxt.split_off_characters(ptxt.lns[il].chrs)
                 els.append(newtxt)
-    # ptxts += newlls
     return els
 
 
 # Generate splitting of distantly-kerned text
 def Split_Distant_Chunks(els):
-    # newlls = []
     for ptxt in [el.parsed_text for el in els]:
         if ptxt.lns is not None:
             for il in reversed(range(len(ptxt.lns))):
@@ -217,21 +214,21 @@ def Split_Distant_Chunks(els):
 
 # Generate splitting of distantly-kerned text
 def Split_Distant_Intrachunk(els):
-    # newlls = []
     for ptxt in [el.parsed_text for el in els]:
         if ptxt.lns is not None and not (ptxt.ismlinkscape) and not (ptxt.isflow):
             for line in ptxt.lns:
                 for w in line.chks:
                     if len(w.chrs) > 0:
+                        chrs = sorted(w.chrs, key=lambda chr: chr.pts_ut[0][0])
                         lastnspc = None
                         splitiis = []
                         prevsplit = 0
-                        if w.chrs[0].c not in [" ", "\u00a0"]:
-                            lastnspc = w.chrs[0]
-                        for ii in range(1, len(w.chrs)):
+                        if chrs[0].c not in [" ", "\u00a0"]:
+                            lastnspc = chrs[0]
+                        for ii in range(1, len(chrs)):
                             if lastnspc is not None:
                                 c = lastnspc
-                                c2 = w.chrs[ii]
+                                c2 = chrs[ii]
 
                                 bl2 = c2.pts_ut[0]
                                 br1 = c.pts_ut[3]
@@ -259,8 +256,8 @@ def Split_Distant_Intrachunk(els):
                                 if bl2[0] > br1[0] + dx + xtol or numbersplit:
                                     splitiis.append(ii)
                                     prevsplit = ii
-                            if w.chrs[ii].c not in [" ", "\u00a0"]:
-                                lastnspc = w.chrs[ii]
+                            if chrs[ii].c not in [" ", "\u00a0"]:
+                                lastnspc = chrs[ii]
 
                         if len(splitiis) > 0:
                             for ii in reversed(range(len(splitiis))):
@@ -268,10 +265,9 @@ def Split_Distant_Intrachunk(els):
                                 if ii != len(splitiis) - 1:
                                     sstop = splitiis[ii + 1]
                                 else:
-                                    sstop = len(w.chrs)
-                                newtxt = ptxt.split_off_characters(w.chrs[sstart:sstop])
+                                    sstop = len(chrs)
+                                newtxt = ptxt.split_off_characters(chrs[sstart:sstop])
                                 els.append(newtxt)
-    # ptxts += newlls
     return els
 
 
@@ -314,13 +310,13 @@ def Remove_Manual_Kerning(els, mergesupersub):
 
     # Following manual kerning removal, lines with multiple chunks
     # need to be split out into new text els
-    newlls = []
+    newptxts = []
     for ptxt in ptxts:
         for line in ptxt.lns:
             while len(line.chks) > 1:
                 newtxt = ptxt.split_off_chunks([line.chks[-1]])
                 els.append(newtxt)
-                newlls.append(newtxt.parsed_text)
+                newptxts.append(newtxt.parsed_text)
     return els
 
 
@@ -380,8 +376,11 @@ def External_Merges(els, mergenearby, mergesupersub):
         tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
         xpenmatch = br1[0] - xtol <= bl2[0] <= br1[0] + dx + xtol
         neitherempty = len(wstrip(w.txt)) > 0 and len(wstrip(w2.txt)) > 0
-        if xpenmatch and neitherempty and not (twospaces(w, w2)):
-            type = None
+        if xpenmatch and neitherempty and not twospaces(w, w2):
+            weight_match = w.chrs[-1].tsty['font-weight'] == w2.chrs[0].tsty['font-weight']
+            # Don't sub/super merge when differences in font-weight
+            # Helps prevent accidental merges of subfigure label to tick
+            mtype = None
             if (
                 abs(bl2[1] - br1[1]) < ytol
                 and abs(w.tfs - w2.tfs) < 0.001
@@ -391,52 +390,53 @@ def External_Merges(els, mergenearby, mergesupersub):
                     numsp = (bl2[0] - br1[0]) / (w.spw)
                     if abs(numsp) < 0.25:
                         # only merge numbers if very close (could be x ticks)
-                        type = "same"
+                        mtype = "same"
                 else:
-                    type = "same"
+                    mtype = "same"
             elif (
-                br1[1] + ytol >= bl2[1] >= tr1[1] - ytol and mergesupersub
+                br1[1] + ytol >= bl2[1] >= tr1[1] - ytol and mergesupersub and weight_match
             ):  # above baseline
                 aboveline = (
                     br1[1] * (1 - SUBSUPER_YTHR) + tr1[1] * SUBSUPER_YTHR + ytol
                     >= bl2[1]
                 )
+                
                 if w2.tfs < w.tfs * SUBSUPER_THR:  # new smaller, expect super
                     if aboveline:
-                        type = "super"
+                        mtype = "super"
                 elif w.tfs < w2.tfs * SUBSUPER_THR:  # old smaller, expect reutrn
-                    type = "subreturn"
+                    mtype = "subreturn"
                 elif SUBSUPER_THR == 1:
                     if aboveline:
                         if len(w2.line.txt()) > 2:  # long text, probably not super
-                            type = "subreturn"
+                            mtype = "subreturn"
                         else:
-                            type = "superorsubreturn"
+                            mtype = "superorsubreturn"
                             # could be either, decide later
                     else:
-                        type = "subreturn"
-            elif br1[1] + ytol >= tl2[1] >= tr1[1] - ytol and mergesupersub:
+                        mtype = "subreturn"
+            elif br1[1] + ytol >= tl2[1] >= tr1[1] - ytol and mergesupersub and weight_match:
                 belowline = (
                     tl2[1]
                     >= br1[1] * SUBSUPER_YTHR + tr1[1] * (1 - SUBSUPER_YTHR) - ytol
                 )
                 if w2.tfs < w.tfs * SUBSUPER_THR:  # new smaller, expect sub
                     if belowline:
-                        type = "sub"
+                        mtype = "sub"
                 elif w.tfs < w2.tfs * SUBSUPER_THR:  # old smaller, expect superreturn
-                    type = "superreturn"
+                    mtype = "superreturn"
                 elif SUBSUPER_THR == 1:
                     if belowline:
                         if len(w2.line.txt()) > 2:  # long text, probably not sub
-                            type = "superreturn"
+                            mtype = "superreturn"
                         else:
-                            type = "suborsuperreturn"
+                            mtype = "suborsuperreturn"
                             # could be either, decide later
                     else:
-                        type = "superreturn"
-            if type is not None:
-                w.mw.append([w2, type, br1, bl2])
-        #                            dh.debug(w.txt+' to '+w2.txt+' as '+type)
+                        mtype = "superreturn"
+            if mtype is not None:
+                w.mw.append([w2, mtype, br1, bl2])
+        #                            dh.debug(w.txt+' to '+w2.txt+' as '+mtype)
 
         if DEBUG_MERGE:
             dh.idebug('\nMerging "' + w.txt + '" and "' + w2.txt + '"')
@@ -445,7 +445,7 @@ def External_Merges(els, mergenearby, mergesupersub):
             elif not (neitherempty):
                 dh.idebug("Aborted, one empty")
             else:
-                if type is None:
+                if mtype is None:
                     if not (abs(bl2[1] - br1[1]) < ytol):
                         dh.idebug("Aborted, y pen too far: " + str([bl2[1], br1[1]]))
                     elif not (abs(w.tfs - w2.tfs) < 0.001):
@@ -457,7 +457,7 @@ def External_Merges(els, mergenearby, mergesupersub):
                     ):
                         dh.idebug("Aborted, both numbers")
                 else:
-                    dh.idebug("Merged as " + type)
+                    dh.idebug("Merged as " + mtype)
 
     Perform_Merges(chks)
     return els
@@ -469,7 +469,7 @@ def Perform_Merges(chks, mk=False):
         minx = float("inf")
         for ii in range(len(mw)):
             w2 = mw[ii][0]
-            type = mw[ii][1]
+            mtype = mw[ii][1]
             br1 = mw[ii][2]
             bl2 = mw[ii][3]
             if abs(bl2[0] - br1[0]) < minx:
@@ -481,11 +481,11 @@ def Perform_Merges(chks, mk=False):
         w.merged = False
         if len(mw) > 0:
             w2 = mw[mi][0]
-            type = mw[mi][1]
+            mtype = mw[mi][1]
             br1 = mw[mi][2]
             bl2 = mw[mi][3]
             w.merges = [w2]
-            w.mergetypes = [type]
+            w.mergetypes = [mtype]
 
     # Generate chains of merges
     for w in chks:
