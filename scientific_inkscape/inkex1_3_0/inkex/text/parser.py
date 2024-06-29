@@ -2200,7 +2200,7 @@ class TLine:
 
                 self.anchor = newanch
                 self.anchfrac = anfr
-                chk.pts_ut = None  # invalidate chunk positions
+                chk.charpos = None # invalidate chunk positions
 
     def disablesodipodi(self, force=False):
         """Disables sodipodi:role=line."""
