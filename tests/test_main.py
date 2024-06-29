@@ -61,7 +61,7 @@ if version=='1.0':
 
 sys.path += [os.path.join(vpaths[version],'share\\inkscape\\extensions')]
 sys.path += [os.path.join(vpaths[version],'bin')]
-sys.path += [os.path.join(os.path.split(os.path.split(__file__)[0])[0],'scientific_inkscape')  ]
+sys.path += [os.path.join(os.path.split(os.path.split(os.path.abspath(__file__))[0])[0],'scientific_inkscape')]
 sys.path += [os.path.join(vpaths[version],'lib\\python3.10')]
 os.environ['LINEPROFILE'] = str(lprofile)
 os.environ['USEPANGO']=str(usepango)

@@ -18,7 +18,7 @@
      units="in"
      showgrid="false"
      inkscape:document-rotation="0"
-     inkscape:current-layer="svg26"
+     inkscape:current-layer="layer1"
      inkscape:document-units="mm"
      inkscape:cy="224.34361"
      inkscape:cx="341.70486"
@@ -3417,7 +3417,8 @@
          sodipodi:role="line"
          id="tspan7"
          x="286.12466"
-         y="35.982342">Nested super/sub:</tspan></text><text
+         y="35.982342"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Arial;-inkscape-font-specification:Arial">Nested super/sub:</tspan></text><text
        font-family="Tahoma, Tahoma_MSFontService, sans-serif"
        font-weight="400"
        font-size="24px"
