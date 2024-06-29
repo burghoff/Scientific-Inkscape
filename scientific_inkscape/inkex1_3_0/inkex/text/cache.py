@@ -43,7 +43,7 @@ from typing import Optional, List
 import inkex
 from inkex import Style
 from inkex import BaseElement, SvgDocumentElement
-from text.utils import shapetags, tags, ipx, list2, bbox
+from text.utils import shapetags, tags, ipx, list2
 import lxml
 
 EBget = lxml.etree.ElementBase.get
@@ -366,7 +366,6 @@ class BaseElementCache(BaseElement):
 
                 # Calculate the path as the box around the rect
                 if rx or ry:
-                    # pylint: disable=invalid-name
                     rx = min(rx if rx > 0 else ry, width / 2)
                     ry = min(ry if ry > 0 else rx, height / 2)
                     cpts = [left + rx, right - rx, top + ry, bottom - ry]
@@ -387,7 +386,7 @@ class BaseElementCache(BaseElement):
             elif self.tag in BaseElementCache.round_tags:
                 cx = ipx(self.get("cx", "0"))
                 cy = ipx(self.get("cy", "0"))
-                if isinstance(self, (inkex.Ellipse)):  # selflipse
+                if isinstance(self, (inkex.Ellipse)):
                     rx = ipx(self.get("rx", "0"))
                     ry = ipx(self.get("ry", "0"))
                 else:  # circle
@@ -720,162 +719,6 @@ class BaseElementCache(BaseElement):
             dup.croot.cdefs.append(dup)
         return dup
 
-    ttags = tags((inkex.TextElement, inkex.FlowRoot))
-    line_tag = inkex.Line.ctag
-    cpath_support_tags = tags(cpath_support)
-    mask_tag = inkex.addNS("mask", "svg")
-    grouplike_tags = tags(
-        (
-            inkex.SvgDocumentElement,
-            inkex.Group,
-            inkex.Layer,
-            inkex.ClipPath,
-            inkex.Symbol,
-        )
-    )
-    grouplike_tags.add(mask_tag)
-
-    def bounding_box2(
-        self, dotransform=True, includestroke=True, roughpath=False, parsed=False
-    ):
-        """
-        Cached bounding box that requires no command call
-        Uses extents for text
-        dotransform: whether or not we want the element's bbox or its true
-                     transformed bbox
-        includestroke: whether or not to add the stroke to the calculation
-        roughpath: use control points for a path's bbox, which is faster and an
-                   upper bound for the true bbox
-        """
-        if not (hasattr(self, "_cbbox")):
-            self._cbbox = dict()
-        if (dotransform, includestroke, roughpath, parsed) not in self._cbbox:
-            try:
-                ret = bbox(None)
-                if self.tag in BaseElementCache.ttags:
-                    ret = self.parsed_text.get_full_extent(parsed=parsed)
-                elif self.tag in BaseElementCache.cpath_support_tags:
-                    pth = self.cpath
-                    if len(pth) > 0:
-                        swd = ipx(self.cspecified_style.get("stroke-width", "0px"))
-                        if self.cspecified_style.get("stroke") is None or not (
-                            includestroke
-                        ):
-                            swd = 0
-
-                        if self.tag == BaseElementCache.line_tag:
-                            x = [ipx(self.get("x1", "0")), ipx(self.get("x2", "0"))]
-                            y = [ipx(self.get("y1", "0")), ipx(self.get("y2", "0"))]
-                            ret = bbox(
-                                [
-                                    min(x) - swd / 2,
-                                    min(y) - swd / 2,
-                                    max(x) - min(x) + swd,
-                                    max(y) - min(y) + swd,
-                                ]
-                            )
-                        elif not roughpath:
-                            bbx = pth.bounding_box()
-                            ret = bbox(
-                                [
-                                    bbx.left - swd / 2,
-                                    bbx.top - swd / 2,
-                                    bbx.width + swd,
-                                    bbx.height + swd,
-                                ]
-                            )
-                        else:
-                            anyarc = any(s.letter in ["a", "A"] for s in pth)
-                            pth = (
-                                inkex.Path(inkex.CubicSuperPath(pth)) if anyarc else pth
-                            )
-                            pts = list(pth.control_points)
-                            x = [p.x for p in pts]
-                            y = [p.y for p in pts]
-                            ret = bbox(
-                                [
-                                    min(x) - swd / 2,
-                                    min(y) - swd / 2,
-                                    max(x) - min(x) + swd,
-                                    max(y) - min(y) + swd,
-                                ]
-                            )
-
-                elif self.tag in BaseElementCache.grouplike_tags:
-                    for kid in list2(self):
-                        dbb = BaseElementCache.bounding_box2(
-                            kid,
-                            dotransform=False,
-                            includestroke=includestroke,
-                            roughpath=roughpath,
-                            parsed=parsed,
-                        )
-                        if not (dbb.isnull):
-                            ret = ret.union(dbb.transform(kid.ctransform))
-                elif isinstance(self, (inkex.Image)):
-                    ret = bbox(
-                        [ipx(self.get(v, "0")) for v in ["x", "y", "width", "height"]]
-                    )
-                elif isinstance(self, (inkex.Use,)):
-                    lel = self.get_link("xlink:href")
-                    if lel is not None:
-                        ret = BaseElementCache.bounding_box2(
-                            lel, dotransform=False, roughpath=roughpath, parsed=parsed
-                        )
-
-                        # clones have the transform of the link, followed by any
-                        # xy transform
-                        xyt = inkex.Transform(
-                            "translate({0},{1})".format(
-                                ipx(self.get("x", "0")), ipx(self.get("y", "0"))
-                            )
-                        )
-                        ret = ret.transform(xyt @ lel.ctransform)
-
-                if not (ret.isnull):
-                    for cmv in ["clip-path", "mask"]:
-                        clip = self.get_link(cmv, llget=True)
-                        if clip is not None:
-                            cbb = BaseElementCache.bounding_box2(
-                                clip,
-                                dotransform=False,
-                                includestroke=False,
-                                roughpath=roughpath,
-                                parsed=parsed,
-                            )
-                            if not (cbb.isnull):
-                                ret = ret.intersection(cbb)
-                            else:
-                                ret = bbox(None)
-
-                    if dotransform:
-                        if not (ret.isnull):
-                            ret = ret.transform(self.ccomposed_transform)
-            except:
-                # For some reason errors are occurring silently
-                import traceback
-
-                inkex.utils.debug(traceback.format_exc())
-            self._cbbox[(dotransform, includestroke, roughpath, parsed)] = ret
-        return self._cbbox[(dotransform, includestroke, roughpath, parsed)]
-
-    def set_cbbox(self, val):
-        """Invalidates the cached bounding box."""
-        if val is None and hasattr(self, "_cbbox"):
-            delattr(self, "_cbbox")
-
-    cbbox = property(bounding_box2, set_cbbox)
-
-    bb2_support = (
-        inkex.TextElement,
-        inkex.FlowRoot,
-        inkex.Image,
-        inkex.Use,
-        inkex.SvgDocumentElement,
-        inkex.Group,
-        inkex.Layer,
-    ) + cpath_support
-    bb2_support_tags = tags(bb2_support)
 
     def get_parsed_text(self):
         """Add parsed_text property to text, which is used to get the
@@ -965,9 +808,10 @@ class SvgDocumentElementCache(SvgDocumentElement):
         return self.iddict.get(eid)
 
     class IDDict(dict):
-        """Add iddict, which keeps track of the IDs in a document"""
+        """Keeps track of the IDs in a document"""
 
         def __init__(self, svg):
+            super().__init__()
             self.svg = svg
             self.prefixcounter = dict()
             toassign = []
@@ -1390,7 +1234,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
         else:
             tels = [d for d in els if d.tag in ttags]
         if not (hasattr(self, "_char_table")) or any(
-            t not in self._char_table.els for t in tels
+            t not in getattr(self, "_char_table").els for t in tels
         ):
             from inkex.text.parser import CharacterTable  # import if needed
 
@@ -1424,7 +1268,5 @@ class StyleCache(Style):
         """Adds three style objects together."""
         return self + y + z
 
-    add3 = add3_fcn if not hasattr(Style, "add3") else Style.add3
-
-
-# pylint:enable=attribute-defined-outside-init
+    add3 = add3_fcn if not hasattr(Style, "add3") else getattr(Style, "add3")
+    

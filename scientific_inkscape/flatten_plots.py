@@ -393,10 +393,8 @@ class FlattenPlots(inkex.EffectExtension):
                     self.options.debugparser,
                 )
             if removetextclips:
-                from inkex.text.cache import BaseElementCache
-
                 for el in ngs:
-                    if el.tag in BaseElementCache.ttags:
+                    if el.tag in dh.ttags:
                         el.set("clip-path", None)
                         el.set("mask", None)
 

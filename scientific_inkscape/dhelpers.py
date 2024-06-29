@@ -57,9 +57,9 @@ import inkex.text  # noqa
 from inkex import Style
 from inkex.text.cache import BaseElementCache
 
-CBE = BaseElementCache
-grouplike_tags, ttags = CBE.grouplike_tags, CBE.ttags
-bb2_support_tags, bounding_box2 = CBE.bb2_support_tags, CBE.bounding_box2
+# CBE = BaseElementCache
+# grouplike_tags, ttags = CBE.grouplike_tags, CBE.ttags
+# bb2_support_tags, bounding_box2 = CBE.bb2_support_tags, CBE.bounding_box2
 from inkex.text.utils import (
     composed_width,
     unique,
@@ -1119,6 +1119,166 @@ def si_tmp(dirbase="", filename=None):
             subdir_path = os.path.join(tmp_dir, subdir_name)
         os.mkdir(subdir_path)
         return subdir_path
+
+
+
+ttags = tags((inkex.TextElement, inkex.FlowRoot))
+line_tag = inkex.Line.ctag
+cpath_support_tags = tags(BaseElementCache.cpath_support)
+mask_tag = inkex.addNS("mask", "svg")
+grouplike_tags = tags(
+    (
+        inkex.SvgDocumentElement,
+        inkex.Group,
+        inkex.Layer,
+        inkex.ClipPath,
+        inkex.Symbol,
+    )
+)
+grouplike_tags.add(mask_tag)    
+
+def bounding_box2(
+    self, dotransform=True, includestroke=True, roughpath=False, parsed=False
+):
+    """
+    Cached bounding box that requires no command call
+    Uses extents for text
+    dotransform: whether or not we want the element's bbox or its true
+                 transformed bbox
+    includestroke: whether or not to add the stroke to the calculation
+    roughpath: use control points for a path's bbox, which is faster and an
+               upper bound for the true bbox
+    """
+    if not (hasattr(self, "_cbbox")):
+        self._cbbox = dict()
+    if (dotransform, includestroke, roughpath, parsed) not in self._cbbox:
+        try:
+            ret = bbox(None)
+            if self.tag in ttags:
+                ret = self.parsed_text.get_full_extent(parsed=parsed)
+            elif self.tag in cpath_support_tags:
+                pth = self.cpath
+                if len(pth) > 0:
+                    swd = ipx(self.cspecified_style.get("stroke-width", "0px"))
+                    if self.cspecified_style.get("stroke") is None or not (
+                        includestroke
+                    ):
+                        swd = 0
+
+                    if self.tag == line_tag:
+                        x = [ipx(self.get("x1", "0")), ipx(self.get("x2", "0"))]
+                        y = [ipx(self.get("y1", "0")), ipx(self.get("y2", "0"))]
+                        ret = bbox(
+                            [
+                                min(x) - swd / 2,
+                                min(y) - swd / 2,
+                                max(x) - min(x) + swd,
+                                max(y) - min(y) + swd,
+                            ]
+                        )
+                    elif not roughpath:
+                        bbx = pth.bounding_box()
+                        ret = bbox(
+                            [
+                                bbx.left - swd / 2,
+                                bbx.top - swd / 2,
+                                bbx.width + swd,
+                                bbx.height + swd,
+                            ]
+                        )
+                    else:
+                        anyarc = any(s.letter in ["a", "A"] for s in pth)
+                        pth = (
+                            inkex.Path(inkex.CubicSuperPath(pth)) if anyarc else pth
+                        )
+                        pts = list(pth.control_points)
+                        x = [p.x for p in pts]
+                        y = [p.y for p in pts]
+                        ret = bbox(
+                            [
+                                min(x) - swd / 2,
+                                min(y) - swd / 2,
+                                max(x) - min(x) + swd,
+                                max(y) - min(y) + swd,
+                            ]
+                        )
+
+            elif self.tag in grouplike_tags:
+                for kid in list2(self):
+                    dbb = bounding_box2(
+                        kid,
+                        dotransform=False,
+                        includestroke=includestroke,
+                        roughpath=roughpath,
+                        parsed=parsed,
+                    )
+                    if not (dbb.isnull):
+                        ret = ret.union(dbb.transform(kid.ctransform))
+            elif isinstance(self, (inkex.Image)):
+                ret = bbox(
+                    [ipx(self.get(v, "0")) for v in ["x", "y", "width", "height"]]
+                )
+            elif isinstance(self, (inkex.Use,)):
+                lel = self.get_link("xlink:href")
+                if lel is not None:
+                    ret = bounding_box2(
+                        lel, dotransform=False, roughpath=roughpath, parsed=parsed
+                    )
+
+                    # clones have the transform of the link, followed by any
+                    # xy transform
+                    xyt = inkex.Transform(
+                        "translate({0},{1})".format(
+                            ipx(self.get("x", "0")), ipx(self.get("y", "0"))
+                        )
+                    )
+                    ret = ret.transform(xyt @ lel.ctransform)
+
+            if not (ret.isnull):
+                for cmv in ["clip-path", "mask"]:
+                    clip = self.get_link(cmv, llget=True)
+                    if clip is not None:
+                        cbb = bounding_box2(
+                            clip,
+                            dotransform=False,
+                            includestroke=False,
+                            roughpath=roughpath,
+                            parsed=parsed,
+                        )
+                        if not (cbb.isnull):
+                            ret = ret.intersection(cbb)
+                        else:
+                            ret = bbox(None)
+
+                if dotransform:
+                    if not (ret.isnull):
+                        ret = ret.transform(self.ccomposed_transform)
+        except:
+            # For some reason errors are occurring silently
+            import traceback
+
+            inkex.utils.debug(traceback.format_exc())
+        self._cbbox[(dotransform, includestroke, roughpath, parsed)] = ret
+    return self._cbbox[(dotransform, includestroke, roughpath, parsed)]
+
+def set_cbbox(self, val):
+    """Invalidates the cached bounding box."""
+    if val is None and hasattr(self, "_cbbox"):
+        delattr(self, "_cbbox")
+
+inkex.BaseElement.cbbox = property(bounding_box2, set_cbbox)
+inkex.BaseElement.bounding_box2 = bounding_box2
+
+bb2_support = (
+    inkex.TextElement,
+    inkex.FlowRoot,
+    inkex.Image,
+    inkex.Use,
+    inkex.SvgDocumentElement,
+    inkex.Group,
+    inkex.Layer,
+) + BaseElementCache.cpath_support
+bb2_support_tags = tags(bb2_support)
 
 
 masktag = inkex.addNS("mask", "svg")

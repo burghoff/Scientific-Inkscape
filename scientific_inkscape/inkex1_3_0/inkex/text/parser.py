@@ -1390,9 +1390,13 @@ class ParsedText:
                 sptregion.append(spt.Line(end, start))
                 sptregion.closed = True
 
-        bbx = BaseElementCache.bounding_box2(
-            region, dotransform=False, includestroke=False
-        ).sbb
+        # bbx = BaseElementCache.bounding_box2(
+        #     region, dotransform=False, includestroke=False
+        # ).sbb
+        
+        bbx = region.cpath.bounding_box()
+        bbx = [bbx.left,bbx.top,bbx.width,bbx.height]
+        
         if not padding == 0:
             bbx = [
                 bbx[0] + padding,
