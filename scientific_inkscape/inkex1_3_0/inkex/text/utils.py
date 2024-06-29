@@ -379,7 +379,7 @@ class InkscapeSystemInfo:
         prefspaths.append(os.path.join(os.path.dirname(file_path), "preferences.xml"))
 
         # Try some common default locations based on the home directory
-        homedir = os.path.expanduser("~")
+        home = os.path.expanduser("~")
         if sys.platform == "win32":
             appdata = os.getenv("APPDATA")
             if appdata is not None:
@@ -391,23 +391,19 @@ class InkscapeSystemInfo:
                 )
             # https://en.wikipedia.org/wiki/Environment_variable#Default_Values_on_Microsoft_Windows
             prefspaths.append(
-                os.path.join(
-                    homedir, "AppData", "Roaming", "inkscape", "preferences.xml"
-                )
+                os.path.join(home, "AppData", "Roaming", "inkscape", "preferences.xml")
             )
             # https://en.wikipedia.org/wiki/Environment_variable#Default_Values_on_Microsoft_Windows
             # http://tavmjong.free.fr/INKSCAPE/MANUAL/html/Customize-Files.html
             prefspaths.append(
-                os.path.join(
-                    homedir, "­Application Data", "­Inkscape", "preferences.xml"
-                )
+                os.path.join(home, "­Application Data", "­Inkscape", "preferences.xml")
             )
         else:
             if sys.platform == "darwin":
                 # test Mac
                 prefspaths.append(
                     os.path.join(
-                        homedir,
+                        home,
                         "Library",
                         "Application Support",
                         "org.inkscape.Inkscape",
@@ -418,15 +414,15 @@ class InkscapeSystemInfo:
                 )
             # test Linux
             prefspaths.append(
-                os.path.join(homedir, ".config", "inkscape", "preferences.xml")
+                os.path.join(home, ".config", "inkscape", "preferences.xml")
             )
             # https://wiki.inkscape.org/wiki/Preferences_subsystem#Where_preferences_are_stored
             prefspaths.append(
-                os.path.join(homedir, ".config", "Inkscape", "preferences.xml")
+                os.path.join(home, ".config", "Inkscape", "preferences.xml")
             )
             # https://wiki.inkscape.org/wiki/Preferences_subsystem#Where_preferences_are_stored
             # https://alpha.inkscape.org/vectors/www.inkscapeforum.com/viewtopicc8ae.html?t=1712
-            prefspaths.append(os.path.join(homedir, ".inkscape", "preferences.xml"))
+            prefspaths.append(os.path.join(home, ".inkscape", "preferences.xml"))
 
             # Try finding from snap location
             file_path = mydir
