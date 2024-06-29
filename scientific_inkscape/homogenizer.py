@@ -241,7 +241,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
 
             from inkex.text import parser
 
-            parser.character_fixer2(tels)
+            dh.character_fixer(tels)
 
         if setfontfamily or setfontsize or fixtextdistortion:
             bbs2 = dh.BB2(self, tels, True)

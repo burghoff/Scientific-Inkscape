@@ -57,6 +57,7 @@ import speedups # noqa
 
 from inkex import Style
 from inkex.text.cache import BaseElementCache
+from inkex.text.parser import TextTree, TYP_TEXT
 
 from inkex.text.utils import (
     composed_width,
@@ -1529,6 +1530,198 @@ if not hasattr(inkex.Style, "to_xpath"):
 #     )
 # inkex.Style.to_str = to_str
 # inkex.Style.__str__ = __str__
+
+
+def nonascii(c):
+    """Returns True if the character is non-ASCII."""
+    return ord(c) >= 128
+
+
+def nonletter(c):
+    """Returns True if the character is not a letter."""
+    return not ((ord(c) >= 65 and ord(c) <= 90) or (ord(c) >= 97 and ord(c) <= 122))
+
+
+fixwith = {
+    "Avenir": (nonletter, "'Avenir Next', 'Arial'"),
+    "Whitney": (nonascii, "'Avenir Next', 'Arial'"),
+    "Whitney Book": (nonascii, "'Avenir Next', 'Arial'"),
+}
+fw2 = {k.lower(): val for k, val in fixwith.items()}
+
+
+def shouldfixfont(ffam):
+    """Checks if the font needs fixing based on non-ASCII or non-letter characters."""
+    shouldfix = (
+        ffam is not None
+        and ffam.split(",")[0].strip("'").strip('"').lower() in fw2.keys()
+    )
+    fixw = (
+        None if not shouldfix else fw2[ffam.split(",")[0].strip("'").strip('"').lower()]
+    )
+    return shouldfix, fixw
+
+
+def character_fixer(els):
+    """Fixes characters in a list of elements based on their text style."""
+    for elem in els:
+        tree = TextTree(elem)
+        for _, typ, tel, sel, txt in tree.dgenerator():
+            if txt is not None and len(txt) > 0:
+                sty = sel.cspecified_style
+                shouldfix, fixw = shouldfixfont(sty.get("font-family"))
+                if shouldfix:
+                    # replace_non_ascii_font(sel, fixw)
+                    elem.set("xml:space", "preserve")  # so spaces don't vanish
+                    fixcondition, fixw = fixw
+
+                    if all(fixcondition(c) for c in txt) and typ == TYP_TEXT:
+                        sel.cstyle["font-family"] = fixw
+                    else:
+                        prev_nonascii = False
+                        for j, c in enumerate(reversed(txt)):
+                            i = len(txt) - 1 - j
+                            if fixcondition(c):
+                                if not prev_nonascii:
+                                    t = Tspan()
+                                    t.text = c
+                                    if typ == TYP_TEXT:
+                                        tbefore = tel.text[0:i]
+                                        tafter = tel.text[i + 1 :]
+                                        tel.text = tbefore
+                                        tel.insert(0, t)
+                                        t.tail = tafter
+                                    else:
+                                        tbefore = tel.tail[0:i]
+                                        tafter = tel.tail[i + 1 :]
+                                        tel.tail = tbefore
+                                        grp = tel.getparent()
+                                        # parent is a Tspan, so insert it into
+                                        # the grandparent
+                                        grp.insert(grp.index(tel) + 1, t)
+                                        # after the parent
+                                        t.tail = tafter
+                                    t.cstyle = Style(
+                                        "font-family:" + fixw + ";baseline-shift:0%"
+                                    )
+                                else:
+                                    t.text = c + t.text
+                                    if typ == TYP_TEXT:
+                                        tel.text = tel.text[0:i]
+                                    else:
+                                        tel.tail = tel.tail[0:i]
+                                if tel.text is not None and tel.text == "":
+                                    tel.text = None
+                                if tel.tail is not None and tel.tail == "":
+                                    tel.tail = None
+                            prev_nonascii = nonascii(c)
+
+
+spantags = tags((Tspan, inkex.FlowPara, inkex.FlowSpan))
+TEtag = inkex.TextElement.ctag
+
+def replace_non_ascii_font(elem, newfont, *args):
+    """Replaces non-ASCII characters in an element with a specified font."""
+
+    def alltext(elem):
+        astr = elem.text
+        if astr is None:
+            astr = ""
+        for k in list(elem):
+            if k.tag in spantags:
+                astr += alltext(k)
+                tlv = k.tail
+                if tlv is None:
+                    tlv = ""
+                astr += tlv
+        return astr
+
+    forcereplace = len(args) > 0 and args[0]
+    if forcereplace or any(nonascii(c) for c in alltext(elem)):
+        alltxt = [elem.text]
+        elem.text = ""
+        for k in list(elem):
+            if k.tag in spantags:
+                dupe = k.duplicate()
+                alltxt.append(dupe)
+                alltxt.append(k.tail)
+                k.tail = ""
+                k.delete()
+        lstspan = None
+        for t in alltxt:
+            if t is None:
+                pass
+            elif isinstance(t, str):
+                chks = []
+                sind = 0
+                for i in range(1, len(t)):
+                    # split into chunks based on whether unicode or not
+                    if nonletter(t[i - 1]) != nonletter(t[i]):
+                        chks.append(t[sind:i])
+                        sind = i
+                chks.append(t[sind:])
+                sty = "baseline-shift:0%;"
+                for chk in chks:
+                    if any(nonletter(c) for c in chk):
+                        chk = chk.replace(" ", "\u00a0")
+                        # spaces can disappear, replace with NBSP
+                        if elem.croot is not None:
+                            nts = Tspan()
+                            elem.append(nts)
+                            nts.text = chk
+                            nts.cstyle = Style(sty + "font-family:" + newfont)
+                            nts.cspecified_style = None
+                            nts.ccomposed_transform = None
+                            lstspan = nts
+                    else:
+                        if lstspan is None:
+                            elem.text = chk
+                        else:
+                            lstspan.tail = chk
+            elif t.tag in spantags:
+                replace_non_ascii_font(t, newfont, True)
+                elem.append(t)
+                t.cspecified_style = None
+                t.ccomposed_transform = None
+                lstspan = t
+
+    # Inkscape automatically prunes empty text/tails
+    # Do the same so future parsing is not affected
+    if elem.tag == TEtag:
+        for ddv in elem.descendants2():
+            if ddv.text is not None and ddv.text == "":
+                ddv.text = None
+            if ddv.tail is not None and ddv.tail == "":
+                ddv.tail = None
+
+
+def split_text(elem):
+    """
+    Splits a text or tspan into its constituent blocks of text
+    (i.e., each text and each tail in separate hierarchies)
+    """
+    dups = []
+    dds = elem.descendants2()
+    for dgen in reversed(list(TextTree(elem).dgenerator())):
+        _, _, _, sel, txt = dgen
+        if txt is not None:
+            # For each block of text, spin off a copy of the structure
+            # that only has this block and only the needed ancestors.
+            dup = elem.duplicate()
+            d2s = dup.descendants2()
+            mydup = d2s[dds.index(sel)]
+            ancs = mydup.ancestors2(includeme=True)
+            for dd2 in d2s:
+                dd2.text = None
+                dd2.tail = None
+                if dd2 not in ancs:
+                    dd2.delete()
+            mydup.text = txt
+            dups = [dup] + dups
+    if len(dups) > 0 and elem.tail is not None:
+        dups[-1].tail = elem.tail
+    elem.delete()
+    return dups
 
 
 def Version_Check(caller):
