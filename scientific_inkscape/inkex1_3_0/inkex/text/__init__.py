@@ -55,15 +55,7 @@ if not hasattr(inkex, "text"):
     sys.modules["inkex.text"] = inkex.text
     sys.path = oldpath
 
-# Patches inkex functions for faster operation
-# This is optional
-try:
-    import inkex.text.speedups
-except ModuleNotFoundError:
-    pass
-
 # Gives inkex elements some additional cached attributes, for further speedups
-# This is not optional
 import inkex.text.cache
 
 

@@ -348,7 +348,7 @@ with warnings.catch_warnings():
                 # Set it based on the location of preferences.xml
                 if os.environ.get("XDG_DATA_HOME") is None:
                     os.environ["XDG_DATA_HOME"] = os.path.dirname(
-                        inkex.inkscape_system_info.find_preferences()  # type: ignore
+                        inkex.inkscape_system_info.preferences  # type: ignore
                     )
 
             import gi

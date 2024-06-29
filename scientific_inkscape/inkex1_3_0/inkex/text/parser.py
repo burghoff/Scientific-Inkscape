@@ -50,9 +50,8 @@ import os
 import sys
 import itertools
 import math
-import random
-import time
 from copy import copy
+import threading
 import lxml
 import numpy as np
 import inkex
@@ -73,7 +72,7 @@ from inkex.text.utils import (
     composed_lineheight,
     default_style_atts,
     isrectangle,
-    Get_Bounding_Boxes,
+    get_bounding_boxes,
     tags,
     ipx,
     bbox,
@@ -96,6 +95,7 @@ EBset = lxml.etree.ElementBase.set
 TEtag, TStag, FRtag = TextElement.ctag, Tspan.ctag, FlowRoot.ctag
 TEFRtags = {TEtag, FRtag}
 
+LOCK = threading.Lock()
 
 class ParsedTextList(list):
     """
@@ -469,7 +469,8 @@ class ParsedText:
                 tsty = true_style(sty)
 
                 # Make a new line if we're sprl or if we have a new x or y
-                if len(lns) == 0 or (
+                makeline = len(lns) == 0
+                makeline |= (
                     typ == TYP_TEXT
                     and (
                         newsprl
@@ -477,8 +478,8 @@ class ParsedText:
                             types[ddi] == "normal"
                             and (ixs[ddi][0] is not None or iys[ddi][0] is not None)
                         )
-                    )
-                ):
+                    ))
+                if makeline:
                     edi = ddi
                     if typ == TYP_TAIL:
                         edi = dds.index(sel)
@@ -1390,13 +1391,8 @@ class ParsedText:
                 sptregion.append(spt.Line(end, start))
                 sptregion.closed = True
 
-        # bbx = BaseElementCache.bounding_box2(
-        #     region, dotransform=False, includestroke=False
-        # ).sbb
-        
         bbx = region.cpath.bounding_box()
         bbx = [bbx.left,bbx.top,bbx.width,bbx.height]
-        
         if not padding == 0:
             bbx = [
                 bbx[0] + padding,
@@ -2434,6 +2430,7 @@ class TChunk:
 
     @property
     def x(self):
+        ''' Get effective x value'''
         if self.line and self.ncs > 0:
             lnx = self.line._xv if not self.line.continuex else self.line.x
             # checking for continuex early eliminates most unnecessary calls
@@ -2443,6 +2440,7 @@ class TChunk:
 
     @property
     def y(self):
+        ''' Get effective y value'''
         if self.line and self.ncs > 0:
             lny = self.line._yv if not self.line.continuey else self.line.y
             # checking for continuex early eliminates most unnecessary calls
@@ -3643,6 +3641,7 @@ class CharacterTable:
             return "text" + str(cnt)
 
         class StringInfo:
+            ''' Stores metadata on strings'''
             def __init__(self, strval, strid, dkern, bareid=None):
                 self.strval = strval
                 self.strid = strid
@@ -3682,100 +3681,94 @@ class CharacterTable:
         if not (usepango):
             tmpf.write((svgtexts + svgstop).encode("utf8"))
             tmpf.close()
-            nbb = Get_Bounding_Boxes(filename=tmpname)
+            nbb = get_bounding_boxes(filename=tmpname)
             os.remove(tmpname)
         else:
             # Pango can't multithread well, lock to prevent multiple simultaneous calls
-            global PANGOLOCKED
-            if "PANGOLOCKED" not in globals():
-                PANGOLOCKED = False
-            finished = False
-            while not (finished):
-                if PANGOLOCKED:
-                    time.sleep(random.uniform(0.010, 0.020))
-                else:
-                    PANGOLOCKED = True
-                    pngr = PangoRenderer()
-                    nbb = dict()
-                    for sty in ctbl:
-                        joinch = " "
-                        mystrs = [
-                            val[0]
-                            for k, val in pstrings.items()
-                            if type(val[1]) == Style and val[1] == sty
-                        ]
-                        myids = [
-                            k
-                            for k, val in pstrings.items()
-                            if type(val[1]) == Style and val[1] == sty
-                        ]
+            lock = threading.Lock()
+            lock.acquire()
+            try:
+                pngr = PangoRenderer()
+                nbb = dict()
+                for sty in ctbl:
+                    joinch = " "
+                    mystrs = [
+                        val[0]
+                        for k, val in pstrings.items()
+                        if type(val[1]) == Style and val[1] == sty
+                    ]
+                    myids = [
+                        k
+                        for k, val in pstrings.items()
+                        if type(val[1]) == Style and val[1] == sty
+                    ]
 
-                        success, fam = pngr.set_text_style(
-                            str(sty) + ";font-size:" + str(TEXTSIZE) + "px"
+                    success, fam = pngr.set_text_style(
+                        str(sty) + ";font-size:" + str(TEXTSIZE) + "px"
+                    )
+                    if not (success):
+                        lock.release()
+                        return self.measure_characters(
+                            ctbl, pct, rtbl, forcecommand=True
                         )
-                        if not (success):
-                            PANGOLOCKED = False
-                            return self.measure_characters(
-                                ctbl, pct, rtbl, forcecommand=True
+                    joinedstr = joinch.join(mystrs) + joinch + prefix
+
+                    # We need to render all the characters, but we don't
+                    # need all of their extents. For most of them we just
+                    # need the first character, unless the following string
+                    # has length 1 (and may be differently differentially kerned)
+                    modw = [
+                        any(
+                            len(mystrs[i]) == 1
+                            for i in range(i, i + 2)
+                            if 0 <= i < len(mystrs)
+                        )
+                        for i in range(len(mystrs))
+                    ]
+                    needexts = [
+                        "1"
+                        if len(s) == 1
+                        else "1" + "0" * (len(s) - 2) + ("1" if modw[i] else "0")
+                        for i, s in enumerate(mystrs)
+                    ]
+                    needexts2 = "0".join(needexts) + "1" + "1" * len(prefix)
+                    # needexts2 = '1'*len(joinedstr)
+
+                    pngr.render_text(joinedstr)
+                    exts, _ = pngr.get_character_extents(fam[1], needexts2)
+
+                    spw = exts[-len(prefix) - 1][0][2]
+                    cnt = 0
+                    x = 0
+                    for i, mystr in enumerate(mystrs):
+                        if modw[i]:
+                            altw = (
+                                exts[cnt + len(mystr) - 1][0][0]
+                                + exts[cnt + len(mystr) - 1][0][2]
+                                - exts[cnt][0][0]
                             )
-                        joinedstr = joinch.join(mystrs) + joinch + prefix
-
-                        # We need to render all the characters, but we don't
-                        # need all of their extents. For most of them we just
-                        # need the first character, unless the following string
-                        # has length 1 (and may be differently differentially kerned)
-                        modw = [
-                            any(
-                                len(mystrs[i]) == 1
-                                for i in range(i, i + 2)
-                                if 0 <= i < len(mystrs)
+                        else:
+                            altw = (
+                                exts[cnt + len(mystr) + 1][0][0]
+                                - exts[cnt][0][0]
+                                - spw
                             )
-                            for i in range(len(mystrs))
+                        wdt = altw
+
+                        firstch = exts[cnt]
+                        (xbr, ybr, wbr, hbr) = tuple(firstch[2])
+                        if myids[i] not in bareids:
+                            xbr = x
+                            wbr = wdt
+                            # use logical width
+
+                        nbb[myids[i]] = [
+                            val * TEXTSIZE for val in [xbr, ybr, wbr, hbr]
                         ]
-                        needexts = [
-                            "1"
-                            if len(s) == 1
-                            else "1" + "0" * (len(s) - 2) + ("1" if modw[i] else "0")
-                            for i, s in enumerate(mystrs)
-                        ]
-                        needexts2 = "0".join(needexts) + "1" + "1" * len(prefix)
-                        # needexts2 = '1'*len(joinedstr)
-
-                        pngr.render_text(joinedstr)
-                        exts, _ = pngr.get_character_extents(fam[1], needexts2)
-
-                        spw = exts[-len(prefix) - 1][0][2]
-                        cnt = 0
-                        x = 0
-                        for i, mystr in enumerate(mystrs):
-                            if modw[i]:
-                                altw = (
-                                    exts[cnt + len(mystr) - 1][0][0]
-                                    + exts[cnt + len(mystr) - 1][0][2]
-                                    - exts[cnt][0][0]
-                                )
-                            else:
-                                altw = (
-                                    exts[cnt + len(mystr) + 1][0][0]
-                                    - exts[cnt][0][0]
-                                    - spw
-                                )
-                            wdt = altw
-
-                            firstch = exts[cnt]
-                            (xbr, ybr, wbr, hbr) = tuple(firstch[2])
-                            if myids[i] not in bareids:
-                                xbr = x
-                                wbr = wdt
-                                # use logical width
-
-                            nbb[myids[i]] = [
-                                val * TEXTSIZE for val in [xbr, ybr, wbr, hbr]
-                            ]
-                            cnt += len(mystr) + len(joinch)
-                            x += wdt
-                    PANGOLOCKED = False
-                    finished = True
+                        cnt += len(mystr) + len(joinch)
+                        x += wdt
+            finally:
+                lock.release()
 
         dkern = dict()
         for sty, chd in ctbl.items():

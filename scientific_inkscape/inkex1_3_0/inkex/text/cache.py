@@ -503,7 +503,7 @@ class BaseElementCache(BaseElement):
             self.croot.iddict[new_id] = self
         BE_set_id(self, new_id, backlinks=backlinks)
 
-    comment_tag = lxml.etree.Comment
+    comment_tag = lxml.etree.Comment("").tag
 
     def descendants2(self, return_tails=False):
         """
@@ -857,13 +857,12 @@ class SvgDocumentElementCache(SvgDocumentElement):
             if elid in self:
                 del self[elid]
 
-    def get_iddict(self):
+    @property
+    def iddict(self):
         """Returns the ID dictionary that caches all elements by ID."""
         if not (hasattr(self, "_iddict")):
             self._iddict = SvgDocumentElementCache.IDDict(self)
         return self._iddict
-
-    iddict = property(get_iddict)
 
     estyle = Style()  # keep separate in case Style was overridden
 

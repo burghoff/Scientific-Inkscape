@@ -24,83 +24,95 @@
 Utilities for text parsing
 """
 
+import math
+import re
+import sys
+import os
+from functools import lru_cache
+import lxml
+from lxml import etree
 import inkex
-import math, re, sys, os, lxml
+from inkex import load_svg
+import inkex.command
+from inkex.properties import all_properties
+from inkex.units import CONVERSIONS, BOTH_MATCH
 
-# For style components that represent a size (stroke-width, font-size, etc), calculate
-# the true size reported by Inkscape in user units, inheriting any styles/transforms/document scaling
+# For style components that represent a size (stroke-width, font-size, etc),
+# calculate the true size reported by Inkscape in user units, inheriting
+# any styles/transforms/document scaling
 flookup = {"small": "10px", "medium": "12px", "large": "14px"}
 
 
-def composed_width(el, comp):
+def composed_width(elem, comp):
     """
     Gets the transformed size of a style component and the scale factor representing
     the scale of the composed transform, accounting for relative sizes.
 
     Parameters:
-        el (Element): The element whose style to compute.
-        comp (str): The component of the style to compute, such as 'stroke-width' or 'font-size'.
+        elem (Element): The element whose style to compute.
+        comp (str): The component of the style to compute, such as 'stroke-width'
+        or 'font-size'.
 
     Returns:
-        tuple: A tuple containing the true size in user units, the scale factor, and the untransformed size
+        tuple: A tuple containing the true size in user units, the scale factor,
+        and the untransformed size
     """
-    cs = el.cspecified_style
-    ct = el.ccomposed_transform
-    sc = cs.get(comp)
+    sty = elem.cspecified_style
+    ctf = elem.ccomposed_transform
+    satt = sty.get(comp)
 
     # Get default attribute if empty
-    if sc is None:
-        sc = default_style_atts[comp]
+    if satt is None:
+        satt = default_style_atts[comp]
 
-    if "%" in sc:  # relative width, get ancestor width
-        cel = el
-        while sc != cel.cstyle.get(comp) and sc != cel.get(comp):
+    if "%" in satt:  # relative width, get ancestor width
+        cel = elem
+        while satt != cel.cstyle.get(comp) and satt != cel.get(comp):
             cel = cel.getparent()
             # figure out ancestor where % is coming from
 
-        sc = float(sc.strip("%")) / 100
-        tsz, sf, utsz = composed_width(cel.getparent(), comp)
+        satt = float(satt.strip("%")) / 100
+        tsz, scf, utsz = composed_width(cel.getparent(), comp)
 
         # Since relative widths have no untransformed width, we assign
         # it to be a scaled version of the ancestor's ut width
-        return tsz * sc, sf, utsz * sc
-    else:
-        utsz = ipx(sc)
-        if utsz is None:
-            utsz = (
-                utsz
-                or ipx(flookup.get(sc) if comp == "font-size" else None)
-                or ipx(default_style_atts[comp])
-            )
-        sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))  # scale factor
-        return utsz * sf, sf, utsz
+        return tsz * satt, scf, utsz * satt
+    utsz = ipx(satt)
+    if utsz is None:
+        utsz = (
+            utsz
+            or ipx(flookup.get(satt) if comp == "font-size" else None)
+            or ipx(default_style_atts[comp])
+        )
+    scf = math.sqrt(abs(ctf.a * ctf.d - ctf.b * ctf.c))  # scale factor
+    return utsz * scf, scf, utsz
 
 
-def composed_lineheight(el):
+def composed_lineheight(elem):
     """
     Get absolute line-height in user units based on an element's specified style.
 
     Parameters:
-        el (Element): The element whose line-height to compute.
+        elem (Element): The element whose line-height to compute.
 
     Returns:
         float: The computed line-height in user units.
     """
-    cs = el.cspecified_style
-    sc = cs.get("line-height", default_style_atts["line-height"])
-    if sc == "normal":
-        sc = 1.25
-    elif "%" in sc:  # relative width, get parent width
-        sc = float(sc.strip("%")) / 100
+    sty = elem.cspecified_style
+    satt = sty.get("line-height", default_style_atts["line-height"])
+    if satt == "normal":
+        satt = 1.25
+    elif "%" in satt:  # relative width, get parent width
+        satt = float(satt.strip("%")) / 100
     else:
         try:
             # Lines have no unit, em treated the same
-            sc = float(sc.strip("em"))
-        except:
-            fs, sf, utfs = composed_width(el, "font-size")
-            sc = ipx(sc) / (fs / sf)
-    fs, _, _ = composed_width(el, "font-size")
-    return sc * fs
+            satt = float(satt.strip("em"))
+        except ValueError:
+            fsz, scf, _ = composed_width(elem, "font-size")
+            satt = ipx(satt) / (fsz / scf)
+    fsz, _, _ = composed_width(elem, "font-size")
+    return satt * fsz
 
 
 def unique(lst):
@@ -116,28 +128,28 @@ def unique(lst):
     return list(dict.fromkeys(lst))
 
 
-def uniquetol(A, tol):
+def uniquetol(x, tol):
     """
     Like unique, but for numeric values and accepts a tolerance.
 
     Parameters:
-        A (list of float): List of numeric values from which to remove near-duplicates.
+        x (list of float): List of numeric values from which to remove near-duplicates.
         tol (float): The tolerance within which two numbers are considered the same.
 
     Returns:
         list of float: A list of unique numbers within the specified tolerance.
     """
-    if not A:  # Check if the input list is empty
+    if not x:  # Check if the input list is empty
         return []
-    A_sorted = sorted((x for x in A if x is not None))  # Sort, ignoring None values
+    x_sorted = sorted((y for y in x if y is not None))  # Sort, ignoring None values
     ret = (
-        [A_sorted[0]] if A_sorted else []
+        [x_sorted[0]] if x_sorted else []
     )  # Start with the first value if there are any non-None values
-    for i in range(1, len(A_sorted)):
-        if abs(A_sorted[i] - ret[-1]) > tol:
-            ret.append(A_sorted[i])
+    for i in range(1, len(x_sorted)):
+        if abs(x_sorted[i] - ret[-1]) > tol:
+            ret.append(x_sorted[i])
     # If there were any None values in the original list, append None to the result list
-    if None in A:
+    if None in x:
         ret.append(None)
     return ret
 
@@ -145,51 +157,53 @@ def uniquetol(A, tol):
 # Adds ctag to the inkex classes, which holds each class's corresponding tag
 # Checking the tag is usually much faster than instance checking, which can
 # substantially speed up low-level functions.
+# pylint:disable=protected-access
 lt = dict(inkex.elements._parser.NodeBasedLookup.lookup_table)
 shapetags = set()
-for k, v in lt.items():
+for key, v in lt.items():
     for v2 in v:
-        v2.ctag = inkex.addNS(k[1], k[0]) if isinstance(k, tuple) else k
+        v2.ctag = inkex.addNS(key[1], key[0]) if isinstance(key, tuple) else key
         if issubclass(v2, inkex.ShapeElement):
             shapetags.add(v2.ctag)
-tags = lambda x: set([v.ctag for v in x])  # converts class tuple to set of tags
-
+tags = lambda x: {v.ctag for v in x}  # converts class tuple to set of tags
+# pylint:enable=protected-access
 
 rectlike_tags = tags((inkex.PathElement, inkex.Rectangle, inkex.Line, inkex.Polyline))
 rect_tag = inkex.Rectangle.ctag
 pel_tag = inkex.PathElement.ctag
 usetag = inkex.Use.ctag
 
-pth_cmds = "".join(list(inkex.paths.PathCommand._letter_to_class.keys()))
-pth_cmd_pat = re.compile("[" + re.escape(pth_cmds) + "]")
+PTH_CMDS = "".join(list(inkex.paths.PathCommand._letter_to_class.keys()))
+pth_cmd_pat = re.compile("[" + re.escape(PTH_CMDS) + "]")
 cnt_pth_cmds = lambda d: len(pth_cmd_pat.findall(d))  # count path commands
 
 
-def isrectangle(el, includingtransform=True):
+def isrectangle(elem, includingtransform=True):
     """
-    Determines if an element is rectangle-like, considering transformations if specified.
+    Determines if an element is rectangle-like, considering transformations if
+    specified.
 
     Parameters:
-        el (Element): The element to check.
-        includingtransform (bool): Whether to consider transformations in the determination.
+        elem (Element): The element to check.
+        includingtransform (bool): Whether to consider transformations in the
+            determination.
 
     Returns:
-        tuple: A tuple containing a boolean indicating if the element is a rectangle and the path if it is.
+        tuple: A tuple containing a boolean indicating if the element is a rectangle and
+        the path if it is.
     """
 
-    if not includingtransform and el.tag == rect_tag:
-        pth = el.cpath
-    elif el.tag in rectlike_tags:
-        # Before parsing the path (possibly slow), make sure 4-5 path commands
-        if el.tag == pel_tag and not (1 <= cnt_pth_cmds(el.get("d", "")) <= 5):
+    ret = True
+    if not includingtransform and elem.tag == rect_tag:
+        pth = elem.cpath
+    elif elem.tag in rectlike_tags:
+        if elem.tag == pel_tag and not (1 <= cnt_pth_cmds(elem.get("d", "")) <= 5):
             return False
-        pth = el.cpath
-        # if includingtransform:
-        #     pth = pth.transform(el.ctransform)
+        pth = elem.cpath
 
         if includingtransform:
-            tmat = el.ctransform.matrix
-            xs, ys = list(
+            tmat = elem.ctransform.matrix
+            x, y = list(
                 zip(
                     *[
                         (
@@ -201,172 +215,168 @@ def isrectangle(el, includingtransform=True):
                 )
             )
         else:
-            xs, ys = list(zip(*[(pt.x, pt.y) for pt in pth.end_points]))
+            x, y = list(zip(*[(pt.x, pt.y) for pt in pth.end_points]))
 
-        maxsz = max(max(xs) - min(xs), max(ys) - min(ys))
+        maxsz = max(max(x) - min(x), max(y) - min(y))
         tol = 1e-3 * maxsz
-        if len(uniquetol(xs, tol)) != 2 or len(uniquetol(ys, tol)) != 2:
-            return False
-    elif el.tag == usetag:
-        useel = el.get_link("xlink:href")
+        if len(uniquetol(x, tol)) != 2 or len(uniquetol(y, tol)) != 2:
+            ret = False
+    elif elem.tag == usetag:
+        useel = elem.get_link("xlink:href")
         if useel is not None:
             return isrectangle(useel)
-        else:
-            return True
+        ret = True
     else:
-        return False
+        ret = False
 
-    # Assume masks aren't rectangular
-    if (
-        el.get_link("mask", llget=True) is not None
-        or el.cspecified_style.get_link("filter", el.croot) is not None
-    ):
-        return False
-    # Clipped rectangles may not be rectangular
-    if el.get_link("clip-path", llget=True) is not None and any(
-        [not isrectangle(k) for k in list(el.get_link("clip-path", llget=True))]
-    ):
-        return False
-    return True
+    if ret:
+        if (
+            elem.get_link("mask", llget=True) is not None
+            or elem.cspecified_style.get_link("filter", elem.croot) is not None
+        ):
+            ret = False
+        elif elem.get_link("clip-path", llget=True) is not None and any(
+            not isrectangle(k) for k in list(elem.get_link("clip-path", llget=True))
+        ):
+            ret = False
+    return ret
 
 
-def Get_Bounding_Boxes(filename, inkscape_binary=None, extra_args=[], svg=None):
+def get_bounding_boxes(filename, inkscape_binary=None, extra_args=None, svg=None):
     """
     Retrieves all of a document's bounding boxes using a call to the Inkscape binary.
 
     Parameters:
         filename (str): The path to the SVG file.
-        inkscape_binary (str): The path to the Inkscape binary. If not provided, it will attempt to find it.
+        inkscape_binary (str): The path to the Inkscape binary. If not provided,
+        it will attempt to find it.
         extra_args (list): Additional arguments to pass to the Inkscape command.
-        svg (SVGElement): An optional SVGElement to use instead of loading from file.
+        svg: An optional svg to use instead of loading from file.
 
     Returns:
-        dict: A dictionary where keys are element IDs and values are bounding boxes in user units.
+        dict: A dictionary where keys are element IDs and values are bounding
+        boxes in user units.
     """
     if inkscape_binary is None:
         inkscape_binary = inkex.inkscape_system_info.binary_location
+    extra_args = [] if extra_args is None else extra_args
     arg2 = [inkscape_binary, "--query-all"] + extra_args + [filename]
-    p = subprocess_repeat(arg2)
-    tFStR = p.stdout
+    proc = subprocess_repeat(arg2)
+    tfstr = proc.stdout
 
     # Parse the output
-    tBBLi = tFStR.splitlines()
+    tbbli = tfstr.splitlines()
     bbs = dict()
-    for d in tBBLi:
-        key = str(d).split(",")[0]
-        if key[0:2] == "b'":  # pre version 1.1
-            key = key[2:]
-        if str(d)[2:52] == "WARNING: Requested update while update in progress":
+    for line in tbbli:
+        keyv = str(line).split(",", maxsplit=1)[0]
+        if keyv[0:2] == "b'":  # pre version 1.1
+            keyv = keyv[2:]
+        if str(line)[2:52] == "WARNING: Requested update while update in progress":
             continue
             # skip warnings (version 1.0 only?)
-        data = [float(x.strip("'")) for x in str(d).split(",")[1:]]
-        if key != "'":  # sometimes happens in v1.3
-            bbs[key] = data
+        data = [float(x.strip("'")) for x in str(line).split(",")[1:]]
+        if keyv != "'":  # sometimes happens in v1.3
+            bbs[keyv] = data
 
     # Inkscape always reports a bounding box in pixels, relative to the viewbox
     # Convert to user units for the output
     if svg is None:
         # If SVG not supplied, load from file from load_svg
-        from inkex import load_svg
 
         svg = load_svg(filename).getroot()
 
-    ds = svg.cdocsize
+    dsz = svg.cdocsize
     for k in bbs:
-        bbs[k] = ds.pxtouu(bbs[k])
+        bbs[k] = dsz.pxtouu(bbs[k])
     return bbs
 
 
-class Inkscape_System_Info:
+class InkscapeSystemInfo:
     """
     Discovers and caches Inkscape System info.
     """
 
+    _UNSET = object()  # Sentinel value for unset attributes
+
     def __init__(self):
-        pass
+        """Initialize InkscapeSystemInfo."""
+        self._language = self._UNSET
+        self._preferences = self._UNSET
+        self._binary_location = self._UNSET
+        self._binary_version = self._UNSET
 
     @property
     def language(self):
-        if not hasattr(self, "_language"):
+        """Get the language used by Inkscape."""
+        if self._language is self._UNSET:
             self._language = self.determine_language()
         return self._language
 
     @property
     def preferences(self):
-        if not hasattr(self, "_preferences"):
+        """Get the preferences file location."""
+        if self._preferences is self._UNSET:
             self._preferences = self.find_preferences()
         return self._preferences
 
     @property
     def binary_location(self):
-        if not hasattr(self, "_binary_location"):
+        """Get the Inkscape binary location."""
+        if self._binary_location is self._UNSET:
             self._binary_location = self.get_binary_location()
         return self._binary_location
 
     @property
     def binary_version(self):
-        if not hasattr(self, "_binary_version"):
+        """Get the Inkscape binary version."""
+        if self._binary_version is self._UNSET:
             self._binary_version = self.get_binary_version()
         return self._binary_version
 
     def get_binary_version(self):
         """Gets the binary location by calling with --version (slow)"""
-        p = subprocess_repeat([self.binary_location, "--version"])
-        import re  # Regular expression to find version number
+        proc = subprocess_repeat([self.binary_location, "--version"])
 
-        match = re.search(r"Inkscape\s+(\S+)\s+\(", str(p.stdout))
+        match = re.search(r"Inkscape\s+(\S+)\s+\(", str(proc.stdout))
         return match.group(1) if match else None
 
-    def get_binary_location(self):
+    @staticmethod
+    def get_binary_location():
         """
         Gets the location of the Inkscape binary, checking the system
         path if necessary.
         """
+
+        program = inkex.command.INKSCAPE_EXECUTABLE_NAME
         try:
-            import inkex.command
-        except:
-            # Import of inkex.command not working before v1.2
-            import importlib.util
-
-            module_path = os.path.join(
-                os.path.split(os.path.abspath(inkex.__file__))[0], "command.py"
-            )
-            spec = importlib.util.spec_from_file_location("inkex.command", module_path)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            inkex.command = module
-
-        def which2(program):
+            return inkex.command.which(program)
+        except inkex.command.CommandNotFound as excp:
+            # Search the path as a backup (primarily for testing)
             try:
-                return inkex.command.which(program)
-            except:
-                # Search the path as a backup (primarily for testing)
-                try:
-                    from shutil import which as warlock
+                from shutil import which as warlock
 
-                    for sp in sys.path:
-                        if sys.platform == "win32":
-                            prog = warlock(program, path=os.environ["PATH"] + ";" + sp)
-                            if prog:
-                                return prog
-                except ImportError:
-                    pass
-                raise inkex.command.CommandNotFound(
-                    f"Can not find the command: '{program}'"
-                )
+                for sysp in sys.path:
+                    if sys.platform == "win32":
+                        prog = warlock(program, path=os.environ["PATH"] + ";" + sysp)
+                        if prog:
+                            return prog
+            except ImportError as impe:
+                raise ImportError("Failed to import the 'which' function.") from impe
+            raise inkex.command.CommandNotFound(
+                f"Can not find the command: '{program}'"
+            ) from excp
 
-        return which2(inkex.command.INKSCAPE_EXECUTABLE_NAME)
-
-    def find_preferences(self):
+    @staticmethod
+    def find_preferences():
         """Attempt to discover preferences.xml"""
+        prefspaths = []
+
         # First check the location of the user extensions directory
         mydir = os.path.dirname(os.path.abspath(__file__))
         file_path = mydir
         while "extensions" in file_path and os.path.basename(file_path) != "extensions":
             file_path = os.path.dirname(file_path)
-        prefspath = os.path.join(os.path.dirname(file_path), "preferences.xml")
-        if os.path.exists(prefspath):
-            return prefspath
+        prefspaths.append(os.path.join(os.path.dirname(file_path), "preferences.xml"))
 
         # Try some common default locations based on the home directory
         homedir = os.path.expanduser("~")
@@ -374,69 +384,72 @@ class Inkscape_System_Info:
             appdata = os.getenv("APPDATA")
             if appdata is not None:
                 # https://wiki.inkscape.org/wiki/Preferences_subsystem
-                prefspath = os.path.join(
-                    os.path.abspath(appdata), "inkscape", "preferences.xml"
+                prefspaths.append(
+                    os.path.join(
+                        os.path.abspath(appdata), "inkscape", "preferences.xml"
+                    )
                 )
-                if os.path.exists(prefspath):
-                    return prefspath
             # https://en.wikipedia.org/wiki/Environment_variable#Default_Values_on_Microsoft_Windows
-            prefspath = os.path.join(
-                homedir, "AppData", "Roaming", "inkscape", "preferences.xml"
+            prefspaths.append(
+                os.path.join(
+                    homedir, "AppData", "Roaming", "inkscape", "preferences.xml"
+                )
             )
-            if os.path.exists(prefspath):
-                return prefspath
             # https://en.wikipedia.org/wiki/Environment_variable#Default_Values_on_Microsoft_Windows
             # http://tavmjong.free.fr/INKSCAPE/MANUAL/html/Customize-Files.html
-            prefspath = os.path.join(
-                homedir, "­Application Data", "­Inkscape", "preferences.xml"
+            prefspaths.append(
+                os.path.join(
+                    homedir, "­Application Data", "­Inkscape", "preferences.xml"
+                )
             )
-            if os.path.exists(prefspath):
-                return prefspath
         else:
             if sys.platform == "darwin":
-                # DB's Mac
-                prefspath = os.path.join(
-                    homedir,
-                    "Library",
-                    "Application Support",
-                    "org.inkscape.Inkscape",
-                    "config",
-                    "inkscape",
-                    "preferences.xml",
+                # test Mac
+                prefspaths.append(
+                    os.path.join(
+                        homedir,
+                        "Library",
+                        "Application Support",
+                        "org.inkscape.Inkscape",
+                        "config",
+                        "inkscape",
+                        "preferences.xml",
+                    )
                 )
-                if os.path.exists(prefspath):
-                    return prefspath
-            # DB's Linux
-            prefspath = os.path.join(homedir, ".config", "inkscape", "preferences.xml")
-            if os.path.exists(prefspath):
-                return prefspath
+            # test Linux
+            prefspaths.append(
+                os.path.join(homedir, ".config", "inkscape", "preferences.xml")
+            )
             # https://wiki.inkscape.org/wiki/Preferences_subsystem#Where_preferences_are_stored
-            prefspath = os.path.join(homedir, ".config", "Inkscape", "preferences.xml")
-            if os.path.exists(prefspath):
-                return prefspath
+            prefspaths.append(
+                os.path.join(homedir, ".config", "Inkscape", "preferences.xml")
+            )
             # https://wiki.inkscape.org/wiki/Preferences_subsystem#Where_preferences_are_stored
             # https://alpha.inkscape.org/vectors/www.inkscapeforum.com/viewtopicc8ae.html?t=1712
-            prefspath = os.path.join(homedir, ".inkscape", "preferences.xml")
-            if os.path.exists(prefspath):
-                return prefspath
+            prefspaths.append(os.path.join(homedir, ".inkscape", "preferences.xml"))
 
             # Try finding from snap location
             file_path = mydir
             while "snap" in file_path and os.path.basename(file_path) != "snap":
                 file_path = os.path.dirname(file_path)
-            prefspath = os.path.join(
-                os.path.dirname(file_path), ".config", "inkscape", "preferences.xml"
+            prefspaths.append(
+                os.path.join(
+                    os.path.dirname(file_path), ".config", "inkscape", "preferences.xml"
+                )
             )
-            if os.path.exists(prefspath):
-                return prefspath
+
+        # Iterate over potential paths and return the first existing one
+        for path in prefspaths:
+            if os.path.exists(path):
+                return path
+
         return None  # failed
 
-    def determine_language(self, verbose=False):
+    @staticmethod
+    def determine_language(verbose=False):
         """Try to find the language Inkscape is using"""
 
         def get_ui_language(prefspath):
-            from lxml import etree
-
             proot = etree.parse(prefspath).getroot()
             for k in proot:
                 if k.get("id") == "ui" and k.get("language") is not None:
@@ -444,14 +457,20 @@ class Inkscape_System_Info:
             return None
 
         def getlocale_mod():
-            import warnings, locale
+            # pylint:disable=import-outside-toplevel
+            import warnings
+            import locale
+            # pylint:enable=import-outside-toplevel
 
             with warnings.catch_warnings():
-                # temporary work-around for https://github.com/python/cpython/issues/82986
-                # by continuing to use getdefaultlocale() even though it has been deprecated.
+                # temporary work-around for
+                # https://github.com/python/cpython/issues/82986
+                # by continuing to use getdefaultlocale() even though it has been
+                # deprecated.
                 if sys.version_info.minor >= 13:
                     warnings.warn(
-                        "This function may not behave as expected in Python versions beyond 3.12",
+                        "This function may not behave as expected in"
+                        " Python versions beyond 3.12",
                         FutureWarning,
                     )
                 warnings.simplefilter("ignore", category=DeprecationWarning)
@@ -461,7 +480,7 @@ class Inkscape_System_Info:
             return "en-US"
 
         # First, try to get the language from preferences.xml
-        pxml = self.find_preferences()
+        pxml = InkscapeSystemInfo().find_preferences()
         if verbose:
             inkex.utils.debug("Found preferences.xml: " + str(pxml))
         if pxml is not None:
@@ -477,7 +496,7 @@ class Inkscape_System_Info:
         return prefslang
 
 
-inkex.inkscape_system_info = Inkscape_System_Info()  # type: ignore
+inkex.inkscape_system_info = InkscapeSystemInfo()  # type: ignore
 
 
 def subprocess_repeat(argin):
@@ -490,44 +509,43 @@ def subprocess_repeat(argin):
     Returns:
         CompletedProcess: The result from the subprocess call.
     """
-    BASE_TIMEOUT = 60
-    NATTEMPTS = 4
+    base_timeout = 60
+    nattempts = 4
     import subprocess
 
     nfails = 0
     ntime = 0
-    for ii in range(NATTEMPTS):
-        timeout = BASE_TIMEOUT * (ii + 1)
+    for i in range(nattempts):
+        timeout = base_timeout * (i + 1)
         try:
             os.environ["SELF_CALL"] = "true"  # seems to be needed for 1.3
-            p = subprocess.run(
+            proc = subprocess.run(
                 argin,
                 shell=False,
                 timeout=timeout,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
+                check=True
             )
             break
         except subprocess.TimeoutExpired:
             nfails += 1
             ntime += timeout
-    if nfails == NATTEMPTS:
+    if nfails == nattempts:
         inkex.utils.errormsg(
             "Error: The call to the Inkscape binary timed out "
-            + str(NATTEMPTS)
+            + str(nattempts)
             + " times in "
             + str(ntime)
             + " seconds.\n\n"
             + "This may be a temporary issue; try running the extension again."
         )
-        quit()
+        sys.exit()
     else:
-        return p
+        return proc
 
 
 # Get default style attributes
-from inkex.properties import all_properties
-
 try:
     default_style_atts = {a: v[1] for a, v in all_properties.items()}  # type: ignore
 except TypeError:
@@ -538,43 +556,47 @@ except TypeError:
 default_style_atts["font-variant-ligatures"] = "normal"  # missing
 
 
-# Returns non-comment children
-comment_tag = lxml.etree.Comment
+comment_tag = lxml.etree.Comment("").tag
 
 
-def list2(el):
-    return [k for k in list(el) if not (k.tag == comment_tag)]
+def list2(elem):
+    """Returns non-comment children of an element."""
+    return [k for k in list(elem) if not (k.tag == comment_tag)]
 
 
-# Implicit pixel function
-# For many properties, a size specification of '1px' actually means '1uu'
-# Even if the size explicitly says '1mm' and the user units are mm, this will be
-# first converted to px and then interpreted to mean user units. (So '1mm' would
-# up being bigger than 1 mm). This returns the size as Inkscape will interpret it (in uu).
-#   No unit: Assumes 'px'
-#   Invalid unit: Returns None (used to return 0, changed 2023.04.18)
-from inkex.units import CONVERSIONS, BOTH_MATCH
-
-conv2 = {k: CONVERSIONS[k] / CONVERSIONS["px"] for k, v in CONVERSIONS.items()}
-from functools import lru_cache
+conv2 = {k: v / CONVERSIONS["px"] for k, v in CONVERSIONS.items()}
 
 
 @lru_cache(maxsize=None)
 def ipx(strin):
+    """
+    Implicit pixel function
+    For many properties, a size specification of '1px' actually means '1uu'
+    Even if the size explicitly says '1mm' and the user units are mm, this will be
+    first converted to px and then interpreted to mean user units. (So '1mm' would
+    up being bigger than 1 mm). This returns the size as Inkscape will interpret it
+    (in uu).
+      No unit: Assumes 'px'
+      Invalid unit: Returns None (used to return 0, changed 2023.04.18)
+    """
     try:
         ret = BOTH_MATCH.match(strin)
         value = float(ret.groups()[0])
         from_unit = ret.groups()[-1] or "px"
         return value * conv2[from_unit]
-    except:
+    except AttributeError:
         return None
 
-
-# A modified bounding box class
+# pylint:disable=invalid-name
 class bbox:
+    """
+    A modified bounding box class.
+    """
+
     __slots__ = ("isnull", "x1", "x2", "y1", "y2", "xc", "yc", "w", "h", "sbb")
 
     def __init__(self, bb):
+        """Initialize bbox."""
         if bb is not None:
             self.isnull = False
             if len(bb) == 2:  # allow tuple of two points ((x1,y1),(x2,y2))
@@ -595,6 +617,7 @@ class bbox:
             self.isnull = True
 
     def copy(self):
+        """Copy the bounding box."""
         ret = bbox.__new__(bbox)
         ret.isnull = self.isnull
         if not self.isnull:
@@ -610,6 +633,7 @@ class bbox:
         return ret
 
     def transform(self, xform):
+        """Transform the bounding box."""
         if not (self.isnull) and xform is not None:
             tr1 = xform.apply_to_point([self.x1, self.y1])
             tr2 = xform.apply_to_point([self.x2, self.y2])
@@ -625,15 +649,16 @@ class bbox:
                     - min(tr1[1], tr2[1], tr3[1], tr4[1]),
                 ]
             )
-        else:
-            return bbox(None)
+        return bbox(None)
 
     def intersect(self, bb2):
+        """Check if bounding boxes intersect."""
         return (abs(self.xc - bb2.xc) * 2 < (self.w + bb2.w)) and (
             abs(self.yc - bb2.yc) * 2 < (self.h + bb2.h)
         )
 
     def union(self, bb2):
+        """Get the union of two bounding boxes."""
         if isinstance(bb2, list):
             bb2 = bbox(bb2)
         if not (self.isnull) and not bb2.isnull:
@@ -642,12 +667,12 @@ class bbox:
             miny = min((self.y1, self.y2, bb2.y1, bb2.y2))
             maxy = max((self.y1, self.y2, bb2.y1, bb2.y2))
             return bbox([minx, miny, maxx - minx, maxy - miny])
-        elif self.isnull and not bb2.isnull:
+        if self.isnull and not bb2.isnull:
             return bb2
-        else:
-            return self  # bb2 is empty
+        return self  # bb2 is empty
 
     def intersection(self, bb2):
+        """Get the intersection of two bounding boxes."""
         if isinstance(bb2, list):
             bb2 = bbox(bb2)
         if not (self.isnull):
@@ -656,8 +681,10 @@ class bbox:
             miny = max([self.y1, bb2.y1])
             maxy = min([self.y2, bb2.y2])
             return bbox([minx, miny, abs(maxx - minx), abs(maxy - miny)])
-        else:
-            return bbox(bb2.sbb)
+        return bbox(bb2.sbb)
 
     def __mul__(self, scl):
+        """Scale the bounding box."""
         return bbox([self.x1 * scl, self.y1 * scl, self.w * scl, self.h * scl])
+ # pylint:enable=invalid-name
+ 

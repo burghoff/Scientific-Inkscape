@@ -53,18 +53,16 @@ inkex.Style = styles0.Style0
 
 # Next we make sure we have the text submodule
 import inkex.text  # noqa
+import speedups # noqa
 
 from inkex import Style
 from inkex.text.cache import BaseElementCache
 
-# CBE = BaseElementCache
-# grouplike_tags, ttags = CBE.grouplike_tags, CBE.ttags
-# bb2_support_tags, bounding_box2 = CBE.bb2_support_tags, CBE.bounding_box2
 from inkex.text.utils import (
     composed_width,
     unique,
     isrectangle,
-    Get_Bounding_Boxes,
+    get_bounding_boxes,
     subprocess_repeat,
     tags,
     bbox,
@@ -256,7 +254,7 @@ def unlink2(el):
 
 # unungroupable = (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment)
 unungroupable = tags((inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.ForeignObject))
-ctag = lxml.etree.Comment
+ctag = lxml.etree.Comment("").tag
 unungroupable.add(ctag)
 
 
@@ -562,7 +560,7 @@ def isdrawn(el):
     )
 
 
-# A wrapper that replaces Get_Bounding_Boxes with Pythonic calls only if possible
+# A wrapper that replaces get_bounding_boxes with Pythonic calls only if possible
 def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
     if els is None:
         els = slf.svg.descendants2()
@@ -603,7 +601,7 @@ def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
         with tempfile.TemporaryFile() as temp:
             tname = os.path.abspath(temp.name)
             overwrite_svg(slf.svg, tname)
-            ret = Get_Bounding_Boxes(filename=tname, svg=slf.svg)
+            ret = get_bounding_boxes(filename=tname, svg=slf.svg)
 
     return ret
 

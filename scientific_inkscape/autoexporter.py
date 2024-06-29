@@ -30,7 +30,7 @@ import os, sys, time, re, lxml
 import numpy as np
 
 import image_helpers as ih
-from inkex.text.utils import default_style_atts, unique
+from inkex.text.utils import default_style_atts, unique, get_bounding_boxes
 from inkex.text.cache import BaseElementCache
 
 otp_support_tags = BaseElementCache.otp_support_tags
@@ -1004,7 +1004,7 @@ class AutoExporter(inkex.EffectExtension):
 
         try:
             eargs = ["--actions", "".join(acts)]
-            bbs = dh.Get_Bounding_Boxes(
+            bbs = get_bounding_boxes(
                 filename=fn, inkscape_binary=inkbin, extra_args=eargs
             )
             for ii, act in enumerate(acts):
