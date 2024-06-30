@@ -66,14 +66,12 @@ from inkex import (
     FlowSpan,
 )
 from inkex.text.utils import (
-    unique,
     uniquetol,
     composed_width,
     composed_lineheight,
     default_style_atts,
     isrectangle,
     get_bounding_boxes,
-    tags,
     ipx,
     bbox,
 )
@@ -3422,14 +3420,16 @@ class CharacterTable:
         """Initializes CharacterTable with a list of elements."""
         self.els = els
         self.root = els[0].croot if len(els) > 0 else None
-        ctbl, pct, self.rtable = CharacterTable.collect_characters(els)
+        self.tstyset, self.pchrset, self.fstyset = CharacterTable.collect_characters(
+            els
+        )
 
         if HASPANGO:
             # Prefer to measure with Pango if we have it (faster, more accurate)
-            self.ctable = self.measure_characters(ctbl, pct, self.rtable)
+            self.ctable = self.measure_characters()
         else:
             # Can also extract directly using fonttools
-            self.ctable = self.extract_characters(ctbl, pct, self.rtable)
+            self.ctable = self.extract_characters()
 
         self.mults = dict()
         self._ftable = None
@@ -3495,9 +3495,9 @@ class CharacterTable:
     @staticmethod
     def collect_characters(els):
         """Finds all the characters in a list of elements."""
-        ctable = dict()
-        pctable = dict()  # a dictionary of preceding characters in the same style
-        rtable = dict()
+        tstyset = dict()  # set of characters in a given true style
+        pchrset = dict()  # set of characters that precede a char in a true style
+        fstyset = dict()  # set of characters in a given font style
 
         for elem in els:
             tree = TextTree(elem)
@@ -3507,70 +3507,65 @@ class CharacterTable:
                     tsty = true_style(sty)
                     fsty = font_style(sty)
 
-                    ctable[tsty] = unique(ctable.get(tsty, []) + list(txt))
-                    rtable[fsty] = unique(rtable.get(fsty, []) + list(txt))
-                    if tsty not in pctable:
-                        pctable[tsty] = dict()
+                    tstyset.setdefault(tsty, set()).update(txt)
+                    fstyset.setdefault(fsty, set()).update(txt)
+                    pchrset.setdefault(tsty, dict())
                     for j in range(1, len(txt)):
-                        pctable[tsty][txt[j]] = unique(
-                            pctable[tsty].get(txt[j], []) + [txt[j - 1]]
-                        )
+                        pchrset[tsty].setdefault(txt[j], set()).add(txt[j - 1])
 
-        for tsty in ctable:  # make sure they have spaces
-            ctable[tsty] = unique(ctable[tsty] + [" "])
-            for pchr in pctable[tsty]:
-                pctable[tsty][pchr] = unique(pctable[tsty][pchr] + [" "])
-        for fsty in rtable:  # make sure they have spaces
-            rtable[fsty] = unique(rtable[fsty] + [" "])
-        return ctable, pctable, rtable
+        for tsty in tstyset:  # make sure they have spaces
+            tstyset[tsty].update(" ")
+            for pchr in pchrset[tsty]:
+                pchrset[tsty][pchr].update(" ")
+        for fsty in fstyset:  # make sure they have spaces
+            fstyset[fsty].update(" ")
+        return tstyset, pchrset, fstyset
 
-    def extract_characters(self, ctbl, pct, rtbl):
+    def extract_characters(self):
         """
-        For most fonts and characters we can directly extract their information
-        from the font file using fonttools
+        Direct extraction of character metrics from the font file using fonttools
         """
         try:
             badchars = {"\n", "\r"}
-            ct2 = dict()
-            for sty in ctbl:
-                bdcs = [
-                    c for c in ctbl[sty] if c in badchars
-                ]  # strip out unusual chars
-                gcs = [c for c in ctbl[sty] if c not in badchars]
+            ret = dict()
+            for sty in self.tstyset:
+                bdcs = [c for c in self.tstyset[sty] if c in badchars]
+                # strip out unusual chars
+                gcs = [c for c in self.tstyset[sty] if c not in badchars]
                 chrfs = fcfg.get_true_font_by_char(sty, gcs)
                 if any(val is None for k, val in chrfs.items()):
-                    return self.measure_characters(ctbl, pct, rtbl)
+                    return self.measure_characters()
                 fntcs = dict()  # font: corresponding characters
                 for k, val in chrfs.items():
                     fntcs.setdefault(val, []).append(k)
 
-                ct2[sty] = dict()
+                ret[sty] = dict()
                 for fnt, chs in fntcs.items():
                     ftfnt = fcfg.get_fonttools_font(fnt)
-                    pct2 = {k: val for k, val in pct[sty].items() if k in chs}
+                    pct2 = {k: val for k, val in self.pchrset[sty].items() if k in chs}
                     advs, dkern, inkbbs = ftfnt.get_char_advances(chs, pct2)
                     if advs is None:
-                        return self.measure_characters(ctbl, pct, rtbl)
+                        return self.measure_characters()
                     for c in chs:
                         cwd = advs[c]
                         caph = ftfnt.cap_height
                         # dr = 0
                         inkbb = inkbbs[c]
-                        ct2[sty][c] = CProp(c, cwd, None, caph, dkern, inkbb)
-                spc = ct2[sty][" "]
-                for c in ct2[sty]:
-                    ct2[sty][c].spacew = spc.charw
-                    ct2[sty][c].caph = spc.caph
+                        ret[sty][c] = CProp(c, cwd, None, caph, dkern, inkbb)
+                spc = ret[sty][" "]
+                for c in ret[sty]:
+                    ret[sty][c].spacew = spc.charw
+                    ret[sty][c].caph = spc.caph
                 for bdc in bdcs:
-                    ct2[sty][bdc] = CProp(
+                    ret[sty][bdc] = CProp(
                         bdc, 0, spc.charw, spc.caph, dict(), [0, 0, 0, 0]
                     )
-            return ct2
+            return ret
         except:
             # In case there are special cases not yet supported
-            return self.measure_characters(ctbl, pct, rtbl)
+            return self.measure_characters()
 
-    def measure_characters(self, ctbl, pct, rtbl, forcecommand=False):
+    def measure_characters(self, forcecommand=False):
         """
         Uses Pango to measure character properties by rendering them on an unseen
         context. Requires GTK Python bindings, generally present in Inkscape 1.1 and
@@ -3584,7 +3579,9 @@ class CharacterTable:
         if forcecommand:
             # Examine the whole document if using command
             ctels = [ddv for ddv in self.root.iddict.ds if ddv.tag in TEFRtags]
-            ctbl, pct, self.rtable = CharacterTable.collect_characters(ctels)
+            self.tstyset, self.pchrset, self.fstyset = (
+                CharacterTable.collect_characters(ctels)
+            )
 
         prefix = "I="
         suffix = "=I"
@@ -3655,18 +3652,16 @@ class CharacterTable:
 
         ct2 = dict()
         bareids = []
-        for sty in ctbl:
+        for sty in self.tstyset:
             ct2[sty] = dict()
-            for i in range(len(ctbl[sty])):
-                myc = ctbl[sty][i]
+            for myc in self.tstyset[sty]:
                 t = make_string(prefix + effc(myc) + suffix, sty)
                 tbare = make_string(effc(myc), sty)
                 bareids.append(tbare)
                 dkern = dict()
                 if KERN_TABLE:
-                    for j in range(len(ctbl[sty])):
-                        pchr = ctbl[sty][j]
-                        if myc in pct[sty] and pchr in pct[sty][myc]:
+                    for pchr in self.tstyset[sty]:
+                        if myc in self.pchrset[sty] and pchr in self.pchrset[sty][myc]:
                             tpc = make_string(
                                 prefix + effc(pchr) + effc(myc) + suffix, sty
                             )
@@ -3684,7 +3679,7 @@ class CharacterTable:
             nbb = get_bounding_boxes(filename=tmpname)
             os.remove(tmpname)
         else:
-            # Pango can't multithread well, lock to prevent multiple simultaneous calls
+            # Pango querying doesn't multithread well
             lock = threading.Lock()
             lock.acquire()
             try:
@@ -3708,9 +3703,7 @@ class CharacterTable:
                     )
                     if not (success):
                         lock.release()
-                        return self.measure_characters(
-                            ctbl, pct, rtbl, forcecommand=True
-                        )
+                        return self.measure_characters(forcecommand=True)
                     joinedstr = joinch.join(mystrs) + joinch + prefix
 
                     # We need to render all the characters, but we don't
@@ -3784,16 +3777,14 @@ class CharacterTable:
                     for j in chd[i].precwidth:
                         pcw = chd[j].bbx.w - chd[blnk].bbx.w  # preceding char width
                         bcw = chd[i].precwidth[j] - chd[blnk].bbx.w  # both char widths
-                        dkern[sty][j, chd[i].strval] = (
-                            bcw - pcw - mcw
-                        )  # preceding char, then next char
+                        dkern[sty][j, chd[i].strval] = bcw - pcw - mcw
+                        # preceding char, then next char
 
         for sty, chd in ctbl.items():
             blnkwd = chd[blnk].bbx.w
             spw = chd[" "].bbx.w - blnkwd  # space width
-            caph = -chd[
-                blnk
-            ].bbx.y1  # cap height is the top of I (relative to baseline)
+            caph = -chd[blnk].bbx.y1
+            # cap height is the top of I (relative to baseline)
 
             dkernscl = dict()
             if KERN_TABLE:
@@ -3801,9 +3792,8 @@ class CharacterTable:
                     dkernscl[k] = dkern[sty][k] / TEXTSIZE
 
             for i in chd:
-                cwd = (
-                    chd[i].bbx.w - blnkwd
-                )  # character width (full, including extra space on each side)
+                cwd = chd[i].bbx.w - blnkwd
+                # character width (full, including extra space on each side)
                 if chd[i].bareid in nbb:
                     inkbb = nbb[chd[i].bareid]
                 else:
@@ -3826,16 +3816,15 @@ class CharacterTable:
     def font_table(self):
         """
         Return a dict whose keys are the font styles (i.e., style reduced to the four
-        attributes that define a font), and whose values are dicts whose keys are
-        the characters present with that font and whose values are the true styles
-        that those characters are rendered as by Inkscape.
+        attributes that define a font), and whose values are dicts that can be used
+        to look up the true style for each character as rendered by Inkscape.
         """
         if self._ftable is None:
             ctable2 = dict()
             self._ftable = dict()
-            for sty, rtval in self.rtable.items():
+            for sty, chrs in self.fstyset.items():
                 tsty = true_style(sty)
-                allcs = set("".join(rtval))
+                allcs = set("".join(chrs))
                 tfbc = fcfg.get_true_font_by_char(sty, allcs)
                 self._ftable[sty] = {
                     k: val for k, val in tfbc.items() if val is not None
