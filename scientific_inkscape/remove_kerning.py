@@ -91,9 +91,9 @@ def remove_kerning(
             tels = Split_Lines(tels)
         # Final tweaks
         tels = Change_Justification(tels, justification)
-        if removemanual or mergenearby or mergesupersub:
+        tels, removedspc = Remove_Trailing_Leading_Spaces(tels)
+        if removemanual or mergenearby or mergesupersub or removedspc:
             tels = Fix_Merge_Positions(tels)
-        tels = Remove_Trailing_Leading_Spaces(tels)
         tels = Make_All_Editable(tels)
         tels = Final_Cleanup(tels)
     return dh.unique(els + tels)
@@ -114,6 +114,7 @@ def Fix_Merge_Positions(els):
 
 
 def Remove_Trailing_Leading_Spaces(els):
+    removed = False
     for el in els:
         if not (el.parsed_text.ismlinkscape) and not (
             el.parsed_text.isflow
@@ -124,13 +125,15 @@ def Remove_Trailing_Leading_Spaces(els):
                 while ii >= 0 and mtxt[ii] == " ":
                     line.chrs[ii].delc()
                     ii -= 1
+                    removed = True
 
                 mtxt = line.txt()
                 ii = 0
                 while ii < len(mtxt) and mtxt[ii] == " ":
                     line.chrs[0].delc()
                     ii += 1
-    return els
+                    removed = True
+    return els, removed
 
 
 def Make_All_Editable(els):

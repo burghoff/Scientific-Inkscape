@@ -540,26 +540,13 @@ class PangoRenderer:
         found, _ = fcfg.conf.font_match(pat)
         return found
 
-    def set_text_style(self, stystr):
-        """Set the text style for rendering based on the provided style string."""
-        sty2 = stystr.split(";")
-        sty2 = {s.split(":")[0]: s.split(":")[1] for s in sty2}
-
-        msty = fontatt + ["font-variant"]  # mandatory style
-        for matt in msty:
-            if matt not in sty2:
-                sty2[matt] = default_style_atts[matt]
-
-        fdesc = PangoRenderer.css_to_pango_description(sty2)
+    def set_text_style(self, sty):
+        """Set the text style for rendering based on the provided style"""
+        fdesc = PangoRenderer.css_to_pango_description(sty)
         fdesc.set_absolute_size(self.pufd(self.pangosize))
         fnt = self.ctx.get_font_map().load_font(self.ctx, fdesc)
 
-        if not HASPANGOFT2:
-            success = fnt is not None
-        else:
-            success = fnt is not None
-            # PangoFT2 sometimes gives mysterious errors that are actually fine
-
+        success = fnt is not None
         if success:
             self.pangolayout.set_font_description(fdesc)
             fam = fnt.get_metrics()

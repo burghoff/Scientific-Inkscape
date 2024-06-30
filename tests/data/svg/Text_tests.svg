@@ -3582,7 +3582,26 @@
            x="171.42773"
            y="729.5694"
            style="font-size:40px;line-height:1.25"
-           id="tspan29">LWIR</tspan></tspan></text></g><style
+           id="tspan29">LWIR</tspan></tspan></text><text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:2.01484px;line-height:1.25;font-family:Whitney-Book;-inkscape-font-specification:Whitney-Book;font-variant-ligatures:normal;font-variant-position:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-alternates:normal;font-variant-east-asian:normal;font-feature-settings:normal;font-variation-settings:normal;text-indent:0;text-align:start;text-decoration-line:none;text-decoration-style:solid;text-decoration-color:#000000;letter-spacing:0px;word-spacing:0px;text-transform:none;writing-mode:lr-tb;direction:ltr;text-orientation:mixed;dominant-baseline:auto;baseline-shift:baseline;white-space:normal;opacity:1;vector-effect:none;fill:#377eb8;fill-opacity:1;stroke-width:0.10502;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;-inkscape-stroke:none;stop-color:#000000;stop-opacity:1"
+       x="-114.01244"
+       y="671.81757"
+       id="text36"
+       transform="translate(293.85158,-502.87125)"><tspan
+         sodipodi:role="line"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:2.01484px;line-height:1.25;font-family:Whitney-Book;-inkscape-font-specification:Whitney-Book;font-variant-ligatures:normal;font-variant-position:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-alternates:normal;font-variant-east-asian:normal;font-feature-settings:normal;font-variation-settings:normal;text-indent:0;text-align:start;text-decoration-line:none;text-decoration-style:solid;text-decoration-color:#000000;letter-spacing:0px;word-spacing:0px;text-transform:none;writing-mode:lr-tb;direction:ltr;text-orientation:mixed;dominant-baseline:auto;baseline-shift:baseline;white-space:normal;vector-effect:none;fill:#377eb8;fill-opacity:1;stroke-width:0.10502;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;-inkscape-stroke:none;stop-color:#000000;stop-opacity:1"
+         x="-114.01244"
+         y="671.81757"
+         id="tspan36">Negative dx at end</tspan></text><text
+       id="text152"
+       xml:space="preserve"
+       transform="matrix(0.51370108,0,0,0.51370108,211.84508,169.50401)"><tspan
+         id="tspan153"
+         style="font-variant:normal;font-weight:normal;font-size:5.79689px;font-family:Arial;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none"
+         x="0"
+         dx="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -76.027611"
+         y="0">This text ends with dx at the end </tspan></text></g><style
      type="text/css"
      id="style4742">
 	.st0{fill:#010202;}

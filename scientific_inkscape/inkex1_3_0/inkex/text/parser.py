@@ -279,7 +279,7 @@ class ParsedText:
         self.isflow = (
             elem.tag == FRtag
             or sty.get_link("shape-inside", elem.croot) is not None
-            or ipx(sty.get("inline-size", "0")) != 0
+            or ipx(sty.get("inline-size"))
         )
         self._tree, self.dxs, self.dys, self.flatdelta = [None] * 4
         self.dxchange, self.hasdx, self.dychange, self.hasdy = [None] * 4
@@ -1313,14 +1313,20 @@ class ParsedText:
             self._tree = None
 
     def parse_lines_flow(self):
-        """Parses lines of flowed text."""
+        """
+        Parses lines of flowed text.
+        For non-rectangular flow regions, uses svgpathtools to find where
+        lines are drawn (this is imported conditionally).
+        """
         sty = self.textel.cspecified_style
         isflowroot = self.textel.tag == FRtag
         isshapeins = (
             self.textel.tag == TEtag
             and sty.get_link("shape-inside", self.textel.croot) is not None
         )
-        isinlinesz = self.textel.tag == TEtag and sty.get("inline-size") is not None
+        isz = ipx(sty.get("inline-size"))
+        isinlinesz = self.textel.tag == TEtag and isz
+        # Inkscape ignores 0 and invalid inline-size
 
         # Determine the flow region
         if isshapeins:
@@ -1348,14 +1354,17 @@ class ParsedText:
                     if len(pths) > 0:
                         region = pths[0]
         elif isinlinesz:
+            # Make a Rectangle and treat it as the flow region
             r = inkex.Rectangle()
             _, ysrc = self.parse_lines(srcsonly=True)
             iszx = self.textel.get("x")
             iszy = self.textel.get("y", ysrc.get("y"))
-            r.set("x", "0")
-            r.set("y", "0")
-            r.set("height", ipx(sty.get("inline-size")))
-            r.set("width", ipx(sty.get("inline-size")))
+
+            afr = get_anchorfrac(sty.get("text-anchor"))
+            r.set("x", -isz * afr)  # pylint:disable=invalid-unary-operand-type
+            r.set("y", 0)
+            r.set("height", isz)
+            r.set("width", isz)
             self.textel.croot.append(r)
             region = r
 
@@ -1374,12 +1383,14 @@ class ParsedText:
             return self.parse_lines()
         if usesvt:
             region.object_to_path()
+            # pylint:disable=import-outside-toplevel
             try:
                 import svgpathtools as spt
             except ModuleNotFoundError:
                 current_script_directory = os.path.dirname(os.path.abspath(__file__))
                 sys.path += [os.path.join(current_script_directory, "packages")]
                 import svgpathtools as spt
+            # pylint:enable=import-outside-toplevel
 
             sptregion = spt.parse_path(region.get("d"))
             if not sptregion.isclosed():
@@ -1946,7 +1957,7 @@ class TextTree:
 def get_anchorfrac(anch):
     """Gets the anchor fraction based on the text anchor."""
     anch_frac = {"start": 0, "middle": 0.5, "end": 1}
-    return anch_frac[anch]
+    return anch_frac.get(anch, 0)
 
 
 class TLine:
@@ -3513,12 +3524,12 @@ class CharacterTable:
                     for j in range(1, len(txt)):
                         pchrset[tsty].setdefault(txt[j], set()).add(txt[j - 1])
 
-        for tsty in tstyset:  # make sure they have spaces
-            tstyset[tsty].update(" ")
+        for tsty, chrs in tstyset.items():  # make sure they have spaces
+            chrs.update(" ")
             for pchr in pchrset[tsty]:
                 pchrset[tsty][pchr].update(" ")
-        for fsty in fstyset:  # make sure they have spaces
-            fstyset[fsty].update(" ")
+        for fsty, chrs in fstyset.items():  # make sure they have spaces
+            chrs.update(" ")
         return tstyset, pchrset, fstyset
 
     def extract_characters(self):
@@ -3528,10 +3539,10 @@ class CharacterTable:
         try:
             badchars = {"\n", "\r"}
             ret = dict()
-            for sty in self.tstyset:
-                bdcs = [c for c in self.tstyset[sty] if c in badchars]
+            for sty, chrs in self.tstyset.items():
+                bdcs = [c for c in chrs if c in badchars]
                 # strip out unusual chars
-                gcs = [c for c in self.tstyset[sty] if c not in badchars]
+                gcs = [c for c in chrs if c not in badchars]
                 chrfs = fcfg.get_true_font_by_char(sty, gcs)
                 if any(val is None for k, val in chrfs.items()):
                     return self.measure_characters()
@@ -3589,7 +3600,7 @@ class CharacterTable:
         # (characters like '=' rarely have differential kerning), then I for
         # capital height.
 
-        blnk = prefix + suffix
+        empty = prefix + suffix
         pistr = prefix + "pI" + suffix
         # Add 'pI' as test characters. 'p' provides the font's descender
         # (how much the tail descends), and 'I' gives cap height
@@ -3650,29 +3661,28 @@ class CharacterTable:
         def effc(c):
             return badchars.get(c, c)
 
-        ct2 = dict()
+        ctbl = dict()
         bareids = []
-        for sty in self.tstyset:
-            ct2[sty] = dict()
-            for myc in self.tstyset[sty]:
+        for sty, chrs in self.tstyset.items():
+            ctbl[sty] = dict()
+            for myc in chrs:
                 t = make_string(prefix + effc(myc) + suffix, sty)
                 tbare = make_string(effc(myc), sty)
                 bareids.append(tbare)
                 dkern = dict()
                 if KERN_TABLE:
-                    for pchr in self.tstyset[sty]:
+                    for pchr in chrs:
                         if myc in self.pchrset[sty] and pchr in self.pchrset[sty][myc]:
                             tpc = make_string(
                                 prefix + effc(pchr) + effc(myc) + suffix, sty
                             )
                             # precede by all chars of the same style
                             dkern[pchr] = tpc
-                ct2[sty][myc] = StringInfo(myc, t, dkern, tbare)
+                ctbl[sty][myc] = StringInfo(myc, t, dkern, tbare)
 
-            ct2[sty][pistr] = StringInfo(pistr, make_string(pistr, sty), dict())
-            ct2[sty][blnk] = StringInfo(blnk, make_string(blnk, sty), dict())
+            ctbl[sty][pistr] = StringInfo(pistr, make_string(pistr, sty), dict())
+            ctbl[sty][empty] = StringInfo(empty, make_string(empty, sty), dict())
 
-        ctbl = ct2
         if not (usepango):
             tmpf.write((svgtexts + svgstop).encode("utf8"))
             tmpf.close()
@@ -3687,20 +3697,10 @@ class CharacterTable:
                 nbb = dict()
                 for sty in ctbl:
                     joinch = " "
-                    mystrs = [
-                        val[0]
-                        for k, val in pstrings.items()
-                        if type(val[1]) == Style and val[1] == sty
-                    ]
-                    myids = [
-                        k
-                        for k, val in pstrings.items()
-                        if type(val[1]) == Style and val[1] == sty
-                    ]
+                    mystrs = [val[0] for k, val in pstrings.items() if val[1] == sty]
+                    myids = [k for k, val in pstrings.items() if val[1] == sty]
 
-                    success, fam = pngr.set_text_style(
-                        str(sty) + ";font-size:" + str(TEXTSIZE) + "px"
-                    )
+                    success, fam = pngr.set_text_style(sty)
                     if not (success):
                         lock.release()
                         return self.measure_characters(forcecommand=True)
@@ -3725,8 +3725,6 @@ class CharacterTable:
                         for i, s in enumerate(mystrs)
                     ]
                     needexts2 = "0".join(needexts) + "1" + "1" * len(prefix)
-                    # needexts2 = '1'*len(joinedstr)
-
                     pngr.render_text(joinedstr)
                     exts, _ = pngr.get_character_extents(fam[1], needexts2)
 
@@ -3773,17 +3771,17 @@ class CharacterTable:
             if KERN_TABLE:
                 dkern[sty] = dict()
                 for i in chd:
-                    mcw = chd[i].bbx.w - chd[blnk].bbx.w  # my character width
+                    mcw = chd[i].bbx.w - chd[empty].bbx.w  # my character width
                     for j in chd[i].precwidth:
-                        pcw = chd[j].bbx.w - chd[blnk].bbx.w  # preceding char width
-                        bcw = chd[i].precwidth[j] - chd[blnk].bbx.w  # both char widths
+                        pcw = chd[j].bbx.w - chd[empty].bbx.w  # preceding char width
+                        bcw = chd[i].precwidth[j] - chd[empty].bbx.w  # both char widths
                         dkern[sty][j, chd[i].strval] = bcw - pcw - mcw
                         # preceding char, then next char
 
         for sty, chd in ctbl.items():
-            blnkwd = chd[blnk].bbx.w
+            blnkwd = chd[empty].bbx.w
             spw = chd[" "].bbx.w - blnkwd  # space width
-            caph = -chd[blnk].bbx.y1
+            caph = -chd[empty].bbx.y1
             # cap height is the top of I (relative to baseline)
 
             dkernscl = dict()

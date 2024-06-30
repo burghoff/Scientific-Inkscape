@@ -573,14 +573,14 @@ def ipx(strin):
     up being bigger than 1 mm). This returns the size as Inkscape will interpret it
     (in uu).
       No unit: Assumes 'px'
-      Invalid unit: Returns None (used to return 0, changed 2023.04.18)
+      Invalid unit: Returns None
     """
     try:
         ret = BOTH_MATCH.match(strin)
         value = float(ret.groups()[0])
         from_unit = ret.groups()[-1] or "px"
         return value * conv2[from_unit]
-    except AttributeError:
+    except (AttributeError, TypeError):
         return None
 
 
