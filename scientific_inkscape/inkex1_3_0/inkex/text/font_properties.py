@@ -817,50 +817,46 @@ class FontToolsFontInstance:
             else:
                 advs[c] = None
 
-        # Get ligature table
+        # Get ligature table (made with LLM help)
+        # Reference: https://learn.microsoft.com/en-us/typography/opentype/spec/gsub
         if self.ligatures is None:
             if self.gsub:
                 gsub_table = self.gsub.table
-                # This section was derived from the output of an LLM
-                # Iterate over each LookupList in the GSUB table
                 self.ligatures = dict()
-                for lookup in gsub_table.LookupList.Lookup:
-                    # Each Lookup can contain multiple SubTables
+
+                # Helper function to check if a feature tag is in the list
+                def has_feature_tag(feature_tag, lookup_index):
+                    for feature in gsub_table.FeatureList.FeatureRecord:
+                        if feature.FeatureTag == feature_tag:
+                            if lookup_index in feature.Feature.LookupListIndex:
+                                return True
+                    return False
+
+                for lookup_index, lookup in enumerate(gsub_table.LookupList.Lookup):
                     for subtable in lookup.SubTable:
-                        # Handle extension lookups
-                        if (
-                            lookup.LookupType == 7
-                        ):  # 7 is the Lookup type for Extension Substitutions
+                        if lookup.LookupType == 7:  # Extension substitutions
                             ext_subtable = subtable.ExtSubTable
                             lookup_type = ext_subtable.LookupType
                         else:
                             ext_subtable = subtable
                             lookup_type = lookup.LookupType
 
-                        # We're only interested in ligature substitutions
-                        if (
-                            lookup_type == 4
-                        ):  # 4 is the Lookup type for Ligature Substitutions
-                            # Each subtable can define substitutions for multiple glyphs
-                            for (
-                                first_glyph,
-                                ligature_set,
-                            ) in ext_subtable.ligatures.items():
-                                # The ligature set contains all ligatures that start
-                                # with the first glyph. Each ligature is a sequence
-                                # of glyphs that it replaces
-                                for ligature in ligature_set:
-                                    # The 'Component' field is a list of glyphs that
-                                    # make up the ligature
-                                    component_glyphs = [
-                                        first_glyph
-                                    ] + ligature.Component
-                                    # The 'LigGlyph' field is the glyph that the
-                                    # components are replaced with
-                                    ligature_glyph = ligature.LigGlyph
-                                    self.ligatures[tuple(component_glyphs)] = (
-                                        ligature_glyph
-                                    )
+                        if lookup_type == 4:  # Ligature substitutions
+                            # Check if the lookup is for discretionary ligatures
+                            if has_feature_tag("liga", lookup_index):
+                                for (
+                                    first_glyph,
+                                    ligature_set,
+                                ) in ext_subtable.ligatures.items():
+                                    for ligature in ligature_set:
+                                        component_glyphs = [
+                                            first_glyph
+                                        ] + ligature.Component
+                                        ligature_glyph = ligature.LigGlyph
+                                        self.ligatures[tuple(component_glyphs)] = (
+                                            ligature_glyph
+                                        )
+
             else:
                 self.ligatures = dict()
 
