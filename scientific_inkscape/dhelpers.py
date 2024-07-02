@@ -126,6 +126,16 @@ with open(installed_inkex, "r") as file:
 match = re.search(r'__version__\s*=\s*"(.*?)"', content)
 vstr = match.group(1) if match else "1.0.0"
 inkex.installed_ivp = inkex.vparse(vstr)  # type: ignore
+inkex.installed_haspages = inkex.installed_ivp[0]>=1 and inkex.installed_ivp[1]>=2
+
+# On v1.1 gi produces an error for some reason that is actually fine
+import platform
+if platform.system().lower() == "windows" and inkex.installed_ivp[0:2]==[1, 1]:
+    if inkex.text.font_properties.HASPANGOFT2:
+        from gi.repository import GLib
+        def custom_log_writer(log_domain, log_level, message, user_data):
+            return GLib.LogWriterOutput.UNHANDLED
+        GLib.log_set_writer_func(custom_log_writer, None)
 
 
 # Replace an element with another one

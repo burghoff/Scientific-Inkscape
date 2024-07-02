@@ -1122,7 +1122,6 @@ class SvgDocumentElementCache(SvgDocumentElement):
                     self.rawxf = xfr
                     self.rawyf = yfr
                     self.pgs = pgs
-                    self.inkscapehaspgs = False
 
                 def uutopx(self, x):
                     """Converts a bounding box specified in uu to pixels"""

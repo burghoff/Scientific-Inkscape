@@ -1120,7 +1120,7 @@ class AutoExporter(inkex.EffectExtension):
                 osvg = get_svg(filein)
 
                 pgs = osvg.cdocsize.pgs
-                haspgs = osvg.cdocsize.inkscapehaspgs
+                haspgs = inkex.installed_haspages
                 if (haspgs or opts.testmode) and len(pgs) > 0:
                     bbs = dh.BB2(type("DummyClass", (), {"svg": osvg}))
                     dl = opts.duplicatelabels
@@ -1172,7 +1172,7 @@ class AutoExporter(inkex.EffectExtension):
                 svg = get_svg(filein)
                 pgs = svg.cdocsize.pgs
 
-                haspgs = svg.cdocsize.inkscapehaspgs
+                haspgs = inkex.installed_haspages
                 if (haspgs or opts.testmode) and len(pgs) > 1:
                     outputs = []
                     pgiis = (
@@ -1695,7 +1695,7 @@ class AutoExporter(inkex.EffectExtension):
         uuw, uuh = svg.cdocsize.uuw, svg.cdocsize.uuh
         # pgs = self.Get_Pages(svg)
 
-        haspgs = svg.cdocsize.inkscapehaspgs or testmode
+        haspgs = inkex.installed_haspages or testmode
         if haspgs and len(svg.cdocsize.pgs) > 0:
             # Has Pages
             for pg in svg.cdocsize.pgs:
