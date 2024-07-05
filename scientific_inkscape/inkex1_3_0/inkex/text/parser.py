@@ -3435,6 +3435,7 @@ class CharacterTable:
             els
         )
 
+        # HASPANGO = False; os.environ["HASPANGO"]='False'
         if HASPANGO:
             # Prefer to measure with Pango if we have it (faster, more accurate)
             self.ctable = self.measure_characters()
@@ -3444,64 +3445,6 @@ class CharacterTable:
 
         self.mults = dict()
         self._ftable = None
-
-    def __str__(self):
-        ret = ""
-        for sty in self.ctable:
-            ret += str(sty) + "\n"
-            val = None
-            for c, val in self.ctable[sty].items():
-                ret += "    " + c + " : " + str(vars(val)) + "\n"
-            if val is not None:
-                ret += "    " + str(val.dkerns)
-        return ret
-
-    @staticmethod
-    def flowy(sty):
-        """Returns the font's ascent value for the given style."""
-        return fcfg.get_fonttools_font(sty)._ascent
-
-    def get_prop(self, char, sty):
-        """Returns the properties of a character for a given style."""
-        try:
-            return self.ctable[sty][char]
-        except KeyError as excp:
-            reset_msg = (
-                "This probably means that new text was generated and the SVG's "
-                "character table is outdated. Reset it by setting"
-            )
-            reset_action = "self.svg.char_table = None"
-            frequency_msg = (
-                "(This can take a long time, so best practice is to do this as few "
-                "times as is possible.)"
-            )
-            if sty not in self.ctable:
-                inkex.utils.debug("No style matches found!")
-                inkex.utils.debug(reset_msg)
-                inkex.utils.debug("     " + reset_action)
-                inkex.utils.debug(frequency_msg)
-                inkex.utils.debug("\nCharacter: " + char)
-                inkex.utils.debug("Style: " + str(sty))
-                inkex.utils.debug("Existing styles: " + str(list(self.ctable.keys())))
-            else:
-                inkex.utils.debug("No character matches!")
-                inkex.utils.debug(reset_msg)
-                inkex.utils.debug("     " + reset_action)
-                inkex.utils.debug(frequency_msg)
-                inkex.utils.debug("\nCharacter: " + char)
-                inkex.utils.debug("Style: " + str(sty))
-                inkex.utils.debug(
-                    "Existing chars: " + str(list(self.ctable[sty].keys()))
-                )
-            raise KeyError from excp
-
-    def get_prop_mult(self, char, sty, scl):
-        """Returns the scaled properties of a character for a given style."""
-        try:
-            return self.mults[(char, sty, scl)]
-        except:
-            self.mults[(char, sty, scl)] = self.get_prop(char, sty) * scl
-            return self.mults[(char, sty, scl)]
 
     @staticmethod
     def collect_characters(els):
@@ -3536,45 +3479,39 @@ class CharacterTable:
         """
         Direct extraction of character metrics from the font file using fonttools
         """
-        try:
-            badchars = {"\n", "\r"}
-            ret = dict()
-            for sty, chrs in self.tstyset.items():
-                bdcs = [c for c in chrs if c in badchars]
-                # strip out unusual chars
-                gcs = [c for c in chrs if c not in badchars]
-                chrfs = fcfg.get_true_font_by_char(sty, gcs)
-                if any(val is None for k, val in chrfs.items()):
-                    return self.measure_characters()
-                fntcs = dict()  # font: corresponding characters
-                for k, val in chrfs.items():
-                    fntcs.setdefault(val, []).append(k)
+        badchars = {"\n", "\r"}
+        ret = dict()
+        for sty, chrs in self.tstyset.items():
+            bdcs = {c for c in chrs if c in badchars}  # unusual chars
+            gcs = {c for c in chrs if c not in badchars}
+            chrfs = fcfg.get_true_font_by_char(sty, gcs)
+            fntcs = dict()  # font: corresponding characters
+            for k, val in chrfs.items():
+                fntcs.setdefault(val, []).append(k)
 
-                ret[sty] = dict()
-                for fnt, chs in fntcs.items():
-                    ftfnt = fcfg.get_fonttools_font(fnt)
-                    pct2 = {k: val for k, val in self.pchrset[sty].items() if k in chs}
-                    advs, dkern, inkbbs = ftfnt.get_char_advances(chs, pct2)
-                    if advs is None:
-                        return self.measure_characters()
-                    for c in chs:
-                        cwd = advs[c]
-                        caph = ftfnt.cap_height
-                        # dr = 0
-                        inkbb = inkbbs[c]
-                        ret[sty][c] = CProp(c, cwd, None, caph, dkern, inkbb)
-                spc = ret[sty][" "]
-                for c in ret[sty]:
-                    ret[sty][c].spacew = spc.charw
-                    ret[sty][c].caph = spc.caph
-                for bdc in bdcs:
-                    ret[sty][bdc] = CProp(
-                        bdc, 0, spc.charw, spc.caph, dict(), [0, 0, 0, 0]
-                    )
-            return ret
-        except:
-            # In case there are special cases not yet supported
-            return self.measure_characters()
+            if None in fntcs:  # unrendered characters are bad
+                bdcs.update(fntcs[None])
+                gcs = gcs - set(fntcs[None])
+                del fntcs[None]
+
+            ret[sty] = dict()
+            for fnt, chs in fntcs.items():
+                ftfnt = fcfg.get_fonttools_font(fnt)
+                pct2 = {k: val for k, val in self.pchrset[sty].items() if k in chs}
+                advs, dkern, inkbbs = ftfnt.get_char_advances(chs, pct2)
+                for c in chs:
+                    cwd = advs[c]
+                    caph = ftfnt.cap_height
+                    # dr = 0
+                    inkbb = inkbbs[c]
+                    ret[sty][c] = CProp(c, cwd, None, caph, dkern, inkbb)
+            spc = ret[sty][" "]
+            for c in ret[sty]:
+                ret[sty][c].spacew = spc.charw
+                ret[sty][c].caph = spc.caph
+            for bdc in bdcs:
+                ret[sty][bdc] = CProp(bdc, 0, spc.charw, spc.caph, dict(), [0, 0, 0, 0])
+        return ret
 
     def measure_characters(self, forcecommand=False):
         """
@@ -3843,6 +3780,64 @@ class CharacterTable:
                     self.ctable[sty][k] = val
 
         return self._ftable
+
+    def __str__(self):
+        ret = ""
+        for sty in self.ctable:
+            ret += str(sty) + "\n"
+            val = None
+            for c, val in self.ctable[sty].items():
+                ret += "    " + c + " : " + str(vars(val)) + "\n"
+            if val is not None:
+                ret += "    " + str(val.dkerns)
+        return ret
+
+    @staticmethod
+    def flowy(sty):
+        """Returns the font's ascent value for the given style."""
+        return fcfg.get_fonttools_font(sty)._ascent
+
+    def get_prop(self, char, sty):
+        """Returns the properties of a character for a given style."""
+        try:
+            return self.ctable[sty][char]
+        except KeyError as excp:
+            reset_msg = (
+                "This probably means that new text was generated and the SVG's "
+                "character table is outdated. Reset it by setting"
+            )
+            reset_action = "self.svg.char_table = None"
+            frequency_msg = (
+                "(This can take a long time, so best practice is to do this as few "
+                "times as is possible.)"
+            )
+            if sty not in self.ctable:
+                inkex.utils.debug("No style matches found!")
+                inkex.utils.debug(reset_msg)
+                inkex.utils.debug("     " + reset_action)
+                inkex.utils.debug(frequency_msg)
+                inkex.utils.debug("\nCharacter: " + char)
+                inkex.utils.debug("Style: " + str(sty))
+                inkex.utils.debug("Existing styles: " + str(list(self.ctable.keys())))
+            else:
+                inkex.utils.debug("No character matches!")
+                inkex.utils.debug(reset_msg)
+                inkex.utils.debug("     " + reset_action)
+                inkex.utils.debug(frequency_msg)
+                inkex.utils.debug("\nCharacter: " + char)
+                inkex.utils.debug("Style: " + str(sty))
+                inkex.utils.debug(
+                    "Existing chars: " + str(list(self.ctable[sty].keys()))
+                )
+            raise KeyError from excp
+
+    def get_prop_mult(self, char, sty, scl):
+        """Returns the scaled properties of a character for a given style."""
+        try:
+            return self.mults[(char, sty, scl)]
+        except KeyError:
+            self.mults[(char, sty, scl)] = self.get_prop(char, sty) * scl
+            return self.mults[(char, sty, scl)]
 
 
 def wstrip(txt):

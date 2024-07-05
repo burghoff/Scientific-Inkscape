@@ -130,11 +130,11 @@ class FontConfig:
         if self.lcctype is not None and sys.platform == "darwin":
             os.environ["LC_CTYPE"] = self.lcctype
 
-    def get_true_font(self, reducedsty):
+    def get_true_font(self, fontsty):
         """Use fontconfig to get the true font that most text will be rendered as"""
-        nftuple = tuple(reducedsty.items())  # for hashing
+        nftuple = tuple(fontsty.items())  # for hashing
         if nftuple not in self.truefonts:
-            pat = FontConfig.css_to_fcpattern(reducedsty)
+            pat = FontConfig.css_to_fcpattern(fontsty)
 
             self.conf.substitute(pat, FC.MatchPattern)
             pat.default_substitute()
@@ -148,13 +148,13 @@ class FontConfig:
             ]
         return self.truefonts[nftuple]
 
-    def get_true_font_by_char(self, reducedsty, chars):
+    def get_true_font_by_char(self, fontsty, chars):
         """
         Sometimes, a font will not have every character and a different one is
         substituted. (For example, many fonts do not have the ⎣ character.)
         Gets the true font by character
         """
-        nftuple = tuple(reducedsty.items())
+        nftuple = tuple(fontsty.items())
         if nftuple in self.truefonts:
             truefont = self.truefonts[nftuple]
             cd1 = {
@@ -166,7 +166,7 @@ class FontConfig:
             cd1 = {}
 
         if len(cd1) < len(chars):
-            pat = FontConfig.css_to_fcpattern(reducedsty)
+            pat = FontConfig.css_to_fcpattern(fontsty)
             self.conf.substitute(pat, FC.MatchPattern)
             pat.default_substitute()
 
@@ -183,14 +183,14 @@ class FontConfig:
                 cd1.update({c: None for c in chars if c not in cd1})
         return cd1
 
-    def get_fonttools_font(self, reducedsty):
+    def get_fonttools_font(self, fontsty):
         """
         Get a FontTools font instance based on the reduced style.
         """
-        nftuple = tuple(reducedsty.items())  # for hashing
+        nftuple = tuple(fontsty.items())  # for hashing
         if nftuple not in self.truefontsft:
             if nftuple not in self.truefontsfc:
-                self.get_true_font(reducedsty)
+                self.get_true_font(fontsty)
             found = self.truefontsfc[nftuple]
             self.truefontsft[nftuple] = FontToolsFontInstance(found)
         return self.truefontsft[nftuple]
@@ -792,7 +792,12 @@ class FontToolsFontInstance:
 
         if self.cmap is None:
             # Certain symbol fonts don't have a cmap table
-            return None, None, None
+            self.cmap = dict()
+            for table in self.font["cmap"].tables:
+                if table.isUnicode():
+                    for codepoint, name in table.cmap.items():
+                        self.cmap[codepoint] = name
+                        self.cmap[codepoint - 15 * 4096] = name
 
         advs = dict()
         bbs = dict()
