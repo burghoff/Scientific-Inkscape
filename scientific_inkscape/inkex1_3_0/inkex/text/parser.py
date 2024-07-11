@@ -465,7 +465,6 @@ class ParsedText:
                     lht = max(
                         composed_lineheight(sel), composed_lineheight(sel.getparent())
                     )
-                tsty = true_style(sty)
 
                 # Make a new line if we're sprl or if we have a new x or y
                 makeline = len(lns) == 0
@@ -573,9 +572,12 @@ class ParsedText:
                     if newsprl or len(lns) == 1:
                         sprl_inherits = lns[-1]
 
+                fsty = font_style(sty)
+                tsty = true_style(fsty)
                 if txt is not None:
                     for j, c in enumerate(txt):
-                        prop = self.ctable.get_prop(c, tsty)
+                        csty = self.font_picker(txt, j, fsty, tsty)
+                        prop = self.ctable.get_prop(c, csty)
                         TChar(
                             c,
                             fsz,
@@ -583,7 +585,7 @@ class ParsedText:
                             utfs,
                             prop,
                             sty,
-                            tsty,
+                            csty,
                             CLoc(tel, typ, j),
                             lns[-1],
                         )
@@ -642,6 +644,35 @@ class ParsedText:
                     sws[i].prevsametspan = (
                         sws[i - 1].chrs[-1].loc.sel == sws[i].chrs[0].loc.sel
                     )
+
+    def font_picker(self, txt, j, fsty, tsty):
+        """Determine what font Inkscape will render a character as"""
+        if txt[j] != " ":
+            # Most of the time we want the true style of the text. When this is
+            # determined by Pango measurement, this practically always matches
+            # Inkscape's font selection
+            return tsty
+        # If the character is a space and the surrounding characters are
+        # missing from the true style, Pango will replace the space with a
+        # space from the missing characters' font
+        lbc = next((txt[i] for i in range(j - 1, -1, -1) if txt[i].strip()), None)
+        fac = next((txt[i] for i in range(j + 1, len(txt)) if txt[i].strip()), None)
+        if (
+            lbc is not None
+            and fac is not None
+            and self.ctable.cstys[fsty][lbc] == self.ctable.cstys[fsty][fac]
+        ):
+            return self.ctable.cstys[fsty][lbc]
+        elif lbc is None and fac is not None:
+            return self.ctable.cstys[fsty][fac]
+        elif fac is None and lbc is not None:
+            return self.ctable.cstys[fsty][lbc]
+        return tsty
+        # Good fonts to check:
+        #   MS Outlook : missing most characters, but has a space
+        #   Marlett : charset doesn't have a space character, but somehow Pango
+        #             is finding one different from the one provided by
+        #             fontconfig's font_sort fallback
 
     def strip_sodipodi_role_line(self):
         """Strip every sodipodi:role line from an element without changing
@@ -1464,7 +1495,6 @@ class ParsedText:
 
                 # Determine above- and below-baseline lineheight
                 sty = sel.cspecified_style
-                tsty = true_style(sty)
                 ctf = sel.ccomposed_transform
                 fsz, scf, utfs = composed_width(sel, "font-size")
                 absp, bbsp, mrfs = height_above_below_baseline(sel)
@@ -1514,10 +1544,13 @@ class ParsedText:
                 else:
                     cln = lns[lnno]
 
+                fsty = font_style(sty)
+                tsty = true_style(fsty)
                 for j, c in enumerate(txt):
-                    prop = self.ctable.get_prop(c, tsty)
+                    csty = self.font_picker(txt, j, fsty, tsty)
+                    prop = self.ctable.get_prop(c, csty)
                     tchr = TChar(
-                        c, fsz, scf, utfs, prop, sty, tsty, CLoc(tel, typ, j), cln
+                        c, fsz, scf, utfs, prop, sty, csty, CLoc(tel, typ, j), cln
                     )
                     tchr.lhs = (fabsp, fbbsp)
                     if j == 0:
@@ -3028,8 +3061,8 @@ class TChar:
         self.lsp = TChar.lspfunc(self._sty)
         self.bshft = TChar.bshftfunc(self._sty, self.loc.sel)
 
-        self.tsty = true_style(styi)
         self.fsty = font_style(styi)
+        self.tsty = true_style(styi)
 
     @staticmethod
     def lspfunc(styv):
@@ -3431,8 +3464,8 @@ class CharacterTable:
         """Initializes CharacterTable with a list of elements."""
         self.els = els
         self.root = els[0].croot if len(els) > 0 else None
-        self.tstyset, self.pchrset, self.fstyset = CharacterTable.collect_characters(
-            els
+        self.tstyset, self.pchrset, self.fstyset, self.cstys = (
+            CharacterTable.collect_characters(els)
         )
 
         # HASPANGO = False; os.environ["HASPANGO"]='False'
@@ -3449,31 +3482,38 @@ class CharacterTable:
     @staticmethod
     def collect_characters(els):
         """Finds all the characters in a list of elements."""
-        tstyset = dict()  # set of characters in a given true style
-        pchrset = dict()  # set of characters that precede a char in a true style
         fstyset = dict()  # set of characters in a given font style
-
+        txtfsty = []
         for elem in els:
             tree = TextTree(elem)
             for _, _, _, sel, txt in tree.dgenerator():
                 if txt is not None and len(txt) > 0:
                     sty = sel.cspecified_style
-                    tsty = true_style(sty)
                     fsty = font_style(sty)
+                    fstyset.setdefault(fsty, set()).update(txt + " ")
+                    txtfsty.append((txt, fsty))
 
-                    tstyset.setdefault(tsty, set()).update(txt)
-                    fstyset.setdefault(fsty, set()).update(txt)
-                    pchrset.setdefault(tsty, dict())
-                    for j in range(1, len(txt)):
-                        pchrset[tsty].setdefault(txt[j], set()).add(txt[j - 1])
+        cstys = dict()  # cstys[fsty][c] looks up a character's true style
+        tstyset = dict()  # set of characters in a given true style
+        for fsty, chrs in fstyset.items():
+            tfbc = fcfg.get_true_font_by_char(fsty, chrs)
+            cstys[fsty] = tfbc
+            tstyset.setdefault(true_style(fsty), set()).update(chrs)
+            for c, csty in tfbc.items():
+                cstys.setdefault(csty, dict()).__setitem__(c, csty)
+                tstyset.setdefault(csty, set()).update({c, " "})
 
-        for tsty, chrs in tstyset.items():  # make sure they have spaces
-            chrs.update(" ")
-            for pchr in pchrset[tsty]:
-                pchrset[tsty][pchr].update(" ")
-        for fsty, chrs in fstyset.items():  # make sure they have spaces
-            chrs.update(" ")
-        return tstyset, pchrset, fstyset
+        pchrset = dict()
+        # set of characters that precede a char in a true style
+        # used to apply differential kerning
+        for txt, fsty in txtfsty:
+            for j in range(1, len(txt)):
+                csty = cstys[fsty][txt[j]]
+                pchrset.setdefault(csty, dict())
+                if csty == cstys[fsty][txt[j - 1]]:
+                    pchrset[csty].setdefault(txt[j], set()).update({txt[j - 1], " "})
+
+        return tstyset, pchrset, fstyset, cstys
 
     def extract_characters(self):
         """
@@ -3482,35 +3522,47 @@ class CharacterTable:
         badchars = {"\n", "\r"}
         ret = dict()
         for sty, chrs in self.tstyset.items():
-            bdcs = {c for c in chrs if c in badchars}  # unusual chars
-            gcs = {c for c in chrs if c not in badchars}
-            chrfs = fcfg.get_true_font_by_char(sty, gcs)
-            fntcs = dict()  # font: corresponding characters
-            for k, val in chrfs.items():
-                fntcs.setdefault(val, []).append(k)
+            if sty is not None:
+                bdcs = {c for c in chrs if c in badchars}  # unusual chars
+                gcs = {c for c in chrs if c not in badchars}
+                chrfs = fcfg.get_true_font_by_char(sty, gcs)
+                fntcs = dict()  # font: corresponding characters
+                for k, val in chrfs.items():
+                    fntcs.setdefault(val, []).append(k)
 
-            if None in fntcs:  # unrendered characters are bad
-                bdcs.update(fntcs[None])
-                gcs = gcs - set(fntcs[None])
-                del fntcs[None]
+                if None in fntcs:  # unrendered characters are bad
+                    bdcs.update(fntcs[None])
+                    gcs = gcs - set(fntcs[None])
+                    del fntcs[None]
 
-            ret[sty] = dict()
-            for fnt, chs in fntcs.items():
-                ftfnt = fcfg.get_fonttools_font(fnt)
-                pct2 = {k: val for k, val in self.pchrset[sty].items() if k in chs}
-                advs, dkern, inkbbs = ftfnt.get_char_advances(chs, pct2)
-                for c in chs:
-                    cwd = advs[c]
-                    caph = ftfnt.cap_height
-                    # dr = 0
-                    inkbb = inkbbs[c]
-                    ret[sty][c] = CProp(c, cwd, None, caph, dkern, inkbb)
-            spc = ret[sty][" "]
-            for c in ret[sty]:
-                ret[sty][c].spacew = spc.charw
-                ret[sty][c].caph = spc.caph
-            for bdc in bdcs:
-                ret[sty][bdc] = CProp(bdc, 0, spc.charw, spc.caph, dict(), [0, 0, 0, 0])
+                ret[sty] = dict()
+                for fnt, chs in fntcs.items():
+                    ftfnt = fcfg.get_fonttools_font(fnt)
+                    if sty in self.pchrset:
+                        pct2 = {
+                            k: val for k, val in self.pchrset[sty].items() if k in chs
+                        }
+                    else:
+                        pct2 = dict()
+                    advs, dkern, inkbbs = ftfnt.get_char_advances(chs, pct2)
+                    for c in chs:
+                        cwd = advs[c]
+                        caph = ftfnt.cap_height
+                        # dr = 0
+                        inkbb = inkbbs[c]
+                        ret[sty][c] = CProp(c, cwd, None, caph, dkern, inkbb)
+                spc = ret[sty][" "]
+                for c in ret[sty]:
+                    ret[sty][c].spacew = spc.charw
+                    ret[sty][c].caph = spc.caph
+                for bdc in bdcs:
+                    ret[sty][bdc] = CProp(
+                        bdc, 0, spc.charw, spc.caph, dict(), [0, 0, 0, 0]
+                    )
+            else:
+                ret[sty] = dict()
+                for c in self.tstyset[None]:
+                    ret[sty][c] = CProp(c, 0, 0, 0, dict(), [0, 0, 0, 0])
         return ret
 
     def measure_characters(self, forcecommand=False):
@@ -3527,21 +3579,9 @@ class CharacterTable:
         if forcecommand:
             # Examine the whole document if using command
             ctels = [ddv for ddv in self.root.iddict.ds if ddv.tag in TEFRtags]
-            self.tstyset, self.pchrset, self.fstyset = (
+            self.tstyset, self.pchrset, self.fstyset, self.cstys = (
                 CharacterTable.collect_characters(ctels)
             )
-
-        prefix = "I="
-        suffix = "=I"
-        # Use an equals sign to eliminate differential kerning effects
-        # (characters like '=' rarely have differential kerning), then I for
-        # capital height.
-
-        empty = prefix + suffix
-        pistr = prefix + "pI" + suffix
-        # Add 'pI' as test characters. 'p' provides the font's descender
-        # (how much the tail descends), and 'I' gives cap height
-        # (how tall capital letters are).
 
         usepango = HASPANGO and not forcecommand
         # usepango = False
@@ -3598,9 +3638,35 @@ class CharacterTable:
         def effc(c):
             return badchars.get(c, c)
 
+        ixes = dict()
+        validtstyset = {
+            sty: chrs for sty, chrs in self.tstyset.items() if sty is not None
+        }
+        for sty in validtstyset:
+            chrs = [chr(c) for c in fcfg.fontcharsets[sty]]
+            if "=" in chrs:
+                bufc = "="
+            elif "M" in chrs:
+                bufc = "M"
+            else:
+                bufc = min([ch for ch in chrs if ord(ch) >= ord("A")], key=ord)
+            prefix = "I" + bufc
+            suffix = bufc + "I"
+            # Use an equals sign to eliminate differential kerning effects
+            # (characters like '=' rarely have differential kerning), then I for
+            # capital height.
+
+            empty = prefix + suffix
+            pistr = prefix + "pI" + suffix
+            # Add 'pI' as test characters. 'p' provides the font's descender
+            # (how much the tail descends), and 'I' gives cap height
+            # (how tall capital letters are).
+            ixes[sty] = (prefix, suffix, empty, pistr)
+
         ctbl = dict()
         bareids = []
-        for sty, chrs in self.tstyset.items():
+        for sty, chrs in validtstyset.items():
+            prefix, suffix, empty, pistr = ixes[sty]
             ctbl[sty] = dict()
             for myc in chrs:
                 t = make_string(prefix + effc(myc) + suffix, sty)
@@ -3609,7 +3675,11 @@ class CharacterTable:
                 dkern = dict()
                 if KERN_TABLE:
                     for pchr in chrs:
-                        if myc in self.pchrset[sty] and pchr in self.pchrset[sty][myc]:
+                        if (
+                            sty in self.pchrset
+                            and myc in self.pchrset[sty]
+                            and pchr in self.pchrset[sty][myc]
+                        ):
                             tpc = make_string(
                                 prefix + effc(pchr) + effc(myc) + suffix, sty
                             )
@@ -3637,7 +3707,7 @@ class CharacterTable:
                     mystrs = [val[0] for k, val in pstrings.items() if val[1] == sty]
                     myids = [k for k, val in pstrings.items() if val[1] == sty]
 
-                    success, fam = pngr.set_text_style(sty)
+                    success, metrics = pngr.set_text_style(sty)
                     if not (success):
                         lock.release()
                         return self.measure_characters(forcecommand=True)
@@ -3663,7 +3733,7 @@ class CharacterTable:
                     ]
                     needexts2 = "0".join(needexts) + "1" + "1" * len(prefix)
                     pngr.render_text(joinedstr)
-                    exts, _ = pngr.get_character_extents(fam[1], needexts2)
+                    exts, _ = pngr.get_character_extents(metrics[1], needexts2)
 
                     spw = exts[-len(prefix) - 1][0][2]
                     cnt = 0
@@ -3696,6 +3766,7 @@ class CharacterTable:
 
         dkern = dict()
         for sty, chd in ctbl.items():
+            prefix, suffix, empty, pistr = ixes[sty]
             for i in chd:
                 chd[i].bbx = bbox(nbb[chd[i].strid])
                 if KERN_TABLE:
@@ -3716,6 +3787,7 @@ class CharacterTable:
                         # preceding char, then next char
 
         for sty, chd in ctbl.items():
+            prefix, suffix, empty, pistr = ixes[sty]
             blnkwd = chd[empty].bbx.w
             spw = chd[" "].bbx.w - blnkwd  # space width
             caph = -chd[empty].bbx.y1
@@ -3745,6 +3817,10 @@ class CharacterTable:
                     dkernscl,
                     [val / TEXTSIZE for val in inkbb],
                 )
+        if None in self.tstyset:
+            ctbl[None] = dict()
+            for c in self.tstyset[None]:
+                ctbl[None][c] = CProp(c, 0, 0, 0, dict(), [0, 0, 0, 0])
         return ctbl
 
     @property
@@ -3757,27 +3833,25 @@ class CharacterTable:
         if self._ftable is None:
             ctable2 = dict()
             self._ftable = dict()
-            for sty, chrs in self.fstyset.items():
-                tsty = true_style(sty)
-                allcs = set("".join(chrs))
-                tfbc = fcfg.get_true_font_by_char(sty, allcs)
-                self._ftable[sty] = {
-                    k: val for k, val in tfbc.items() if val is not None
+            for fsty, chrs in self.fstyset.items():
+                tsty = true_style(fsty)
+                tfbc = fcfg.get_true_font_by_char(fsty, chrs)
+                self._ftable[fsty] = {
+                    c: csty for c, csty in tfbc.items() if csty is not None
                 }
 
-                for k, val in self._ftable[sty].items():
-                    val2 = ";".join([f"{key}:{value}" for key, value in val.items()])
-                    if val2 not in ctable2:
-                        ctable2[val2] = dict()
+                for k, csty in self._ftable[fsty].items():
+                    if csty not in ctable2:
+                        ctable2[csty] = dict()
                     if k in self.ctable[tsty]:
-                        ctable2[val2][k] = self.ctable[tsty][k]
+                        ctable2[csty][k] = self.ctable[tsty][k]
 
             # Add the character-specific normalized styles to ctable
-            for sty, ct2s in ctable2.items():
-                if sty not in self.ctable:
-                    self.ctable[sty] = {}
+            for csty, ct2s in ctable2.items():
+                if csty not in self.ctable:
+                    self.ctable[csty] = {}
                 for k, val in ct2s.items():
-                    self.ctable[sty][k] = val
+                    self.ctable[csty][k] = val
 
         return self._ftable
 

@@ -132,21 +132,13 @@ class FontConfig:
 
     def get_true_font(self, fontsty):
         """Use fontconfig to get the true font that most text will be rendered as"""
-        nftuple = tuple(fontsty.items())  # for hashing
-        if nftuple not in self.truefonts:
-            pat = FontConfig.css_to_fcpattern(fontsty)
-
-            self.conf.substitute(pat, FC.MatchPattern)
-            pat.default_substitute()
-            found, _ = self.conf.font_match(pat)
+        if fontsty not in self.truefonts:
+            found = self.font_match(fontsty)
             truefont = FontConfig.fcfont_to_css(found)
-
-            self.truefonts[nftuple] = truefont
-            self.truefontsfc[nftuple] = found
-            self.fontcharsets[tuple(truefont.items())] = found.get(fc.PROP.CHARSET, 0)[
-                0
-            ]
-        return self.truefonts[nftuple]
+            self.truefonts[fontsty] = truefont
+            self.truefontsfc[fontsty] = found
+            self.fontcharsets[truefont] = found.get(fc.PROP.CHARSET, 0)[0]
+        return self.truefonts[fontsty]
 
     def get_true_font_by_char(self, fontsty, chars):
         """
@@ -154,27 +146,19 @@ class FontConfig:
         substituted. (For example, many fonts do not have the ⎣ character.)
         Gets the true font by character
         """
-        nftuple = tuple(fontsty.items())
-        if nftuple in self.truefonts:
-            truefont = self.truefonts[nftuple]
-            cd1 = {
-                k: truefont
-                for k in chars
-                if ord(k) in self.fontcharsets[tuple(truefont.items())]
-            }
-        else:
-            cd1 = {}
+        if fontsty not in self.truefonts:
+            # font_match is more reliable at matching Inkscape than font_sort
+            self.get_true_font(fontsty)
+        truefont = self.truefonts[fontsty]
+        cd1 = {k: truefont for k in chars if ord(k) in self.fontcharsets[truefont]}
 
         if len(cd1) < len(chars):
-            pat = FontConfig.css_to_fcpattern(fontsty)
-            self.conf.substitute(pat, FC.MatchPattern)
-            pat.default_substitute()
-
-            found, _, _ = self.conf.font_sort(pat, trim=True, want_coverage=False)
+            found = self.font_sort(fontsty)
             for fnt in found:
                 truefont = FontConfig.fcfont_to_css(fnt)
-                cset = fnt.get(fc.PROP.CHARSET, 0)[0]
-                self.fontcharsets[tuple(truefont.items())] = cset
+                if truefont not in self.fontcharsets:
+                    self.fontcharsets[truefont] = fnt.get(fc.PROP.CHARSET, 0)[0]
+                cset = self.fontcharsets[truefont]
                 cd2 = {k: truefont for k in chars if ord(k) in cset and k not in cd1}
                 cd1.update(cd2)
                 if len(cd1) == len(chars):
@@ -183,17 +167,38 @@ class FontConfig:
                 cd1.update({c: None for c in chars if c not in cd1})
         return cd1
 
+    @lru_cache(maxsize=None)
+    def font_match(self, fontsty):
+        """
+        fc fonts matching a given reduced font style
+        """
+        pat = FontConfig.css_to_fcpattern(fontsty)
+        self.conf.substitute(pat, FC.MatchPattern)
+        pat.default_substitute()
+        ret, _ = self.conf.font_match(pat)
+        return ret
+
+    @lru_cache(maxsize=None)
+    def font_sort(self, fontsty):
+        """
+        List of fc fonts closest to a given reduced font style
+        """
+        pat = FontConfig.css_to_fcpattern(fontsty)
+        self.conf.substitute(pat, FC.MatchPattern)
+        pat.default_substitute()
+        ret, _, _ = self.conf.font_sort(pat, trim=True, want_coverage=False)
+        return ret
+
     def get_fonttools_font(self, fontsty):
         """
         Get a FontTools font instance based on the reduced style.
         """
-        nftuple = tuple(fontsty.items())  # for hashing
-        if nftuple not in self.truefontsft:
-            if nftuple not in self.truefontsfc:
+        if fontsty not in self.truefontsft:
+            if fontsty not in self.truefontsfc:
                 self.get_true_font(fontsty)
-            found = self.truefontsfc[nftuple]
-            self.truefontsft[nftuple] = FontToolsFontInstance(found)
-        return self.truefontsft[nftuple]
+            found = self.truefontsfc[fontsty]
+            self.truefontsft[fontsty] = FontToolsFontInstance(found)
+        return self.truefontsft[fontsty]
 
     @staticmethod
     def css_to_fcpattern(sty):
@@ -549,12 +554,16 @@ class PangoRenderer:
         success = fnt is not None
         if success:
             self.pangolayout.set_font_description(fdesc)
-            fam = fnt.get_metrics()
-            fam = [
+            metrics = fnt.get_metrics()
+            metrics = [
                 self.putd(v) / self.pangosize
-                for v in [fam.get_height(), fam.get_ascent(), fam.get_descent()]
+                for v in [
+                    metrics.get_height(),
+                    metrics.get_ascent(),
+                    metrics.get_descent(),
+                ]
             ]
-            return success, fam
+            return success, metrics
         return success, None
 
     def render_text(self, texttorender):
