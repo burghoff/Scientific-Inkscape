@@ -52,8 +52,11 @@ import styles0
 inkex.Style = styles0.Style0
 
 # Next we make sure we have the text submodule
+sys.path.append(
+    os.path.join(si_dir, inkex_to_use, "site-packages", "python_fontconfig")
+)
 import inkex.text  # noqa
-import speedups # noqa
+import speedups  # noqa
 
 from inkex import Style
 from inkex.text.cache import BaseElementCache
@@ -126,15 +129,18 @@ with open(installed_inkex, "r") as file:
 match = re.search(r'__version__\s*=\s*"(.*?)"', content)
 vstr = match.group(1) if match else "1.0.0"
 inkex.installed_ivp = inkex.vparse(vstr)  # type: ignore
-inkex.installed_haspages = inkex.installed_ivp[0]>=1 and inkex.installed_ivp[1]>=2
+inkex.installed_haspages = inkex.installed_ivp[0] >= 1 and inkex.installed_ivp[1] >= 2
 
 # On v1.1 gi produces an error for some reason that is actually fine
 import platform
-if platform.system().lower() == "windows" and inkex.installed_ivp[0:2]==[1, 1]:
+
+if platform.system().lower() == "windows" and inkex.installed_ivp[0:2] == [1, 1]:
     if inkex.text.font_properties.HASPANGOFT2:
         from gi.repository import GLib
+
         def custom_log_writer(log_domain, log_level, message, user_data):
             return GLib.LogWriterOutput.UNHANDLED
+
         GLib.log_set_writer_func(custom_log_writer, None)
 
 
@@ -940,12 +946,12 @@ def global_transform(el, trnsfrm, irange=None, trange=None, preserveStroke=True)
     if preserveStroke:
         if sw is not None:
             neww, sf, _ = composed_width(el, "stroke-width")
-            if sf!=0:
+            if sf != 0:
                 el.cstyle["stroke-width"] = str(sw / sf)
             # fix width
         if not (sd in [None, "none"]):
             nd, sf = composed_list(el, "stroke-dasharray")
-            if sf!=0:
+            if sf != 0:
                 el.cstyle["stroke-dasharray"] = (
                     str([sdv / sf for sdv in sd]).strip("[").strip("]")
                 )
@@ -1130,7 +1136,6 @@ def si_tmp(dirbase="", filename=None):
         return subdir_path
 
 
-
 ttags = tags((inkex.TextElement, inkex.FlowRoot))
 line_tag = inkex.Line.ctag
 cpath_support_tags = tags(BaseElementCache.cpath_support)
@@ -1144,7 +1149,8 @@ grouplike_tags = tags(
         inkex.Symbol,
     )
 )
-grouplike_tags.add(mask_tag)    
+grouplike_tags.add(mask_tag)
+
 
 def bounding_box2(
     self, dotransform=True, includestroke=True, roughpath=False, parsed=False
@@ -1197,9 +1203,7 @@ def bounding_box2(
                         )
                     else:
                         anyarc = any(s.letter in ["a", "A"] for s in pth)
-                        pth = (
-                            inkex.Path(inkex.CubicSuperPath(pth)) if anyarc else pth
-                        )
+                        pth = inkex.Path(inkex.CubicSuperPath(pth)) if anyarc else pth
                         pts = list(pth.control_points)
                         x = [p.x for p in pts]
                         y = [p.y for p in pts]
@@ -1270,10 +1274,12 @@ def bounding_box2(
         self._cbbox[(dotransform, includestroke, roughpath, parsed)] = ret
     return self._cbbox[(dotransform, includestroke, roughpath, parsed)]
 
+
 def set_cbbox(self, val):
     """Invalidates the cached bounding box."""
     if val is None and hasattr(self, "_cbbox"):
         delattr(self, "_cbbox")
+
 
 inkex.BaseElement.cbbox = property(bounding_box2, set_cbbox)
 inkex.BaseElement.bounding_box2 = bounding_box2
@@ -1629,6 +1635,7 @@ def character_fixer(els):
 
 spantags = tags((Tspan, inkex.FlowPara, inkex.FlowSpan))
 TEtag = inkex.TextElement.ctag
+
 
 def replace_non_ascii_font(elem, newfont, *args):
     """Replaces non-ASCII characters in an element with a specified font."""

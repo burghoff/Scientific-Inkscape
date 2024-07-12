@@ -93,10 +93,8 @@ def custom_load_library(name):
 
 
 with patch("ctypes.cdll.LoadLibrary", side_effect=custom_load_library):
-    try:
-        import fontconfig as fc
-    except ModuleNotFoundError:
-        import inkex.text.packages.python_fontconfig.fontconfig as fc  # type: ignore
+    import fontconfig as fc  # pylint: disable=import-error
+
     FC = fc.FC
 
 
@@ -1172,7 +1170,7 @@ class Conversions:
         }
 
 
-C = Conversions
+C = Conversions  # pylint: disable=invalid-name
 
 
 def inkscape_spec_to_css(fstr, usepango=False):
