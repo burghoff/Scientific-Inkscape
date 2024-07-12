@@ -678,6 +678,8 @@ class FontToolsFontInstance:
                     font = mutator.instantiateVariableFont(font, location)
 
         except TTLibFileIsCollectionError:
+            # is TT collection
+            fcfam = found.get(fc.PROP.FAMILY, 0)[0]
             fcwgt = found.get(fc.PROP.WEIGHT, 0)[0]
             fcsln = found.get(fc.PROP.SLANT, 0)[0]
             fcwdt = found.get(fc.PROP.WIDTH, 0)[0]
@@ -703,19 +705,22 @@ class FontToolsFontInstance:
                     or "oblique" in subfamily.lower()
                 )
 
-                matches = [
-                    nearest_val(C.OS2WGT_FCWGT, font_weight) == fcwgt,
-                    C.OS2WDT_FCWDT[font_width] == fcwdt,
-                    (
-                        (font_italic and fcsln in [FC.SLANT_ITALIC, FC.SLANT_OBLIQUE])
-                        or (not font_italic and fcsln == FC.SLANT_ROMAN)
-                    ),
-                ]
-                num_match.append(sum(matches))
-                if num_match[-1] == 3:
+                # nameID=1: font family name
+                familymatch = any(
+                    fcfam in n.toUnicode() for n in tfont["name"].names if n.nameID == 1
+                )
+                widthmatch = C.OS2WDT_FCWDT[font_width] == fcwdt
+                weightmatch = nearest_val(C.OS2WGT_FCWGT, font_weight) == fcwgt
+                slantmatch = (
+                    font_italic and fcsln in [FC.SLANT_ITALIC, FC.SLANT_OBLIQUE]
+                ) or (not font_italic and fcsln == FC.SLANT_ROMAN)
+                num_match.append(
+                    sum([weightmatch, widthmatch, slantmatch, familymatch])
+                )
+                if num_match[-1] == 4:
                     font = tfont
                     break
-            if max(num_match) < 3:
+            if max(num_match) < 4:
                 # Did not find a perfect match
                 font = [
                     TTFont(fname, fontNumber=i)

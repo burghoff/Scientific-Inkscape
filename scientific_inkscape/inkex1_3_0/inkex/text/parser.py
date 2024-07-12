@@ -663,9 +663,9 @@ class ParsedText:
             and self.ctable.cstys[fsty][lbc] == self.ctable.cstys[fsty][fac]
         ):
             return self.ctable.cstys[fsty][lbc]
-        elif lbc is None and fac is not None:
+        if lbc is None and fac is not None:
             return self.ctable.cstys[fsty][fac]
-        elif fac is None and lbc is not None:
+        if fac is None and lbc is not None:
             return self.ctable.cstys[fsty][lbc]
         return tsty
         # Good fonts to check:
