@@ -415,7 +415,7 @@ class FlattenPlots(inkex.EffectExtension):
                     intrscts[ii, :] = False
 
         # Remove any unused clips we made, unnecessary white space in document
-        ds = self.svg.iddict.ds
+        ds = self.svg.iddict.descendants
         clips = [dh.EBget(el, "clip-path") for el in ds]
         masks = [dh.EBget(el, "mask") for el in ds]
         clips = [url[5:-1] for url in clips if url is not None]

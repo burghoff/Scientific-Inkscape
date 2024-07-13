@@ -43,6 +43,7 @@ from typing import Optional, List
 import inkex
 from inkex import Style
 from inkex import BaseElement, SvgDocumentElement
+from inkex.text.parser import ParsedText, CharacterTable
 from text.utils import shapetags, tags, ipx, list2  # pylint: disable=import-error
 import lxml
 
@@ -432,6 +433,7 @@ class BaseElementCache(BaseElement):
 
     otp_support = cpath_support
     otp_support_tags = tags(cpath_support)
+    otp_support_prop = property(lambda x: BaseElementCache.otp_support_tags)
     ptag = inkex.PathElement.ctag
 
     def object_to_path(self):
@@ -722,8 +724,6 @@ class BaseElementCache(BaseElement):
     def get_parsed_text(self):
         """Add parsed_text property to text, which is used to get the
         properties of text"""
-        from inkex.text.parser import ParsedText  # import only if needed
-
         if not (hasattr(self, "_parsed_text")):
             self._parsed_text = ParsedText(self, self.croot.char_table)
         return self._parsed_text
@@ -846,7 +846,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
             self[elid] = elem
 
         @property
-        def ds(self):
+        def descendants(self):
             """all svg descendants, not necessarily in order"""
             return list(self.values())
 
@@ -899,7 +899,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
             # Now, we make a dictionary of rules / xpaths we can do easily
             knownrules = dict()
             if hasall or len(simpleclasses) > 0:
-                dds = svg.iddict.ds
+                dds = svg.iddict.descendants
                 if hasall:
                     knownrules[("*",)] = dds
                 cvs = [EBget(d, "class") for d in dds]
@@ -1227,14 +1227,12 @@ class SvgDocumentElementCache(SvgDocumentElement):
         """
         ttags = tags((inkex.TextElement, inkex.FlowRoot))
         if els is None:
-            tels = [d for d in self.iddict.ds if d.tag in ttags]
+            tels = [d for d in self.iddict.descendants if d.tag in ttags]
         else:
             tels = [d for d in els if d.tag in ttags]
         if not (hasattr(self, "_char_table")) or any(
             t not in getattr(self, "_char_table").els for t in tels
         ):
-            from inkex.text.parser import CharacterTable  # import if needed
-
             self._char_table = CharacterTable(tels)
 
     def get_char_table(self):

@@ -47,7 +47,6 @@ which draws rectangles that tell you where the extents / bboxes are. For example
 """
 
 import os
-import sys
 import itertools
 import math
 from copy import copy
@@ -75,7 +74,6 @@ from inkex.text.utils import (
     ipx,
     bbox,
 )
-from inkex.text.cache import BaseElementCache
 from inkex.text.font_properties import (
     PangoRenderer,
     HASPANGO,
@@ -1360,6 +1358,7 @@ class ParsedText:
         # Inkscape ignores 0 and invalid inline-size
 
         # Determine the flow region
+        otp_support = self.textel.otp_support_prop
         if isshapeins:
             frgn = sty.get_link("shape-inside", self.textel.croot)
             dfr = frgn.duplicate()
@@ -1377,11 +1376,7 @@ class ParsedText:
         elif isflowroot:
             for ddv in self.textel.descendants2():
                 if isinstance(ddv, FlowRegion):
-                    pths = [
-                        p
-                        for p in ddv.descendants2()
-                        if p.tag in BaseElementCache.otp_support_tags
-                    ]
+                    pths = [p for p in ddv.descendants2() if p.tag in otp_support]
                     if len(pths) > 0:
                         region = pths[0]
         elif isinlinesz:
@@ -1402,11 +1397,7 @@ class ParsedText:
         padding = ipx(self.textel.cspecified_style.get("shape-padding", "0"))
         isrect = isrectangle(region, includingtransform=False)
 
-        usesvt = (
-            not isrect
-            and region.tag in BaseElementCache.otp_support_tags
-            and padding == 0
-        )
+        usesvt = not isrect and region.tag in otp_support and padding == 0
         if not isrect and not usesvt:
             # Flow region we cannot yet handle, parse as normal text
             # This works as long as the SVG1.1 fallback is being used
@@ -1414,14 +1405,7 @@ class ParsedText:
             return self.parse_lines()
         if usesvt:
             region.object_to_path()
-            # pylint:disable=import-outside-toplevel
-            try:
-                import svgpathtools as spt
-            except ModuleNotFoundError:
-                current_script_directory = os.path.dirname(os.path.abspath(__file__))
-                sys.path += [os.path.join(current_script_directory, "packages")]
-                import svgpathtools as spt
-            # pylint:enable=import-outside-toplevel
+            import svgpathtools as spt  # pylint: disable=import-error, import-outside-toplevel
 
             sptregion = spt.parse_path(region.get("d"))
             if not sptregion.isclosed():
@@ -3578,7 +3562,7 @@ class CharacterTable:
         """
         if forcecommand:
             # Examine the whole document if using command
-            ctels = [ddv for ddv in self.root.iddict.ds if ddv.tag in TEFRtags]
+            ctels = [ddv for ddv in self.root.iddict.descendants if ddv.tag in TEFRtags]
             self.tstyset, self.pchrset, self.fstyset, self.cstys = (
                 CharacterTable.collect_characters(ctels)
             )

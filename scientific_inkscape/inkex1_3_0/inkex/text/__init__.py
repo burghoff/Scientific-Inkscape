@@ -56,7 +56,7 @@ if not hasattr(inkex, "text"):
     sys.path = oldpath
 
 # Gives inkex elements some additional cached attributes, for further speedups
-import inkex.text.cache
+import inkex.text.cache  # pylint: disable=wrong-import-position
 
 
 def add_cache(base, derived):

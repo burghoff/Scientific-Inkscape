@@ -646,12 +646,7 @@ class FontToolsFontInstance:
         """Find a FontTools font from a FontConfig font."""
         fname = found.get(fc.PROP.FILE, 0)[0]
 
-        try:
-            from fontTools.ttLib import TTFont, TTLibFileIsCollectionError
-        except ModuleNotFoundError:
-            current_script_directory = os.path.dirname(os.path.abspath(__file__))
-            sys.path += [os.path.join(current_script_directory, "packages")]
-            from fontTools.ttLib import TTFont, TTLibFileIsCollectionError
+        from fontTools.ttLib import TTFont, TTLibFileIsCollectionError  # pylint: disable=no-name-in-module
         import logging
 
         logging.getLogger("fontTools").setLevel(logging.ERROR)
