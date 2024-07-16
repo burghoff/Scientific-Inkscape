@@ -98,6 +98,57 @@ with patch("ctypes.cdll.LoadLibrary", side_effect=custom_load_library):
     FC = fc.FC
 
 
+def isnumeric(strv):
+    """
+    Check if a string can be converted to a number
+    """
+    try:
+        float(strv)
+        return True
+    except ValueError:
+        return False
+
+
+def interpolate_dict(dictv, x, defaultval):
+    """
+    Interpolate an input over the numerical values of a dict
+    Supports both string and int inputs and outputs
+    If the dict's values are enums, pick the nearest value
+    """
+    # Check for exact match first
+    if x in dictv:
+        return dictv[x]
+
+    # Interpolate numerical values
+    if isnumeric(x):
+        input_value = int(x)
+        numerical_keys = sorted([int(k) for k in dictv.keys() if isnumeric(k)])
+        for k, val in dictv.items():
+            if isnumeric(k):
+                ktype = type(k)  # int or str
+                vtype = type(val)  # int or str
+
+                if vtype not in [int, str]:  # enums
+                    # Pick the nearest entry
+                    intd = {int(k): v for k, v in dictv.items() if isnumeric(k)}
+                    return intd[min(intd.keys(), key=lambda x: abs(x - int(x)))]
+                break
+        if input_value <= numerical_keys[0]:
+            return dictv[ktype(numerical_keys[0])]
+        if input_value >= numerical_keys[-1]:
+            return dictv[ktype(numerical_keys[-1])]
+        for i in range(len(numerical_keys) - 1):
+            if numerical_keys[i] <= input_value <= numerical_keys[i + 1]:
+                lower_key = numerical_keys[i]
+                upper_key = numerical_keys[i + 1]
+                lower_value = float(dictv[ktype(lower_key)])
+                upper_value = float(dictv[ktype(upper_key)])
+                ratio = (input_value - lower_key) / (upper_key - lower_key)
+                interpolated_value = lower_value + ratio * (upper_value - lower_value)
+                return vtype(round(interpolated_value))
+    return defaultval
+
+
 class FontConfig:
     """
     Class to handle FontConfig functionalities.
@@ -210,7 +261,7 @@ class FontConfig:
         )
         pat.add(
             fc.PROP.WEIGHT,
-            C.CSSWGT_FCWGT.get(sty.get("font-weight"), FC.WEIGHT_NORMAL),
+            interpolate_dict(C.CSSWGT_FCWGT, sty.get("font-weight"), FC.WEIGHT_NORMAL),
         )
         pat.add(
             fc.PROP.SLANT, C.CSSSTY_FCSLN.get(sty.get("font-style"), FC.SLANT_ROMAN)
@@ -231,7 +282,7 @@ class FontConfig:
         return Style(
             [
                 ("font-family", "'" + fcfam.strip("'") + "'"),
-                ("font-weight", nearest_val(C.FCWGT_CSSWGT, fcwgt)),
+                ("font-weight", interpolate_dict(C.FCWGT_CSSWGT, fcwgt, None)),
                 ("font-style", C.FCSLN_CSSSTY[fcsln]),
                 ("font-stretch", nearest_val(C.FCWDT_CSSSTR, fcwdt)),
             ]
@@ -436,7 +487,9 @@ class PangoRenderer:
         # The comma above is very important for font-families like Rockwell Condensed.
         # Without it, Pango will interpret it as the Condensed font-stretch of the
         # Rockwell font-family, rather than the Rockwell Condensed font-family.
-        fdesc.set_weight(C.CSSWGT_PWGT.get(sty.get("font-weight"), Pango.Weight.NORMAL))
+        fdesc.set_weight(
+            interpolate_dict(C.CSSWGT_PWGT, sty.get("font-weight"), Pango.Weight.NORMAL)
+        )
         fdesc.set_variant(
             C.CSSVAR_PVAR.get(sty.get("font-variant"), Pango.Variant.NORMAL)
         )
@@ -462,20 +515,16 @@ class PangoRenderer:
         Convert Pango FontDescription to CSS Style.
         """
         fdesc = pdescription
-
-        def isnumeric(strv):
-            try:
-                float(strv)
-                return True
-            except ValueError:
-                return False
-
         cstr = [k for k, v in C.CSSSTR_PSTR.items() if v == fdesc.get_stretch()]
-        cwgt = [
-            k
-            for k, v in C.CSSWGT_PWGT.items()
-            if v == fdesc.get_weight() and isnumeric(k)
-        ]
+        fwgt = fdesc.get_weight()
+        if fwgt not in C.CSSWGT_PWGT.values():
+            cwgt = [str(int(fwgt))]
+        else:
+            cwgt = [
+                k
+                for k, v in C.CSSWGT_PWGT.items()
+                if v == fdesc.get_weight() and isnumeric(k)
+            ]
         csty = [k for k, v in C.CSSSTY_PSTY.items() if v == fdesc.get_style()]
 
         sty = (("font-family", fdesc.get_family()),)
