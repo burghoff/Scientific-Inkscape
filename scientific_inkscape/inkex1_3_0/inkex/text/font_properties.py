@@ -128,7 +128,7 @@ def interpolate_dict(dictv, x, defaultval):
                 ktype = type(k)  # int or str
                 vtype = type(val)  # int or str
 
-                if vtype not in [int, str]:  # enums
+                if vtype not in [int, float, str]:  # enums
                     # Pick the nearest entry
                     intd = {int(k): v for k, v in dictv.items() if isnumeric(k)}
                     return intd[min(intd.keys(), key=lambda x: abs(x - int(x)))]
@@ -145,7 +145,9 @@ def interpolate_dict(dictv, x, defaultval):
                 upper_value = float(dictv[ktype(upper_key)])
                 ratio = (input_value - lower_key) / (upper_key - lower_key)
                 interpolated_value = lower_value + ratio * (upper_value - lower_value)
-                return vtype(round(interpolated_value))
+                if vtype in [int, float]:
+                    return interpolated_value
+                return f"{interpolated_value:g}"
     return defaultval
 
 
@@ -702,7 +704,6 @@ class FontToolsFontInstance:
         import logging
 
         logging.getLogger("fontTools").setLevel(logging.ERROR)
-
         try:
             font = TTFont(fname)
 
@@ -755,7 +756,9 @@ class FontToolsFontInstance:
                     fcfam in n.toUnicode() for n in tfont["name"].names if n.nameID == 1
                 )
                 widthmatch = C.OS2WDT_FCWDT[font_width] == fcwdt
-                weightmatch = nearest_val(C.OS2WGT_FCWGT, font_weight) == fcwgt
+                weightmatch = (
+                    interpolate_dict(C.OS2WGT_FCWGT, font_weight, None) == fcwgt
+                )
                 slantmatch = (
                     font_italic and fcsln in [FC.SLANT_ITALIC, FC.SLANT_OBLIQUE]
                 ) or (not font_italic and fcsln == FC.SLANT_ROMAN)
