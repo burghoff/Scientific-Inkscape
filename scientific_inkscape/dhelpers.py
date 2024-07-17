@@ -128,13 +128,21 @@ with open(installed_inkex, "r") as file:
     content = file.read()
 match = re.search(r'__version__\s*=\s*"(.*?)"', content)
 vstr = match.group(1) if match else "1.0.0"
+if vstr=='1.2.0': # includes 1.2.0, 1.2.1, 1.2.2
+    extpy = os.path.join(os.path.dirname(installed_inkex),'extensions.py')
+    with open(extpy, "r") as file:
+        content = file.read()
+    match = re.search(r'Pattern', content) # appeared in 1.2.2
+    if match:
+        vstr='1.2.2'
+
 inkex.installed_ivp = inkex.vparse(vstr)  # type: ignore
 inkex.installed_haspages = inkex.installed_ivp[0] >= 1 and inkex.installed_ivp[1] >= 2
 
-# On v1.1 gi produces an error for some reason that is actually fine
+# On v1.1-1.2.1 gi produces an error for some reason that is actually fine
 import platform
 
-if platform.system().lower() == "windows" and inkex.installed_ivp[0:2] == [1, 1]:
+if platform.system().lower() == "windows" and inkex.installed_ivp[0:2] == [1, 1] or (inkex.installed_ivp[0:2] == [1, 2] and inkex.installed_ivp[2]<2):   
     if inkex.text.font_properties.HASPANGOFT2:
         from gi.repository import GLib
 

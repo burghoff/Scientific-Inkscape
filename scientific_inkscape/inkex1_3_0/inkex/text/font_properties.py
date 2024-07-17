@@ -447,11 +447,14 @@ class PangoRenderer:
         self.pangosize = 1024 * 4
         # size of text to render. 1024 is good
 
-        if HASPANGOFT2:
-            self.ctx = Pango.Context.new()
-            self.ctx.set_font_map(PangoFT2.FontMap.new())
-        else:
-            self.ctx = Gdk.pango_context_get()
+        with warnings.catch_warnings():
+            # Ignore ImportWarning
+            warnings.filterwarnings("ignore", category=ImportWarning)
+            if HASPANGOFT2:
+                self.ctx = Pango.Context.new()
+                self.ctx.set_font_map(PangoFT2.FontMap.new())
+            else:
+                self.ctx = Gdk.pango_context_get()
         self.pangolayout = Pango.Layout(self.ctx)
         self.pufd = Pango.units_from_double
         self.putd = Pango.units_to_double
