@@ -151,6 +151,18 @@ def interpolate_dict(dictv, x, defaultval):
     return defaultval
 
 
+# Windows doesn't have the XDG_DATA_HOME directory set, which is
+# needed for /etc/fonts.conf to find the user fonts directory:
+#   <dir prefix="xdg">fonts</dir>
+# Needed for fontconfig
+# Set it based on the location of preferences.xml
+if sys.platform == "win32":
+    if os.environ.get("XDG_DATA_HOME") is None:
+        os.environ["XDG_DATA_HOME"] = os.path.dirname(
+            inkex.inkscape_system_info.preferences  # type: ignore
+        )
+
+
 class FontConfig:
     """
     Class to handle FontConfig functionalities.
@@ -364,9 +376,7 @@ with warnings.catch_warnings():
     pangoenv = os.environ.get("USEPANGO", "")
     if pangoenv != "False":
         try:
-            import platform
-
-            if platform.system().lower() == "windows":
+            if sys.platform == "win32":
                 # Windows may not have all of the typelibs needed for PangoFT2
                 # Add the typelibs subdirectory as a fallback option
                 bloc = inkex.inkscape_system_info.binary_location  # type: ignore
@@ -398,14 +408,6 @@ with warnings.catch_warnings():
                                 os.environ["GI_TYPELIB_PATH"] = (
                                     cval + os.pathsep + newpath
                                 )
-                # Windows doesn't have the XDG_DATA_HOME directory set, which is
-                # needed for /etc/fonts.conf to find the user fonts directory:
-                #   <dir prefix="xdg">fonts</dir>
-                # Set it based on the location of preferences.xml
-                if os.environ.get("XDG_DATA_HOME") is None:
-                    os.environ["XDG_DATA_HOME"] = os.path.dirname(
-                        inkex.inkscape_system_info.preferences  # type: ignore
-                    )
 
             import gi
 
