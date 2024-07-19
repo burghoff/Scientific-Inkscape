@@ -1066,13 +1066,17 @@ class ParsedText:
         that each character is rendered as
         """
         # Collect all the fonts and how they are rendered
-        ftbl = self.ctable.font_table
+        cstys = self.ctable.cstys
         newfams = []
         for line in self.lns:
             for c in line.chrs:
                 newfam = (c.fsty, c, c.loc.sel)
-                if c.c in ftbl[c.fsty] and newfam[0] != ftbl[c.fsty][c.c]:
-                    newfam = (ftbl[c.fsty][c.c], c, c.loc.sel)
+                if (
+                    c.c in cstys[c.fsty]
+                    and not c.fsty == cstys[c.fsty][c.c]
+                    and cstys[c.fsty][c.c] is not None
+                ):
+                    newfam = (cstys[c.fsty][c.c], c, c.loc.sel)
 
                 newfams.append(newfam)
 
@@ -1080,26 +1084,18 @@ class ParsedText:
         # want to modify and whose values are (the new family, a list of characters)
         # In descending order of the number of characters
         torepl = {}
-        for tup in newfams:
-            key = tup[2]
-            value = (tup[0], tup[1])
-            if key in torepl:
-                torepl[key].append(value)
-            else:
-                torepl[key] = [value]
-        for key, value in torepl.items():
+        for csty, c, sel in newfams:
+            torepl.setdefault(sel, []).append((csty, c))
+        for sel, value in torepl.items():
             count_dict = {}
-            for tup in value:
-                if tup[0] in count_dict:
-                    count_dict[tup[0]].append(tup[1])
-                else:
-                    count_dict[tup[0]] = [tup[1]]
+            for csty, c in value:
+                count_dict.setdefault(csty, []).append(c)
             new_value = []
             for k, val in count_dict.items():
                 new_tup = (k, val)
                 new_value.append(new_tup)
             new_value.sort(key=lambda x: len(x[1]), reverse=True)
-            torepl[key] = new_value
+            torepl[sel] = new_value
 
         # Replace fonts
         for elem, rlst in torepl.items():
@@ -3806,38 +3802,6 @@ class CharacterTable:
             for c in self.tstyset[None]:
                 ctbl[None][c] = CProp(c, 0, 0, 0, dict(), [0, 0, 0, 0])
         return ctbl
-
-    @property
-    def font_table(self):
-        """
-        Return a dict whose keys are the font styles (i.e., style reduced to the four
-        attributes that define a font), and whose values are dicts that can be used
-        to look up the true style for each character as rendered by Inkscape.
-        """
-        if self._ftable is None:
-            ctable2 = dict()
-            self._ftable = dict()
-            for fsty, chrs in self.fstyset.items():
-                tsty = true_style(fsty)
-                tfbc = fcfg.get_true_font_by_char(fsty, chrs)
-                self._ftable[fsty] = {
-                    c: csty for c, csty in tfbc.items() if csty is not None
-                }
-
-                for k, csty in self._ftable[fsty].items():
-                    if csty not in ctable2:
-                        ctable2[csty] = dict()
-                    if k in self.ctable[tsty]:
-                        ctable2[csty][k] = self.ctable[tsty][k]
-
-            # Add the character-specific normalized styles to ctable
-            for csty, ct2s in ctable2.items():
-                if csty not in self.ctable:
-                    self.ctable[csty] = {}
-                for k, val in ct2s.items():
-                    self.ctable[csty][k] = val
-
-        return self._ftable
 
     def __str__(self):
         ret = ""
