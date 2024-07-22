@@ -171,6 +171,7 @@ class FontConfig:
     def __init__(self):
         self.truefonts = dict()  # css
         self.truefontsfc = dict()  # fontconfig
+        self.truefontsfn = dict()  # fullnames
         self.truefontsft = dict()  # fonttools
         self.fontcharsets = dict()
         self.disable_lcctype()
@@ -202,6 +203,16 @@ class FontConfig:
             self.truefontsfc[fontsty] = found
             self.fontcharsets[truefont] = found.get(fc.PROP.CHARSET, 0)[0]
         return self.truefonts[fontsty]
+
+    def get_true_font_fullname(self, fontsty):
+        """Use fontconfig to get the Face name for a font style"""
+        if fontsty not in self.truefontsfn:
+            if fontsty not in self.truefontsfc:
+                self.get_true_font(fontsty)
+            self.truefontsfn[fontsty] = self.truefontsfc[fontsty].get(
+                fc.PROP.FULLNAME, 0
+            )[0]
+        return self.truefontsfn[fontsty]
 
     def get_true_font_by_char(self, fontsty, chars):
         """

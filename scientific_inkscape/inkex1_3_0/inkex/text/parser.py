@@ -1063,7 +1063,16 @@ class ParsedText:
     def fuse_fonts(self):
         """
         For exporting, one usually wants to replace fonts with the actual font
-        that each character is rendered as
+        that each character is rendered as.
+
+        Other SVG renderers may only be able to use the font face name (i.e.,
+        the fullname in fontconfig, which is the same name reported as Face in
+        Text and Font), so we make this the family name and add the true
+        family as a backup (with appropriate weight, width, and slant).
+
+        For example, the ultra-bold variation of Arial has a face name of
+        Arial Black, while in Inkscape its CSS name is Arial Heavy. Therefore,
+        we would change its font-family to 'Arial Black','Arial'.
         """
         # Collect all the fonts and how they are rendered
         cstys = self.ctable.cstys
@@ -1071,12 +1080,19 @@ class ParsedText:
         for line in self.lns:
             for c in line.chrs:
                 newfam = (c.fsty, c, c.loc.sel)
-                if (
-                    c.c in cstys[c.fsty]
-                    and not c.fsty == cstys[c.fsty][c.c]
-                    and cstys[c.fsty][c.c] is not None
-                ):
-                    newfam = (cstys[c.fsty][c.c], c, c.loc.sel)
+                if c.c in cstys[c.fsty] and cstys[c.fsty][c.c] is not None:
+                    csty = cstys[c.fsty][c.c]
+                    fullname = fcfg.get_true_font_fullname(csty)
+                    fontfam = csty["font-family"].strip("'")
+                    fusefam = "'" + fullname + "','" + fontfam + "'"
+                    fusesty = Style(
+                        {
+                            k: v if k != "font-family" else fusefam
+                            for k, v in csty.items()
+                        }
+                    )
+                    if not c.fsty == fusesty:
+                        newfam = (fusesty, c, c.loc.sel)
 
                 newfams.append(newfam)
 
