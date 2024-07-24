@@ -17,15 +17,37 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+"""
+AutoExporter for Inkscape
+
+This module provides an extension for Inkscape to automate the export of SVG files
+into multiple formats. It supports watching directories, exporting immediately,
+and offers various configuration options for exporting to PDF, PNG, EMF, EPS,
+and plain SVG. The module handles preprocessing steps to ensure compatibility
+and quality of exported files, such as embedding linked images, fixing markers,
+scaling text, and more.
+
+Main Features:
+- Watches specified directories for changes and exports files automatically.
+- Supports exporting to multiple formats with various options.
+- Handles preprocessing of SVG files to fix common issues and improve compatibility.
+- Provides postprocessing to clean up and adjust SVGs for better rendering in
+  different environments.
+- Includes utility functions for handling subprocesses, file manipulations,
+  and SVG operations.
+"""
+
 import os
 import sys
 import time
 import re
 import copy
-import lxml
-import dhelpers as dh
 import subprocess
+import warnings
+import pickle
+import lxml
 
+import dhelpers as dh
 import inkex
 from inkex import TextElement, Transform, Vector2d
 from inkex.text.utils import default_style_atts, unique, get_bounding_boxes
@@ -45,7 +67,10 @@ dispprofile = False
 
 
 class AutoExporter(inkex.EffectExtension):
+    """Automates exporting of SVG files in multiple formats."""
+
     def add_arguments(self, pars):  # pylint: disable=no-self-use
+        """Add arguments to the parser."""
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
         pars.add_argument("--watchdir", help="Watch directory")
         pars.add_argument("--writedir", help="Write directory")
@@ -112,15 +137,16 @@ class AutoExporter(inkex.EffectExtension):
         )
 
     def effect(self):
+        """Start the Autoexporter or initiate export now."""
         if self.options.tab == "rasterizer":
-            sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
-            for el in sel:
+            sel = [self.svg.selection[i] for i in range(len(self.svg.selection))]
+            for elem in sel:
                 if self.options.rasterizermode == 1:
-                    el.set("autoexporter_rasterize", "png")
+                    elem.set("autoexporter_rasterize", "png")
                 elif self.options.rasterizermode == 2:
-                    el.set("autoexporter_rasterize", "jpg")
+                    elem.set("autoexporter_rasterize", "jpg")
                 else:
-                    el.set("autoexporter_rasterize", None)
+                    elem.set("autoexporter_rasterize", None)
             return
 
         # self.options.testmode = True;
@@ -149,9 +175,9 @@ class AutoExporter(inkex.EffectExtension):
             self.options.usepsvg,
         ]
         formats = [
-            ["pdf", "png", "emf", "eps", "psvg"][ii]
-            for ii in range(len(formats))
-            if formats[ii]
+            ["pdf", "png", "emf", "eps", "psvg"][i]
+            for i in range(len(formats))
+            if formats[i]
         ]
 
         # Make an options copy we can pass to the external program
@@ -186,15 +212,11 @@ class AutoExporter(inkex.EffectExtension):
 
             # Pass settings using a config file. Include the current path so
             # Inkex can be called if needed.
-            import pickle
-
             optcopy.inkscape_bfn = bfn
             optcopy.formats = formats
             optcopy.syspath = sys.path
 
             try:
-                import warnings
-
                 with warnings.catch_warnings():
                     # Ignore ImportWarning for Gtk/Pango
                     warnings.simplefilter("ignore")
@@ -219,8 +241,6 @@ class AutoExporter(inkex.EffectExtension):
             f = open(aes, "wb")
             pickle.dump(optcopy, f)
             f.close()
-            import warnings
-
             warnings.simplefilter("ignore", ResourceWarning)
             # prevent warning that process is open
 
@@ -263,8 +283,6 @@ class AutoExporter(inkex.EffectExtension):
             else:
                 # Write to the output stream
                 svg2 = get_svg(nf)
-                import lxml
-
                 newdoc = lxml.etree.tostring(svg2, pretty_print=True)
                 try:
                     stream.write(newdoc)
@@ -277,6 +295,7 @@ class AutoExporter(inkex.EffectExtension):
 
     @staticmethod
     def export_all(bfn, fin, outtemplate, exp_fmts, opts):
+        """Export all files in specified formats with given options."""
         # Make a temp directory
         tempdir = dh.si_tmp(dirbase="ae")
         if opts.debug:
@@ -309,7 +328,7 @@ class AutoExporter(inkex.EffectExtension):
 
         # Do preprocessing
         if any(fmt in exp_fmts for fmt in ["pdf", "emf", "eps", "psvg"]):
-            ppoutput = AutoExporter.preprocessing(bfn, fin, outtemplate, opts, tempbase)
+            ppoutput = AutoExporter.preprocessing(bfn, fin, opts, tempbase)
         else:
             ppoutput = None
 
@@ -322,23 +341,20 @@ class AutoExporter(inkex.EffectExtension):
                 )
             if finished:
                 newfiles.append(myo)
-            # tempoutputs += tf
 
         # Remove temporary outputs and directory
         failed_to_delete = None
         if not (opts.debug):
             Delete_Dir(tempdir)
         else:
-            import warnings
-
             warnings.simplefilter("ignore", ResourceWarning)
             # prevent warning that process is open
             subprocess.Popen(f'explorer "{os.path.realpath(tempdir)}"')
         return failed_to_delete
 
-    # Modifications that are done prior to conversion to any vector output
     @staticmethod
-    def preprocessing(bfn, fin, fout, opts, tempbase):
+    def preprocessing(bfn, fin, opts, tempbase):
+        """Modifications that are done prior to conversion to any vector output"""
         if opts.prints:
             fname = os.path.split(opts.input_file)[1]
             try:
@@ -359,29 +375,29 @@ class AutoExporter(inkex.EffectExtension):
         # Prune hidden items and remove language switching
         stag = inkex.addNS("switch", "svg")
         todelete, todelang = [], []
-        for el in dh.visible_descendants(svg):
-            if el.cspecified_style.get("display") == "none":
-                todelete.append(el)
-            if el.get("systemLanguage") is not None:
+        for elem in dh.visible_descendants(svg):
+            if elem.cspecified_style.get("display") == "none":
+                todelete.append(elem)
+            if elem.get("systemLanguage") is not None:
                 lang = inkex.inkscape_system_info.language
-                if el.get("systemLanguage") == lang:
-                    todelang.append(el)
+                if elem.get("systemLanguage") == lang:
+                    todelang.append(elem)
                     # Remove other languages from switches
-                    if el.getparent().tag == stag:
+                    if elem.getparent().tag == stag:
                         todelete.extend(
                             [
                                 k
-                                for k in el.getparent()
+                                for k in elem.getparent()
                                 if k.get("systemLanguage") != lang
                             ]
                         )
                 else:
                     # Remove non-matching languages
-                    todelete.append(el)
-        for el in unique(todelete):
-            el.delete()
-        for el in todelang:
-            el.set("systemLanguage", None)
+                    todelete.append(elem)
+        for elem in unique(todelete):
+            elem.delete()
+        for elem in todelang:
+            elem.set("systemLanguage", None)
 
         # Embed linked images into the SVG. This should be done prior to clone unlinking
         # since some images may be cloned
@@ -390,28 +406,28 @@ class AutoExporter(inkex.EffectExtension):
         else:
             lls = ih.get_linked_locations_file(cfile, svg)
         for k in lls:
-            el = svg.getElementById(k)
-            ih.embed_external_image(el, lls[k])
+            elem = svg.getElementById(k)
+            ih.embed_external_image(elem, lls[k])
 
         vds = dh.visible_descendants(svg)
         raster_ids, image_ids, jpgs = [], [], []
-        for el in vds:
+        for elem in vds:
             # Unlink any clones for the PDF image and marker fixes
-            if isinstance(el, (inkex.Use)) and not (isinstance(el, (inkex.Symbol))):
-                newel = dh.unlink2(el)
-                myi = vds.index(el)
+            if isinstance(elem, (inkex.Use)) and not (isinstance(elem, (inkex.Symbol))):
+                newel = dh.unlink2(elem)
+                myi = vds.index(elem)
                 vds[myi] = newel
                 for dv in newel.descendants2()[1:]:
                     vds.append(dv)
 
             # Remove trivial groups inside masks/transparent objects or clipped groups
-            if isinstance(el, (inkex.Group)):
-                ancs = el.ancestors2(includeme=True)
+            if isinstance(elem, (inkex.Group)):
+                ancs = elem.ancestors2(includeme=True)
                 masked = any(
                     anc.get_link("mask", svg) is not None
                     or (
-                        el.ccascaded_style.get("opacity") is not None
-                        and float(el.ccascaded_style.get("opacity")) < 1
+                        elem.ccascaded_style.get("opacity") is not None
+                        and float(elem.ccascaded_style.get("opacity")) < 1
                     )
                     for anc in ancs
                 )
@@ -419,14 +435,14 @@ class AutoExporter(inkex.EffectExtension):
                     anc.get_link("clip-path", svg) is not None for anc in ancs
                 )
                 if (
-                    len(list(el)) == 1
+                    len(list(elem)) == 1
                     and (masked or clipped)
-                    and el.get("autoexporter_rasterize") not in ["png", "jpg", "True"]
+                    and elem.get("autoexporter_rasterize") not in ["png", "jpg", "True"]
                 ):
-                    dh.ungroup(el)
+                    dh.ungroup(elem)
 
             # Remove groups inside clips
-            cp = el.get_link("clip-path", svg)
+            cp = elem.get_link("clip-path", svg)
             if cp is not None:
                 while any(isinstance(v, inkex.Group) for v in list(cp)):
                     for g in list(cp):
@@ -434,24 +450,24 @@ class AutoExporter(inkex.EffectExtension):
                             dh.ungroup(g)
 
         stps = []
-        for el in vds:
-            elid = el.get_id()
+        for elem in vds:
+            elid = elem.get_id()
 
             # Fix marker export bug for PDFs
-            ms = AutoExporter.Marker_Fix(el)
+            ms = AutoExporter.Marker_Fix(elem)
             # Convert markers to path for Office
             if len(ms) > 0 and opts.usepsvg:
                 stps.append(elid)
 
             # Fix opacity bug for Office PDF saving
             if len(ms) == 0:  # works poorly with markers
-                AutoExporter.Opacity_Fix(el)
+                AutoExporter.Opacity_Fix(elem)
 
             # Disable connectors
-            el.set("inkscape:connector-type", None)
+            elem.set("inkscape:connector-type", None)
 
             # Find out which objects need to be rasterized
-            sty = el.cstyle
+            sty = elem.cstyle
             # only want the object with the filter
             if sty.get_link("filter", svg) is not None:
                 raster_ids.append(elid)  # filtered objects (always rasterized at PDF)
@@ -459,18 +475,18 @@ class AutoExporter(inkex.EffectExtension):
                 sty.get("stroke") is not None and "url" in sty.get("stroke")
             ):
                 raster_ids.append(elid)  # gradient objects
-            if el.get_link("mask") is not None:
+            if elem.get_link("mask") is not None:
                 raster_ids.append(elid)  # masked objects (always rasterized at PDF)
-            if el.get("autoexporter_rasterize") in ["png", "jpg", "True"]:
+            if elem.get("autoexporter_rasterize") in ["png", "jpg", "True"]:
                 raster_ids.append(elid)
                 # rasterizer-marked
-                if el.get("autoexporter_rasterize") == "jpg":
+                if elem.get("autoexporter_rasterize") == "jpg":
                     jpgs.append(elid)
-            if isinstance(el, (inkex.Image)):
+            if isinstance(elem, (inkex.Image)):
                 image_ids.append(elid)
                 # Inkscape inappropriately clips non-'optimizeQuality' images
                 # when generating PDFs and calculating bounding boxes
-                el.cstyle["image-rendering"] = "optimizeQuality"
+                elem.cstyle["image-rendering"] = "optimizeQuality"
 
             # Remove style attributes with invalid URLs
             # (Office doesn't display the element while Inkscape ignores it)
@@ -480,11 +496,11 @@ class AutoExporter(inkex.EffectExtension):
                     and sty.get(satt).startswith("url")
                     and sty.get_link(satt, svg) is None
                 ):
-                    el.cstyle[satt] = None
+                    elem.cstyle[satt] = None
 
             # Prune single-point paths, which Inkscape doesn't show
-            if el.tag in otp_support_tags:
-                pth = el.cpath
+            if elem.tag in otp_support_tags:
+                pth = elem.cpath
                 firstpt = None
                 trivial = True
                 for pt in pth.end_points:
@@ -494,12 +510,12 @@ class AutoExporter(inkex.EffectExtension):
                         trivial = False
                         break
                 if trivial:
-                    el.delete(deleteup=True)
+                    elem.delete(deleteup=True)
 
         # Fix Avenir/Whitney
         tetag = inkex.TextElement.ctag
         frtag = inkex.FlowRoot.ctag
-        tels = [el for el in vds if el.tag in {tetag, frtag}]
+        tels = [elem for elem in vds if elem.tag in {tetag, frtag}]
 
         dh.character_fixer(tels)
 
@@ -514,40 +530,40 @@ class AutoExporter(inkex.EffectExtension):
             # store for later
 
         nels = []
-        for el in reversed(tels):
-            if el.parsed_text.isflow:
-                nels += el.parsed_text.flow_to_text()
-                tels.remove(el)
+        for elem in reversed(tels):
+            if elem.parsed_text.isflow:
+                nels += elem.parsed_text.flow_to_text()
+                tels.remove(elem)
         tels += nels
 
-        for el in tels:
-            el.parsed_text.strip_text_baseline_shift()
-            el.parsed_text.strip_sodipodi_role_line()
-            el.parsed_text.fuse_fonts()
-            AutoExporter.SubSuper_Fix(el)
+        for elem in tels:
+            elem.parsed_text.strip_text_baseline_shift()
+            elem.parsed_text.strip_sodipodi_role_line()
+            elem.parsed_text.fuse_fonts()
+            AutoExporter.SubSuper_Fix(elem)
 
             # Preserve duplicate of text to be converted to paths
-            if opts.texttopath and el.get("display") != "none":
-                d = el.duplicate()
-                excludetxtids.append(d.get_id())
-                g = dh.group([d])
+            if opts.texttopath and elem.get("display") != "none":
+                dup = elem.duplicate()
+                excludetxtids.append(dup.get_id())
+                g = dh.group([dup])
                 g.set("display", "none")
 
                 # te = svg.new_element(inkex.TextElement, svg)
                 te = inkex.TextElement()
                 g.append(te)  # Remember the original ID
-                te.text = "{0}: {1}".format(dup_key, el.get_id())
+                te.text = "{0}: {1}".format(dup_key, elem.get_id())
                 te.set("display", "none")
                 excludetxtids.append(te.get_id())
-                opts.duplicatelabels[te.get_id()] = el.get_id()
+                opts.duplicatelabels[te.get_id()] = elem.get_id()
 
                 # Make sure nested tspans have fill specified (STP bug)
-                for d in el.descendants2()[1:]:
+                for dsd in elem.descendants2()[1:]:
                     if (
-                        "fill" in d.cspecified_style
-                        and d.cspecified_style["fill"] != "#000000"
+                        "fill" in dsd.cspecified_style
+                        and dsd.cspecified_style["fill"] != "#000000"
                     ):
-                        d.cstyle["fill"] = d.cspecified_style["fill"]
+                        dsd.cstyle["fill"] = dsd.cspecified_style["fill"]
 
         tmp = tempbase + "_mod.svg"
         dh.overwrite_svg(svg, tmp)
@@ -565,16 +581,16 @@ class AutoExporter(inkex.EffectExtension):
             updatefile = False
             tels = []
             if opts.texttopath:
-                for el in vd:
-                    if el.tag == tetag and el.get_id() not in excludetxtids:
-                        tels.append(el.get_id())
-                        for d in el.descendants2():
+                for elem in vd:
+                    if elem.tag == tetag and elem.get_id() not in excludetxtids:
+                        tels.append(elem.get_id())
+                        for dsd in elem.descendants2():
                             # Fuse fill and stroke to account for STP bugs
-                            if "fill" in d.cspecified_style:
-                                d.cstyle["fill"] = d.cspecified_style["fill"]
+                            if "fill" in dsd.cspecified_style:
+                                dsd.cstyle["fill"] = dsd.cspecified_style["fill"]
                                 updatefile = True
-                            if "stroke" in d.cspecified_style:
-                                d.cstyle["stroke"] = d.cspecified_style["stroke"]
+                            if "stroke" in dsd.cspecified_style:
+                                dsd.cstyle["stroke"] = dsd.cspecified_style["stroke"]
                                 updatefile = True
 
             pels, dgroups = [], []
@@ -618,8 +634,8 @@ class AutoExporter(inkex.EffectExtension):
             if len(els) > 0:
                 imgtype = "png"
                 acts, acts2, imgs_trnp, imgs_opqe = [], [], [], []
-                for el in els:
-                    elid = el.get_id()
+                for elem in els:
+                    elid = elem.get_id()
                     tmpimg = temphead + "_im_" + elid + "." + imgtype
                     imgs_trnp.append(tmpimg)
                     tmpimg2 = temphead + "_imbg_" + elid + "." + imgtype
@@ -632,14 +648,14 @@ class AutoExporter(inkex.EffectExtension):
                         "export-filename:{2}; export-background-opacity:0.0; "
                         "export-do; "
                     )
-                    acts.append(fmt1.format(el.get_id(), int(mydpi), tmpimg))
+                    acts.append(fmt1.format(elem.get_id(), int(mydpi), tmpimg))
                     # export all w/background
                     fmt2 = (
                         "export-id:{0}; export-dpi:{1}; "
                         "export-filename:{2}; export-background-opacity:1.0; "
                         "export-do; "
                     )
-                    acts2.append(fmt2.format(el.get_id(), int(mydpi), tmpimg2))
+                    acts2.append(fmt2.format(elem.get_id(), int(mydpi), tmpimg2))
 
                 if ih.hasPIL:
                     acts = acts2 + acts  # export-id-onlys need to go last
@@ -674,16 +690,16 @@ class AutoExporter(inkex.EffectExtension):
                 imgs_trnp = [os.path.join(tempdir, t) for t in imgs_trnp]
                 imgs_opqe = [os.path.join(tempdir, t) for t in imgs_opqe]
 
-                for ii, el in enumerate(els):
-                    tmpimg = imgs_trnp[ii]
-                    tmpimg2 = imgs_opqe[ii]
+                for i, elem in enumerate(els):
+                    tmpimg = imgs_trnp[i]
+                    tmpimg2 = imgs_opqe[i]
 
                     if os.path.exists(tmpimg):
                         anyalpha0 = False
                         if ih.hasPIL:
                             bbox = ih.crop_images([tmpimg, tmpimg2])
                             anyalpha0 = ih.Set_Alpha0_RGB(tmpimg, tmpimg2)
-                            if el.get_id() in jpgs:
+                            if elem.get_id() in jpgs:
                                 tmpjpg = tmpimg.replace(".png", ".jpg")
                                 ih.to_jpeg(tmpimg2, tmpjpg)
                                 tmpimg = copy.copy(tmpjpg)
@@ -691,18 +707,18 @@ class AutoExporter(inkex.EffectExtension):
                             bbox = None
 
                         # Compare size of old and new images
-                        osz = ih.embedded_size(el)
+                        osz = ih.embedded_size(elem)
                         if osz is None:
                             osz = float("inf")
                         nsz = os.path.getsize(tmpimg)
                         hasmaskclip = (
-                            el.get_link("mask") is not None
-                            or el.get_link("clip-path") is not None
+                            elem.get_link("mask") is not None
+                            or elem.get_link("clip-path") is not None
                         )  # clipping and masking
                         embedimg = (nsz < osz) or (anyalpha0 or hasmaskclip)
                         if embedimg:
                             AutoExporter.Replace_with_Raster(
-                                el, tmpimg, bbs[el.get_id()], bbox
+                                elem, tmpimg, bbs[elem.get_id()], bbox
                             )
 
                 tmp = tempbase + "_eimg.svg"
@@ -714,9 +730,9 @@ class AutoExporter(inkex.EffectExtension):
             # Remove temporary groups
             if opts.stroketopath:
                 for elid in dgroups:
-                    el = svg.getElementById(elid)
-                    if el is not None:
-                        dh.ungroup(el)
+                    elem = svg.getElementById(elid)
+                    if elem is not None:
+                        dh.ungroup(elem)
 
             tmp = tempbase + "_poststp.svg"
             dh.overwrite_svg(svg, tmp)
@@ -792,6 +808,7 @@ class AutoExporter(inkex.EffectExtension):
 
     @staticmethod
     def Split_Acts(fn, inkbin, acts, reserved=None):
+        """Split actions and run."""
         if reserved is None:
             reserved = set()
         import math
@@ -801,7 +818,7 @@ class AutoExporter(inkex.EffectExtension):
             bbs = get_bounding_boxes(
                 filename=fn, inkscape_binary=inkbin, extra_args=eargs
             )
-            for ii, act in enumerate(acts):
+            for i, act in enumerate(acts):
                 if "export-filename" in act and "export-do" in act:
                     m1 = re.search(
                         r"export-filename:(.+?); export-background-opacity:",
@@ -817,7 +834,7 @@ class AutoExporter(inkex.EffectExtension):
                     if actfn is not None and not os.path.exists(actfn):
                         if "select" in act and "object-stroke-to-path" in act:
                             return AutoExporter.Split_Select(
-                                fn, inkbin, acts, ii, reserved=reserved
+                                fn, inkbin, acts, i, reserved=reserved
                             )
         except FileNotFoundError:
             if len(acts) == 1:
@@ -838,9 +855,9 @@ class AutoExporter(inkex.EffectExtension):
             )
         return bbs
 
-    # Use the Inkscape binary to export the file
     @staticmethod
     def export_file(bfn, fin, fout, fformat, ppoutput, opts, tempbase):
+        """Use the Inkscape binary to export the file"""
         myoutput = fout[0:-4] + "." + fformat
         if opts.prints:
             fname = os.path.split(opts.input_file)[1]
@@ -921,18 +938,18 @@ class AutoExporter(inkex.EffectExtension):
                     pgiis = (
                         range(len(pgs)) if not (opts.testmode) else [opts.testpage - 1]
                     )
-                    for ii in pgiis:
+                    for i in pgiis:
                         # match the viewbox to each page and delete them
                         psvg = get_svg(fileout)
                         # plain SVG has no pages
                         pgs2 = psvg.cdocsize.pgs
 
-                        AutoExporter.Change_Viewbox_To_Page(psvg, pgs[ii])
+                        AutoExporter.Change_Viewbox_To_Page(psvg, pgs[i])
                         # Only need to delete other Pages in testmode since
                         # plain SVGs have none
                         if opts.testmode:
-                            for jj in reversed(range(len(pgs2))):
-                                pgs2[jj].delete()
+                            for j in reversed(range(len(pgs2))):
+                                pgs2[j].delete()
 
                         # Delete content not on current page
                         pgbb = dh.bbox(psvg.cdocsize.effvb)
@@ -946,12 +963,12 @@ class AutoExporter(inkex.EffectExtension):
                                 else:
                                     removeme = True
                             if removeme:
-                                el = psvg.getElementById(k)
-                                if el is not None:
-                                    el.delete()
+                                elem = psvg.getElementById(k)
+                                if elem is not None:
+                                    elem.delete()
 
-                        pname = pgs[ii].get("inkscape:label")
-                        pname = str(ii + 1) if pname is None else pname
+                        pname = pgs[i].get("inkscape:label")
+                        pname = str(i + 1) if pname is None else pname
                         addendum = (
                             "_page_" + pname
                             if not (opts.testmode or len(pgs) == 1)
@@ -972,16 +989,16 @@ class AutoExporter(inkex.EffectExtension):
                     pgiis = (
                         range(len(pgs)) if not (opts.testmode) else [opts.testpage - 1]
                     )
-                    for ii in pgiis:
+                    for i in pgiis:
                         # match the viewbox to each page and delete them
                         svgpg = get_svg(filein)
                         pgs2 = svgpg.cdocsize.pgs
-                        AutoExporter.Change_Viewbox_To_Page(svgpg, pgs[ii])
-                        for jj in reversed(range(len(pgs2))):
-                            pgs2[jj].delete()
+                        AutoExporter.Change_Viewbox_To_Page(svgpg, pgs[i])
+                        for j in reversed(range(len(pgs2))):
+                            pgs2[j].delete()
 
-                        pname = pgs[ii].get("inkscape:label")
-                        pname = str(ii + 1) if pname is None else pname
+                        pname = pgs[i].get("inkscape:label")
+                        pname = str(i + 1) if pname is None else pname
                         addendum = "_page_" + pname if not (opts.testmode) else ""
                         svgpgfn = tempbase + addendum + ".svg"
                         dh.overwrite_svg(svgpg, svgpgfn)
@@ -1004,7 +1021,7 @@ class AutoExporter(inkex.EffectExtension):
 
             moutputs = opts.made_outputs
             finalnames = []
-            for ii, mout in enumerate(moutputs):
+            for i, mout in enumerate(moutputs):
                 svg = get_svg(mout)
                 AutoExporter.postprocessing(svg, opts)
                 finalname = myoutput
@@ -1053,7 +1070,7 @@ class AutoExporter(inkex.EffectExtension):
 
     @staticmethod
     def postprocessing(svg, opts):
-        # Postprocessing of SVGs, mainly for overcoming bugs in Office products
+        """Postprocessing of SVGs, mainly for overcoming bugs in Office products"""
         vds = dh.visible_descendants(svg)
 
         # Shift viewbox corner to (0,0) by translating top-level elements
@@ -1062,25 +1079,28 @@ class AutoExporter(inkex.EffectExtension):
             newtr = Transform("translate(" + str(-evb[0]) + ", " + str(-evb[1]) + ")")
             svg.set_viewbox([0, 0, evb[2], evb[3]])
             ndefs = [el for el in list(svg) if not (el.tag in dh.unungroupable)]
-            for el in ndefs:
-                el.ctransform = newtr @ el.ctransform
+            for elem in ndefs:
+                elem.ctransform = newtr @ elem.ctransform
 
-        for d in vds:
-            if isinstance(d, (TextElement)) and d.get_id() not in opts.excludetxtids:
+        for dsd in vds:
+            if (
+                isinstance(dsd, (TextElement))
+                and dsd.get_id() not in opts.excludetxtids
+            ):
                 scaleto = 100 if not opts.testmode else 10
                 # Make 10 px in test mode so that errors are not unnecessarily large
-                AutoExporter.Scale_Text(d, scaleto)
-            elif isinstance(d, (inkex.Image)):
+                AutoExporter.Scale_Text(dsd, scaleto)
+            elif isinstance(dsd, (inkex.Image)):
                 if ih.hasPIL:
-                    AutoExporter.Merge_Mask(d)
-                # while d.getparent()!=d.croot and d.getparent() is not None
-                # and d.croot is not None:
+                    AutoExporter.Merge_Mask(dsd)
+                # while dsd.getparent()!=dsd.croot and dsd.getparent() is not None
+                # and dsd.croot is not None:
                 #     # iteratively remove groups containing images
                 #     # I don't think it's necessary?
-                #     dh.ungroup(d.getparent());
-            elif isinstance(d, (inkex.Group)):
-                if len(d) == 0:
-                    d.delete(deleteup=True)
+                #     dh.ungroup(dsd.getparent());
+            elif isinstance(dsd, (inkex.Group)):
+                if len(dsd) == 0:
+                    dsd.delete(deleteup=True)
 
         if opts.backingrect:
             r = inkex.Rectangle()
@@ -1098,8 +1118,8 @@ class AutoExporter(inkex.EffectExtension):
             r.set("height", vb[3])
 
         # if opts.thinline:
-        #     for d in vds:
-        #         self.Bezier_to_Split(d)  # moved to deprecated
+        #     for dsd in vds:
+        #         self.Bezier_to_Split(dsd)  # moved to deprecated
 
         # dh.idebug(opts.svgtopdf_vbs)
         # embed_original = False
@@ -1122,22 +1142,22 @@ class AutoExporter(inkex.EffectExtension):
 
         #     # Conversion to PDF changes the viewbox to pixels. Convert back to the
         #     # original viewbox by applying a transform
-        #     ds = opts.svgtopdf_dss[ii]
+        #     dds = opts.svgtopdf_dss[i]
         #     tfmt = 'matrix({0},{1},{2},{3},{4},{5})';
-        #     T =inkex.Transform(tfmt.format(ds.uuw,0,0,ds.uuh,
-        #                                       -ds.effvb[0]*ds.uuw,
-        #                                       -ds.effvb[1]*ds.uuh))
+        #     T =inkex.Transform(tfmt.format(dds.uuw,0,0,dds.uuh,
+        #                                       -dds.effvb[0]*dds.uuw,
+        #                                       -dds.effvb[1]*dds.uuh))
         #     g.set('transform',str(-T))
-        #     svg.set_viewbox(ds.effvb)
+        #     svg.set_viewbox(dds.effvb)
 
         te = None
-        for el in list(svg):
+        for elem in list(svg):
             if (
-                isinstance(el, (inkex.TextElement,))
-                and el.text is not None
-                and orig_key in el.text
+                isinstance(elem, (inkex.TextElement,))
+                and elem.text is not None
+                and orig_key in elem.text
             ):
-                te = el
+                te = elem
         if te is None:
             # te = svg.new_element(inkex.TextElement, svg)
             te = inkex.TextElement()
@@ -1152,77 +1172,79 @@ class AutoExporter(inkex.EffectExtension):
 
     @staticmethod
     def Thinline_Dehancement(svg, mode="split"):
-        # Prevents thin-line enhancement in certain bad PDF renderers
-        # 'bezier' mode converts h,v,l path commands to trivial Beziers
-        # 'split' mode splits h,v,l path commands into two path commands
-        # The Office PDF renderer removes trivial Beziers, as does conversion to EMF
-        # The Inkscape PDF/EPS renderer removes split commands
-        # Split is more general, so apply it to everything but PDFs/EPS
+        """
+        Prevents thin-line enhancement in certain bad PDF renderers
+        'bezier' mode converts h,v,l path commands to trivial Beziers
+        'split' mode splits h,v,l path commands into two path commands
+        The Office PDF renderer removes trivial Beziers, as does conversion to EMF
+        The Inkscape PDF/EPS renderer removes split commands
+        Split is more general, so apply it to everything but PDFs/EPS
+        """
 
         command_chars = {"h", "v", "l", "H", "V", "L"}
-        for el in svg.descendants2():
-            if el.tag in otp_support_tags and not el.tag == peltag:
-                el.object_to_path()
+        for elem in svg.descendants2():
+            if elem.tag in otp_support_tags and not elem.tag == peltag:
+                elem.object_to_path()
 
-            d = el.get("d")
-            if d and any(char in d for char in command_chars):
-                if any(char in d for char in {"H", "V", "L"}):
-                    d = str(inkex.Path(d).to_relative())
+            pthd = elem.get("d")
+            if pthd and any(char in pthd for char in command_chars):
+                if any(char in pthd for char in {"H", "V", "L"}):
+                    pthd = str(inkex.Path(pthd).to_relative())
 
-                ds = [v for v in d.replace(",", " ").split(" ") if v]
+                dds = [v for v in pthd.replace(",", " ").split(" ") if v]
 
                 current_command = None
 
-                ii = 0
-                while ii < len(ds):
-                    token = ds[ii]
+                i = 0
+                while i < len(dds):
+                    token = dds[i]
                     if token in {"v", "h", "l"}:
                         current_command = token
-                        ds[ii] = ""
+                        dds[i] = ""
                     elif token in AutoExporter.PTH_COMMANDS:
                         current_command = None
                     else:
                         if current_command == "h":
                             if mode == "split":
                                 hval = float(token)
-                                ds[ii] = f"h {hval / 2} {hval / 2}"
+                                dds[i] = f"h {hval / 2} {hval / 2}"
                             else:
-                                ds[ii] = f"c {token},0 {token},0 {token},0"
+                                dds[i] = f"c {token},0 {token},0 {token},0"
                         elif current_command == "v":
                             if mode == "split":
                                 vval = float(token)
-                                ds[ii] = f"v {vval / 2} {vval / 2}"
+                                dds[i] = f"v {vval / 2} {vval / 2}"
                             else:
-                                ds[ii] = f"c 0,{token} 0,{token} 0,{token}"
+                                dds[i] = f"c 0,{token} 0,{token} 0,{token}"
                         elif current_command == "l":
                             if mode == "split":
                                 lx = float(token)
-                                ly = float(ds[ii + 1])
-                                ds[ii] = f"l {lx / 2},{ly / 2} {lx / 2},{ly / 2}"
+                                ly = float(dds[i + 1])
+                                dds[i] = f"l {lx / 2},{ly / 2} {lx / 2},{ly / 2}"
                             else:
-                                ds[ii] = (
-                                    f"c {token},{ds[ii + 1]} "
-                                    f"{token},{ds[ii + 1]} "
-                                    f"{token},{ds[ii + 1]}"
+                                dds[i] = (
+                                    f"c {token},{dds[i + 1]} "
+                                    f"{token},{dds[i + 1]} "
+                                    f"{token},{dds[i + 1]}"
                                 )
-                            ds[ii + 1] = ""
-                            ii += 1
+                            dds[i + 1] = ""
+                            i += 1
 
-                    ii += 1
+                    i += 1
 
-                newd = " ".join(v for v in ds if v).replace("  ", " ")
-                el.set("d", newd)
+                newd = " ".join(v for v in dds if v).replace("  ", " ")
+                elem.set("d", newd)
 
     @staticmethod
-    def Marker_Fix(el):
-        # Fixes the marker bug that occurs with context-stroke and context-fill
-        mkrs = AutoExporter.get_markers(el)
-        sty = el.cspecified_style
+    def Marker_Fix(elem):
+        """Fixes the marker bug that occurs with context-stroke and context-fill"""
+        mkrs = AutoExporter.get_markers(elem)
+        sty = elem.cspecified_style
         for m, mkrel in mkrs.items():
-            dh.get_strokefill(el)
+            dh.get_strokefill(elem)
             mkrds = mkrel.descendants2()
             anycontext = any(
-                (a == "stroke" or a == "fill") and "context" in v
+                a in ("stroke", "fill") and "context" in v
                 for d in mkrds
                 for a, v in d.cspecified_style.items()
             )
@@ -1230,97 +1252,105 @@ class AutoExporter(inkex.EffectExtension):
                 handled = True
                 dup = mkrel.duplicate()
                 dupds = dup.descendants2()
-                for d in dupds:
-                    dsty = d.cspecified_style
+                for dsd in dupds:
+                    dsty = dsd.cspecified_style
                     for a, v in dsty.items():
-                        if (a == "stroke" or a == "fill") and "context" in v:
+                        if a in ("stroke", "fill") and "context" in v:
                             if v == "context-stroke":
-                                d.cstyle[a] = sty.get("stroke", "none")
+                                dsd.cstyle[a] = sty.get("stroke", "none")
                             elif v == "context-fill":
-                                d.cstyle[a] = sty.get("fill", "none")
+                                dsd.cstyle[a] = sty.get("fill", "none")
                             else:  # I don't know what this is
                                 handled = False
                 if handled:
-                    el.cstyle[m] = dup.get_id(as_url=2)
+                    elem.cstyle[m] = dup.get_id(as_url=2)
         return mkrs
 
     @staticmethod
-    def Opacity_Fix(el):
-        # Fuse opacity onto fill and stroke for path-like elements
-        # Helps prevent rasterization-at-PDF for Office products
-        sty = el.cspecified_style
+    def Opacity_Fix(elem):
+        """
+        Fuse opacity onto fill and stroke for path-like elements
+        Helps prevent rasterization-at-PDF for Office products
+        """
+        sty = elem.cspecified_style
         if (
             sty.get("opacity") is not None
             and float(sty.get("opacity", 1.0)) != 1.0
-            and el.tag in otp_support_tags
+            and elem.tag in otp_support_tags
         ):
-            sf = dh.get_strokefill(el)  # fuses opacity and stroke-opacity/fill-opacity
-            if sf.stroke is not None and sf.fill is None:
-                el.cstyle["stroke-opacity"] = sf.stroke.alpha
-                el.cstyle["opacity"] = 1
-            elif sf.fill is not None and sf.stroke is None:
-                el.cstyle["fill-opacity"] = sf.fill.alpha
-                el.cstyle["opacity"] = 1
+            strf = dh.get_strokefill(elem)  # fuses opacity and
+            # stroke-opacity/fill-opacity
+            if strf.stroke is not None and strf.fill is None:
+                elem.cstyle["stroke-opacity"] = strf.stroke.alpha
+                elem.cstyle["opacity"] = 1
+            elif strf.fill is not None and strf.stroke is None:
+                elem.cstyle["fill-opacity"] = strf.fill.alpha
+                elem.cstyle["opacity"] = 1
 
-    # Replace super and sub with numerical values
-    # Collapse Tspans with 0% baseline-shift, which Office displays incorrectly
     @staticmethod
-    def SubSuper_Fix(el):
-        for d in el.descendants2():
-            bs = d.ccascaded_style.get("baseline-shift")
+    def SubSuper_Fix(elem):
+        """
+        Replace super and sub with numerical values
+        Collapse Tspans with 0% baseline-shift, which Office displays incorrectly
+        """
+        for dsd in elem.descendants2():
+            bs = dsd.ccascaded_style.get("baseline-shift")
             if bs in ["super", "sub"]:
-                sty = d.ccascaded_style
+                sty = dsd.ccascaded_style
                 sty["baseline-shift"] = "40%" if bs == "super" else "-20%"
-                d.cstyle = sty
+                dsd.cstyle = sty
 
-        for d in reversed(el.descendants2()):  # all Tspans
-            bs = d.ccascaded_style.get("baseline-shift")
+        for dsd in reversed(elem.descendants2()):  # all Tspans
+            bs = dsd.ccascaded_style.get("baseline-shift")
             if bs is not None and bs.replace(" ", "") == "0%":
                 # see if any ancestors with non-zero shift
                 anysubsuper = False
-                for a in d.ancestors2(stopafter=el):
+                for a in dsd.ancestors2(stopafter=elem):
                     bsa = a.ccascaded_style.get("baseline-shift")
                     if bsa is not None and "%" in bsa:
                         anysubsuper = float(bsa.replace(" ", "").strip("%")) != 0
 
                 # split parent
-                myp = d.getparent()
+                myp = dsd.getparent()
                 if anysubsuper and myp is not None:
-                    ds = dh.split_text(myp)
-                    for d in reversed(ds):
+                    dds = dh.split_text(myp)
+                    for dsd in reversed(dds):
                         if (
-                            len(list(d)) == 1
-                            and list(d)[0].ccascaded_style.get("baseline-shift") == "0%"
+                            len(list(dsd)) == 1
+                            and list(dsd)[0].ccascaded_style.get("baseline-shift")
+                            == "0%"
                         ):
-                            s = list(d)[0]
+                            s = list(dsd)[0]
                             mys = s.ccascaded_style
                             if mys.get("baseline-shift") == "0%":
-                                mys["baseline-shift"] = d.ccascaded_style.get(
+                                mys["baseline-shift"] = dsd.ccascaded_style.get(
                                     "baseline-shift"
                                 )
-                            fs, sf, _ = dh.composed_width(s, "font-size")
-                            mys["font-size"] = str(fs / sf)
-                            d.addprevious(s)
+                            fsz, scf, _ = dh.composed_width(s, "font-size")
+                            mys["font-size"] = str(fsz / scf)
+                            dsd.addprevious(s)
                             s.cstyle = mys
-                            s.tail = d.tail
-                            d.delete()
+                            s.tail = dsd.tail
+                            dsd.delete()
                             AutoExporter.SubSuper_Fix(
-                                el
+                                elem
                             )  # parent is now gone, so start over
                             return
 
     @staticmethod
-    def Scale_Text(el, scaleto):
-        # Sets all font-sizes to 100 px by moving size into transform
-        # Office rounds every fonts to the nearest px and then transforms it,
-        # so this makes text sizes more accurate
-        svg = el.croot
+    def Scale_Text(elem, scaleto):
+        """
+        Sets all font-sizes to 100 px by moving size into transform
+        Office rounds every fonts to the nearest px and then transforms it,
+        so this makes text sizes more accurate
+        """
+        svg = elem.croot
         szs = []
-        for d in el.descendants2():  # all Tspan sizes
-            fs = d.ccascaded_style.get("font-size")
-            fs = {"small": "10px", "medium": "12px", "large": "14px"}.get(fs, fs)
-            if fs is not None and "%" not in fs:
-                szs.append(dh.ipx(fs))
+        for dsd in elem.descendants2():  # all Tspan sizes
+            fsz = dsd.ccascaded_style.get("font-size")
+            fsz = {"small": "10px", "medium": "12px", "large": "14px"}.get(fsz, fsz)
+            if fsz is not None and "%" not in fsz:
+                szs.append(dh.ipx(fsz))
         if len(szs) == 0:
             maxsz = default_style_atts["font-size"]
             maxsz = {"small": 10, "medium": 12, "large": 14}.get(maxsz, maxsz)
@@ -1330,25 +1360,25 @@ class AutoExporter(inkex.EffectExtension):
         s = 1 / maxsz * scaleto
 
         # Make a dummy group so we can properly compose the transform
-        g = dh.group([el], moveTCM=True)
+        g = dh.group([elem], moveTCM=True)
 
-        for d in reversed(el.descendants2()):
-            xv = parser.ParsedText.get_xy(d, "x")
-            yv = parser.ParsedText.get_xy(d, "y")
-            dxv = parser.ParsedText.get_xy(d, "dx")
-            dyv = parser.ParsedText.get_xy(d, "dy")
+        for dsd in reversed(elem.descendants2()):
+            xv = parser.ParsedText.get_xy(dsd, "x")
+            yv = parser.ParsedText.get_xy(dsd, "y")
+            dxv = parser.ParsedText.get_xy(dsd, "dx")
+            dyv = parser.ParsedText.get_xy(dsd, "dy")
 
             if xv[0] is not None:
-                parser.xyset(d, "x", [v * s for v in xv])
+                parser.xyset(dsd, "x", [v * s for v in xv])
             if yv[0] is not None:
-                parser.xyset(d, "y", [v * s for v in yv])
+                parser.xyset(dsd, "y", [v * s for v in yv])
             if dxv[0] is not None:
-                parser.xyset(d, "dx", [v * s for v in dxv])
+                parser.xyset(dsd, "dx", [v * s for v in dxv])
             if dyv[0] is not None:
-                parser.xyset(d, "dy", [v * s for v in dyv])
+                parser.xyset(dsd, "dy", [v * s for v in dyv])
 
-            fs, sf, _ = dh.composed_width(d, "font-size")
-            d.cstyle["font-size"] = "{:.3f}".format(fs / sf * s)
+            fsz, scf, _ = dh.composed_width(dsd, "font-size")
+            dsd.cstyle["font-size"] = "{:.3f}".format(fsz / scf * s)
 
             otherpx = [
                 "letter-spacing",
@@ -1357,47 +1387,47 @@ class AutoExporter(inkex.EffectExtension):
                 "stroke-dasharray",
             ]
             for oth in otherpx:
-                othv = d.ccascaded_style.get(oth)
+                othv = dsd.ccascaded_style.get(oth)
                 if (
                     othv is None
                     and oth == "stroke-width"
-                    and "stroke" in d.ccascaded_style
+                    and "stroke" in dsd.ccascaded_style
                 ):
                     othv = default_style_atts[oth]
                 if othv is not None:
                     if "," not in othv:
-                        d.cstyle[oth] = str((dh.ipx(othv) or 0) * s)
+                        dsd.cstyle[oth] = str((dh.ipx(othv) or 0) * s)
                     else:
-                        d.cstyle[oth] = ",".join(
+                        dsd.cstyle[oth] = ",".join(
                             [str((dh.ipx(v) or 0) * s) for v in othv.split(",")]
                         )
 
-            shape = d.ccascaded_style.get_link("shape-inside", svg)
+            shape = dsd.ccascaded_style.get_link("shape-inside", svg)
             if shape is not None:
                 dup = shape.duplicate()
                 svg.cdefs.append(dup)
                 dup.ctransform = inkex.Transform((s, 0, 0, s, 0, 0)) @ dup.ctransform
-                d.cstyle["shape-inside"] = dup.get_id(as_url=2)
+                dsd.cstyle["shape-inside"] = dup.get_id(as_url=2)
 
-        el.ctransform = inkex.Transform((1 / s, 0, 0, 1 / s, 0, 0))
+        elem.ctransform = inkex.Transform((1 / s, 0, 0, 1 / s, 0, 0))
         dh.ungroup(g)
 
     @staticmethod
-    def Merge_Mask(el):
-        # Office will poorly rasterize masked elements at PDF-time
-        # Revert alpha masks made by PDFication back to alpha
-        mymask = el.get_link("mask")
+    def Merge_Mask(elem):
+        """
+        Office will poorly rasterize masked elements at PDF-time
+        Revert alpha masks made by PDFication back to alpha
+        """
+        mymask = elem.get_link("mask")
         if mymask is not None and len(list(mymask)) == 1:
             # only if one object in mask
             mask = list(mymask)[0]
             if isinstance(mask, inkex.Image):
                 if mask.get("height") == "1" and mask.get("width") == "1":
-                    im1 = ih.str_to_ImagePIL(el.get("xlink:href")).convert("RGBA")
+                    im1 = ih.str_to_ImagePIL(elem.get("xlink:href")).convert("RGBA")
                     im2 = ih.str_to_ImagePIL(mask.get("xlink:href")).convert("RGBA")
                     # only if mask the same size
                     if im1.size == im2.size:
-                        import numpy as np
-
                         d1 = np.asarray(im1)
                         d2 = np.asarray(im2)
                         # only if image is opaque
@@ -1408,27 +1438,28 @@ class AutoExporter(inkex.EffectExtension):
                             from PIL import Image as ImagePIL
 
                             newstr = ih.ImagePIL_to_str(ImagePIL.fromarray(nd))
-                            el.set("xlink:href", newstr)
+                            elem.set("xlink:href", newstr)
                             mask.delete()
-                            el.set("mask", None)
+                            elem.set("mask", None)
 
     @staticmethod
-    def Replace_with_Raster(el, imgloc, bb, imgbbox):
-        svg = el.croot
+    def Replace_with_Raster(elem, imgloc, bb, imgbbox):
+        """Replace vector elements with raster images."""
+        svg = elem.croot
         if svg is None:  # in case we were already rasterized within ancestor
             return
-        ih.embed_external_image(el, imgloc)
+        ih.embed_external_image(elem, imgloc)
 
         # The exported image has a different size and shape than the original
         # Correct by putting transform/clip/mask on a new parent group, then
         # fix location, then ungroup
-        g = dh.group([el], moveTCM=True)
+        g = dh.group([elem], moveTCM=True)
         g.set("clip-path", None)
         # conversion to bitmap already includes clips
         g.set("mask", None)  # conversion to bitmap already includes masks
 
         # Calculate what transform is needed to preserve the image's location
-        ct = el.ccomposed_transform
+        ct = elem.ccomposed_transform
         pbb = [
             Vector2d(bb[0], bb[1]),
             Vector2d(bb[0] + bb[2], bb[1]),
@@ -1441,7 +1472,7 @@ class AutoExporter(inkex.EffectExtension):
         ]  # untransformed bbox (where the image needs to go)
 
         newel = inkex.Image()
-        dh.replace_element(el, newel)
+        dh.replace_element(elem, newel)
         newel.set("x", 0)
         myx = 0
         newel.set("y", 0)
@@ -1450,12 +1481,12 @@ class AutoExporter(inkex.EffectExtension):
         myw = dh.ipx(newel.get("width"))
         newel.set("height", 1)
         myh = dh.ipx(newel.get("height"))
-        newel.set("xlink:href", el.get("xlink:href"))
+        newel.set("xlink:href", elem.get("xlink:href"))
 
         # Inkscape inappropriately clips non-'optimizeQuality' images
         # when generating PDFs
         sty = "image-rendering:optimizeQuality"
-        el = newel
+        elem = newel
 
         pgo = [
             Vector2d(myx, myy),
@@ -1463,8 +1494,8 @@ class AutoExporter(inkex.EffectExtension):
             Vector2d(myx + myw, myy + myh),
             Vector2d(myx, myy + myh),
         ]  # where the image is
-        el.set("preserveAspectRatio", "none")  # prevents aspect ratio snapping
-        el.set("style", sty)  # override existing styles
+        elem.set("preserveAspectRatio", "none")  # prevents aspect ratio snapping
+        elem.set("style", sty)  # override existing styles
 
         a = np.array(
             [
@@ -1490,18 +1521,19 @@ class AutoExporter(inkex.EffectExtension):
         ).T
         T = np.linalg.solve(a, b)
         T = "matrix(" + ",".join([str(v[0]) for v in T]) + ")"
-        el.set("transform", T)
+        elem.set("transform", T)
 
         # If we cropped, need to modify location according to bbox
         if ih.hasPIL and imgbbox is not None:
-            el.set("x", str(myx + imgbbox[0] * myw))
-            el.set("y", str(myy + imgbbox[1] * myh))
-            el.set("width", str((imgbbox[2] - imgbbox[0]) * myw))
-            el.set("height", str((imgbbox[3] - imgbbox[1]) * myh))
+            elem.set("x", str(myx + imgbbox[0] * myw))
+            elem.set("y", str(myy + imgbbox[1] * myh))
+            elem.set("width", str((imgbbox[2] - imgbbox[0]) * myw))
+            elem.set("height", str((imgbbox[3] - imgbbox[1]) * myh))
         dh.ungroup(g)
 
     @staticmethod
     def Add_Margin(svg, amt_mm, testmode):
+        """Add margin to the document."""
         m = inkex.units.convert_unit(str(amt_mm) + "mm", "px")
         uuw, uuh = svg.cdocsize.uuw, svg.cdocsize.uuh
         # pgs = self.Get_Pages(svg)
@@ -1537,62 +1569,65 @@ class AutoExporter(inkex.EffectExtension):
 
     @staticmethod
     def Change_Viewbox_To_Page(svg, pg):
+        """Change viewbox to match specified page."""
         newvb = pg.croot.cdocsize.pxtouu(pg.bbpx)
         svg.set_viewbox(newvb)
 
     @staticmethod
-    def get_markers(el):
+    def get_markers(elem):
         """Returns valid marker keys and corresponding elements"""
         md = dict()
         for m in ["marker", "marker-start", "marker-mid", "marker-end"]:
-            mv = el.cstyle.get_link(m, el.croot)
+            mv = elem.cstyle.get_link(m, elem.croot)
             if mv is not None:
                 md[m] = mv
         return md
 
     @staticmethod
     def Stroke_to_Path_Fixes(els):
-        # Stroke to Path has tons of bugs. Try to preempt them.
-        # 1. STP does not properly handle clips, so move clips and
-        #    masks to a temp parent group.
-        # 2. Densely-spaced nodes can be converted incorrectly, so scale paths up
-        #    to be size 1000 and position corner at (0,0)
-        # 3. Starting markers can be flipped.
-        # 4. Markers on groups cause crashes
-        # 5. Markers are given the wrong size
+        """
+        Stroke to Path has tons of bugs. Try to preempt them.
+        1. STP does not properly handle clips, so move clips and
+           masks to a temp parent group.
+        2. Densely-spaced nodes can be converted incorrectly, so scale paths up
+           to be size 1000 and position corner at (0,0)
+        3. Starting markers can be flipped.
+        4. Markers on groups cause crashes
+        5. Markers are given the wrong size
+        """
         dummy_groups = []
         path_els = []
         if len(els) > 0:
             svg = els[0].croot
-        for el in els:
-            ms = AutoExporter.get_markers(el)
-            if isinstance(el, inkex.Group) and len(ms) > 0:
-                dh.ungroup(el)
-            elif el.tag in otp_support_tags:
-                sty = el.cspecified_style
+        for elem in els:
+            ms = AutoExporter.get_markers(elem)
+            if isinstance(elem, inkex.Group) and len(ms) > 0:
+                dh.ungroup(elem)
+            elif elem.tag in otp_support_tags:
+                sty = elem.cspecified_style
                 if "stroke" in sty and sty["stroke"] != "none":
                     sw = sty.get("stroke-width")
                     if dh.ipx(sw) == 0:
                         # Fix bug on zero-stroke paths
                         sty["stroke"] = "none"
-                        el.cstyle = sty
+                        elem.cstyle = sty
                     else:
                         # Clip and mask issues solved by moving to a dummy parent group
-                        gp = dh.group([el], moveTCM=True)
+                        gp = dh.group([elem], moveTCM=True)
                         # Do it again so we can add transform later without
                         # messing up clip
-                        g = dh.group([el], moveTCM=True)
+                        g = dh.group([elem], moveTCM=True)
 
-                        path_els.append(el.get_id())
+                        path_els.append(elem.get_id())
                         dummy_groups.extend([gp.get_id(), g.get_id()])
 
                         # Scale up most paths to be size 1000 and position corner
                         # at (0,0)
-                        if inkex.addNS("type", "sodipodi") not in el.attrib:
+                        if inkex.addNS("type", "sodipodi") not in elem.attrib:
                             # Object to path doesn't currently support
                             # Inkscape-specific objects
-                            el.object_to_path()
-                            bb = el.bounding_box2(
+                            elem.object_to_path()
+                            bb = elem.bounding_box2(
                                 dotransform=False, includestroke=False, roughpath=False
                             )
                             if len(ms) == 0:
@@ -1609,21 +1644,21 @@ class AutoExporter(inkex.EffectExtension):
                                 "translate({0},{1})".format(-bb.x1, -bb.y1)
                             )
                             # relative paths seem to have some bugs
-                            p2 = str(el.cpath.to_absolute().transform(tr))
-                            el.set("d", p2)
+                            p2 = str(elem.cpath.to_absolute().transform(tr))
+                            elem.set("d", p2)
 
                             # Put transform on parent group since STP cannot convert
                             # transformed paths correctly if they have dashes
                             # See https://gitlab.com/inkscape/inbox/-/issues/7844
                             g.ctransform = -tr
 
-                            csty = el.cspecified_style
+                            csty = elem.cspecified_style
                             if "stroke-width" in csty:
                                 sw = dh.ipx(csty["stroke-width"])
-                                el.cstyle["stroke-width"] = str(sw * SCALEBY)
+                                elem.cstyle["stroke-width"] = str(sw * SCALEBY)
                             if "stroke-dasharray" in csty:
                                 sd = dh.listsplit(csty["stroke-dasharray"])
-                                el.cstyle["stroke-dasharray"] = (
+                                elem.cstyle["stroke-dasharray"] = (
                                     str([(sdv or 0) * SCALEBY for sdv in sd])
                                     .strip("[")
                                     .strip("]")
@@ -1631,18 +1666,18 @@ class AutoExporter(inkex.EffectExtension):
 
                         # Fix bug on start markers where auto-start-reverse
                         # oriented markers are inverted by STP
-                        sty = el.cspecified_style
+                        sty = elem.cspecified_style
                         mstrt = sty.get_link("marker-start", svg)
                         if mstrt is not None:
                             if mstrt.get("orient") == "auto-start-reverse":
-                                d = mstrt.duplicate()
-                                d.set("orient", "auto")
-                                for dk in list(d):
+                                dup = mstrt.duplicate()
+                                dup.set("orient", "auto")
+                                for dk in list(dup):
                                     dk.ctransform = (
                                         Transform("scale(-1)") @ dk.ctransform
                                     )
-                                sty["marker-start"] = d.get_id(as_url=2)
-                                el.cstyle = sty
+                                sty["marker-start"] = dup.get_id(as_url=2)
+                                elem.cstyle = sty
         return path_els, dummy_groups
 
     # Runs a Python script using a Python binary in a working directory
@@ -1650,6 +1685,7 @@ class AutoExporter(inkex.EffectExtension):
     # extension has finished
     @staticmethod
     def gtk_call(python_bin, python_script, python_wd):
+        """Run a Python script using GTK terminal."""
         DEVNULL = dh.si_tmp(filename="si_ae_output.txt")
         with open(DEVNULL, "w") as devnull:
             subprocess.Popen(
@@ -1658,6 +1694,8 @@ class AutoExporter(inkex.EffectExtension):
 
     @staticmethod
     def terminal_call(python_bin, python_script, python_wd):
+        """Run a Python script using a terminal."""
+
         def escp(x):
             return x.replace(" ", "\\\\ ")
 
@@ -1755,13 +1793,13 @@ class AutoExporter(inkex.EffectExtension):
 
             for t in reversed(terms):
                 if t == "x-terminal-emulator":
-                    LINUX_TERMINAL_CALL = "x-terminal-emulator -e bash -c '%CMD'"
+                    linux_terminal_call = "x-terminal-emulator -e bash -c '%CMD'"
                 elif t == "gnome-terminal":
-                    LINUX_TERMINAL_CALL = 'gnome-terminal -- bash -c "%CMD; exec bash"'
+                    linux_terminal_call = 'gnome-terminal -- bash -c "%CMD; exec bash"'
                 elif t == "konsole":
-                    LINUX_TERMINAL_CALL = "konsole -e bash -c '%CMD'"
+                    linux_terminal_call = "konsole -e bash -c '%CMD'"
             os.system(
-                LINUX_TERMINAL_CALL.replace(
+                linux_terminal_call.replace(
                     "%CMD",
                     escp(sys.executable) + " " + escp(python_script) + " >/dev/null",
                 )
@@ -1770,10 +1808,12 @@ class AutoExporter(inkex.EffectExtension):
 
 # Convenience functions
 def joinmod(dirc, f):
+    """Join directory and file name with absolute path."""
     return os.path.join(os.path.abspath(dirc), f)
 
 
 def subprocess_check(inputargs, input_opts):
+    """Check subprocess output and handle errors."""
     if hasattr(input_opts, "aeThread") and input_opts.aeThread.stopped is True:
         delete_quit(input_opts.aeThread.tempdir)
     dh.subprocess_repeat(inputargs)
@@ -1782,6 +1822,7 @@ def subprocess_check(inputargs, input_opts):
 
 
 def get_svg(fin):
+    """Load an SVG file and return the root svg element."""
     try:
         svg = inkex.load_svg(fin).getroot()
     except lxml.etree.XMLSyntaxError:
@@ -1797,6 +1838,7 @@ def get_svg(fin):
 
 
 def delete_quit(tempdir):
+    """Delete temporary directory and exit."""
     Delete_Dir(tempdir)
     sys.exit()
 
@@ -1806,6 +1848,7 @@ dup_key = "si_ae_original_duplicate"
 
 
 def hash_file(filename):
+    """Calculate hash of a file."""
     import hashlib
 
     h = hashlib.sha256()
@@ -1817,9 +1860,11 @@ def hash_file(filename):
     return h.hexdigest()
 
 
-# Delete a directory and its contents, trying repeatedly on failure
+MAXATTEMPTS = 2
+
+
 def Delete_Dir(dirpath):
-    MAXATTEMPTS = 2
+    """Delete a directory and its contents, trying repeatedly on failure"""
     for t in list(set(os.listdir(dirpath))):
         deleted = False
         nattempts = 0
