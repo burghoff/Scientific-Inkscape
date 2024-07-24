@@ -355,7 +355,7 @@ class monitorThread(threading.Thread):
             opts.aeThread = self
             opts.original_file = self.file
             try:
-                AutoExporter().export_all(
+                AutoExporter.export_all(
                     bfn, self.file, self.outtemplate, opts.formats, opts
                 )
             except SystemExit:

@@ -44,14 +44,15 @@ testae              = True;
 # testflattenfonts     = True; 
 
 import os, sys, re
-vpaths = {'1.0' : 'D:\\Inkscapes\\inkscape-1.0.2-2-x64',
-          '1.1' : 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64',
-          '1.2' : 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64', 
-          '1.3' : 'D:\\Inkscapes\\inkscape-1.3.1_2023-11-16_91b66b0783-x64',
-          '1.3e': 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64_extensions',
-          '1.4' : 'D:\\Inkscapes\\inkscape-1.4-beta_2024-04-22_62f545ba5e-x64',
-          # '1.4e': 'D:\\Inkscapes\\inkscape-1.4-dev_2023-09-22_79074f2-x64_extensions',
+INKSAPES_LOCATION = "D:\\Inkscapes"
+vpaths = {'1.0' : 'inkscape-1.0.2-2-x64',
+          '1.1' : 'inkscape-1.1.2_2022-02-05_b8e25be833-x64',
+          '1.2' : 'inkscape-1.2.2_2022-12-09_732a01da63-x64', 
+          '1.3' : 'inkscape-1.3.1_2023-11-16_91b66b0783-x64',
+          '1.3e': 'inkscape-1.3_2023-07-21_0e150ed6c4-x64_extensions',
+          '1.4' : 'inkscape-1.4-beta_2024-04-22_62f545ba5e-x64',
           }
+vpaths = {k: os.path.join(INKSAPES_LOCATION, v) for k,v in vpaths.items()}
 
 if 'TESTMAINVERSION' in os.environ:
     version = os.environ['TESTMAINVERSION']

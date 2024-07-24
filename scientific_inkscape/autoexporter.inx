@@ -47,7 +47,9 @@
         <param name="thinline" type="bool" gui-text="Prevent thin line enhancement"
         gui-description="Some PDF readers thicken lines at certain zooms; this option makes your lines impervious to this feature.">true</param>  
         <param name="stroketopath" type="bool" gui-text="Convert all strokes to paths"
-        gui-description="Most PDF readers draw stroked lines differently than equivalent filled paths. By converting strokes to paths, this can be prevented. (This uses Inkscape's Stroke to Path, which has some unresolved bugs. Double-check the final output.)">false</param>  
+        gui-description="Most PDF readers draw stroked lines differently than equivalent filled paths. By converting strokes to paths, this can be prevented. (This uses Inkscape's Stroke to Path, which has some unresolved bugs. Double-check the final output.)">false</param>
+        <param name="backingrect" type="bool" gui-text="Add transparent backing rectangle"
+        gui-description="A transparent rectangle behind the image makes it easier to select in certain programs">true</param> 
         <param name="margin" type="float" precision="1" min="-9999" max="9999" gui-text="Extra margin (mm)"
         gui-description="Adds a margin to the export. A small margin can ensure that edges are not clipped off.">0.3</param>
         

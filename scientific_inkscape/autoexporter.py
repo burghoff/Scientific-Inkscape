@@ -17,221 +17,35 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+import os
+import sys
+import time
+import re
+import copy
+import lxml
+import dhelpers as dh
+import subprocess
+
+import inkex
+from inkex import TextElement, Transform, Vector2d
+from inkex.text.utils import default_style_atts, unique, get_bounding_boxes
+from inkex.text.cache import BaseElementCache
+import inkex.text.parser  # needed to prevent GTK crashing
+from inkex.text import parser
+
+import numpy as np
+import image_helpers as ih
+
+otp_support_tags = BaseElementCache.otp_support_tags
+peltag = inkex.PathElement.ctag
+
 USE_TERMINAL = False
 DEBUGGING = False
 dispprofile = False
 
-import dhelpers as dh
-import subprocess
-import inkex
-from inkex import TextElement, Transform, Vector2d
-
-import os, sys, time, re, lxml
-import numpy as np
-
-import image_helpers as ih
-from inkex.text.utils import default_style_atts, unique, get_bounding_boxes
-from inkex.text.cache import BaseElementCache
-
-otp_support_tags = BaseElementCache.otp_support_tags
-peltag = inkex.PathElement.ctag
-import inkex.text.parser  # needed to prevent GTK crashing
-
-
-# Convenience functions
-def joinmod(dirc, f):
-    return os.path.join(os.path.abspath(dirc), f)
-
-
-def subprocess_check(inputargs, input_opts):
-    if hasattr(input_opts, "aeThread") and input_opts.aeThread.stopped == True:
-        delete_quit(input_opts.aeThread.tempdir)
-    dh.subprocess_repeat(inputargs)
-    if hasattr(input_opts, "aeThread") and input_opts.aeThread.stopped == True:
-        delete_quit(input_opts.aeThread.tempdir)
-
-
-def get_svg(fin):
-    try:
-        svg = inkex.load_svg(fin).getroot()
-    except lxml.etree.XMLSyntaxError:
-        # Try removing problematic bytes
-        with open(fin, "rb") as f:
-            bytes_content = f.read()
-        cleaned_content = bytes_content.decode("utf-8", errors="ignore")
-        nfin = dh.si_tmp(filename="cleaned.svg")
-        with open(nfin, "w", encoding="utf-8") as f:
-            f.write(cleaned_content)
-        svg = inkex.load_svg(nfin).getroot()
-    return svg
-
-
-def delete_quit(tempdir):
-    Delete_Dir(tempdir)
-    sys.exit()
-
-
-orig_key = "si_ae_original_filename"
-dup_key = "si_ae_original_duplicate"
-
-
-def hash_file(filename):
-    import hashlib
-
-    h = hashlib.sha256()
-    with open(filename, "rb") as file:
-        chunk = 0
-        while chunk != b"":
-            chunk = file.read(1024)
-            h.update(chunk)
-    return h.hexdigest()
-
-
-# Runs a Python script using a Python binary in a working directory
-# It detaches from Inkscape, allowing it to continue running after the extension has finished
-def gtk_call(python_bin, python_script, python_wd):
-    DEVNULL = dh.si_tmp(filename="si_ae_output.txt")
-    with open(DEVNULL, "w") as devnull:
-        subprocess.Popen([python_bin, python_script], stdout=devnull, stderr=devnull)
-
-
-def terminal_call(python_bin, python_script, python_wd):
-    def escp(x):
-        return x.replace(" ", "\\\\ ")
-
-    import platform
-
-    if platform.system().lower() == "darwin":
-        # https://stackoverflow.com/questions/39840632/launch-python-script-in-new-terminal
-        os.system(
-            'osascript -e \'tell application "Terminal" to do script "'
-            + escp(sys.executable)
-            + " "
-            + escp(python_script)
-            + "\"' >/dev/null"
-        )
-    elif platform.system().lower() == "windows":
-        if "pythonw.exe" in python_bin:
-            python_bin = python_bin.replace("pythonw.exe", "python.exe")
-        subprocess.Popen([python_bin, python_script], shell=False, cwd=python_wd)
-
-        # if 'pythonw.exe' in python_bin:
-        #     python_bin = python_bin.replace('pythonw.exe', 'python.exe')
-        # DETACHED_PROCESS = 0x08000000
-        # subprocess.Popen([python_bin, python_script, 'standalone'], creationflags=DETACHED_PROCESS)
-    else:
-        if sys.executable[0:4] == "/tmp":
-            inkex.utils.errormsg(
-                "This appears to be an AppImage of Inkscape, which the Autoexporter cannot support since AppImages are sandboxed."
-            )
-            return
-        elif sys.executable[0:5] == "/snap":
-            inkex.utils.errormsg(
-                "This appears to be an Snap installation of Inkscape, which the Autoexporter cannot support since Snap installations are sandboxed."
-            )
-            return
-        else:
-            terminals = [
-                "x-terminal-emulator",
-                "mate-terminal",
-                "gnome-terminal",
-                "terminator",
-                "xfce4-terminal",
-                "urxvt",
-                "rxvt",
-                "termit",
-                "Eterm",
-                "aterm",
-                "uxterm",
-                "xterm",
-                "roxterm",
-                "termite",
-                "lxterminal",
-                "terminology",
-                "st",
-                "qterminal",
-                "lilyterm",
-                "tilix",
-                "terminix",
-                "konsole",
-                "kitty",
-                "guake",
-                "tilda",
-                "alacritty",
-                "hyper",
-                "terminal",
-                "iTerm",
-                "mintty",
-                "xiterm",
-                "terminal.app",
-                "Terminal.app",
-                "terminal-w",
-                "terminal.js",
-                "Terminal.js",
-                "conemu",
-                "cmder",
-                "powercmd",
-                "terminus",
-                "termina",
-                "terminal-plus",
-                "iterm2",
-                "terminus-terminal",
-                "terminal-tabs",
-            ]
-            terms = []
-            for terminal in terminals:
-                result = subprocess.run(
-                    ["which", terminal], stdout=subprocess.PIPE, stderr=subprocess.PIPE
-                )
-                if result.returncode == 0:
-                    terms.append(terminal)
-
-            for t in reversed(terms):
-                if t == "x-terminal-emulator":
-                    LINUX_TERMINAL_CALL = "x-terminal-emulator -e bash -c '%CMD'"
-                elif t == "gnome-terminal":
-                    LINUX_TERMINAL_CALL = 'gnome-terminal -- bash -c "%CMD; exec bash"'
-                elif t == "konsole":
-                    LINUX_TERMINAL_CALL = "konsole -e bash -c '%CMD'"
-            os.system(
-                LINUX_TERMINAL_CALL.replace(
-                    "%CMD",
-                    escp(sys.executable) + " " + escp(python_script) + " >/dev/null",
-                )
-            )
-
-
-# Delete a directory and its contents, trying repeatedly on failure
-def Delete_Dir(dirpath):
-    MAXATTEMPTS = 2
-    for t in list(set(os.listdir(dirpath))):
-        deleted = False
-        nattempts = 0
-        while not (deleted) and nattempts < MAXATTEMPTS:
-            try:
-                os.remove(joinmod(dirpath, t))
-                deleted = True
-            except:
-                time.sleep(5)
-                nattempts += 1
-    if dirpath is not None:
-        deleted = False
-        nattempts = 0
-        while not (deleted) and nattempts < MAXATTEMPTS:
-            try:
-                # print('Attempting to delete '+os.path.split(dirpath)[-1])
-                os.rmdir(dirpath)
-                deleted = True
-            except:
-                time.sleep(5)
-                nattempts += 1
-
-
-PTH_COMMANDS = list("MLHVCSQTAZmlhvcsqtaz")
-
 
 class AutoExporter(inkex.EffectExtension):
-    def add_arguments(self, pars):
+    def add_arguments(self, pars):  # pylint: disable=no-self-use
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
         pars.add_argument("--watchdir", help="Watch directory")
         pars.add_argument("--writedir", help="Write directory")
@@ -266,6 +80,12 @@ class AutoExporter(inkex.EffectExtension):
         )
         pars.add_argument(
             "--texttopath", type=inkex.Boolean, default=False, help="Text to paths?"
+        )
+        pars.add_argument(
+            "--backingrect",
+            type=inkex.Boolean,
+            default=True,
+            help="Add backing rectangle?",
         )
         pars.add_argument(
             "--stroketopath", type=inkex.Boolean, default=False, help="Stroke to paths?"
@@ -335,16 +155,10 @@ class AutoExporter(inkex.EffectExtension):
         ]
 
         # Make an options copy we can pass to the external program
-        import copy
-
         optcopy = copy.copy(self.options)
         delattr(optcopy, "output")
         delattr(optcopy, "input_file")
-        # optcopy.reduce_images = (
-        #     self.options.imagemode == 1 or self.options.imagemode == 2
-        # )
         optcopy.reduce_images = self.options.imagemode2
-        # optcopy.tojpg = self.options.imagemode == 2
 
         bfn = inkex.inkscape_system_info.binary_location
         pyloc, pybin = os.path.split(sys.executable)
@@ -359,13 +173,19 @@ class AutoExporter(inkex.EffectExtension):
                 optcopy.watchdir = os.path.dirname(pth)
                 optcopy.writedir = os.path.dirname(pth)
 
-            
             if not os.path.exists(optcopy.watchdir):
-                dh.idebug("Watch directory could not be found. Please be sure the selected location is valid.\n")
-                dh.idebug("Note: Linux AppImage and Snap installations of Inkscape cannot see locations outside the installation directory.")
+                dh.idebug(
+                    "Watch directory could not be found. Please be sure the "
+                    "selected location is valid.\n"
+                )
+                dh.idebug(
+                    "Note: Linux AppImage and Snap installations of Inkscape "
+                    "cannot see locations outside the installation directory."
+                )
                 sys.exit()
 
-            # Pass settings using a config file. Include the current path so Inkex can be called if needed.
+            # Pass settings using a config file. Include the current path so
+            # Inkex can be called if needed.
             import pickle
 
             optcopy.inkscape_bfn = bfn
@@ -378,8 +198,8 @@ class AutoExporter(inkex.EffectExtension):
                 with warnings.catch_warnings():
                     # Ignore ImportWarning for Gtk/Pango
                     warnings.simplefilter("ignore")
-                    #Prevent Gtk-Message: Failed to load module "xapp-gtk3-module"
-                    os.environ['GTK_MODULES'] = ""
+                    # Prevent Gtk-Message: Failed to load module "xapp-gtk3-module"
+                    os.environ["GTK_MODULES"] = ""
                     import gi
 
                     gi.require_version("Gtk", "3.0")
@@ -397,8 +217,6 @@ class AutoExporter(inkex.EffectExtension):
                 os.path.abspath(tempfile.gettempdir()), "si_ae_settings.p"
             )
             f = open(aes, "wb")
-
-            # f = open(os.path.join(dh.get_script_path(), "ae_settings.p"), "wb");
             pickle.dump(optcopy, f)
             f.close()
             import warnings
@@ -407,10 +225,9 @@ class AutoExporter(inkex.EffectExtension):
             # prevent warning that process is open
 
             if guitype == "gtk":
-                # dh.idebug([f.name for f in os.scandir(optcopy.watchdir)])
-                gtk_call(pybin, aepy, pyloc)
+                AutoExporter.gtk_call(pybin, aepy, pyloc)
             else:
-                terminal_call(pybin, aepy, pyloc)
+                AutoExporter.terminal_call(pybin, aepy, pyloc)
 
         else:
             if not (self.options.testmode):
@@ -420,15 +237,11 @@ class AutoExporter(inkex.EffectExtension):
             optcopy.original_file = pth
             optcopy.debug = DEBUGGING
             optcopy.prints = False
-            DEBUGGING
             optcopy.linked_locations = ih.get_linked_locations(self)
             # needed to find linked images in relative directories
 
             # dh.ctic()
-            AutoExporter().export_all(
-                bfn, self.options.input_file, pth, formats, optcopy
-            )
-            # dh.ctoc()
+            AutoExporter.export_all(bfn, self.options.input_file, pth, formats, optcopy)
 
         if dispprofile:
             pr.disable()
@@ -462,10 +275,9 @@ class AutoExporter(inkex.EffectExtension):
 
             os.remove(nf)
 
-    def export_all(self, bfn, fin, outtemplate, exp_fmts, opts):
+    @staticmethod
+    def export_all(bfn, fin, outtemplate, exp_fmts, opts):
         # Make a temp directory
-        # import tempfile
-        # tempdir = os.path.realpath(tempfile.mkdtemp(prefix="ae-"));
         tempdir = dh.si_tmp(dirbase="ae")
         if opts.debug:
             if opts.prints:
@@ -485,21 +297,19 @@ class AutoExporter(inkex.EffectExtension):
         if opts.margin != 0:
             svg = get_svg(fin)
             tmp = tempbase + "_marg.svg"
-            self.Add_Margin(svg, opts.margin, opts.testmode)
+            AutoExporter.Add_Margin(svg, opts.margin, opts.testmode)
             dh.overwrite_svg(svg, tmp)
-            import copy
-
             fin = copy.copy(tmp)
 
         # Do png before any preprocessing
         if "png" in exp_fmts:
-            finished, myo = AutoExporter().export_file(
+            finished, myo = AutoExporter.export_file(
                 bfn, fin, outtemplate, "png", None, opts, tempbase
             )
 
         # Do preprocessing
-        if any([fmt in exp_fmts for fmt in ["pdf", "emf", "eps", "psvg"]]):
-            ppoutput = self.preprocessing(bfn, fin, outtemplate, opts, tempbase)
+        if any(fmt in exp_fmts for fmt in ["pdf", "emf", "eps", "psvg"]):
+            ppoutput = AutoExporter.preprocessing(bfn, fin, outtemplate, opts, tempbase)
         else:
             ppoutput = None
 
@@ -507,7 +317,7 @@ class AutoExporter(inkex.EffectExtension):
         newfiles = []
         for fmt in exp_fmts:
             if fmt != "png":
-                finished, myo = AutoExporter().export_file(
+                finished, myo = AutoExporter.export_file(
                     bfn, fin, outtemplate, fmt, ppoutput, opts, tempbase
                 )
             if finished:
@@ -524,14 +334,11 @@ class AutoExporter(inkex.EffectExtension):
             warnings.simplefilter("ignore", ResourceWarning)
             # prevent warning that process is open
             subprocess.Popen(f'explorer "{os.path.realpath(tempdir)}"')
-            # dh.idebug(tempdir)
         return failed_to_delete
 
     # Modifications that are done prior to conversion to any vector output
-    def preprocessing(self, bfn, fin, fout, opts, tempbase):
-        import os, time, copy
-        import image_helpers as ih
-
+    @staticmethod
+    def preprocessing(bfn, fin, fout, opts, tempbase):
         if opts.prints:
             fname = os.path.split(opts.input_file)[1]
             try:
@@ -601,17 +408,15 @@ class AutoExporter(inkex.EffectExtension):
             if isinstance(el, (inkex.Group)):
                 ancs = el.ancestors2(includeme=True)
                 masked = any(
-                    [
-                        anc.get_link("mask", svg) is not None
-                        or (
-                            el.ccascaded_style.get("opacity") is not None
-                            and float(el.ccascaded_style.get("opacity")) < 1
-                        )
-                        for anc in ancs
-                    ]
+                    anc.get_link("mask", svg) is not None
+                    or (
+                        el.ccascaded_style.get("opacity") is not None
+                        and float(el.ccascaded_style.get("opacity")) < 1
+                    )
+                    for anc in ancs
                 )
                 clipped = any(
-                    [anc.get_link("clip-path", svg) is not None for anc in ancs]
+                    anc.get_link("clip-path", svg) is not None for anc in ancs
                 )
                 if (
                     len(list(el)) == 1
@@ -623,7 +428,7 @@ class AutoExporter(inkex.EffectExtension):
             # Remove groups inside clips
             cp = el.get_link("clip-path", svg)
             if cp is not None:
-                while any([isinstance(v, inkex.Group) for v in list(cp)]):
+                while any(isinstance(v, inkex.Group) for v in list(cp)):
                     for g in list(cp):
                         if isinstance(g, inkex.Group):
                             dh.ungroup(g)
@@ -633,14 +438,14 @@ class AutoExporter(inkex.EffectExtension):
             elid = el.get_id()
 
             # Fix marker export bug for PDFs
-            ms = self.Marker_Fix(el)
+            ms = AutoExporter.Marker_Fix(el)
             # Convert markers to path for Office
             if len(ms) > 0 and opts.usepsvg:
                 stps.append(elid)
 
             # Fix opacity bug for Office PDF saving
             if len(ms) == 0:  # works poorly with markers
-                self.Opacity_Fix(el)
+                AutoExporter.Opacity_Fix(el)
 
             # Disable connectors
             el.set("inkscape:connector-type", None)
@@ -695,7 +500,6 @@ class AutoExporter(inkex.EffectExtension):
         tetag = inkex.TextElement.ctag
         frtag = inkex.FlowRoot.ctag
         tels = [el for el in vds if el.tag in {tetag, frtag}]
-        from inkex.text import parser
 
         dh.character_fixer(tels)
 
@@ -720,7 +524,7 @@ class AutoExporter(inkex.EffectExtension):
             el.parsed_text.strip_text_baseline_shift()
             el.parsed_text.strip_sodipodi_role_line()
             el.parsed_text.fuse_fonts()
-            self.SubSuper_Fix(el)
+            AutoExporter.SubSuper_Fix(el)
 
             # Preserve duplicate of text to be converted to paths
             if opts.texttopath and el.get("display") != "none":
@@ -781,7 +585,7 @@ class AutoExporter(inkex.EffectExtension):
                 elif len(stps) > 0:
                     stpels = [el for el in vd if el.get_id() in stps]
                 stpels = [el for el in stpels if el.get_id() not in raster_ids]
-                pels, dgroups = self.Stroke_to_Path_Fixes(stpels)
+                pels, dgroups = AutoExporter.Stroke_to_Path_Fixes(stpels)
                 updatefile = True
 
             if updatefile:
@@ -825,13 +629,15 @@ class AutoExporter(inkex.EffectExtension):
                     # export item only
                     fmt1 = (
                         "export-id:{0}; export-id-only; export-dpi:{1}; "
-                        "export-filename:{2}; export-background-opacity:0.0; export-do; "
+                        "export-filename:{2}; export-background-opacity:0.0; "
+                        "export-do; "
                     )
                     acts.append(fmt1.format(el.get_id(), int(mydpi), tmpimg))
                     # export all w/background
                     fmt2 = (
                         "export-id:{0}; export-dpi:{1}; "
-                        "export-filename:{2}; export-background-opacity:1.0; export-do; "
+                        "export-filename:{2}; export-background-opacity:1.0; "
+                        "export-do; "
                     )
                     acts2.append(fmt2.format(el.get_id(), int(mydpi), tmpimg2))
 
@@ -839,8 +645,8 @@ class AutoExporter(inkex.EffectExtension):
                     acts = acts2 + acts  # export-id-onlys need to go last
                 allacts += acts
 
-        # To reduce the number of binary calls, we collect the stroke-to-path and rasterization
-        # actions into a single call that also gets the Bounding Boxes
+        # To reduce the number of binary calls, we collect the stroke-to-path and
+        # rasterization actions into a single call that also gets the Bounding Boxes
         # Skip binary call during testing
         if len(allacts) > 0 and not opts.testmode:
             try:
@@ -850,7 +656,7 @@ class AutoExporter(inkex.EffectExtension):
             os.chdir(tempdir)
             # use relative paths to reduce arg length
 
-            bbs = self.Split_Acts(fn=cfile, inkbin=bfn, acts=allacts)
+            bbs = AutoExporter.Split_Acts(fn=cfile, inkbin=bfn, acts=allacts)
             try:
                 if oldwd is not None:
                     os.chdir(oldwd)
@@ -895,7 +701,9 @@ class AutoExporter(inkex.EffectExtension):
                         )  # clipping and masking
                         embedimg = (nsz < osz) or (anyalpha0 or hasmaskclip)
                         if embedimg:
-                            self.Replace_with_Raster(el, tmpimg, bbs[el.get_id()], bbox)
+                            AutoExporter.Replace_with_Raster(
+                                el, tmpimg, bbs[el.get_id()], bbox
+                            )
 
                 tmp = tempbase + "_eimg.svg"
                 dh.overwrite_svg(svg, tmp)
@@ -922,8 +730,9 @@ class AutoExporter(inkex.EffectExtension):
                 + " s)"
             )
         return cfile
-    
-    def Split_Select(self,fn, inkbin, acts, selii, reserved):
+
+    @staticmethod
+    def Split_Select(fn, inkbin, acts, selii, reserved):
         """
         Windows cannot handle arguments that are too long. If this happens,
         split the actions in half and run on each
@@ -932,9 +741,7 @@ class AutoExporter(inkex.EffectExtension):
 
         act = acts[selii]
 
-        m1 = re.search(
-            r"export-filename:(.+?); export-background-opacity:", act
-        )
+        m1 = re.search(r"export-filename:(.+?); export-background-opacity:", act)
         m2 = re.search(r"export-filename:(.+?); export-do;", act)
         if m1:
             actfn = m1.group(1)
@@ -959,47 +766,34 @@ class AutoExporter(inkex.EffectExtension):
 
         if len(selects) == 1:
             # cannot split, fact that we failed means there is a STP crash
-            # dh.idebug('failed: '+str(selects))
             shutil.copy(fn, actfn)
-            return self.Split_Acts(
+            return AutoExporter.Split_Acts(
                 fn=fn,
                 inkbin=inkbin,
                 acts=acts[:selii] + acts[selii + 1 :],
                 reserved=reserved,
             )
-        else:
-            act1 = (
-                "select:"
-                + ",".join(selects[:mp])
-                + "; object-stroke-to-path"
-                + after
-            )
-            act1 = act1.replace(actfn, actfna)
-            act2 = (
-                "select:"
-                + ",".join(selects[mp:])
-                + "; object-stroke-to-path"
-                + after
-            )
+        act1 = "select:" + ",".join(selects[:mp]) + "; object-stroke-to-path" + after
+        act1 = act1.replace(actfn, actfna)
+        act2 = "select:" + ",".join(selects[mp:]) + "; object-stroke-to-path" + after
 
-            acts1 = (
-                acts[:selii] + [act1] if len(selects[:mp]) > 0 else acts[:selii]
-            )
-            acts2 = (
-                [act2] + acts[selii + 1 :]
-                if len(selects[mp:]) > 0
-                else acts[selii + 1 :]
-            )
+        acts1 = acts[:selii] + [act1] if len(selects[:mp]) > 0 else acts[:selii]
+        acts2 = (
+            [act2] + acts[selii + 1 :] if len(selects[mp:]) > 0 else acts[selii + 1 :]
+        )
 
-            bbs = self.Split_Acts(
-                fn=fn, inkbin=inkbin, acts=acts1, reserved=reserved
-            )
-            bbs = self.Split_Acts(
-                fn=actfna, inkbin=inkbin, acts=acts2, reserved=reserved
-            )
-            return bbs
+        bbs = AutoExporter.Split_Acts(
+            fn=fn, inkbin=inkbin, acts=acts1, reserved=reserved
+        )
+        bbs = AutoExporter.Split_Acts(
+            fn=actfna, inkbin=inkbin, acts=acts2, reserved=reserved
+        )
+        return bbs
 
-    def Split_Acts(self,fn, inkbin, acts, reserved=set()):
+    @staticmethod
+    def Split_Acts(fn, inkbin, acts, reserved=None):
+        if reserved is None:
+            reserved = set()
         import math
 
         try:
@@ -1008,7 +802,7 @@ class AutoExporter(inkex.EffectExtension):
                 filename=fn, inkscape_binary=inkbin, extra_args=eargs
             )
             for ii, act in enumerate(acts):
-                if "export-filename" and "export-do" in act:
+                if "export-filename" in act and "export-do" in act:
                     m1 = re.search(
                         r"export-filename:(.+?); export-background-opacity:",
                         act,
@@ -1022,32 +816,31 @@ class AutoExporter(inkex.EffectExtension):
                         actfn = None
                     if actfn is not None and not os.path.exists(actfn):
                         if "select" in act and "object-stroke-to-path" in act:
-                            return self.Split_Select(
+                            return AutoExporter.Split_Select(
                                 fn, inkbin, acts, ii, reserved=reserved
                             )
         except FileNotFoundError:
             if len(acts) == 1:
                 if "select" in acts[0] and "object-stroke-to-path" in acts[0]:
-                    return self.Split_Select(fn, inkbin, acts, 0, reserved=reserved)
-                else:
-                    inkex.utils.errormsg("Argument too long and cannot split")
-                    quit()
+                    return AutoExporter.Split_Select(
+                        fn, inkbin, acts, 0, reserved=reserved
+                    )
+                inkex.utils.errormsg("Argument too long and cannot split")
+                quit()
             else:
                 acts1 = acts[: math.ceil(len(acts) / 2)]
                 acts2 = acts[math.ceil(len(acts) / 2) :]
-            bbs = self.Split_Acts(
+            bbs = AutoExporter.Split_Acts(
                 fn=fn, inkbin=inkbin, acts=acts1, reserved=reserved
             )
-            bbs = self.Split_Acts(
+            bbs = AutoExporter.Split_Acts(
                 fn=fn, inkbin=inkbin, acts=acts2, reserved=reserved
             )
         return bbs
 
     # Use the Inkscape binary to export the file
-    def export_file(self, bfn, fin, fout, fformat, ppoutput, opts, tempbase):
-        import os, time, copy
-
-        # original_file = fin;
+    @staticmethod
+    def export_file(bfn, fin, fout, fformat, ppoutput, opts, tempbase):
         myoutput = fout[0:-4] + "." + fformat
         if opts.prints:
             fname = os.path.split(opts.input_file)[1]
@@ -1068,9 +861,9 @@ class AutoExporter(inkex.EffectExtension):
         if opts.thinline and notpng:
             svg = get_svg(fin)
             if fformat in ["pdf", "eps"]:
-                self.Thinline_Dehancement(svg, "bezier")
+                AutoExporter.Thinline_Dehancement(svg, "bezier")
             else:
-                self.Thinline_Dehancement(svg, "split")
+                AutoExporter.Thinline_Dehancement(svg, "split")
             tmp = tempbase + "_tld" + fformat[0] + ".svg"
             dh.overwrite_svg(svg, tmp)
             fin = copy.copy(tmp)
@@ -1134,8 +927,9 @@ class AutoExporter(inkex.EffectExtension):
                         # plain SVG has no pages
                         pgs2 = psvg.cdocsize.pgs
 
-                        self.Change_Viewbox_To_Page(psvg, pgs[ii])
-                        # Only need to delete other Pages in testmode since plain SVGs have none
+                        AutoExporter.Change_Viewbox_To_Page(psvg, pgs[ii])
+                        # Only need to delete other Pages in testmode since
+                        # plain SVGs have none
                         if opts.testmode:
                             for jj in reversed(range(len(pgs2))):
                                 pgs2[jj].delete()
@@ -1182,7 +976,7 @@ class AutoExporter(inkex.EffectExtension):
                         # match the viewbox to each page and delete them
                         svgpg = get_svg(filein)
                         pgs2 = svgpg.cdocsize.pgs
-                        self.Change_Viewbox_To_Page(svgpg, pgs[ii])
+                        AutoExporter.Change_Viewbox_To_Page(svgpg, pgs[ii])
                         for jj in reversed(range(len(pgs2))):
                             pgs2[jj].delete()
 
@@ -1212,7 +1006,7 @@ class AutoExporter(inkex.EffectExtension):
             finalnames = []
             for ii, mout in enumerate(moutputs):
                 svg = get_svg(mout)
-                self.postprocessing(svg, opts)
+                AutoExporter.postprocessing(svg, opts)
                 finalname = myoutput
                 if len(moutputs) > 1:
                     pnum, _ = os.path.splitext(mout.split("_page_")[-1])
@@ -1257,7 +1051,8 @@ class AutoExporter(inkex.EffectExtension):
             )
         return True, myoutput
 
-    def postprocessing(self, svg, opts):
+    @staticmethod
+    def postprocessing(svg, opts):
         # Postprocessing of SVGs, mainly for overcoming bugs in Office products
         vds = dh.visible_descendants(svg)
 
@@ -1274,17 +1069,33 @@ class AutoExporter(inkex.EffectExtension):
             if isinstance(d, (TextElement)) and d.get_id() not in opts.excludetxtids:
                 scaleto = 100 if not opts.testmode else 10
                 # Make 10 px in test mode so that errors are not unnecessarily large
-                self.Scale_Text(d, scaleto)
+                AutoExporter.Scale_Text(d, scaleto)
             elif isinstance(d, (inkex.Image)):
                 if ih.hasPIL:
-                    self.Merge_Mask(d)
-                # while d.getparent()!=d.croot and d.getparent() is not None and d.croot is not None:
+                    AutoExporter.Merge_Mask(d)
+                # while d.getparent()!=d.croot and d.getparent() is not None
+                # and d.croot is not None:
                 #     # iteratively remove groups containing images
                 #     # I don't think it's necessary?
                 #     dh.ungroup(d.getparent());
             elif isinstance(d, (inkex.Group)):
                 if len(d) == 0:
                     d.delete(deleteup=True)
+
+        if opts.backingrect:
+            r = inkex.Rectangle()
+            tlvl = [el for el in list(svg) if not (el.tag in dh.unungroupable)]
+            if len(tlvl) > 0:
+                svg.insert(svg.index(tlvl[0]), r)
+            else:
+                svg.append(r)
+            r.cstyle["fill"] = "#ffffff"
+            r.cstyle["fill-opacity"] = ".00001"
+            vb = svg.cdocsize.effvb
+            r.set("x", vb[0])
+            r.set("y", vb[1])
+            r.set("width", vb[2])
+            r.set("height", vb[3])
 
         # if opts.thinline:
         #     for d in vds:
@@ -1337,7 +1148,10 @@ class AutoExporter(inkex.EffectExtension):
         te.set("style", "display:none")
         dh.clean_up_document(svg)  # Clean up
 
-    def Thinline_Dehancement(self, svg, mode="split"):
+    PTH_COMMANDS = list("MLHVCSQTAZmlhvcsqtaz")
+
+    @staticmethod
+    def Thinline_Dehancement(svg, mode="split"):
         # Prevents thin-line enhancement in certain bad PDF renderers
         # 'bezier' mode converts h,v,l path commands to trivial Beziers
         # 'split' mode splits h,v,l path commands into two path commands
@@ -1365,7 +1179,7 @@ class AutoExporter(inkex.EffectExtension):
                     if token in {"v", "h", "l"}:
                         current_command = token
                         ds[ii] = ""
-                    elif token in PTH_COMMANDS:
+                    elif token in AutoExporter.PTH_COMMANDS:
                         current_command = None
                     else:
                         if current_command == "h":
@@ -1387,7 +1201,9 @@ class AutoExporter(inkex.EffectExtension):
                                 ds[ii] = f"l {lx / 2},{ly / 2} {lx / 2},{ly / 2}"
                             else:
                                 ds[ii] = (
-                                    f"c {token},{ds[ii + 1]} {token},{ds[ii + 1]} {token},{ds[ii + 1]}"
+                                    f"c {token},{ds[ii + 1]} "
+                                    f"{token},{ds[ii + 1]} "
+                                    f"{token},{ds[ii + 1]}"
                                 )
                             ds[ii + 1] = ""
                             ii += 1
@@ -1397,19 +1213,18 @@ class AutoExporter(inkex.EffectExtension):
                 newd = " ".join(v for v in ds if v).replace("  ", " ")
                 el.set("d", newd)
 
-    def Marker_Fix(self, el):
+    @staticmethod
+    def Marker_Fix(el):
         # Fixes the marker bug that occurs with context-stroke and context-fill
-        mkrs = self.get_markers(el)
+        mkrs = AutoExporter.get_markers(el)
         sty = el.cspecified_style
         for m, mkrel in mkrs.items():
             dh.get_strokefill(el)
             mkrds = mkrel.descendants2()
             anycontext = any(
-                [
-                    (a == "stroke" or a == "fill") and "context" in v
-                    for d in mkrds
-                    for a, v in d.cspecified_style.items()
-                ]
+                (a == "stroke" or a == "fill") and "context" in v
+                for d in mkrds
+                for a, v in d.cspecified_style.items()
             )
             if anycontext:
                 handled = True
@@ -1429,7 +1244,8 @@ class AutoExporter(inkex.EffectExtension):
                     el.cstyle[m] = dup.get_id(as_url=2)
         return mkrs
 
-    def Opacity_Fix(self, el):
+    @staticmethod
+    def Opacity_Fix(el):
         # Fuse opacity onto fill and stroke for path-like elements
         # Helps prevent rasterization-at-PDF for Office products
         sty = el.cspecified_style
@@ -1448,7 +1264,8 @@ class AutoExporter(inkex.EffectExtension):
 
     # Replace super and sub with numerical values
     # Collapse Tspans with 0% baseline-shift, which Office displays incorrectly
-    def SubSuper_Fix(self, el):
+    @staticmethod
+    def SubSuper_Fix(el):
         for d in el.descendants2():
             bs = d.ccascaded_style.get("baseline-shift")
             if bs in ["super", "sub"]:
@@ -1469,8 +1286,6 @@ class AutoExporter(inkex.EffectExtension):
                 # split parent
                 myp = d.getparent()
                 if anysubsuper and myp is not None:
-                    from inkex.text import parser
-
                     ds = dh.split_text(myp)
                     for d in reversed(ds):
                         if (
@@ -1489,15 +1304,16 @@ class AutoExporter(inkex.EffectExtension):
                             s.cstyle = mys
                             s.tail = d.tail
                             d.delete()
-                            self.SubSuper_Fix(el)  # parent is now gone, so start over
+                            AutoExporter.SubSuper_Fix(
+                                el
+                            )  # parent is now gone, so start over
                             return
 
-    def Scale_Text(self, el, scaleto):
+    @staticmethod
+    def Scale_Text(el, scaleto):
         # Sets all font-sizes to 100 px by moving size into transform
         # Office rounds every fonts to the nearest px and then transforms it,
         # so this makes text sizes more accurate
-        from inkex.text import parser
-
         svg = el.croot
         szs = []
         for d in el.descendants2():  # all Tspan sizes
@@ -1566,9 +1382,8 @@ class AutoExporter(inkex.EffectExtension):
         el.ctransform = inkex.Transform((1 / s, 0, 0, 1 / s, 0, 0))
         dh.ungroup(g)
 
-        # compose_all(el, clipurl, maskurl, transform, style)
-
-    def Merge_Mask(self, el):
+    @staticmethod
+    def Merge_Mask(el):
         # Office will poorly rasterize masked elements at PDF-time
         # Revert alpha masks made by PDFication back to alpha
         mymask = el.get_link("mask")
@@ -1597,14 +1412,16 @@ class AutoExporter(inkex.EffectExtension):
                             mask.delete()
                             el.set("mask", None)
 
-    def Replace_with_Raster(self, el, imgloc, bb, imgbbox):
+    @staticmethod
+    def Replace_with_Raster(el, imgloc, bb, imgbbox):
         svg = el.croot
         if svg is None:  # in case we were already rasterized within ancestor
             return
         ih.embed_external_image(el, imgloc)
 
         # The exported image has a different size and shape than the original
-        # Correct by putting transform/clip/mask on a new parent group, then fix location, then ungroup
+        # Correct by putting transform/clip/mask on a new parent group, then
+        # fix location, then ungroup
         g = dh.group([el], moveTCM=True)
         g.set("clip-path", None)
         # conversion to bitmap already includes clips
@@ -1612,7 +1429,6 @@ class AutoExporter(inkex.EffectExtension):
 
         # Calculate what transform is needed to preserve the image's location
         ct = el.ccomposed_transform
-        # bb = bbs[el.get_id()]
         pbb = [
             Vector2d(bb[0], bb[1]),
             Vector2d(bb[0] + bb[2], bb[1]),
@@ -1624,7 +1440,6 @@ class AutoExporter(inkex.EffectExtension):
             (-ct).apply_to_point(p) for p in pbb
         ]  # untransformed bbox (where the image needs to go)
 
-        # newel = el.croot.new_element(inkex.Image, el);
         newel = inkex.Image()
         dh.replace_element(el, newel)
         newel.set("x", 0)
@@ -1636,11 +1451,6 @@ class AutoExporter(inkex.EffectExtension):
         newel.set("height", 1)
         myh = dh.ipx(newel.get("height"))
         newel.set("xlink:href", el.get("xlink:href"))
-
-        # sty = ""
-        # ir = el.cstyle.get("image-rendering")
-        # if ir is not None:
-        #     sty = "image-rendering:" + ir
 
         # Inkscape inappropriately clips non-'optimizeQuality' images
         # when generating PDFs
@@ -1690,7 +1500,8 @@ class AutoExporter(inkex.EffectExtension):
             el.set("height", str((imgbbox[3] - imgbbox[1]) * myh))
         dh.ungroup(g)
 
-    def Add_Margin(self, svg, amt_mm, testmode):
+    @staticmethod
+    def Add_Margin(svg, amt_mm, testmode):
         m = inkex.units.convert_unit(str(amt_mm) + "mm", "px")
         uuw, uuh = svg.cdocsize.uuw, svg.cdocsize.uuh
         # pgs = self.Get_Pages(svg)
@@ -1724,11 +1535,13 @@ class AutoExporter(inkex.EffectExtension):
             ]
             svg.set_viewbox(nvb)
 
-    def Change_Viewbox_To_Page(self, svg, pg):
+    @staticmethod
+    def Change_Viewbox_To_Page(svg, pg):
         newvb = pg.croot.cdocsize.pxtouu(pg.bbpx)
         svg.set_viewbox(newvb)
 
-    def get_markers(self, el):
+    @staticmethod
+    def get_markers(el):
         """Returns valid marker keys and corresponding elements"""
         md = dict()
         for m in ["marker", "marker-start", "marker-mid", "marker-end"]:
@@ -1737,7 +1550,8 @@ class AutoExporter(inkex.EffectExtension):
                 md[m] = mv
         return md
 
-    def Stroke_to_Path_Fixes(self, els):
+    @staticmethod
+    def Stroke_to_Path_Fixes(els):
         # Stroke to Path has tons of bugs. Try to preempt them.
         # 1. STP does not properly handle clips, so move clips and
         #    masks to a temp parent group.
@@ -1751,7 +1565,7 @@ class AutoExporter(inkex.EffectExtension):
         if len(els) > 0:
             svg = els[0].croot
         for el in els:
-            ms = self.get_markers(el)
+            ms = AutoExporter.get_markers(el)
             if isinstance(el, inkex.Group) and len(ms) > 0:
                 dh.ungroup(el)
             elif el.tag in otp_support_tags:
@@ -1765,15 +1579,18 @@ class AutoExporter(inkex.EffectExtension):
                     else:
                         # Clip and mask issues solved by moving to a dummy parent group
                         gp = dh.group([el], moveTCM=True)
-                        # Do it again so we can add transform later without messing up clip
+                        # Do it again so we can add transform later without
+                        # messing up clip
                         g = dh.group([el], moveTCM=True)
 
                         path_els.append(el.get_id())
                         dummy_groups.extend([gp.get_id(), g.get_id()])
 
-                        # Scale up most paths to be size 1000 and position corner at (0,0)
+                        # Scale up most paths to be size 1000 and position corner
+                        # at (0,0)
                         if inkex.addNS("type", "sodipodi") not in el.attrib:
-                            # Object to path doesn't currently support Inkscape-specific objects
+                            # Object to path doesn't currently support
+                            # Inkscape-specific objects
                             el.object_to_path()
                             bb = el.bounding_box2(
                                 dotransform=False, includestroke=False, roughpath=False
@@ -1812,8 +1629,8 @@ class AutoExporter(inkex.EffectExtension):
                                     .strip("]")
                                 )
 
-                        # Fix bug on start markers where auto-start-reverse oriented markers
-                        # are inverted by STP
+                        # Fix bug on start markers where auto-start-reverse
+                        # oriented markers are inverted by STP
                         sty = el.cspecified_style
                         mstrt = sty.get_link("marker-start", svg)
                         if mstrt is not None:
@@ -1827,6 +1644,203 @@ class AutoExporter(inkex.EffectExtension):
                                 sty["marker-start"] = d.get_id(as_url=2)
                                 el.cstyle = sty
         return path_els, dummy_groups
+
+    # Runs a Python script using a Python binary in a working directory
+    # It detaches from Inkscape, allowing it to continue running after the
+    # extension has finished
+    @staticmethod
+    def gtk_call(python_bin, python_script, python_wd):
+        DEVNULL = dh.si_tmp(filename="si_ae_output.txt")
+        with open(DEVNULL, "w") as devnull:
+            subprocess.Popen(
+                [python_bin, python_script], stdout=devnull, stderr=devnull
+            )
+
+    @staticmethod
+    def terminal_call(python_bin, python_script, python_wd):
+        def escp(x):
+            return x.replace(" ", "\\\\ ")
+
+        import platform
+
+        if platform.system().lower() == "darwin":
+            # https://stackoverflow.com/questions/39840632/launch-python-script-in-new-terminal
+            os.system(
+                'osascript -e \'tell application "Terminal" to do script "'
+                + escp(sys.executable)
+                + " "
+                + escp(python_script)
+                + "\"' >/dev/null"
+            )
+        elif platform.system().lower() == "windows":
+            if "pythonw.exe" in python_bin:
+                python_bin = python_bin.replace("pythonw.exe", "python.exe")
+            subprocess.Popen([python_bin, python_script], shell=False, cwd=python_wd)
+
+            # if 'pythonw.exe' in python_bin:
+            #     python_bin = python_bin.replace('pythonw.exe', 'python.exe')
+            # DETACHED_PROCESS = 0x08000000
+            # subprocess.Popen([python_bin, python_script, 'standalone'],
+            # creationflags=DETACHED_PROCESS)
+        else:
+            if sys.executable[0:4] == "/tmp":
+                inkex.utils.errormsg(
+                    "This appears to be an AppImage of Inkscape, which the "
+                    "Autoexporter cannot support since AppImages are sandboxed."
+                )
+                return
+            if sys.executable[0:5] == "/snap":
+                inkex.utils.errormsg(
+                    "This appears to be an Snap installation of Inkscape, which "
+                    "the Autoexporter cannot support since Snap installations "
+                    "are sandboxed."
+                )
+                return
+            terminals = [
+                "x-terminal-emulator",
+                "mate-terminal",
+                "gnome-terminal",
+                "terminator",
+                "xfce4-terminal",
+                "urxvt",
+                "rxvt",
+                "termit",
+                "Eterm",
+                "aterm",
+                "uxterm",
+                "xterm",
+                "roxterm",
+                "termite",
+                "lxterminal",
+                "terminology",
+                "st",
+                "qterminal",
+                "lilyterm",
+                "tilix",
+                "terminix",
+                "konsole",
+                "kitty",
+                "guake",
+                "tilda",
+                "alacritty",
+                "hyper",
+                "terminal",
+                "iTerm",
+                "mintty",
+                "xiterm",
+                "terminal.app",
+                "Terminal.app",
+                "terminal-w",
+                "terminal.js",
+                "Terminal.js",
+                "conemu",
+                "cmder",
+                "powercmd",
+                "terminus",
+                "termina",
+                "terminal-plus",
+                "iterm2",
+                "terminus-terminal",
+                "terminal-tabs",
+            ]
+            terms = []
+            for terminal in terminals:
+                result = subprocess.run(
+                    ["which", terminal],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                if result.returncode == 0:
+                    terms.append(terminal)
+
+            for t in reversed(terms):
+                if t == "x-terminal-emulator":
+                    LINUX_TERMINAL_CALL = "x-terminal-emulator -e bash -c '%CMD'"
+                elif t == "gnome-terminal":
+                    LINUX_TERMINAL_CALL = 'gnome-terminal -- bash -c "%CMD; exec bash"'
+                elif t == "konsole":
+                    LINUX_TERMINAL_CALL = "konsole -e bash -c '%CMD'"
+            os.system(
+                LINUX_TERMINAL_CALL.replace(
+                    "%CMD",
+                    escp(sys.executable) + " " + escp(python_script) + " >/dev/null",
+                )
+            )
+
+
+# Convenience functions
+def joinmod(dirc, f):
+    return os.path.join(os.path.abspath(dirc), f)
+
+
+def subprocess_check(inputargs, input_opts):
+    if hasattr(input_opts, "aeThread") and input_opts.aeThread.stopped is True:
+        delete_quit(input_opts.aeThread.tempdir)
+    dh.subprocess_repeat(inputargs)
+    if hasattr(input_opts, "aeThread") and input_opts.aeThread.stopped is True:
+        delete_quit(input_opts.aeThread.tempdir)
+
+
+def get_svg(fin):
+    try:
+        svg = inkex.load_svg(fin).getroot()
+    except lxml.etree.XMLSyntaxError:
+        # Try removing problematic bytes
+        with open(fin, "rb") as f:
+            bytes_content = f.read()
+        cleaned_content = bytes_content.decode("utf-8", errors="ignore")
+        nfin = dh.si_tmp(filename="cleaned.svg")
+        with open(nfin, "w", encoding="utf-8") as f:
+            f.write(cleaned_content)
+        svg = inkex.load_svg(nfin).getroot()
+    return svg
+
+
+def delete_quit(tempdir):
+    Delete_Dir(tempdir)
+    sys.exit()
+
+
+orig_key = "si_ae_original_filename"
+dup_key = "si_ae_original_duplicate"
+
+
+def hash_file(filename):
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(filename, "rb") as file:
+        chunk = 0
+        while chunk != b"":
+            chunk = file.read(1024)
+            h.update(chunk)
+    return h.hexdigest()
+
+
+# Delete a directory and its contents, trying repeatedly on failure
+def Delete_Dir(dirpath):
+    MAXATTEMPTS = 2
+    for t in list(set(os.listdir(dirpath))):
+        deleted = False
+        nattempts = 0
+        while not (deleted) and nattempts < MAXATTEMPTS:
+            try:
+                os.remove(joinmod(dirpath, t))
+                deleted = True
+            except:
+                time.sleep(5)
+                nattempts += 1
+    if dirpath is not None:
+        deleted = False
+        nattempts = 0
+        while not (deleted) and nattempts < MAXATTEMPTS:
+            try:
+                # print('Attempting to delete '+os.path.split(dirpath)[-1])
+                os.rmdir(dirpath)
+                deleted = True
+            except:
+                time.sleep(5)
+                nattempts += 1
 
 
 if __name__ == "__main__":
