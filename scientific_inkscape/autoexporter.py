@@ -123,12 +123,6 @@ class AutoExporter(inkex.EffectExtension):
             "--latexpdf", type=inkex.Boolean, default=False, help="Make LaTeX PDF?"
         )
         pars.add_argument(
-            "--watchhere", type=inkex.Boolean, default=False, help="Watch here"
-        )
-        pars.add_argument(
-            "--exportnow", type=inkex.Boolean, default=False, help="Export me now"
-        )
-        pars.add_argument(
             "--testmode", type=inkex.Boolean, default=False, help="Test mode?"
         )
         pars.add_argument("--testpage", type=int, default=1, help="Test mode page")
@@ -138,6 +132,9 @@ class AutoExporter(inkex.EffectExtension):
         )
         pars.add_argument(
             "--margin", type=float, default=0.5, help="Document margin (mm)"
+        )
+        pars.add_argument(
+            "--exportwhat", type=int, default=1, help="Export what?"
         )
 
     def effect(self):
@@ -152,6 +149,8 @@ class AutoExporter(inkex.EffectExtension):
                 else:
                     elem.set("autoexporter_rasterize", None)
             return
+        self.options.exportnow = self.options.exportwhat==3
+        self.options.watchhere = self.options.exportwhat==2
 
         # self.options.testmode = True;
         if self.options.testmode:
