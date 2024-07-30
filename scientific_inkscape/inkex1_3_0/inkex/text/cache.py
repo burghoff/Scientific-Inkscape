@@ -985,7 +985,9 @@ class SvgDocumentElementCache(SvgDocumentElement):
             hstr = self.get("height")
 
             if rvb == [0, 0, 0, 0]:
-                vbx = [0, 0, ipx(wstr), ipx(hstr)]
+                wval = ipx(wstr) if '%' not in wstr else 300
+                hval = ipx(hstr) if '%' not in hstr else 150
+                vbx = [0, 0, wval, hval]
             else:
                 vbx = [float(v) for v in rvb]  # just in case
 

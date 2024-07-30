@@ -381,14 +381,15 @@ if guitype == "gtk":
         def __init__(self, ct):
             Gtk.Window.__init__(self, title="Autoexporter")
             WINDOW_WIDTH = 450
+            MARGIN = 10
             self.set_default_size(WINDOW_WIDTH, -1)
             self.set_position(Gtk.WindowPosition.CENTER)
         
             self.notebook = Gtk.Notebook()
-            self.notebook.set_margin_start(10)
-            self.notebook.set_margin_end(10)
-            self.notebook.set_margin_top(10)
-            self.notebook.set_margin_bottom(10)
+            self.notebook.set_margin_start(MARGIN)
+            self.notebook.set_margin_end(MARGIN)
+            self.notebook.set_margin_top(MARGIN)
+            self.notebook.set_margin_bottom(MARGIN)
             self.add(self.notebook)
         
             # Tab 1: Controls
@@ -401,7 +402,7 @@ if guitype == "gtk":
             self.selected_file_label.set_wrap_mode(Gtk.WrapMode.CHAR)
             self.selected_file_label.get_buffer().set_text("No file selected.")
             self.message_scrolled_window = Gtk.ScrolledWindow()  # Renamed for clarity
-            self.message_scrolled_window.set_size_request(WINDOW_WIDTH, 150)
+            self.message_scrolled_window.set_size_request(WINDOW_WIDTH-2*MARGIN, 150)
             self.message_scrolled_window.set_hexpand(True)
             self.message_scrolled_window.set_vexpand(True)
             self.message_scrolled_window.add(self.selected_file_label)
@@ -412,6 +413,7 @@ if guitype == "gtk":
             self.treeview = Gtk.TreeView(model=self.filelogstore)
             renderer_text = Gtk.CellRendererText()
             column_text = Gtk.TreeViewColumn("Filename", renderer_text, text=0)
+            column_text.set_fixed_width((WINDOW_WIDTH-2*MARGIN)*0.49)  # Set your desired fixed width
             self.treeview.append_column(column_text)
             renderer_text = Gtk.CellRendererText()
             column_text = Gtk.TreeViewColumn("Message", renderer_text, text=1)
@@ -420,7 +422,7 @@ if guitype == "gtk":
             self.file_log_scrolled_window.set_policy(
                 Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC
             )
-            self.file_log_scrolled_window.set_size_request(WINDOW_WIDTH, 350)
+            self.file_log_scrolled_window.set_size_request(WINDOW_WIDTH-2*MARGIN, 350)
             self.file_log_scrolled_window.set_vexpand(True)
             self.file_log_scrolled_window.add(self.treeview)
             self.filelogstore.connect("row-inserted", self.on_row_inserted)
@@ -433,7 +435,7 @@ if guitype == "gtk":
             tab1_box.pack_start(separator, False, True, 0)
         
             # Watch directory
-            LABEL_WIDTH = 15
+            LABEL_WIDTH = 16
             watch_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
             watch_file_chooser_label = Gtk.Label(label="Watch directory", xalign=0.5)  # Center text
             watch_file_chooser_label.set_width_chars(LABEL_WIDTH)  # Set fixed width

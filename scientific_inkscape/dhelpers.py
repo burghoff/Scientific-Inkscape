@@ -1328,21 +1328,24 @@ def ctoc():
     s = io.StringIO()
     sortby = pstats.SortKey.CUMULATIVE
     profiledir = os.path.dirname(os.path.abspath(__file__))
-    pr.dump_stats(os.path.abspath(os.path.join(profiledir, "cprofile.prof")))
-    ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-    ps.print_stats()
-    ppath = os.path.abspath(os.path.join(profiledir, "cprofile.csv"))
-
-    result = s.getvalue()
-    prefix = result.split("ncalls")[0]
-    # chop the string into a csv-like buffer
-    result = "ncalls" + result.split("ncalls")[-1]
-    result = "\n".join(
-        [",".join(line.rstrip().split(None, 5)) for line in result.split("\n")]
-    )
-    result = prefix + "\n" + result
-    with open(ppath, "w") as f:
-        f.write(result)
+    try:
+        pr.dump_stats(os.path.abspath(os.path.join(profiledir, "cprofile.prof")))
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats()
+        ppath = os.path.abspath(os.path.join(profiledir, "cprofile.csv"))
+    
+        result = s.getvalue()
+        prefix = result.split("ncalls")[0]
+        # chop the string into a csv-like buffer
+        result = "ncalls" + result.split("ncalls")[-1]
+        result = "\n".join(
+            [",".join(line.rstrip().split(None, 5)) for line in result.split("\n")]
+        )
+        result = prefix + "\n" + result
+        with open(ppath, "w") as f:
+            f.write(result)
+    except OSError: # occasional irreproducible error, doesn't matter
+        return
 
 
 def Run_SI_Extension(effext, name):
