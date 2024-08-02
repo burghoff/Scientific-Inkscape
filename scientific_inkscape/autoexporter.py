@@ -1105,6 +1105,7 @@ class AutoExporter(inkex.EffectExtension):
                 svg.append(r)
             r.cstyle["fill"] = "#ffffff"
             r.cstyle["fill-opacity"] = ".00001"
+            r.cstyle["stroke"] = "none"
             vbx = svg.cdocsize.effvb
             r.set("x", vbx[0])
             r.set("y", vbx[1])
