@@ -50,7 +50,7 @@ vpaths = {'1.0' : 'inkscape-1.0.2-2-x64',
           '1.2' : 'inkscape-1.2.2_2022-12-09_732a01da63-x64', 
           '1.3' : 'inkscape-1.3.1_2023-11-16_91b66b0783-x64',
           '1.3e': 'inkscape-1.3_2023-07-21_0e150ed6c4-x64_extensions',
-          '1.4' : 'inkscape-1.4-beta_2024-04-22_62f545ba5e-x64',
+          '1.4' : 'inkscape-1.4-beta2_2024-07-30_9aaf4f3498-x64',
           }
 vpaths = {k: os.path.join(INKSAPES_LOCATION, v) for k,v in vpaths.items()}
 
