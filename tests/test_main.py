@@ -10,18 +10,19 @@ MAXPAPERS = 0
 flattentext = 'Text_tests.svg'
 flattenrest = 'Acid_tests.svg';
 flattenflow = 'Flow_tests.svg';
+flattenfonts = 'Font_variants_all.svg'
 priority_flatten = ['']
 exclude_flatten = ['Ohtani_SA_2019_Deep_group.svg',flattentext,flattenrest,fname,aename]
 
 flattenerargs = ("--id=layer1","--testmode=True")
 aeargs = ("--testmode=True",)
 
-version = '1.3'
+version = '1.4'
 usepango = True
 lprofile = False
 
 testflattentext,testflattentextdebug, testflattenrest,testflattenflow,testflattenpapers,testscalecorrection,testscalecorrection2,\
-testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp = (False,)*16
+testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp, testflattenfonts = (False,)*17
 
 testflattentext     = True;
 testflattentextdebug = True;
@@ -40,13 +41,18 @@ testhomogenizer2    = True;
 testaemp            = True;
 testae              = True;
 
+# testflattenfonts     = True; 
+
 import os, sys, re
-vpaths = {'1.0' : 'D:\\Inkscapes\\inkscape-1.0.2-2-x64',
-          '1.1' : 'D:\\Inkscapes\\inkscape-1.1.2_2022-02-05_b8e25be833-x64',
-          '1.2' : 'D:\\Inkscapes\\inkscape-1.2.2_2022-12-09_732a01da63-x64', 
-          '1.3' : 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64',
-          '1.3e': 'D:\\Inkscapes\\inkscape-1.3_2023-07-21_0e150ed6c4-x64_extensions',
-          '1.4' : 'D:\\Inkscapes\\inkscape-1.4-dev_2023-09-22_79074f2-x64'}
+INKSAPES_LOCATION = "D:\\Inkscapes"
+vpaths = {'1.0' : 'inkscape-1.0.2-2-x64',
+          '1.1' : 'inkscape-1.1.2_2022-02-05_b8e25be833-x64',
+          '1.2' : 'inkscape-1.2.2_2022-12-09_732a01da63-x64', 
+          '1.3' : 'inkscape-1.3.1_2023-11-16_91b66b0783-x64',
+          '1.3e': 'inkscape-1.3_2023-07-21_0e150ed6c4-x64_extensions',
+          '1.4' : 'inkscape-1.4-beta2_2024-07-30_9aaf4f3498-x64',
+          }
+vpaths = {k: os.path.join(INKSAPES_LOCATION, v) for k,v in vpaths.items()}
 
 if 'TESTMAINVERSION' in os.environ:
     version = os.environ['TESTMAINVERSION']
@@ -56,7 +62,7 @@ if version=='1.0':
 
 sys.path += [os.path.join(vpaths[version],'share\\inkscape\\extensions')]
 sys.path += [os.path.join(vpaths[version],'bin')]
-sys.path += [os.path.join(os.path.split(os.path.split(__file__)[0])[0],'scientific_inkscape')  ]
+sys.path += [os.path.join(os.path.split(os.path.split(os.path.abspath(__file__))[0])[0],'scientific_inkscape')]
 sys.path += [os.path.join(vpaths[version],'lib\\python3.10')]
 os.environ['LINEPROFILE'] = str(lprofile)
 os.environ['USEPANGO']=str(usepango)
@@ -103,6 +109,13 @@ if testflattenrest:
         compare_filters = [CompareNumericFuzzy2(),]
         comparisons = [flattenerargs]
         compare_file = ['svg/'+flattenrest]
+        
+if testflattenfonts:
+    class TestFlattenerFonts(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        comparisons = [flattenerargs]
+        compare_file = ['svg/'+flattenfonts]
 
     
 if testflattenpapers:

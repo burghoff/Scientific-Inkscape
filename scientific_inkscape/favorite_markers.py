@@ -213,6 +213,7 @@ dflt = {
     ],
 }
 
+import dhelpers as dh
 import inkex
 from inkex import (
     TextElement,
@@ -246,12 +247,6 @@ from inkex import (
 )
 
 import os, sys
-
-sys.path.append(
-    os.path.dirname(os.path.realpath(sys.argv[0]))
-)  # make sure my directory is on the path
-import dhelpers as dh
-
 
 def get_script_path():
     return os.path.dirname(os.path.realpath(sys.argv[0]))
@@ -355,10 +350,8 @@ class FavoriteMarkers(inkex.EffectExtension):
                 m.set_random_id(prefix=newname)
             else:
                 m = previousmkr
-            # dh.Set_Style_Comp(el, "marker-" + mtype, "url(#" + m.get_id() + ")")
             el.cstyle["marker-" + mtype] = "url(#" + m.get_id() + ")"
         else:
-            # dh.Set_Style_Comp(el, "marker-" + mtype, None)
             el.cstyle["marker-" + mtype] = None
 
         # dh.debug(mkrname+mtype)

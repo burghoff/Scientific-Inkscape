@@ -411,7 +411,8 @@ def Replace_Spans(string,spans,repls):
     # Sort in order
     zipped = zip(spans, repls)
     sorted_zipped = sorted(zipped, key=lambda x: x[0][0])
-    spans, repls = zip(*sorted_zipped)
+    if sorted_zipped:
+        spans, repls = zip(*sorted_zipped)
         
     repls = iter(repls)
     result = []

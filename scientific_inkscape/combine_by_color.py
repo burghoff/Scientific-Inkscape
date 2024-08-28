@@ -18,16 +18,10 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
-import inkex
-from inkex import Path, NamedView, Defs, Metadata, ForeignObject, Group, MissingGlyph
-import math
-import os, sys
-
-sys.path.append(
-    os.path.dirname(os.path.realpath(sys.argv[0]))
-)  # make sure my directory is on the path
 import dhelpers as dh
-
+import inkex
+from inkex import NamedView, Defs, Metadata, ForeignObject, Group, MissingGlyph
+import math
 
 class CombineByColor(inkex.EffectExtension):
     #    def document_path(self):
@@ -129,7 +123,7 @@ class CombineByColor(inkex.EffectExtension):
                         0
                     ]  # use the median
                     dh.combine_paths([els[kk] for kk in merges], mergeii)
-        dh.flush_stylesheet_entries(self.svg)  # since we removed clips
+        # dh.flush_stylesheet_entries(self.svg)  # since we removed clips
 
 
 if __name__ == "__main__":

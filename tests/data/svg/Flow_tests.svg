@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
    xml:space="preserve"
-   inkscape:version="1.2.1 (9c6d41e410, 2022-07-14)"
+   inkscape:version="1.4-beta (62f545ba5e, 2024-04-22)"
    id="svg26"
    version="1.1"
    viewBox="0 0 856.51671 776.78949"
    height="776.78949mm"
    width="856.51672mm"
-   sodipodi:docname="FlowRoot_Tests.svg"
+   sodipodi:docname="Flow_tests.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -809,8 +809,8 @@
      inkscape:current-layer="layer1"
      inkscape:document-units="mm"
      inkscape:cy="1467.9486"
-     inkscape:cx="1619.4323"
-     inkscape:zoom="0.27725766"
+     inkscape:cx="1619.4451"
+     inkscape:zoom="0.28713539"
      inkscape:pageshadow="2"
      inkscape:pageopacity="0.0"
      borderopacity="1.0"
@@ -1726,7 +1726,13 @@ With x and y on tspan</tspan></tspan></text><flowRoot
        height="102.87312"
        x="1497.3733"
        y="2225.9089"
-       transform="matrix(0.26458333,0,0,0.26458333,-318.14382,-23.47826)" /></g><style
+       transform="matrix(0.26458333,0,0,0.26458333,-318.14382,-23.47826)" /><text
+       xml:space="preserve"
+       style="font-size:3.175px;line-height:125%;font-family:Arial;-inkscape-font-specification:Arial;text-align:center;text-anchor:middle;white-space:pre;inline-size:24.045;display:inline;fill:#000000;stroke-width:0.499999;stroke-linecap:round;stroke-linejoin:round"
+       id="text1"
+       transform="matrix(2.6773774,0,0,2.6773774,304.37404,547.18879)"
+       x="10.146667"
+       y="0">inline-size center-justified</text></g><style
      type="text/css"
      id="style4742">
 	.st0{fill:#010202;}

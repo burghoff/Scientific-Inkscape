@@ -24,14 +24,8 @@ OPACITY = 0.75
 STDDEV = 0.5
 # standard deviation of the Gaussian blur as fraction of EXTENT
 
-import inkex
-import os, sys
-
-sys.path.append(
-    os.path.dirname(os.path.realpath(sys.argv[0]))
-)  # make sure my directory is on the path
 import dhelpers as dh
-
+import inkex
 dispprofile = False
 
 
@@ -123,7 +117,6 @@ class TextGhoster(inkex.EffectExtension):
             r.set("rx", str(border))
             # r.set('style','fill:#ffffff;filter:url(#'+fid+')')
             r.cstyle = "fill:#ffffff;stroke:none;filter:url(#{0})".format(fid)
-            # dh.Set_Style_Comp(r, "opacity", str(OPACITY))
             r.cstyle["opacity"] = str(OPACITY)
 
             dh.global_transform(g, oldts[g.get_id()])

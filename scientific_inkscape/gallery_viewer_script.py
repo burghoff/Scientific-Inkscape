@@ -1,19 +1,42 @@
-# Inkscape Auto-Exporter, by David Burghoff
+# Inkscape Gallery Viewer, by David Burghoff
 # Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
-# Service that checks a folder for changes in svg files, and then exports them
-# automatically to another folder in multiple formats.
+# Prints written to [temp]/si_gv_output.txt
 
-DEBUG = False
+import sys, subprocess, os, threading, time, copy, pickle, chardet
+import traceback
+import random
+import webbrowser, urllib, pathlib
+import warnings
+import re
+from threading import Thread
+import zipfile
+import shutil
+import hashlib
+import requests
+import builtins
+
+import dhelpers as dh
+import inkex
+import xml.etree.ElementTree as ET
+from dhelpers import si_tmp
+from autoexporter import ORIG_KEY
+from autoexporter import DUP_KEY
+from autoexporter import hash_file
+
 WHILESLEEP = 0.25
-
-
 IMAGE_WIDTH = 175
 IMAGE_HEIGHT = IMAGE_WIDTH * 0.7
 
+original_print = print
+
+
+def mprint(*args, **kwargs):
+    original_print(*args, **kwargs, flush=True)
+
+
+builtins.print = mprint
 
 try:
-    import sys, subprocess, os, threading, time, copy, pickle, chardet
-
     try:
         import gi
 
@@ -30,22 +53,14 @@ try:
         except:
             guitype = "terminal"
 
-    from dhelpers import si_tmp
-
     aes = si_tmp(filename="si_gv_settings.p")
     with open(aes, "rb") as f:
         input_options = pickle.load(f)
     os.remove(aes)
-    from autoexporter import orig_key
-    from autoexporter import dup_key
 
     bfn = input_options.inkscape_bfn
     sys.path += input_options.syspath
     PORTNUMBER = input_options.portnum
-
-    import dhelpers as dh
-    import sys, webbrowser, urllib, pathlib
-    import inkex
 
     current_script_directory = os.path.dirname(os.path.abspath(__file__))
     sys.path += [os.path.join(current_script_directory, "packages")]
@@ -85,8 +100,6 @@ try:
         refreshapp = True
 
     def Make_Flask_App():
-        import warnings
-
         warnings.simplefilter("ignore", DeprecationWarning)
         # prevent warning that process is open
         from flask import Flask, request, url_for, jsonify, send_from_directory
@@ -152,7 +165,7 @@ try:
 
                 with OpenWithEncoding(svg_file) as f:
                     file_content = f.read()
-                    if dup_key in file_content:
+                    if DUP_KEY in file_content:
                         global temp_dir
                         deembedsmade = False
                         while not (deembedsmade):
@@ -170,9 +183,9 @@ try:
                             if (
                                 isinstance(d, inkex.TextElement)
                                 and d.text is not None
-                                and dup_key in d.text
+                                and DUP_KEY in d.text
                             ):
-                                dupid = d.text[len(dup_key + ": ") :]
+                                dupid = d.text[len(DUP_KEY + ": ") :]
                                 dup = svg.getElementById(dupid)
                                 if dup is not None:
                                     dup.delete()
@@ -203,8 +216,6 @@ try:
         def run_flask():
             app.run(port=PORTNUMBER)
 
-        from threading import Thread
-
         thread = Thread(target=run_flask)
         thread.start()
         return app
@@ -212,13 +223,7 @@ try:
     global temp_dir
     temp_dir = si_tmp(dirbase="gv")
 
-    import os
-    import zipfile
-    import shutil
-
     def make_svg_display():
-        import os
-
         # Create the HTML file
         global temp_dir
         gloc = os.path.join(temp_dir, "Gallery.html")
@@ -492,9 +497,6 @@ try:
             self.run_on_fof_done = False
 
         def get_image_slidenums(self, dirin):
-            import os
-            import xml.etree.ElementTree as ET
-
             relsdir = os.path.join(dirin, "ppt", "slides", "_rels")
             numslides = len(os.listdir(relsdir))
             slide_filenames = []
@@ -524,10 +526,8 @@ try:
             return slide_lookup
 
         def run_on_fof(self):
-            print("Running on file:", self.fof, flush=True)
+            print("Running on file: " + self.fof)
             global temp_dir
-
-            import random
 
             contentsmade = False
             while not (contentsmade):
@@ -601,8 +601,8 @@ try:
 
                 self.thumbnails = copy.copy(self.files)
                 self.header = self.fof
-                print("Temp dir: " + temp_dir, flush=True)
-                print(self.files, flush=True)
+                print("Temp dir: " + temp_dir)
+                print(self.files)
 
                 self.embeds = []
                 subfiles = None
@@ -611,17 +611,15 @@ try:
                     if fn.endswith(".svg"):
                         with OpenWithEncoding(fn) as f:
                             file_content = f.read()
-                            if orig_key in file_content:
-                                import re
-
-                                key = orig_key + r":\s*(.+?)<"
+                            if ORIG_KEY in file_content:
+                                key = ORIG_KEY + r":\s*(.+?)<"
                                 match = re.search(key, file_content)
                                 if match:
                                     orig_file = match.group(1)
                                     orig_hash = None
                                     if (
                                         ", hash: " in orig_file
-                                    ):  # introduced hashing later than orig_key
+                                    ):  # introduced hashing later than ORIG_KEY
                                         orig_file, orig_hash = orig_file.split(
                                             ", hash: "
                                         )
@@ -645,7 +643,6 @@ try:
                                             if subfiles is None
                                             else subfiles
                                         )
-                                        from autoexporter import hash_file
 
                                         for tryfile in subfiles:
                                             if os.path.split(orig_file)[
@@ -673,13 +670,11 @@ try:
                     if fn.endswith(".svg"):
                         with OpenWithEncoding(fn) as f:
                             contents = f.read()
-                            import re
-
                             match = re.search(r"<\s*inkscape:page[\s\S]*?>", contents)
                             if match:
                                 svg = dh.svg_from_file(fn)
                                 pgs = svg.cdocsize.pgs
-                                haspgs = svg.cdocsize.inkscapehaspgs
+                                haspgs = inkex.installed_haspages
 
                                 if haspgs and len(pgs) > 1:
                                     vbs = [svg.cdocsize.pxtouu(pg.bbpx) for pg in pgs]
@@ -716,8 +711,6 @@ try:
         def convert_emfs(self):
             # Spawn a thread to convert all the EMFs to PNGs
             def overwrite_output(filein, fileout):
-                import hashlib
-
                 with open(f, "rb") as file:
                     file_content = file.read()
                     hashed = hashlib.sha256(file_content).hexdigest()
@@ -727,7 +720,7 @@ try:
                     nattempts = 0
                     while notdone and nattempts < 5:
                         try:
-                            print("Starting export...", flush=True)
+                            print("Starting export...")
                             if os.path.exists(fileout):
                                 os.remove(fileout)
                             args = [
@@ -745,7 +738,7 @@ try:
                             ]
                             dh.subprocess_repeat(args)
                             notdone = False
-                            print("Finished export...", flush=True)
+                            print("Finished export...")
                         except:
                             nattempts += 1
                     if not os.path.exists(fileout):  # write a 1x1 png
@@ -756,16 +749,12 @@ try:
                     trigger_refresh()
                     converted_files[hashed] = fileout
                 else:
-                    import shutil
-
                     shutil.copy2(converted_files[hashed], fileout)
-
-            from threading import Thread
 
             threads = []
             for ii, f in enumerate(self.files):
                 if f.endswith(".emf"):
-                    print("Making thumbnail " + self.thumbnails[ii], flush=True)
+                    print("Making thumbnail " + self.thumbnails[ii])
                     thread = Thread(
                         target=overwrite_output, args=(f, self.thumbnails[ii])
                     )
@@ -775,7 +764,7 @@ try:
                     thread.start()
 
         def run(self):
-            print("Initial run", flush=True)
+            print("Initial run")
             self.run_on_fof()
 
             make_svg_display()
@@ -811,7 +800,7 @@ try:
                 time.sleep(1)
                 mts = get_modtimes()
                 if lmts != mts:
-                    print("Update " + self.fof, flush=True)
+                    print("Update " + self.fof)
                     self.run_on_fof()
                     trigger_refresh()
                 lmts = mts
@@ -845,8 +834,6 @@ try:
         wt.start()
 
     def quitnow():
-        import requests
-
         requests.get(
             "http://localhost:{}/stop".format(str(PORTNUMBER))
         )  # kill Flask app
@@ -1024,10 +1011,9 @@ try:
         root.mainloop()
 
 except:
-    import traceback
-
     print("An error has occurred:")
     print(traceback.format_exc())
     import time
 
-    time.sleep(10)
+    time.sleep(1)
+print("Finishing")

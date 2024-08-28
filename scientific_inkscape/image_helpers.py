@@ -25,6 +25,7 @@ Extract embedded images.
 from __future__ import unicode_literals
 
 import os
+import dhelpers # noqa
 import inkex
 from inkex import Image
 

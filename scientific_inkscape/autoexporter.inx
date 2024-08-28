@@ -5,8 +5,7 @@
     <param name="tab" type="notebook">        
         <page name="scaling" gui-text="Options">
         <label>Launches the Autoexporter, a background program that watches a directory for changes to any SVG and then writes exports in the selected formats.</label>
-        <label>Mac users: You may get a security prompt asking whether to allow the program to run.</label>
-        <label>Linux users: AppImages and Snap installations may not be able to see folders outside the installation folder.</label>
+        <label>If you encounter a security prompt, please be sure to allow the program to run.</label>
         <label appearance="header">Formats to export</label>
         <param name="usepdf" type="bool" gui-text="PDF"
          gui-description="Filters and gradients will be rasterized.">true</param>   
@@ -16,19 +15,18 @@
         <param name="useeps" type="bool" gui-text="EPS">false</param>  
         <param name="usepsvg" type="bool" gui-text="Plain SVG"
           gui-description="Plain SVG that has been optimized for compatibility. &#13;Recommended for newer versions of Microsoft Office that support SVG.">false</param> 
-        <param name="dpi" type="float" precision="0" min="1" max="9999" gui-text="Rasterization DPI"
-        gui-description="Resolution for PNG output and PDF filter rasterization.">600</param>
         
-        <label appearance="header">What to export</label>   
+        <label appearance="header">What to export</label>
+        <param name="exportwhat" type="optiongroup" appearance="combo"
+                gui-text=""
+                gui-description="Autoexport runs in the background watching for changes to a directory. Single export is similar to Save a Copy.">
+                   <option value="1">Autoexport to locations below</option>
+                   <option value="2">Autoexport to this document's location</option>
+                   <option value="3">Single export now</option>
+                </param>
         <param type="path" name="watchdir" gui-text="Watch directory" mode="folder"/>
         <param type="path" name="writedir" gui-text="Write directory" mode="folder"/>
         
-        <param name="watchhere" type="bool" gui-text="Watch and write to this document's location instead"
-        gui-description="Ignore selections above and use this document's directory">false</param>
-         
-        <param name="exportnow" type="bool" gui-text="Export this document now (without running the Autoexporter)"
-        gui-description="Export the current document as it is now (like Save a Copy). Exports will be placed in the same folder as the original.">false</param>
-                
         <spacer/>
         <label>Scientific Inkscape v1.3.2</label>
         <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
@@ -36,9 +34,14 @@
         </page>
     
         <page name="advanced" gui-text="Advanced">
+        
+        <label appearance="header">Rasterization DPI</label>
+        <label>Resolution for PNG output and objects converted to raster formats</label>
+        <param name="dpi" type="float" precision="0" min="1" max="9999" gui-text="Rasterization DPI"
+        gui-description="Certain objects may be rasterized, including filters in PDFs and anything marked for it using the Rasterizer tab.">600</param>
 
         <label appearance="header">Embedded image handling</label> 
-        <label>Embedded images can be resampled and cropped to reduce output file sizes.</label>     
+        <label>Cropping and resampling of embedded images can reduce output file sizes.</label>     
         <param name="imagemode2" type="bool" gui-text="Crop and resample images?"
         gui-description="Resample embedded Images at the rasterization DPI if doing so makes the file size smaller. This avoids unnecessarily large files created by high-DPI images.">true</param> 
 
@@ -48,7 +51,9 @@
         <param name="thinline" type="bool" gui-text="Prevent thin line enhancement"
         gui-description="Some PDF readers thicken lines at certain zooms; this option makes your lines impervious to this feature.">true</param>  
         <param name="stroketopath" type="bool" gui-text="Convert all strokes to paths"
-        gui-description="Most PDF readers draw stroked lines differently than equivalent filled paths. By converting strokes to paths, this can be prevented. (This uses Inkscape's Stroke to Path, which has some unresolved bugs. Double-check the final output.)">false</param>  
+        gui-description="Most PDF readers draw stroked lines differently than equivalent filled paths. By converting strokes to paths, this can be prevented. (This uses Inkscape's Stroke to Path, which has some unresolved bugs. Double-check the final output.)">false</param>
+        <param name="backingrect" type="bool" gui-text="Add transparent backing rectangle"
+        gui-description="A transparent rectangle behind the image makes it easier to select in certain programs">true</param> 
         <param name="margin" type="float" precision="1" min="-9999" max="9999" gui-text="Extra margin (mm)"
         gui-description="Adds a margin to the export. A small margin can ensure that edges are not clipped off.">0.3</param>
         

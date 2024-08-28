@@ -18,15 +18,12 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
+import dhelpers as dh
 import inkex
 from inkex import TextElement, FlowRoot, FlowPara, Tspan, Transform, Group, FlowSpan
-import os, sys
-
-sys.path.append(
-    os.path.dirname(os.path.realpath(sys.argv[0]))
-)  # make sure my directory is on the path
-import dhelpers as dh
-from inkex.text.utils import otp_support_tags
+from inkex.text.cache import BaseElementCache
+otp_support_tags = BaseElementCache.otp_support_tags
+from inkex.text.utils import default_style_atts
 
 from applytransform_mod import fuseTransform
 import math
@@ -81,6 +78,9 @@ class Homogenizer(inkex.EffectExtension):
         )
         pars.add_argument(
             "--strokemodes", type=int, default=1, help="Stroke width options"
+        )
+        pars.add_argument(
+            "--clearclipmasks", type=inkex.Boolean, default=False, help="Clear clips and masks"
         )
         pars.add_argument(
             "--fusetransforms",
@@ -155,7 +155,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             onept = self.svg.cdocsize.unittouu("1pt")
             szs = dict()
             for el in tels:
-                cszs = [c.tfs / onept for ln in el.parsed_text.lns for c in ln.cs]
+                cszs = [c.tfs / onept for ln in el.parsed_text.lns for c in ln.chrs]
                 if len(cszs) > 0:
                     szs[el] = max(cszs)
 
@@ -182,17 +182,17 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             except ValueError:
                 fontsize = 12
 
-            from inkex.text import TextParser
+            from inkex.text import parser
 
             for el in szs:
                 for d in reversed(el.descendants2()):
                     sty = d.cspecified_style
                     if el == d or "font-size" in sty:
-                        dfs, sf = dh.composed_width(d, "font-size")
-                        bshift = TextParser.tchar.get_baseline(sty, d.getparent())
+                        dfs, sf, utdfs = dh.composed_width(d, "font-size")
+                        bshift = parser.TChar.get_baseline(sty, d.getparent())
                         if bshift != 0 or "%" in sty.get("font-size", ""):
                             # Convert sub/superscripts into relative size
-                            pfs, sf = dh.composed_width(d.getparent(), "font-size")
+                            pfs, sf, _ = dh.composed_width(d.getparent(), "font-size")
                             d.cstyle["font-size"] = f"{dfs / pfs * 100:.2f}%"
                         else:
                             # Set absolute size
@@ -201,7 +201,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                                 if not fixedscale
                                 else fontsize / 100
                             )
-                            nfs = dfs * scl / sf
+                            nfs = utdfs * scl
                             nfs = f"{nfs:.2f}" if abs(nfs) > 1 else "{:.3g}".format(nfs)
                             d.cstyle["font-size"] = nfs.rstrip("0").rstrip(".") + "px"
 
@@ -210,25 +210,38 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             for el in sel:
                 ct = el.ccomposed_transform
                 detv = ct.a * ct.d - ct.b * ct.c
-                signdet = -1 * (detv < 0) + (detv >= 0)
-                sqrtdet = math.sqrt(abs(detv))
-                magv = math.sqrt(ct.b**2 + ct.a**2)
-                ctnew = Transform(
-                    [
-                        [ct.a * sqrtdet / magv, -ct.b * sqrtdet * signdet / magv, ct.e],
-                        [ct.b * sqrtdet / magv, ct.a * sqrtdet * signdet / magv, ct.f],
-                    ]
-                )
-                dh.global_transform(el, (ctnew @ (-ct)))
+                if detv!=0:
+                    signdet = -1 * (detv < 0) + (detv >= 0)
+                    sqrtdet = math.sqrt(abs(detv))
+                    magv = math.sqrt(ct.b**2 + ct.a**2)
+                    ctnew = Transform(
+                        [
+                            [ct.a * sqrtdet / magv, -ct.b * sqrtdet * signdet / magv, ct.e],
+                            [ct.b * sqrtdet / magv, ct.a * sqrtdet * signdet / magv, ct.f],
+                        ]
+                    )
+                    dh.global_transform(el, (ctnew @ (-ct)))
 
         if setfontfamily:
+            from inkex.text.font_properties import inkscape_spec_to_css
+            sty = inkscape_spec_to_css(fontfamily)
+            if sty is None:
+                dh.idebug('Font seems to be invalid—check its spelling.')
+                import sys
+                sys.exit()
+            # If any type of Font Style is being set, reset the others to default
+            if any(k in sty for k in ["font-weight", "font-style", "font-stretch"]):
+                for k in ["font-weight", "font-style", "font-stretch"]:
+                    sty.setdefault(k, default_style_atts[k])
+
             for el in reversed(sel):
-                el.cstyle["font-family"] = fontfamily
+                for k,v in sty.items():
+                    el.cstyle[k] = v
                 el.cstyle["-inkscape-font-specification"] = None
 
-            from inkex.text import TextParser
+            from inkex.text import parser
 
-            TextParser.Character_Fixer2(tels)
+            dh.character_fixer(tels)
 
         if setfontfamily or setfontsize or fixtextdistortion:
             bbs2 = dh.BB2(self, tels, True)
@@ -317,7 +330,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             sfd = dict()
             szs = []
             for el in sela:
-                sw, sf = dh.composed_width(el, "stroke-width")
+                sw, sf, _ = dh.composed_width(el, "stroke-width")
 
                 elid = el.get_id()
                 szd[elid] = sw
@@ -350,7 +363,6 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                         newsize = setstrokew
                     else:
                         newsize = szd[elid] * (setstrokew / 100)
-                    # dh.Set_Style_Comp(el, "stroke-width", str(newsize / sfd[elid]) + "px")
                     el.cstyle["stroke-width"] = str(newsize / sfd[elid]) + "px"
 
         if self.options.fusetransforms:
@@ -360,6 +372,12 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                     el.ctransform = el.ccomposed_transform
                     fuseTransform(el)
                     el.ctransform = -el.getparent().ccomposed_transform
+                    
+                    
+        if self.options.clearclipmasks:
+            for el in sela:
+                el.cstyle['clip-path'] = 'none'
+                el.cstyle['mask'] = 'none'
 
         if dispprofile:
             pr.disable()

@@ -10,8 +10,9 @@
             </label>
             <label appearance="header">Text options</label>
             <param name="fixtextdistortion" type="bool" gui-text="Correct distorted text?">true</param>
-            <param name="setfontfamily" type="bool" gui-text="Set font family?">true</param>
-            <param name="fontfamily" type="string" gui-text="Font family"></param>  
+            <param name="setfontfamily" type="bool" gui-text="Set font?">true</param>
+            <param name="fontfamily" type="string" gui-text="New font"
+                    gui-description="Can be used to set Font Family and Font Style. If specifying both, separate them with a space."></param>  
             
             <param name="setfontsize" type="bool" gui-text="Set font size?">true</param>
             <param name="fontmodes" type="optiongroup" appearance="combo"
@@ -44,6 +45,11 @@
             </param>                
             <param name="setstrokew" type="float" precision="2" min="0" max="10000" gui-text="Stroke width value (if applicable)">1</param>     
 
+            <label appearance="header">Other options</label>
+            <param name="clearclipmasks"  type="bool" gui-text="Remove clips and masks?"
+             gui-description="Deletes all clips and masks without releasing them">false</param>
+             
+             
             <spacer/>
             <label>Scientific Inkscape v1.3.2</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>

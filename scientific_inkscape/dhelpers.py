@@ -24,35 +24,53 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+# Locate the installed Inkex so we can assess the version. Do not import!
+import pkgutil
 
+for finder in pkgutil.iter_importers():
+    if hasattr(finder, "find_spec"):
+        try:
+            spec = finder.find_spec("inkex")
+            if spec and spec.origin:
+                installed_inkex = spec.origin
+        except TypeError:
+            continue
+
+# Import the packaged version of Inkex (currently v1.3.0)
+import sys, os
+
+inkex_to_use = "inkex1_3_0"
+si_dir = os.path.dirname(os.path.realpath(__file__))  # my install location
+sys.path.insert(0, os.path.join(si_dir, inkex_to_use))
+sys.path.insert(1, os.path.join(si_dir, inkex_to_use, "site-packages"))
 import inkex
 
 # For SI we override Inkex's Style with a modified version, Style0
 # To do this we import Style0, then replace inkex.Style with it
-import Style0
+import styles0
 
-inkex.Style = Style0.Style0
+inkex.Style = styles0.Style0
 
-# Next we make sure we have the text submodule. If not, we add it from SI
-import text  # noqa
+# Next we make sure we have the text submodule
+sys.path.append(
+    os.path.join(si_dir, inkex_to_use, "site-packages", "python_fontconfig")
+)
+import inkex.text  # noqa
+import speedups  # noqa
 
 from inkex import Style
-from inkex.text.cache import (
-    tags,
-    grouplike_tags,
-    bb2_support_tags,
-    bounding_box2,
-    bbox,
-    ipx,
-)
+from inkex.text.cache import BaseElementCache
+from inkex.text.parser import TextTree, TYP_TEXT
+
 from inkex.text.utils import (
     composed_width,
     unique,
-    object_to_path,
     isrectangle,
-    Get_Binary_Loc,
-    Get_Bounding_Boxes,
+    get_bounding_boxes,
     subprocess_repeat,
+    tags,
+    bbox,
+    ipx,
 )
 
 
@@ -60,6 +78,22 @@ from inkex import Tspan, Transform, Path, PathElement, BaseElement
 from applytransform_mod import fuseTransform
 import lxml, math, re, os, random, sys
 from functools import lru_cache
+
+
+# Parsed Inkex version, with extension back to v0.92.4
+if not hasattr(inkex, "__version__"):
+    try:
+        tmp = BaseElement.unittouu  # introduced in 1.1
+        inkex.__version__ = "1.1.0"
+    except:
+        try:
+            from inkex.paths import Path, CubicSuperPath  # noqa
+
+            inkex.__version__ = "1.0.0"
+        except:
+            inkex.__version__ = "0.92.4"
+inkex.vparse = lambda x: [int(v) for v in x.split(".")]  # type: ignore
+inkex.ivp = inkex.vparse(inkex.__version__)  # type: ignore
 
 
 # Returns non-comment children
@@ -89,6 +123,35 @@ def count_callers():
         callinfo[lstr] = 1
 
 
+# Discover the version of Inkex installed, NOT the version packaged with SI
+with open(installed_inkex, "r") as file:
+    content = file.read()
+match = re.search(r'__version__\s*=\s*"(.*?)"', content)
+vstr = match.group(1) if match else "1.0.0"
+if vstr=='1.2.0': # includes 1.2.0, 1.2.1, 1.2.2
+    extpy = os.path.join(os.path.dirname(installed_inkex),'extensions.py')
+    with open(extpy, "r") as file:
+        content = file.read()
+    match = re.search(r'Pattern', content) # appeared in 1.2.2
+    if match:
+        vstr='1.2.2'
+
+inkex.installed_ivp = inkex.vparse(vstr)  # type: ignore
+inkex.installed_haspages = inkex.installed_ivp[0] >= 1 and inkex.installed_ivp[1] >= 2
+
+# On v1.1-1.2.1 gi produces an error for some reason that is actually fine
+import platform
+
+if platform.system().lower() == "windows" and inkex.installed_ivp[0:2] == [1, 1] or (inkex.installed_ivp[0:2] == [1, 2] and inkex.installed_ivp[2]<2):   
+    if inkex.text.font_properties.HASPANGOFT2:
+        from gi.repository import GLib
+
+        def custom_log_writer(log_domain, log_level, message, user_data):
+            return GLib.LogWriterOutput.UNHANDLED
+
+        GLib.log_set_writer_func(custom_log_writer, None)
+
+
 # Replace an element with another one
 # Puts it in the same location, update the cache dicts
 def replace_element(el1, el2):
@@ -111,27 +174,6 @@ def replace_element(el1, el2):
 def listsplit(x):
     # split list on commas or spaces
     return [ipx(v) for v in re.split("[ ,]", x) if v]
-
-
-# def Get_Composed_List(el, comp, nargout=1):
-#     cs = el.cspecified_style
-#     ct = el.ccomposed_transform
-#     sc = cs.get(comp)
-#     if sc == "none":
-#         return "none"
-#     elif sc is not None:
-#         sv = listsplit(sc)
-#         sf = math.sqrt(abs(ct.a * ct.d - ct.b * ct.c))
-#         sv = [x * sf for x in sv]
-#         if nargout == 1:
-#             return sv
-#         else:
-#             return sv, sf
-#     else:
-#         if nargout == 1:
-#             return None
-#         else:
-#             return None, None
 
 
 def composed_list(el, comp):
@@ -237,41 +279,40 @@ def unlink2(el):
 
 # unungroupable = (NamedView, Defs, Metadata, ForeignObject, lxml.etree._Comment)
 unungroupable = tags((inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.ForeignObject))
-ctag = lxml.etree.Comment
+ctag = lxml.etree.Comment("").tag
 unungroupable.add(ctag)
 
 
-def ungroup(groupel):
+def ungroup(g, removetextclip=False):
     # Ungroup a group, preserving style, clipping, and masking
     # Remove any comments
 
-    if groupel.croot is not None:
-        gparent = groupel.getparent()
-        gindex = gparent.index(groupel)  # group's location in parent
+    if g.croot is not None:
+        gparent = g.getparent()
+        gindex = gparent.index(g)  # group's location in parent
 
-        gtransform = groupel.ctransform
-        gclip = groupel.get_link("clip-path", llget=True)
-        gmask = groupel.get_link("mask", llget=True)
-        gstyle = groupel.ccascaded_style
+        gtransform = g.ctransform
+        gclip = g.get_link("clip-path", llget=True)
+        gmask = g.get_link("mask", llget=True)
+        gstyle = g.ccascaded_style
 
-        for el in reversed(list(groupel)):
+        for el in reversed(list(g)):
             if el.tag == ctag:  # remove comments
-                groupel.remove(el)
-            if not (el.tag in unungroupable):
-                clippedout = compose_all(el, gclip, gmask, gtransform, gstyle)
+                g.remove(el)
+            if el.tag not in unungroupable:
+                clippedout = compose_all(
+                    el, gclip, gmask, gtransform, gstyle, removetextclip=removetextclip
+                )
                 if clippedout:
                     el.delete()
                 else:
-                    gparent.insert(gindex + 1, el)
-                    # places above
-
-        if len(groupel) == 0:
-            groupel.delete()
+                    gparent.insert(gindex + 1, el)  # places above
+        if len(g) == 0:
+            g.delete()
 
 
 # Group a list of elements, placing the group in the location of the first element
 def group(el_list, moveTCM=False):
-    # g = el_list[0].croot.new_element(inkex.Group)
     g = inkex.Group()
     myi = list(el_list[0].getparent()).index(el_list[0])
     el_list[0].getparent().insert(myi + 1, g)
@@ -294,7 +335,7 @@ def group(el_list, moveTCM=False):
 Itmat = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
 
 
-def compose_all(el, clip, mask, transform, style):
+def compose_all(el, clip, mask, transform, style, removetextclip=False):
     if style is not None:  # style must go first since we may change it with CSS
         mysty = el.ccascaded_style
         compsty = style + mysty
@@ -303,22 +344,25 @@ def compose_all(el, clip, mask, transform, style):
         )  # opacity accumulates at each layer
         el.cstyle = compsty
 
-    if clip is not None:
-        # idebug([el.get_id(),clipurl])
-        cout = merge_clipmask(el, clip)  # clip applied before transform, fix first
-    if mask is not None:
-        merge_clipmask(el, mask, mask=True)
-    if clip is not None:
-        fix_css_clipmask(el)
-    if mask is not None:
-        fix_css_clipmask(el, mask=True)
+    if removetextclip and el.tag in ttags:
+        el.set("clip-path", None)
+        el.set("mask", None)
+        cout = False
+    else:
+        if clip is not None:
+            cout = merge_clipmask(el, clip)  # clip applied before transform, fix first
+        if mask is not None:
+            merge_clipmask(el, mask, mask=True)
+        if clip is not None:
+            fix_css_clipmask(el)
+        if mask is not None:
+            fix_css_clipmask(el, mask=True)
 
-    if transform is not None:
-        if transform.matrix != Itmat:
-            if el.ctransform is None or el.ctransform.matrix == Itmat:
-                el.ctransform = transform
-            else:
-                el.ctransform = transform @ el.ctransform
+    if transform is not None and transform.matrix != Itmat:
+        if el.ctransform is None or el.ctransform.matrix == Itmat:
+            el.ctransform = transform
+        else:
+            el.ctransform = transform @ el.ctransform
 
     if clip is None:
         return False
@@ -333,35 +377,19 @@ def fix_css_clipmask(el, mask=False):
     cm = "clip-path" if not mask else "mask"
     svg = el.croot
     if svg is not None:
-        cssdict = svg.cssdict
-    else:
-        cssdict = dict()
-
-    mycss = cssdict.get(el.get_id())
-    if mycss is not None:
-        if mycss.get(cm) is not None and mycss.get(cm) != el.get(cm):
-            svg = el.croot
-            if not (hasattr(svg, "stylesheet_entries")):
-                svg.stylesheet_entries = dict()
-            svg.stylesheet_entries["#" + el.get_id()] = cm + ":" + el.get(cm)
+        mycss = svg.cssdict.get(el.get_id())
+        if (
+            mycss is not None
+            and mycss.get(cm) is not None
+            and mycss.get(cm) != el.get(cm)
+        ):
+            sty = el.croot.crootsty
+            sty.text = (sty.text or "") + "\n#{0}{{{1}:{2}}}".format(
+                el.get_id(), cm, el.get(cm)
+            )
             mycss[cm] = el.get(cm)
     if el.cstyle.get(cm) is not None:  # also clear local style
-        # Set_Style_Comp(el, cm, None)
         el.cstyle[cm] = None
-
-
-# Adding to the stylesheet is slow, so as a workaround we only do this once
-# There is no good way to do many entries at once, so we do it after we're finished
-def flush_stylesheet_entries(svg):
-    if hasattr(svg, "stylesheet_entries"):
-        ss = ""
-        for k in svg.stylesheet_entries.keys():
-            ss += k + "{" + svg.stylesheet_entries[k] + "}\n"
-        svg.stylesheet_entries = dict()
-
-        stys = svg.xpath("svg:style")
-        if len(stys) > 0:
-            stys[0].text += "\n" + ss + "\n"
 
 
 def intersect_paths(ptha, pthb):
@@ -390,10 +418,8 @@ def merge_clipmask(node, newclip, mask=False):
         isempty = str(newpath) == ""
 
         if not (isempty):
-            myp = el.getparent()
-            # p = el.croot.new_element(PathElement, el)
             p = PathElement()
-            myp.append(p)
+            el.getparent().append(p)
             p.set("d", newpath)
         el.delete()
         return isempty  # if clipped out, safe to delete element
@@ -435,14 +461,18 @@ def merge_clipmask(node, newclip, mask=False):
 
             newclipisrect = False
             if newclip is not None and len(newclip) == 1:
-                newclipisrect, newclippth = isrectangle(list(newclip)[0])
+                newclipisrect = isrectangle(list(newclip)[0])
 
             couts = []
             for k in reversed(list(d)):  # may be deleting, so reverse
-                oldclipisrect, oldclippth = isrectangle(k)
+                oldclipisrect = isrectangle(k)
                 if newclipisrect and oldclipisrect and mask == False:
                     # For rectangular clips, we can compose them easily
                     # Since most clips are rectangles this semi-fixes the PDF clip export bug
+                    newclippth = list(newclip)[0].cpath.transform(
+                        list(newclip)[0].ctransform
+                    )
+                    oldclippth = k.cpath.transform(k.ctransform)
                     cout = compose_clips(k, newclippth, oldclippth)
                 else:
                     cout = merge_clipmask(k, newclip, mask)
@@ -555,7 +585,7 @@ def isdrawn(el):
     )
 
 
-# A wrapper that replaces Get_Bounding_Boxes with Pythonic calls only if possible
+# A wrapper that replaces get_bounding_boxes with Pythonic calls only if possible
 def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
     if els is None:
         els = slf.svg.descendants2()
@@ -578,12 +608,13 @@ def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
                     d.cbbox = None
                     d.parsed_text = None
             if not hasattr(slf.svg, "_char_table"):
-                from inkex.text import TextParser  # noqa
+                from inkex.text import parser  # noqa
 
                 slf.svg.make_char_table(els=tels)
-                pts = [el.parsed_text for el in tels]
-                TextParser.ParsedTextList(pts).precalcs()
-        ret = inkex.OrderedDict()
+                # pts = [el.parsed_text for el in tels]
+                ptl = parser.ParsedTextList(tels)
+                ptl.precalcs()
+        ret = dict()
         for d in els:
             if d.tag in bb2_support_tags and hasbbox(d):
                 mbbox = bounding_box2(d, roughpath=roughpath, parsed=parsed)
@@ -595,7 +626,7 @@ def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
         with tempfile.TemporaryFile() as temp:
             tname = os.path.abspath(temp.name)
             overwrite_svg(slf.svg, tname)
-            ret = Get_Bounding_Boxes(filename=tname, svg=slf.svg)
+            ret = get_bounding_boxes(filename=tname, svg=slf.svg)
 
     return ret
 
@@ -737,6 +768,69 @@ def toc():
     idebug(time.time() - lasttic)
 
 
+def benchmark_functions(func1, func2):
+    import numpy as np
+
+    differences = []
+    time1s = []
+
+    MINIBATCH_TIME = 0.01
+    TOTAL_TIME = 10
+
+    strt = time.time()
+    f1cnt = 0
+    while time.time() - strt < MINIBATCH_TIME:
+        func1()
+        f1cnt += 1
+    strt = time.time()
+    f2cnt = 0
+    while time.time() - strt < MINIBATCH_TIME:
+        func2()
+        f2cnt += 1
+
+    for Nr in range(5):
+        strt = time.time()
+        for ii in range(f1cnt):
+            func1()
+        f1act = time.time() - strt
+        strt = time.time()
+        for ii in range(f2cnt):
+            func2()
+        f2act = time.time() - strt
+        f1cnt = int(f1cnt * MINIBATCH_TIME / f1act)
+        f2cnt = int(f2cnt * MINIBATCH_TIME / f2act)
+
+    M = int(TOTAL_TIME / MINIBATCH_TIME / 2)
+    N1 = f1cnt
+    N2 = f2cnt
+
+    for _ in range(M):
+        # Timing function 1
+        start_time = time.time()
+        for _ in range(N1):
+            func1()
+        end_time = time.time()
+        time_func1 = (end_time - start_time) / N1
+        time1s.append(time_func1)
+
+        # Timing function 2
+        start_time = time.time()
+        for _ in range(N2):
+            func2()
+        end_time = time.time()
+        time_func2 = (end_time - start_time) / N2
+
+        # Calculate the difference in times
+        time_difference = time_func2 - time_func1
+        differences.append(time_difference)
+
+    # Calculating mean and standard deviation of time differences
+    mean_difference = np.mean(differences)
+    std_deviation = np.std(differences)
+
+    return np.mean(time1s), mean_difference, std_deviation / np.sqrt(M)
+
+
 # style atts that could have urls
 urlatts = [
     "fill",
@@ -851,7 +945,7 @@ def global_transform(el, trnsfrm, irange=None, trange=None, preserveStroke=True)
             for ii in range(len(trange)):
                 trange[ii] = (-prt) @ trange[ii] @ prt @ Transform(myt)
 
-    sw, _ = composed_width(el, "stroke-width")
+    sw, _, _ = composed_width(el, "stroke-width")
     sd, _ = composed_list(el, "stroke-dasharray")
 
     el.ctransform = newtr  # Add the new transform
@@ -859,25 +953,17 @@ def global_transform(el, trnsfrm, irange=None, trange=None, preserveStroke=True)
 
     if preserveStroke:
         if sw is not None:
-            neww, sf = composed_width(el, "stroke-width")
-            # Set_Style_Comp(el, "stroke-width", str(sw / sf))
-            el.cstyle["stroke-width"] = str(sw / sf)
+            neww, sf, _ = composed_width(el, "stroke-width")
+            if sf != 0:
+                el.cstyle["stroke-width"] = str(sw / sf)
             # fix width
         if not (sd in [None, "none"]):
             nd, sf = composed_list(el, "stroke-dasharray")
-            el.cstyle["stroke-dasharray"] = (
-                str([sdv / sf for sdv in sd]).strip("[").strip("]")
-            )
+            if sf != 0:
+                el.cstyle["stroke-dasharray"] = (
+                    str([sdv / sf for sdv in sd]).strip("[").strip("]")
+                )
             # fix dash
-
-
-# Delete and prune empty ancestor groups
-def deleteup(el):
-    myp = el.getparent()
-    el.delete()
-    if myp is not None:
-        if not len(myp):  # faster than getting children
-            deleteup(myp)
 
 
 # Combines a group of path-like elements
@@ -902,7 +988,7 @@ def combine_paths(els, mergeii=0):
     # Set the path on the mergeiith element
     mel = els[mergeii]
     if mel.get("d") is None:  # Polylines and lines have to be converted to a path
-        object_to_path(mel)
+        mel.object_to_path()
     mel.set("d", str(pnew.transform(-mel.ccomposed_transform)))
 
     # Release clips/masks
@@ -916,18 +1002,23 @@ def combine_paths(els, mergeii=0):
     mel.set("inkscape-scientific-combined-by-color", " ".join([str(v) for v in si]))
     for s in range(len(els)):
         if s != mergeii:
-            deleteup(els[s])
+            # deleteup(els[s])
+            els[s].delete(deleteup=True)
 
 
 # Gets all of the stroke and fill properties from a style
 # Alpha is its effective alpha including opacity
 # Note to self: inkex.Color inherits from list
+from inkex.text.utils import default_style_atts as dsa
+
+
 def get_strokefill(el):
     sty = el.cspecified_style
-    strk = sty.get("stroke", None)
-    fill = sty.get("fill", None)
+    strk = sty.get("stroke", dsa.get("stroke"))
+    fill = sty.get("fill", dsa.get("fill"))
     op = float(sty.get("opacity", 1.0))
-    nones = [None, "none", "None"]
+    nones = [None, "none"]
+    strk_isurl, fill_isurl = False, False
     if not (strk in nones):
         try:
             strk = inkex.Color(strk).to_rgb()
@@ -938,11 +1029,13 @@ def get_strokefill(el):
             # effective lightness frac with a white bg
             strk.efflightness = strkl
         except:  # inkex.colors.ColorIdError:
-            strk = None
-            strkl = None
+            if "url(#" in strk:
+                strk = sty.get_link("stroke", el.croot)
+                strk_isurl = True
+            else:
+                strk = None
     else:
         strk = None
-        strkl = None
     if not (fill in nones):
         try:
             fill = inkex.Color(fill).to_rgb()
@@ -953,13 +1046,15 @@ def get_strokefill(el):
             # effective lightness frac with a white bg
             fill.efflightness = filll
         except:  # inkex.colors.ColorIdError:
-            fill = None
-            filll = None
+            if "url(#" in fill:
+                fill = sty.get_link("fill", el.croot)
+                fill_isurl = True
+            else:
+                fill = None
     else:
         fill = None
-        filll = None
 
-    sw, _ = composed_width(el, "stroke-width")
+    sw, _, _ = composed_width(el, "stroke-width")
     sd, _ = composed_list(el, "stroke-dasharray")
     if sd in nones:
         sd = None
@@ -982,9 +1077,11 @@ def get_strokefill(el):
                 self.markerstart,
                 self.markermid,
                 self.markerend,
+                self.strk_isurl,
+                self.fill_isurl,
             ) = args
 
-    return StrokeFill(strk, fill, sw, sd, ms, mm, me)
+    return StrokeFill(strk, fill, sw, sd, ms, mm, me, strk_isurl, fill_isurl)
 
 
 # Gets the caller's location
@@ -1000,7 +1097,7 @@ def visible_descendants(svg):
 
 # Get document location or prompt
 def Get_Current_File(ext, msgstr):
-    tooearly = inkex.ivp[0] <= 1 and inkex.ivp[1] < 1
+    tooearly = inkex.installed_ivp[0] <= 1 and inkex.installed_ivp[1] < 1
     if not (tooearly):
         myfile = ext.document_path()
     else:
@@ -1019,9 +1116,6 @@ def Get_Current_File(ext, msgstr):
         return None
     else:
         return myfile
-
-
-si_dir = os.path.dirname(os.path.realpath(__file__))
 
 
 # Generate a temporary file or folder in SI's location / tmp
@@ -1050,6 +1144,166 @@ def si_tmp(dirbase="", filename=None):
         return subdir_path
 
 
+ttags = tags((inkex.TextElement, inkex.FlowRoot))
+line_tag = inkex.Line.ctag
+cpath_support_tags = tags(BaseElementCache.cpath_support)
+mask_tag = inkex.addNS("mask", "svg")
+grouplike_tags = tags(
+    (
+        inkex.SvgDocumentElement,
+        inkex.Group,
+        inkex.Layer,
+        inkex.ClipPath,
+        inkex.Symbol,
+    )
+)
+grouplike_tags.add(mask_tag)
+
+
+def bounding_box2(
+    self, dotransform=True, includestroke=True, roughpath=False, parsed=False
+):
+    """
+    Cached bounding box that requires no command call
+    Uses extents for text
+    dotransform: whether or not we want the element's bbox or its true
+                 transformed bbox
+    includestroke: whether or not to add the stroke to the calculation
+    roughpath: use control points for a path's bbox, which is faster and an
+               upper bound for the true bbox
+    """
+    if not (hasattr(self, "_cbbox")):
+        self._cbbox = dict()
+    if (dotransform, includestroke, roughpath, parsed) not in self._cbbox:
+        try:
+            ret = bbox(None)
+            if self.tag in ttags:
+                ret = self.parsed_text.get_full_extent(parsed=parsed)
+            elif self.tag in cpath_support_tags:
+                pth = self.cpath
+                if len(pth) > 0:
+                    swd = ipx(self.cspecified_style.get("stroke-width", "0px"))
+                    if self.cspecified_style.get("stroke") is None or not (
+                        includestroke
+                    ):
+                        swd = 0
+
+                    if self.tag == line_tag:
+                        x = [ipx(self.get("x1", "0")), ipx(self.get("x2", "0"))]
+                        y = [ipx(self.get("y1", "0")), ipx(self.get("y2", "0"))]
+                        ret = bbox(
+                            [
+                                min(x) - swd / 2,
+                                min(y) - swd / 2,
+                                max(x) - min(x) + swd,
+                                max(y) - min(y) + swd,
+                            ]
+                        )
+                    elif not roughpath:
+                        bbx = pth.bounding_box()
+                        ret = bbox(
+                            [
+                                bbx.left - swd / 2,
+                                bbx.top - swd / 2,
+                                bbx.width + swd,
+                                bbx.height + swd,
+                            ]
+                        )
+                    else:
+                        anyarc = any(s.letter in ["a", "A"] for s in pth)
+                        pth = inkex.Path(inkex.CubicSuperPath(pth)) if anyarc else pth
+                        pts = list(pth.control_points)
+                        x = [p.x for p in pts]
+                        y = [p.y for p in pts]
+                        ret = bbox(
+                            [
+                                min(x) - swd / 2,
+                                min(y) - swd / 2,
+                                max(x) - min(x) + swd,
+                                max(y) - min(y) + swd,
+                            ]
+                        )
+
+            elif self.tag in grouplike_tags:
+                for kid in list2(self):
+                    dbb = bounding_box2(
+                        kid,
+                        dotransform=False,
+                        includestroke=includestroke,
+                        roughpath=roughpath,
+                        parsed=parsed,
+                    )
+                    if not (dbb.isnull):
+                        ret = ret.union(dbb.transform(kid.ctransform))
+            elif isinstance(self, (inkex.Image)):
+                ret = bbox(
+                    [ipx(self.get(v, "0")) for v in ["x", "y", "width", "height"]]
+                )
+            elif isinstance(self, (inkex.Use,)):
+                lel = self.get_link("xlink:href")
+                if lel is not None:
+                    ret = bounding_box2(
+                        lel, dotransform=False, roughpath=roughpath, parsed=parsed
+                    )
+
+                    # clones have the transform of the link, followed by any
+                    # xy transform
+                    xyt = inkex.Transform(
+                        "translate({0},{1})".format(
+                            ipx(self.get("x", "0")), ipx(self.get("y", "0"))
+                        )
+                    )
+                    ret = ret.transform(xyt @ lel.ctransform)
+
+            if not (ret.isnull):
+                for cmv in ["clip-path", "mask"]:
+                    clip = self.get_link(cmv, llget=True)
+                    if clip is not None:
+                        cbb = bounding_box2(
+                            clip,
+                            dotransform=False,
+                            includestroke=False,
+                            roughpath=roughpath,
+                            parsed=parsed,
+                        )
+                        if not (cbb.isnull):
+                            ret = ret.intersection(cbb)
+                        else:
+                            ret = bbox(None)
+
+                if dotransform:
+                    if not (ret.isnull):
+                        ret = ret.transform(self.ccomposed_transform)
+        except:
+            # For some reason errors are occurring silently
+            import traceback
+
+            inkex.utils.debug(traceback.format_exc())
+        self._cbbox[(dotransform, includestroke, roughpath, parsed)] = ret
+    return self._cbbox[(dotransform, includestroke, roughpath, parsed)]
+
+
+def set_cbbox(self, val):
+    """Invalidates the cached bounding box."""
+    if val is None and hasattr(self, "_cbbox"):
+        delattr(self, "_cbbox")
+
+
+inkex.BaseElement.cbbox = property(bounding_box2, set_cbbox)
+inkex.BaseElement.bounding_box2 = bounding_box2
+
+bb2_support = (
+    inkex.TextElement,
+    inkex.FlowRoot,
+    inkex.Image,
+    inkex.Use,
+    inkex.SvgDocumentElement,
+    inkex.Group,
+    inkex.Layer,
+) + BaseElementCache.cpath_support
+bb2_support_tags = tags(bb2_support)
+
+
 masktag = inkex.addNS("mask", "svg")
 
 
@@ -1074,21 +1328,24 @@ def ctoc():
     s = io.StringIO()
     sortby = pstats.SortKey.CUMULATIVE
     profiledir = os.path.dirname(os.path.abspath(__file__))
-    pr.dump_stats(os.path.abspath(os.path.join(profiledir, "cprofile.prof")))
-    ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
-    ps.print_stats()
-    ppath = os.path.abspath(os.path.join(profiledir, "cprofile.csv"))
-
-    result = s.getvalue()
-    prefix = result.split("ncalls")[0]
-    # chop the string into a csv-like buffer
-    result = "ncalls" + result.split("ncalls")[-1]
-    result = "\n".join(
-        [",".join(line.rstrip().split(None, 5)) for line in result.split("\n")]
-    )
-    result = prefix + "\n" + result
-    with open(ppath, "w") as f:
-        f.write(result)
+    try:
+        pr.dump_stats(os.path.abspath(os.path.join(profiledir, "cprofile.prof")))
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats()
+        ppath = os.path.abspath(os.path.join(profiledir, "cprofile.csv"))
+    
+        result = s.getvalue()
+        prefix = result.split("ncalls")[0]
+        # chop the string into a csv-like buffer
+        result = "ncalls" + result.split("ncalls")[-1]
+        result = "\n".join(
+            [",".join(line.rstrip().split(None, 5)) for line in result.split("\n")]
+        )
+        result = prefix + "\n" + result
+        with open(ppath, "w") as f:
+            f.write(result)
+    except OSError: # occasional irreproducible error, doesn't matter
+        return
 
 
 def Run_SI_Extension(effext, name):
@@ -1096,7 +1353,7 @@ def Run_SI_Extension(effext, name):
 
     def run_and_cleanup():
         effext.run()
-        flush_stylesheet_entries(effext.svg)
+        # flush_stylesheet_entries(effext.svg)
 
     alreadyran = False
     lprofile = os.getenv("LINEPROFILE") == "True"
@@ -1113,21 +1370,24 @@ def Run_SI_Extension(effext, name):
                 from line_profiler import LineProfiler
 
                 lp = LineProfiler()
-                from inkex.text import TextParser
-                import RemoveKerning
+                from inkex.text import parser
+                from inkex.text import font_properties
+                from inkex.text import speedups
+                from inkex.text import cache
+                import remove_kerning
                 from inspect import getmembers, isfunction, isclass, getmodule
-                import font_properties
 
                 fns = []
                 for m in [
                     sys.modules[__name__],
-                    TextParser,
-                    RemoveKerning,
+                    parser,
+                    remove_kerning,
                     Style,
                     font_properties,
                     inkex.transforms,
                     getmodule(effext),
-                    inkex.text.speedups,
+                    speedups,
+                    cache,
                 ]:
                     fns += [v[1] for v in getmembers(m, isfunction)]
                     for c in getmembers(m, isclass):
@@ -1143,8 +1403,9 @@ def Run_SI_Extension(effext, name):
                 for fn in fns:
                     lp.add_function(fn)
                 lp.add_function(ipx.__wrapped__)
-                lp.add_function(TextParser.Character_Table.true_style.__wrapped__)
-                lp.add_function(inkex.text.speedups.transform_to_matrix.__wrapped__)
+                lp.add_function(font_properties.true_style.__wrapped__)
+                lp.add_function(speedups.transform_to_matrix.__wrapped__)
+                lp.add_function(Style.parse_str.__wrapped__)
 
                 lp(run_and_cleanup)()
                 import io
@@ -1195,7 +1456,7 @@ def Run_SI_Extension(effext, name):
                     except:
                         pass
                     arg2 = [
-                        Get_Binary_Loc(),
+                        inkex.inkscape_system_info.binary_location,
                         "--export-filename",
                         fileout,
                         filein,
@@ -1241,52 +1502,259 @@ def Run_SI_Extension(effext, name):
 
 # Give early versions of Style a .to_xpath function
 def to_xpath_func(sty):
-    if inkex.ivp[0] <= 1 and inkex.ivp[1] < 2:
-        # pre-1.2: use v1.1 version of to_xpath from inkex.Style
-        import re
+    # pre-1.2: use v1.1 version of to_xpath from inkex.Style
+    import re
 
-        step_to_xpath = [
-            (
-                re.compile(r"\[(\w+)\^=([^\]]+)\]"),
-                r"[starts-with(@\1,\2)]",
-            ),  # Starts With
-            (re.compile(r"\[(\w+)\$=([^\]]+)\]"), r"[ends-with(@\1,\2)]"),  # Ends With
-            (re.compile(r"\[(\w+)\*=([^\]]+)\]"), r"[contains(@\1,\2)]"),  # Contains
-            (re.compile(r"\[([^@\(\)\]]+)\]"), r"[@\1]"),  # Attribute (start)
-            (re.compile(r"#(\w+)"), r"[@id='\1']"),  # Id Match
-            (re.compile(r"\s*>\s*([^\s>~\+]+)"), r"/\1"),  # Direct child match
-            # (re.compile(r'\s*~\s*([^\s>~\+]+)'), r'/following-sibling::\1'),
-            # (re.compile(r'\s*\+\s*([^\s>~\+]+)'), r'/following-sibling::\1[1]'),
-            (re.compile(r"\s*([^\s>~\+]+)"), r"//\1"),  # Decendant match
-            (
-                re.compile(r"\.([-\w]+)"),
-                r"[contains(concat(' ', normalize-space(@class), ' '), ' \1 ')]",
-            ),
-            (re.compile(r"//\["), r"//*["),  # Attribute only match
-            (re.compile(r"//(\w+)"), r"//svg:\1"),  # SVG namespace addition
-        ]
+    step_to_xpath = [
+        (
+            re.compile(r"\[(\w+)\^=([^\]]+)\]"),
+            r"[starts-with(@\1,\2)]",
+        ),  # Starts With
+        (re.compile(r"\[(\w+)\$=([^\]]+)\]"), r"[ends-with(@\1,\2)]"),  # Ends With
+        (re.compile(r"\[(\w+)\*=([^\]]+)\]"), r"[contains(@\1,\2)]"),  # Contains
+        (re.compile(r"\[([^@\(\)\]]+)\]"), r"[@\1]"),  # Attribute (start)
+        (re.compile(r"#(\w+)"), r"[@id='\1']"),  # Id Match
+        (re.compile(r"\s*>\s*([^\s>~\+]+)"), r"/\1"),  # Direct child match
+        # (re.compile(r'\s*~\s*([^\s>~\+]+)'), r'/following-sibling::\1'),
+        # (re.compile(r'\s*\+\s*([^\s>~\+]+)'), r'/following-sibling::\1[1]'),
+        (re.compile(r"\s*([^\s>~\+]+)"), r"//\1"),  # Decendant match
+        (
+            re.compile(r"\.([-\w]+)"),
+            r"[contains(concat(' ', normalize-space(@class), ' '), ' \1 ')]",
+        ),
+        (re.compile(r"//\["), r"//*["),  # Attribute only match
+        (re.compile(r"//(\w+)"), r"//svg:\1"),  # SVG namespace addition
+    ]
 
-        def style_to_xpath(styin):
-            return "|".join([rule_to_xpath(rule) for rule in styin.rules])
+    def style_to_xpath(styin):
+        return "|".join([rule_to_xpath(rule) for rule in styin.rules])
 
-        def rule_to_xpath(rulein):
-            ret = rulein.rule
-            for matcher, replacer in step_to_xpath:
-                ret = matcher.sub(replacer, ret)
-            return ret
+    def rule_to_xpath(rulein):
+        ret = rulein.rule
+        for matcher, replacer in step_to_xpath:
+            ret = matcher.sub(replacer, ret)
+        return ret
 
-        return style_to_xpath(sty)
-    else:
-        return sty.to_xpath()
+    return style_to_xpath(sty)
 
 
-Style.to_xpath = to_xpath_func
-inkex.Style.to_xpath = to_xpath_func
+if not hasattr(Style, "to_xpath"):
+    Style.to_xpath = to_xpath_func
+if not hasattr(inkex.Style, "to_xpath"):
+    inkex.Style.to_xpath = to_xpath_func
+
+# Patch Style string conversion to restore single-quote strings
+# FQUOTE = r'^[^\'"]*\"'
+# def swap_quotes(s):
+#     return s.translate(str.maketrans({"'": '"', '"': "'"}))
+# def to_str(self, sep=";"):
+#     return sep.join(
+#         [f"{key}:{value}" if not re.search(FQUOTE, str(value)) else f"{key}:{swap_quotes(value)}" for key, value in self.items()]
+#     )
+# def __str__(self):
+#     return ";".join(
+#         [f"{key}:{value}" if not re.search(FQUOTE, str(value)) else f"{key}:{swap_quotes(value)}" for key, value in self.items()]
+#     )
+# inkex.Style.to_str = to_str
+# inkex.Style.__str__ = __str__
+
+
+def nonascii(c):
+    """Returns True if the character is non-ASCII."""
+    return ord(c) >= 128
+
+
+def nonletter(c):
+    """Returns True if the character is not a letter."""
+    return not ((ord(c) >= 65 and ord(c) <= 90) or (ord(c) >= 97 and ord(c) <= 122))
+
+
+fixwith = {
+    "Avenir": (nonletter, "'Avenir Next', 'Arial'"),
+    "Whitney": (nonascii, "'Avenir Next', 'Arial'"),
+    "Whitney Book": (nonascii, "'Avenir Next', 'Arial'"),
+}
+fw2 = {k.lower(): val for k, val in fixwith.items()}
+
+
+def shouldfixfont(ffam):
+    """Checks if the font needs fixing based on non-ASCII or non-letter characters."""
+    shouldfix = (
+        ffam is not None
+        and ffam.split(",")[0].strip("'").strip('"').lower() in fw2.keys()
+    )
+    fixw = (
+        None if not shouldfix else fw2[ffam.split(",")[0].strip("'").strip('"').lower()]
+    )
+    return shouldfix, fixw
+
+
+def character_fixer(els):
+    """Fixes characters in a list of elements based on their text style."""
+    for elem in els:
+        tree = TextTree(elem)
+        for _, typ, tel, sel, txt in tree.dgenerator():
+            if txt is not None and len(txt) > 0:
+                sty = sel.cspecified_style
+                shouldfix, fixw = shouldfixfont(sty.get("font-family"))
+                if shouldfix:
+                    # replace_non_ascii_font(sel, fixw)
+                    elem.set("xml:space", "preserve")  # so spaces don't vanish
+                    fixcondition, fixw = fixw
+
+                    if all(fixcondition(c) for c in txt) and typ == TYP_TEXT:
+                        sel.cstyle["font-family"] = fixw
+                    else:
+                        prev_nonascii = False
+                        for j, c in enumerate(reversed(txt)):
+                            i = len(txt) - 1 - j
+                            if fixcondition(c):
+                                if not prev_nonascii:
+                                    t = Tspan()
+                                    t.text = c
+                                    if typ == TYP_TEXT:
+                                        tbefore = tel.text[0:i]
+                                        tafter = tel.text[i + 1 :]
+                                        tel.text = tbefore
+                                        tel.insert(0, t)
+                                        t.tail = tafter
+                                    else:
+                                        tbefore = tel.tail[0:i]
+                                        tafter = tel.tail[i + 1 :]
+                                        tel.tail = tbefore
+                                        grp = tel.getparent()
+                                        # parent is a Tspan, so insert it into
+                                        # the grandparent
+                                        grp.insert(grp.index(tel) + 1, t)
+                                        # after the parent
+                                        t.tail = tafter
+                                    t.cstyle = Style(
+                                        "font-family:" + fixw + ";baseline-shift:0%"
+                                    )
+                                else:
+                                    t.text = c + t.text
+                                    if typ == TYP_TEXT:
+                                        tel.text = tel.text[0:i]
+                                    else:
+                                        tel.tail = tel.tail[0:i]
+                                if tel.text is not None and tel.text == "":
+                                    tel.text = None
+                                if tel.tail is not None and tel.tail == "":
+                                    tel.tail = None
+                            prev_nonascii = nonascii(c)
+
+
+spantags = tags((Tspan, inkex.FlowPara, inkex.FlowSpan))
+TEtag = inkex.TextElement.ctag
+
+
+def replace_non_ascii_font(elem, newfont, *args):
+    """Replaces non-ASCII characters in an element with a specified font."""
+
+    def alltext(elem):
+        astr = elem.text
+        if astr is None:
+            astr = ""
+        for k in list(elem):
+            if k.tag in spantags:
+                astr += alltext(k)
+                tlv = k.tail
+                if tlv is None:
+                    tlv = ""
+                astr += tlv
+        return astr
+
+    forcereplace = len(args) > 0 and args[0]
+    if forcereplace or any(nonascii(c) for c in alltext(elem)):
+        alltxt = [elem.text]
+        elem.text = ""
+        for k in list(elem):
+            if k.tag in spantags:
+                dupe = k.duplicate()
+                alltxt.append(dupe)
+                alltxt.append(k.tail)
+                k.tail = ""
+                k.delete()
+        lstspan = None
+        for t in alltxt:
+            if t is None:
+                pass
+            elif isinstance(t, str):
+                chks = []
+                sind = 0
+                for i in range(1, len(t)):
+                    # split into chunks based on whether unicode or not
+                    if nonletter(t[i - 1]) != nonletter(t[i]):
+                        chks.append(t[sind:i])
+                        sind = i
+                chks.append(t[sind:])
+                sty = "baseline-shift:0%;"
+                for chk in chks:
+                    if any(nonletter(c) for c in chk):
+                        chk = chk.replace(" ", "\u00a0")
+                        # spaces can disappear, replace with NBSP
+                        if elem.croot is not None:
+                            nts = Tspan()
+                            elem.append(nts)
+                            nts.text = chk
+                            nts.cstyle = Style(sty + "font-family:" + newfont)
+                            nts.cspecified_style = None
+                            nts.ccomposed_transform = None
+                            lstspan = nts
+                    else:
+                        if lstspan is None:
+                            elem.text = chk
+                        else:
+                            lstspan.tail = chk
+            elif t.tag in spantags:
+                replace_non_ascii_font(t, newfont, True)
+                elem.append(t)
+                t.cspecified_style = None
+                t.ccomposed_transform = None
+                lstspan = t
+
+    # Inkscape automatically prunes empty text/tails
+    # Do the same so future parsing is not affected
+    if elem.tag == TEtag:
+        for ddv in elem.descendants2():
+            if ddv.text is not None and ddv.text == "":
+                ddv.text = None
+            if ddv.tail is not None and ddv.tail == "":
+                ddv.tail = None
+
+
+def split_text(elem):
+    """
+    Splits a text or tspan into its constituent blocks of text
+    (i.e., each text and each tail in separate hierarchies)
+    """
+    dups = []
+    dds = elem.descendants2()
+    for dgen in reversed(list(TextTree(elem).dgenerator())):
+        _, _, _, sel, txt = dgen
+        if txt is not None:
+            # For each block of text, spin off a copy of the structure
+            # that only has this block and only the needed ancestors.
+            dup = elem.duplicate()
+            d2s = dup.descendants2()
+            mydup = d2s[dds.index(sel)]
+            ancs = mydup.ancestors2(includeme=True)
+            for dd2 in d2s:
+                dd2.text = None
+                dd2.tail = None
+                if dd2 not in ancs:
+                    dd2.delete()
+            mydup.text = txt
+            dups = [dup] + dups
+    if len(dups) > 0 and elem.tail is not None:
+        dups[-1].tail = elem.tail
+    elem.delete()
+    return dups
 
 
 def Version_Check(caller):
     siv = "v1.3.2"  # Scientific Inkscape version
-    maxsupport = "1.3.1"
+    maxsupport = "1.4.0"
     minsupport = "1.1.0"
 
     logname = "Log.txt"

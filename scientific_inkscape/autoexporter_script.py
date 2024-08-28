@@ -3,7 +3,8 @@
 # automatically to another folder in multiple formats.
 
 DEBUG = False
-WHILESLEEP = 0.25
+WHILESLEEP = 0.5
+MAXTHREADS = 10
 
 import sys, platform, os, threading, time, copy, pickle
 
@@ -15,15 +16,13 @@ aes = os.path.join(systmpdir, "si_ae_settings.p")
 with open(aes, "rb") as f:
     input_options = pickle.load(f)
 os.remove(aes)
-watchdir = input_options.watchdir
-writedir = input_options.writedir
 bfn = input_options.inkscape_bfn
 sys.path += input_options.syspath
 guitype = input_options.guitype
 
-import inkex
 import dhelpers as dh  # noqa
-import inkex.text.TextParser  # needed to prevent GTK crashing
+import inkex
+import inkex.text.parser  # needed to prevent GTK crashing
 
 import autoexporter
 from autoexporter import AutoExporter
@@ -31,8 +30,8 @@ from autoexporter import AutoExporter
 
 def mprint(*args, **kwargs):
     if guitype == "gtk":
-        global pt
-        pt.buffer.append(args[0])
+        global win
+        GLib.idle_add(win.print_text, args[0])
     else:
         print(*args, **kwargs)
 
@@ -70,45 +69,167 @@ def get_files(dirin):
         return None  # directory missing (cloud drive error?)
 
 
-# Get a dict of the files and their modified times
-def get_modtimes(dirin):
-    fs = get_files(dirin)
-    if fs is not None:
-        modtimes = dict()
-        for f in fs:
-            try:
-                modtimes[f] = os.path.getmtime(f)
-            except:
-                pass
-        return modtimes
-    else:
-        return None
+class Watcher:
+    """Class that watches a folder for changes to SVGs"""
+
+    def __init__(self, directory_to_watch, createfcn=None, modfcn=None, deletefcn=None):
+        import re, sys
+        from threading import Timer
+        import warnings
+
+        warnings.filterwarnings(
+            "ignore", message="Failed to import fsevents. Fall back to kqueue"
+        )
+        mydir = os.path.dirname(os.path.abspath(__file__))
+        packages = os.path.join(mydir, "packages")
+        if packages not in sys.path:
+            sys.path.append(packages)
+        from watchdog.observers import Observer
+        from watchdog.events import FileSystemEventHandler
+
+        class Handler(FileSystemEventHandler):
+            def __init__(self, createfcn=None, modfcn=None, deletefcn=None):
+                # Dictionary to store the last event and debounce timers for each file
+                self.debounce_timers = {}
+                self.last_event = {}
+                self.file_mod_times = {}
+                self.createfcn = createfcn
+                self.modfcn = modfcn
+                self.deletefcn = deletefcn
+                # Initialize file modification times
+                self.initialize_mod_times(directory_to_watch)
+
+            @staticmethod
+            def is_target_file(file_name):
+                excludes = ["_portable.svg", "_plain.svg"]
+                pattern = r"\.(\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.\d{1,6})\.svg$"
+                if any(file_name.endswith(ex) for ex in excludes):
+                    return False
+                if re.search(pattern, file_name):
+                    return False
+                return file_name.endswith(".svg")
+
+            @staticmethod
+            def get_mod_time(file_path):
+                try:
+                    return os.path.getmtime(file_path)
+                except FileNotFoundError:
+                    return None
+
+            def initialize_mod_times(self, directory):
+                for file in os.listdir(directory):
+                    file_path = os.path.join(directory, file)
+                    if os.path.isfile(file_path) and self.is_target_file(file_path):
+                        mod_time = self.get_mod_time(file_path)
+                        if mod_time:
+                            self.file_mod_times[file_path] = mod_time
+
+            def debounce(self, event):
+                # Process the last event
+                if event.event_type == "created":
+                    if self.createfcn is not None:
+                        self.createfcn(event.src_path)
+                elif event.event_type == "modified":
+                    if self.modfcn is not None:
+                        self.modfcn(event.src_path)
+                elif event.event_type == "deleted":
+                    if self.deletefcn is not None:
+                        self.deletefcn(event.src_path)
+
+            def handle_event(self, event):
+                if event.is_directory:
+                    return None
+                if self.is_target_file(event.src_path):
+                    # Cancel existing timer if present
+                    if event.src_path in self.debounce_timers:
+                        self.debounce_timers[event.src_path].cancel()
+                    # Store the event
+                    self.last_event[event.src_path] = event
+                    # Set a new timer
+                    self.debounce_timers[event.src_path] = Timer(
+                        1.0, self.debounce, [event]
+                    )
+                    self.debounce_timers[event.src_path].start()
+
+            def on_created(self, event):
+                self.handle_event(event)
+
+            def on_modified(self, event):
+                if event.is_directory:
+                    return None
+
+                if self.is_target_file(event.src_path):
+                    new_mod_time = self.get_mod_time(event.src_path)
+                    old_mod_time = self.file_mod_times.get(event.src_path)
+
+                    # Only handle the event if the file modification time has changed
+                    if new_mod_time and new_mod_time != old_mod_time:
+                        self.file_mod_times[event.src_path] = new_mod_time
+                        self.handle_event(event)
+
+            def on_deleted(self, event):
+                if event.src_path in self.file_mod_times:
+                    del self.file_mod_times[event.src_path]
+                self.handle_event(event)
+
+        self.Handler = Handler  # Make Handler an attribute of Watcher
+        self.observer = Observer()
+        self.directory_to_watch = directory_to_watch
+        self.createfcn = createfcn
+        self.modfcn = modfcn
+        self.deletefcn = deletefcn
+        self.start()
+
+    def start(self):
+        event_handler = self.Handler(
+            createfcn=self.createfcn, modfcn=self.modfcn, deletefcn=self.deletefcn
+        )
+        self.observer.schedule(event_handler, self.directory_to_watch, recursive=False)
+        self.observer.start()
+
+    def stop(self):
+        self.observer.stop()
+        self.observer.join()
 
 
 # Threading class
-class monitorThread(threading.Thread):
-    def __init__(self, threadID):
+class FileCheckerThread(threading.Thread):
+    def __init__(self, watchdir, writedir):
         threading.Thread.__init__(self)
-        self.threadID = threadID
         self.stopped = False
-        self.ui = None  # user input
         self.nf = True  # new folder
         self.ea = False  # export all
         self.es = False  # export selected
         self.dm = False  # debug mode
+        self.promptpending = True
+        self.watcher = None
+        self.watchdir = input_options.watchdir
+        self.writedir = input_options.writedir
         self.thread_queue = []
         self.running_threads = []
         self.finished_threads = []
-        self.promptpending = True
+
+    def queue_thread(self, f):
+        for t in self.thread_queue + self.running_threads:
+            if t.file == f:
+                t.stopped = True
+        fthr = AutoExporterThread()
+        fthr.file = f
+        fthr.outtemplate = autoexporter.joinmod(self.writedir, os.path.split(f)[1])
+        self.thread_queue.append(fthr)
+
+    def start_watcher(self):
+        if self.watcher is not None:  # Stop existing watcher
+            self.watcher.stop()
+        mfcn = lambda x: self.queue_thread(os.path.abspath(x))
+        self.watcher = Watcher(self.watchdir, createfcn=mfcn, modfcn=mfcn)
 
     def run(self):
-        if self.threadID == "filechecker":
-            # Main thread
-            ltm = time.time()
-            # genfiles = []
-            while not (self.stopped):
-                self.checkongoing = True
-                if self.nf:
+        self.start_watcher()
+        while not self.stopped:
+            self.checkongoing = True
+            if self.nf:
+                if guitype == "terminal":
                     mprint(
                         "Export formats: "
                         + ", ".join([v.upper() for v in input_options.formats])
@@ -116,135 +237,133 @@ class monitorThread(threading.Thread):
                     mprint("Rasterization DPI: " + str(input_options.dpi))
                     mprint("Watch directory: " + self.watchdir)
                     mprint("Write directory: " + self.writedir)
-                    lastmod = get_modtimes(self.watchdir)
-                    self.nf = False
-                if time.time() > ltm + WHILESLEEP:
-                    ltm = time.time()
+                self.nf = False
 
+            if self.watcher.directory_to_watch != self.watchdir:
+                self.start_watcher()
+
+            if self.ea:  # export all
+                self.ea = False
+                updatefiles = get_files(self.watchdir)
+                if updatefiles is None:
+                    mprint("Cannot access watch directory.")
                     updatefiles = []
-                    if lastmod is not None:
-                        newmod = get_modtimes(self.watchdir)
-                        if newmod is not None:
-                            for n in newmod:
-                                if n not in lastmod or newmod[n] > lastmod[n] + 1:
-                                    updatefiles.append(n)
-                            lastmod = newmod
-                    else:
-                        lastmod = get_modtimes(self.watchdir)
+            elif self.es:
+                self.es = False
+                updatefiles = [self.selectedfile]
+            else:
+                updatefiles = []
 
-                    if self.ea:  # export all
-                        self.ea = False
-                        if lastmod is not None:
-                            updatefiles = list(lastmod.keys())
-                        else:
-                            mprint("Cannot access watch directory.")
-                    elif self.es:
-                        self.es = False
-                        updatefiles = [self.selectedfile]
+            loopme = True
+            while loopme:
+                for f in sorted(updatefiles):
+                    self.queue_thread(f)
 
-                    loopme = True
-                    while loopme:
-                        for f in sorted(updatefiles):
-                            for x in self.thread_queue + self.running_threads:
-                                # Stop exports already in progress
-                                if x.file == f:
-                                    x.stopped = True
-                            fthr = monitorThread("autoexporter")
-                            fthr.file = f
-                            fthr.outtemplate = autoexporter.joinmod(
-                                self.writedir, os.path.split(f)[1]
-                            )
-                            self.thread_queue.append(fthr)
+                while (
+                    len(self.thread_queue) > 0
+                    and len(self.running_threads) < MAXTHREADS
+                    and not self.stopped
+                ):
+                    self.thread_queue[0].start()
+                    self.running_threads.append(self.thread_queue[0])
+                    self.thread_queue.remove(self.thread_queue[0])
+                    time.sleep(WHILESLEEP)
 
-                        MAXTHREADS = 10
-                        while (
-                            len(self.thread_queue) > 0
-                            and len(self.running_threads) < MAXTHREADS
-                            and not (self.stopped)
-                        ):
-                            self.thread_queue[0].start()
-                            self.running_threads.append(self.thread_queue[0])
-                            self.thread_queue.remove(self.thread_queue[0])
-                            time.sleep(WHILESLEEP)
-                        for thr in reversed(self.running_threads):
-                            if not (thr.is_alive()):
-                                self.running_threads.remove(thr)
-                                self.finished_threads.append(thr)
-                                self.promptpending = True
+                for thr in reversed(self.running_threads):
+                    if not thr.is_alive():
+                        self.running_threads.remove(thr)
+                        self.finished_threads.append(thr)
+                        self.promptpending = True
 
-                        # Debug mode: infinite loop
-                        while self.dm and any(
-                            [thr.is_alive() for thr in self.running_threads]
-                        ):
-                            time.sleep(WHILESLEEP)
-                        loopme = self.dm
+                while self.dm and any([thr.is_alive() for thr in self.running_threads]):
+                    time.sleep(WHILESLEEP)
+                loopme = self.dm
 
-                    if (
-                        self.promptpending
-                        and len(self.running_threads) + len(self.thread_queue) == 0
-                    ):
-                        if guitype == "terminal":
-                            mprint(promptstring)
-                        self.promptpending = False
-                time.sleep(WHILESLEEP)
+            if self.promptpending and len(self.running_threads) + len(self.thread_queue) == 0:
+                if guitype == "terminal":
+                    mprint(promptstring)
+                self.promptpending = False
+            time.sleep(WHILESLEEP)
 
-            # Stop any threads still running after exit
-            for t in self.running_threads:
-                t.stopped = True
-            while any([thr.is_alive() for thr in self.running_threads]):
-                time.sleep(WHILESLEEP)  # let threads finish up
-            for thr in reversed(self.running_threads):
-                self.running_threads.remove(thr)
-                self.finished_threads.append(thr)
+        self.watcher.stop()
+        for t in self.running_threads:
+            t.stopped = True
+        while any([thr.is_alive() for thr in self.running_threads]):
+            time.sleep(WHILESLEEP)
+        for thr in reversed(self.running_threads):
+            self.running_threads.remove(thr)
+            self.finished_threads.append(thr)
 
-            # Clear out leftover temp files from the last time we ran
-            leftover_temps = []
-            lftover_tmp = os.path.join(systmpdir, "si_ae_leftovertemp.p")
-            if os.path.exists(lftover_tmp):
-                with open(lftover_tmp, "rb") as f:
-                    leftover_temps = pickle.load(f)
-                    for tf in reversed(leftover_temps):
-                        if os.path.exists(tf):
-                            try:
-                                os.rmdir(tf)
-                                leftover_temps.remove(tf)
-                            except:
-                                pass
-                os.remove(lftover_tmp)
-            for thr in self.finished_threads:
-                if hasattr(thr, "tempdir"):
-                    if os.path.isdir(thr.tempdir):
-                        leftover_temps.append(thr.tempdir)
-            if len(leftover_temps) > 0:
-                with open(lftover_tmp, "wb") as f:
-                    pickle.dump(leftover_temps, f)
+        leftover_temps = []
+        lftover_tmp = os.path.join(systmpdir, "si_ae_leftovertemp.p")
+        if os.path.exists(lftover_tmp):
+            with open(lftover_tmp, "rb") as f:
+                leftover_temps = pickle.load(f)
+                for tf in reversed(leftover_temps):
+                    if os.path.exists(tf):
+                        try:
+                            os.rmdir(tf)
+                            leftover_temps.remove(tf)
+                        except:
+                            pass
+            os.remove(lftover_tmp)
+        for thr in self.finished_threads:
+            if hasattr(thr, "tempdir"):
+                if os.path.isdir(thr.tempdir):
+                    leftover_temps.append(thr.tempdir)
+        if len(leftover_temps) > 0:
+            with open(lftover_tmp, "wb") as f:
+                pickle.dump(leftover_temps, f)
 
-        if self.threadID == "prompt":
-            self.ui = input("")
 
-        if self.threadID == "autoexporter":
-            fname = os.path.split(self.file)[1]
-            try:
-                offset = round(os.get_terminal_size().columns / 2)
-            except:
-                offset = 40
-            fname = fname + " " * max(0, offset - len(fname))
-            mprint(fname + ": Beginning export")
-            opts = copy.copy(input_options)
-            opts.debug = DEBUG
-            opts.prints = mprint
-            opts.aeThread = self
-            opts.original_file = self.file
-            try:
-                AutoExporter().export_all(
-                    bfn, self.file, self.outtemplate, opts.formats, opts
-                )
-            except:
-                import traceback
+class PromptThread(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.ui = None  # user input
 
-                error_message = f"Exception in {fname}\n"
-                error_message += traceback.format_exc()
-                mprint(error_message)
+    def run(self):
+        self.ui = input("")
+
+
+class AutoExporterThread(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.file = None
+        self.outtemplate = None
+        self.stopped = False
+
+    def run(self):
+        fname = os.path.split(self.file)[1]
+        try:
+            offset = round(os.get_terminal_size().columns / 2)
+        except:
+            offset = 40
+        fname = fname + " " * max(0, offset - len(fname))
+        mprint(fname + ": Beginning export")
+        opts = copy.copy(input_options)
+        opts.debug = DEBUG
+        opts.prints = mprint
+        opts.aeThread = self
+        opts.original_file = self.file
+        opts.formats = [
+            fmt
+            for fmt, use in zip(
+                ["pdf", "png", "emf", "eps", "psvg"],
+                [opts.usepdf, opts.usepng, opts.useemf, opts.useeps, opts.usepsvg],
+            )
+            if use
+        ]
+        try:
+            AutoExporter.export_all(
+                bfn, self.file, self.outtemplate, opts.formats, opts
+            )
+        except SystemExit:
+            pass
+        except:
+            import traceback
+            error_message = f"Exception in {fname}\n"
+            error_message += traceback.format_exc()
+            mprint(error_message)
 
 
 if guitype == "gtk":
@@ -256,88 +375,251 @@ if guitype == "gtk":
         import gi
 
         gi.require_version("Gtk", "3.0")
-        from gi.repository import Gtk, GLib
+        from gi.repository import Gtk, GLib, Gdk
 
     class AutoexporterWindow(Gtk.Window):
         def __init__(self, ct):
             Gtk.Window.__init__(self, title="Autoexporter")
-            self.set_default_size(
-                500, -1
-            )  # set width to 400 pixels, height can be automatic
+            WINDOW_WIDTH = 450
+            MARGIN = 10
+            self.set_default_size(WINDOW_WIDTH, -1)
             self.set_position(Gtk.WindowPosition.CENTER)
-
+        
+            self.notebook = Gtk.Notebook()
+            self.notebook.set_margin_start(MARGIN)
+            self.notebook.set_margin_end(MARGIN)
+            self.notebook.set_margin_top(MARGIN)
+            self.notebook.set_margin_bottom(MARGIN)
+            self.add(self.notebook)
+        
+            # Tab 1: Controls
+            tab1_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            self.notebook.append_page(tab1_box, Gtk.Label(label="Controls"))
+        
+            # Top message window
             self.selected_file_label = Gtk.TextView()
             self.selected_file_label.set_editable(False)
             self.selected_file_label.set_wrap_mode(Gtk.WrapMode.CHAR)
             self.selected_file_label.get_buffer().set_text("No file selected.")
-
-            self.selected_file_label.get_buffer()
-            # buffer = self.selected_file_label.get_buffer()
-            # buffer.connect('insert-text', self.on_text_buffer_insert_text) # auto-scroll
-
-            # Adding a scrolled window to the TextView
-            self.scrolled_window = Gtk.ScrolledWindow()
-            self.scrolled_window.set_size_request(500, 200)
-            self.scrolled_window.set_hexpand(True)
-            self.scrolled_window.set_vexpand(True)
-            self.scrolled_window.add(self.selected_file_label)
-
-            self.containing_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-            self.containing_box.set_valign(Gtk.Align.CENTER)
-            self.containing_box.set_margin_top(20)
-            self.containing_box.set_margin_bottom(20)
-            self.containing_box.pack_start(self.scrolled_window, True, True, 0)
-
-            self.liststore = Gtk.ListStore(str, str)
-            self.treeview = Gtk.TreeView(model=self.liststore)
+            self.message_scrolled_window = Gtk.ScrolledWindow()  # Renamed for clarity
+            self.message_scrolled_window.set_size_request(WINDOW_WIDTH-2*MARGIN, 150)
+            self.message_scrolled_window.set_hexpand(True)
+            self.message_scrolled_window.set_vexpand(True)
+            self.message_scrolled_window.add(self.selected_file_label)
+            tab1_box.pack_start(self.message_scrolled_window, True, True, 0)
+        
+            # Bottom file log window
+            self.filelogstore = Gtk.ListStore(str, str)
+            self.treeview = Gtk.TreeView(model=self.filelogstore)
             renderer_text = Gtk.CellRendererText()
             column_text = Gtk.TreeViewColumn("Filename", renderer_text, text=0)
+            column_text.set_fixed_width((WINDOW_WIDTH-2*MARGIN)*0.49)  # Set your desired fixed width
             self.treeview.append_column(column_text)
             renderer_text = Gtk.CellRendererText()
             column_text = Gtk.TreeViewColumn("Message", renderer_text, text=1)
             self.treeview.append_column(column_text)
-            self.scrolled_window_files = Gtk.ScrolledWindow()
-            self.scrolled_window_files.set_policy(
+            self.file_log_scrolled_window = Gtk.ScrolledWindow()  # Renamed for clarity
+            self.file_log_scrolled_window.set_policy(
                 Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC
             )
-            self.scrolled_window_files.set_size_request(600, 300)
-            self.scrolled_window_files.set_vexpand(True)
-            self.scrolled_window_files.add(self.treeview)
-            self.lsvals = []
-
-            self.liststore.connect("row-inserted", self.on_row_inserted)
+            self.file_log_scrolled_window.set_size_request(WINDOW_WIDTH-2*MARGIN, 350)
+            self.file_log_scrolled_window.set_vexpand(True)
+            self.file_log_scrolled_window.add(self.treeview)
+            self.filelogstore.connect("row-inserted", self.on_row_inserted)
             self.maxlsrows = 100
-            # self.treeview.connect('size-allocate', self.on_treeview_size_allocate) # auto-scroll
-
-            self.file_button = Gtk.Button(label="Select watch directory")
-            self.file_button.connect("clicked", self.watch_folder_button_clicked)
-            self.folder_button = Gtk.Button(label="Select write directory")
-            self.folder_button.connect("clicked", self.write_folder_button_clicked)
+            self.treeview.connect("size-allocate", self.on_treeview_size_allocate)
+            tab1_box.pack_start(self.file_log_scrolled_window, True, True, 0)
+        
+            # Separator
+            separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            tab1_box.pack_start(separator, False, True, 0)
+        
+            # Watch directory
+            LABEL_WIDTH = 16
+            watch_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            watch_file_chooser_label = Gtk.Label(label="Watch directory", xalign=0.5)  # Center text
+            watch_file_chooser_label.set_width_chars(LABEL_WIDTH)  # Set fixed width
+            self.watch_file_chooser_button = Gtk.FileChooserButton(title="Choose watch directory", action=Gtk.FileChooserAction.SELECT_FOLDER)
+            self.watch_file_chooser_button.set_filename(input_options.watchdir)  # Set the initial folder here
+            self.watch_file_chooser_button.connect("file-set", self.watch_folder_button_clicked)
+            self.watch_file_chooser_button.set_hexpand(True)
+            self.watch_file_chooser_button.set_halign(Gtk.Align.FILL)
+            watch_file_chooser_box.pack_start(watch_file_chooser_label, False, False, 0)
+            watch_file_chooser_box.pack_start(self.watch_file_chooser_button, True, True, 0)
+            tab1_box.pack_start(watch_file_chooser_box, False, False, 0)
+            
+            # Write directory
+            write_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            write_file_chooser_label = Gtk.Label(label="Write directory", xalign=0.5)  # Center text
+            write_file_chooser_label.set_width_chars(LABEL_WIDTH)  # Set fixed width
+            self.write_file_chooser_button = Gtk.FileChooserButton(title="Choose write directory", action=Gtk.FileChooserAction.SELECT_FOLDER)
+            self.write_file_chooser_button.set_filename(input_options.writedir)  # Set the initial folder here
+            self.write_file_chooser_button.connect("file-set", self.write_folder_button_clicked)
+            self.write_file_chooser_button.set_hexpand(True)
+            self.write_file_chooser_button.set_halign(Gtk.Align.FILL)
+            write_file_chooser_box.pack_start(write_file_chooser_label, False, False, 0)
+            write_file_chooser_box.pack_start(self.write_file_chooser_button, True, True, 0)
+            tab1_box.pack_start(write_file_chooser_box, False, False, 0)
+        
+            # Export all button
             self.ea_button = Gtk.Button(label="Export all")
             self.ea_button.connect("clicked", self.export_all_clicked)
+            tab1_box.pack_start(self.ea_button, False, False, 0)
+        
+            # Export file button
             self.ef_button = Gtk.Button(label="Export file")
             self.ef_button.connect("clicked", self.export_file_clicked)
+            tab1_box.pack_start(self.ef_button, False, False, 0)
+        
+            # Exit button
             self.exit_button = Gtk.Button(label="Exit")
             self.exit_button.connect("clicked", self.exit_clicked)
+            tab1_box.pack_start(self.exit_button, False, False, 0)
+            
 
-            self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-            self.box.pack_start(self.containing_box, True, True, 0)
-            self.box.pack_start(self.scrolled_window_files, True, True, 0)
-            self.box.pack_start(self.file_button, False, False, 0)
-            self.box.pack_start(self.folder_button, False, False, 0)
-            self.box.pack_start(self.ea_button, False, False, 0)
-            self.box.pack_start(self.ef_button, False, False, 0)
-            self.box.pack_start(self.exit_button, False, False, 0)
-            self.add(self.box)
 
+            # Tab 2: Options
+            tab2_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            tab2_box.set_margin_start(10)
+            tab2_box.set_margin_end(10)
+            tab2_box.set_margin_top(10)
+            tab2_box.set_margin_bottom(10)
+            self.notebook.append_page(tab2_box, Gtk.Label(label="Options"))
+        
+            css_provider = Gtk.CssProvider()
+            css_provider.load_from_data(b".label-bold { font-weight: bold; }")
+            Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        
+            # Formats to export
+            export_label = Gtk.Label(label="Formats to export", xalign=0)
+            export_label.get_style_context().add_class("label-bold")
+            tab2_box.pack_start(export_label, False, False, 5)
+            export_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            tab2_box.pack_start(export_box, False, False, 10)
+            vbox_formats = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+            export_box.pack_start(vbox_formats, True, True, 0)
+            self.pdf_check = Gtk.CheckButton(label="PDF")
+            self.png_check = Gtk.CheckButton(label="PNG")
+            self.emf_check = Gtk.CheckButton(label="EMF")
+            self.eps_check = Gtk.CheckButton(label="EPS")
+            self.svg_check = Gtk.CheckButton(label="Plain SVG")
+            vbox_formats.pack_start(self.pdf_check, False, False, 0)
+            vbox_formats.pack_start(self.png_check, False, False, 0)
+            vbox_formats.pack_start(self.emf_check, False, False, 0)
+            vbox_formats.pack_start(self.eps_check, False, False, 0)
+            vbox_formats.pack_start(self.svg_check, False, False, 0)
+        
+            # Rasterization DPI
+            dpi_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+            export_box.pack_start(dpi_box, False, False, 0)
+            dpi_label = Gtk.Label(label="Rasterization DPI")
+            adj = Gtk.Adjustment(value=1.0, lower=1, upper=10000, step_increment=1,
+                                 page_increment=10, page_size=0)
+            self.dpi_spin = Gtk.SpinButton(adjustment=adj, digits=0)
+            dpi_box.pack_start(dpi_label, False, False, 0)
+            dpi_box.pack_start(self.dpi_spin, False, False, 0)
+        
+            # Embedded image handling options
+            image_handling_label = Gtk.Label(label="Embedded image handling", xalign=0)
+            image_handling_label.get_style_context().add_class("label-bold")
+            tab2_box.pack_start(image_handling_label, False, False, 5)
+            self.crop_check = Gtk.CheckButton(label="Crop and resample images?")
+            tab2_box.pack_start(self.crop_check, False, False, 5)
+        
+            # Other options
+            other_options_label = Gtk.Label(label="Other options", xalign=0)
+            other_options_label.get_style_context().add_class("label-bold")
+            tab2_box.pack_start(other_options_label, False, False, 5)
+            other_options_box = Gtk.Box(
+                orientation=Gtk.Orientation.HORIZONTAL, spacing=10
+            )
+            tab2_box.pack_start(other_options_box, False, False, 10)
+            vbox_other_options = Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL, spacing=5
+            )
+            other_options_box.pack_start(vbox_other_options, True, True, 0)
+            self.convert_text_check = Gtk.CheckButton(label="Convert text to paths")
+            self.prevent_thin_lines_check = Gtk.CheckButton(
+                label="Prevent thin line enhancement"
+            )
+            self.convert_strokes_check = Gtk.CheckButton(
+                label="Convert all strokes to paths"
+            )
+            self.transparent_back_check = Gtk.CheckButton(
+                label="Add transparent backing rectangle"
+            )
+            vbox_other_options.pack_start(self.convert_text_check, False, False, 0)
+            vbox_other_options.pack_start(
+                self.prevent_thin_lines_check, False, False, 0
+            )
+            vbox_other_options.pack_start(self.convert_strokes_check, False, False, 0)
+            vbox_other_options.pack_start(self.transparent_back_check, False, False, 0)
+            extra_margin_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+            other_options_box.pack_start(extra_margin_box, False, False, 0)
+            self.extra_margin_label = Gtk.Label(label="Extra margin (mm)")
+            adj = Gtk.Adjustment(value=1.0, lower=0, upper=10, step_increment=0.1, page_increment=1, page_size=0)
+            self.extra_margin_spin = Gtk.SpinButton(adjustment=adj, digits=1)
+            extra_margin_box.pack_start(self.extra_margin_label, False, False, 0)
+            extra_margin_box.pack_start(self.extra_margin_spin, False, False, 0)
+        
+            # PDF options
+            pdf_options_label = Gtk.Label(label="PDF options", xalign=0)
+            pdf_options_label.get_style_context().add_class("label-bold")
+            tab2_box.pack_start(pdf_options_label, False, False, 5)
+            self.omit_text_check = Gtk.CheckButton(
+                label="Omit text in PDF and create LaTeX file"
+            )
+            tab2_box.pack_start(self.omit_text_check, False, False, 5)
+        
+            # Initialize from input_options
+            self.pdf_check.set_active(input_options.usepdf)
+            self.png_check.set_active(input_options.usepng)
+            self.emf_check.set_active(input_options.useemf)
+            self.eps_check.set_active(input_options.useeps)
+            self.svg_check.set_active(input_options.usepsvg)
+            self.dpi_spin.set_value(float(input_options.dpi))
+            
+            self.crop_check.set_active(input_options.imagemode2)
+            self.convert_text_check.set_active(input_options.texttopath)
+            self.prevent_thin_lines_check.set_active(input_options.thinline)
+            self.convert_strokes_check.set_active(input_options.stroketopath)
+            self.transparent_back_check.set_active(input_options.backingrect)
+            self.extra_margin_spin.set_value(float(input_options.margin))
+            self.omit_text_check.set_active(input_options.latexpdf)
+        
+            # Connect options buttons to callbacks
+            self.pdf_check.connect("toggled", self.on_pdf_toggled)
+            self.png_check.connect("toggled", self.on_png_toggled)
+            self.emf_check.connect("toggled", self.on_emf_toggled)
+            self.eps_check.connect("toggled", self.on_eps_toggled)
+            self.svg_check.connect("toggled", self.on_svg_toggled)
+            self.dpi_spin.connect("value-changed", self.on_dpi_changed)
+            self.crop_check.connect("toggled", self.on_crop_toggled)
+            self.convert_text_check.connect("toggled", self.on_convert_text_toggled)
+            self.prevent_thin_lines_check.connect(
+                "toggled", self.on_prevent_thin_lines_toggled
+            )
+            self.convert_strokes_check.connect(
+                "toggled", self.on_convert_strokes_toggled
+            )
+            self.transparent_back_check.connect(
+                "toggled", self.on_transparent_back_toggled
+            )
+            self.extra_margin_spin.connect("value-changed", self.on_margin_changed)
+            self.omit_text_check.connect("toggled", self.on_omit_text_toggled)
+        
             self.ct = ct
 
-        # def on_treeview_size_allocate(self, widget, allocation):
-        #     # Scroll to end after file inserted
-        #     if len(self.liststore)>0:
-        #         path = Gtk.TreePath.new_from_string(str(len(self.liststore)-1))
-        #         column = None
-        #         self.treeview.scroll_to_cell(path, column, False, 0.0, 1.0)
+
+        def on_treeview_size_allocate(self, widget, allocation):
+            ''' 
+            Scroll to end after file inserted to File Log window
+            Seems to sometimes cause GTK to crash
+            '''
+            if len(self.filelogstore)>0:
+                path = Gtk.TreePath.new_from_string(str(len(self.filelogstore)-1))
+                column = None
+                self.treeview.scroll_to_cell(path, column, False, 0.0, 1.0)
 
         # def on_text_buffer_insert_text(self, buffer, iter, text, length):
         #     # Scroll to end after text printed
@@ -346,12 +628,12 @@ if guitype == "gtk":
 
         def on_row_inserted(self, store, path, iter):
             # Count the number of rows currently in the store
-            num_rows = len(self.liststore)
+            num_rows = len(self.filelogstore)
 
             # If the number of rows exceeds 100, remove the oldest rows
             if num_rows > self.maxlsrows:
                 for i in range(num_rows - self.maxlsrows):
-                    self.liststore.remove(self.liststore.get_iter_first())
+                    self.filelogstore.remove(self.filelogstore.get_iter_first())
 
         def print_text(self, text):
             lns = text.split("\n")
@@ -360,29 +642,14 @@ if guitype == "gtk":
             for ln in lns:
                 if "Export formats: " in ln or "Rasterization DPI: " in ln or exception:
                     continue
-                if ":" in ln and len(ln.split(":")) == 2:
+                if (
+                    ":" in ln
+                    and len(ln.split(":")) == 2
+                    and "Inkscape binary" not in ln
+                    and "Python interpreter" not in ln
+                ):
                     ln2 = [v.strip(" ") for v in ln.split(":")]
-                    self.liststore.append(ln2)
-                    # time.sleep(0.25)
-
-                    # ms = [ii for ii in range(len(self.lsvals)) if ln2[0]==self.lsvals[ii][0]]
-                    # if len(ms)==0:
-                    #     self.liststore.append(ln2)
-                    #     self.lsvals.append(ln2)
-                    # else:
-                    #     for m in reversed(ms):
-                    #         nval = [self.lsvals[m][0],self.lsvals[m][1]+'\n'+ln2[1]]
-
-                    #         self.lsvals.remove(self.lsvals[m])
-                    #         iterv =self.liststore.get_iter_first()
-                    #         for mv in range(m):
-                    #             iterv = self.liststore.iter_next(iterv)
-                    #         self.liststore.remove(iterv)
-
-                    #         self.lsvals.append(nval)
-                    #         self.liststore.append(nval)
-
-                    #         self.liststore.remove(self.liststore.get_iter_first())
+                    self.filelogstore.append(ln2)
                     tor.append(ln)
             lns = [item for item in lns if item not in tor]
             text = "\n".join(lns)
@@ -397,36 +664,20 @@ if guitype == "gtk":
 
         def exit_clicked(self, widget):
             self.destroy()
-
+            
         def watch_folder_button_clicked(self, widget):
-            native = Gtk.FileChooserNative.new(
-                "Please choose a file or directory",
-                self,
-                Gtk.FileChooserAction.SELECT_FOLDER,
-                None,
-                None,
-            )
-            response = native.run()
-            if response == Gtk.ResponseType.ACCEPT:
-                selected_file = native.get_filename()
+            selected_file = self.watch_file_chooser_button.get_filename()
+            # Check if selected_file is None, which indicates the user clicked 'Cancel'
+            if selected_file is not None:
                 self.ct.watchdir = selected_file
                 self.ct.nf = True
-            native.destroy()
-
+            
         def write_folder_button_clicked(self, widget):
-            native = Gtk.FileChooserNative.new(
-                "Please choose a file or directory",
-                self,
-                Gtk.FileChooserAction.SELECT_FOLDER,
-                None,
-                None,
-            )
-            response = native.run()
-            if response == Gtk.ResponseType.ACCEPT:
-                selected_file = native.get_filename()
+            selected_file = self.write_file_chooser_button.get_filename()
+            # Check if selected_file is None, which indicates the user clicked 'Cancel'
+            if selected_file is not None:
                 self.ct.writedir = selected_file
                 self.ct.nf = True
-            native.destroy()
 
         def export_all_clicked(self, widget):
             self.ct.ea = True
@@ -447,29 +698,67 @@ if guitype == "gtk":
                 self.ct.es = True
             native.destroy()
 
-    fc = monitorThread("filechecker")
-    fc.watchdir = watchdir
-    fc.writedir = writedir
+        def on_pdf_toggled(self, widget):
+            input_options.usepdf = widget.get_active()
+            print("PDF option toggled:", widget.get_active())
+
+        def on_png_toggled(self, widget):
+            input_options.usepng = widget.get_active()
+            print("PNG option toggled:", widget.get_active())
+
+        def on_emf_toggled(self, widget):
+            input_options.useemf = widget.get_active()
+            print("EMF option toggled:", widget.get_active())
+
+        def on_eps_toggled(self, widget):
+            input_options.useeps = widget.get_active()
+            print("EPS option toggled:", widget.get_active())
+
+        def on_svg_toggled(self, widget):
+            input_options.usepsvg = widget.get_active()
+            print("SVG option toggled:", widget.get_active())
+
+        def on_dpi_changed(self, widget):
+            input_options.dpi = widget.get_value_as_int()
+            print("Rasterization DPI changed:", widget.get_value_as_int())
+
+        def on_crop_toggled(self, widget):
+            input_options.imagemode2 = widget.get_active()
+            print("Crop and resample images option toggled:", widget.get_active())
+
+        def on_convert_text_toggled(self, widget):
+            input_options.texttopath = widget.get_active()
+            print("Convert text to paths option toggled:", widget.get_active())
+
+        def on_prevent_thin_lines_toggled(self, widget):
+            input_options.thinline = widget.get_active()
+            print("Prevent thin line enhancement option toggled:", widget.get_active())
+
+        def on_convert_strokes_toggled(self, widget):
+            input_options.stroketopath = widget.get_active()
+            print("Convert all strokes to paths option toggled:", widget.get_active())
+
+        def on_transparent_back_toggled(self, widget):
+            input_options.backingrect = widget.get_active()
+            print(
+                "Add transparent backing rectangle option toggled:", widget.get_active()
+            )
+
+        def on_margin_changed(self, widget):
+            input_options.margin = widget.get_value()
+            print("Extra margin changed:", widget.get_value())
+
+        def on_omit_text_toggled(self, widget):
+            input_options.latexpdf = widget.get_active()
+            print(
+                "Omit text in PDF and create LaTeX file option toggled:",
+                widget.get_active(),
+            )
+
+    fc = FileCheckerThread(input_options.watchdir,input_options.writedir)
+    global win
     win = AutoexporterWindow(fc)
     win.set_keep_above(True)
-
-    class printThread(threading.Thread):
-        def __init__(self, win):
-            threading.Thread.__init__(self)
-            self.win = win
-            self.stopped = False
-            self.buffer = []
-
-        def run(self):
-            while not (self.stopped):
-                if len(self.buffer) > 0:
-                    GLib.idle_add(self.win.print_text, "\n".join(self.buffer))
-                    time.sleep(0.25)
-                    self.buffer = []
-
-    global pt
-    pt = printThread(win)
-    pt.start()
 
     mprint("Scientific Inkscape Autoexporter")
     mprint("\nPython interpreter: " + sys.executable)
@@ -477,17 +766,12 @@ if guitype == "gtk":
 
     import image_helpers as ih
 
-    if not (ih.hasPIL):
-        mprint(
-            "Python does not have PIL, images will not be cropped or converted to JPG\n"
-        )
-    else:
-        mprint("Python has PIL\n")
+    mprint("Python does not have PIL, images will not be cropped"
+           " or converted to JPG\n" if not ih.hasPIL else "Python has PIL\n")
     fc.start()
 
     def quit_and_close(self):
         fc.stopped = True
-        pt.stopped = True
         Gtk.main_quit()
 
     win.connect("destroy", quit_and_close)
@@ -498,7 +782,8 @@ else:
     try:
         import tkinter
 
-        promptstring = "\nEnter D to change directories, R to change DPI, F to export a file, A to export all now, and Q to quit: "
+        promptstring = "\nEnter D to change directories, R to change DPI, F to"
+        " export a file, A to export all now, and Q to quit: "
         hastkinter = True
     except:
         promptstring = "\nEnter A to export all now, R to change DPI, and Q to quit: "
@@ -508,17 +793,20 @@ else:
         mprint(" ")
     elif platform.system().lower() == "windows":
         # Disable QuickEdit, which I think causes the occasional freezes
-        # From https://stackoverflow.com/questions/37500076/how-to-enable-windows-console-quickedit-mode-from-python
-        def quickedit(enabled=1):  # This is a patch to the system that sometimes hang
+        # From https://stackoverflow.com/questions/37500076/
+        #      how-to-enable-windows-console-quickedit-mode-from-python
+        def quickedit(enabled=1):
             import ctypes
 
             """
-            Enable or disable quick edit mode to prevent system hangs, sometimes when using remote desktop
+            Enable or disable quick edit mode to prevent system hangs,
+            sometimes when using remote desktop
             Param (Enabled)
             enabled = 1(default), enable quick edit mode in python console
             enabled = 0, disable quick edit mode in python console
             """
-            # -10 is input handle => STD_INPUT_HANDLE (DWORD) -10 | https://docs.microsoft.com/en-us/windows/console/getstdhandle
+            # -10 is input handle => STD_INPUT_HANDLE (DWORD) -10 | 
+            # https://docs.microsoft.com/en-us/windows/console/getstdhandle
             # default = (0x4|0x80|0x20|0x2|0x10|0x1|0x40|0x200)
             # 0x40 is quick edit, #0x20 is insert mode
             # 0x8 is disabled by default
@@ -545,12 +833,8 @@ else:
 
     import image_helpers as ih
 
-    if not (ih.hasPIL):
-        mprint(
-            "Python does not have PIL, images will not be cropped or converted to JPG\n"
-        )
-    else:
-        mprint("Python has PIL\n")
+    mprint("Python does not have PIL, images will not be cropped"
+           " or converted to JPG\n" if not ih.hasPIL else "Python has PIL\n")
 
     def Get_Directories():
         root = tkinter.Tk()
@@ -596,16 +880,14 @@ else:
         return d
 
     # Main loop
-    fc = monitorThread("filechecker")
-    fc.watchdir = watchdir
-    fc.writedir = writedir
+    fc = FileCheckerThread(input_options.watchdir,input_options.writedir)
     if fc.watchdir is None or fc.writedir is None:
         fc.watchdir, fc.writedir = Get_Directories()
 
     fc.start()
     while fc.nf:  # wait until it's done initializing
         pass
-    t2 = monitorThread("prompt")
+    t2 = PromptThread()
     t2.start()
     keeprunning = True
     while keeprunning:
@@ -638,13 +920,14 @@ else:
             else:
                 mprint("Invalid input!")
             if keeprunning:
-                t2 = monitorThread("prompt")
+                t2 = PromptThread()
                 t2.start()
                 fc.promptpending = True
         time.sleep(WHILESLEEP)
 
     # On macOS close the terminal we opened
-    # https://superuser.com/questions/158375/how-do-i-close-the-terminal-in-osx-from-the-command-line
+    # https://superuser.com/questions/158375/
+    # how-do-i-close-the-terminal-in-osx-from-the-command-line
     if platform.system().lower() == "darwin":
         os.system(
             "osascript -e 'tell application \"Terminal\" to close first window' & exit"

@@ -18,6 +18,11 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
+# Old Drag from options
+DRAG_FROM_HORIZONTAL = 'center'  # 'center', 'left', or 'right'
+DRAG_FROM_VERTICAL = 'center'    # 'center', 'top' , or 'bottom'
+
+import dhelpers as dh
 import inkex
 from inkex import (
     TextElement,
@@ -30,12 +35,7 @@ from inkex import (
     Group,
     Polyline,
 )
-import os, sys, math, copy
-
-sys.path.append(
-    os.path.dirname(os.path.realpath(sys.argv[0]))
-)  # make sure my directory is on the path
-import dhelpers as dh
+import math, copy
 from dhelpers import bbox
 from inkex.text.utils import uniquetol
 
@@ -65,6 +65,7 @@ def Find_Plot_Area(els, gbbs):
     hl = dict()  # horizontal lines
     boxes = dict()
     solids = dict()
+    plotareas = dict()
     for el in list(reversed(els)):
         isrect = False
         if isinstance(el, (PathElement, Rectangle, Line, Polyline)):
@@ -91,6 +92,10 @@ def Find_Plot_Area(els, gbbs):
                 solids[el.get_id()] = gbb
             elif hasstroke:  # framed rectangle
                 boxes[el.get_id()] = gbb
+                
+        if el.get("inkscape-scientific-scaletype")=="plot_area":
+            plotareas[el.get_id()] = gbb
+            
 
     vels = dict()
     hels = dict()
@@ -99,6 +104,9 @@ def Find_Plot_Area(els, gbbs):
     for k, gbb in hl.items():
         hels[k] = gbb[2]
     for k, gbb in boxes.items():
+        hels[k] = gbb[2]
+        vels[k] = gbb[3]
+    for k, gbb in plotareas.items():
         hels[k] = gbb[2]
         vels[k] = gbb[3]
 
@@ -141,8 +149,6 @@ class ScalePlots(inkex.EffectExtension):
             "--hscale", type=float, default=100, help="Horizontal scaling"
         )
         pars.add_argument("--vscale", type=float, default=100, help="Vertical scaling")
-        pars.add_argument("--hdrag", type=int, default=1, help="Horizontal scaling")
-        pars.add_argument("--vdrag", type=int, default=1, help="Vertical scaling")
 
         pars.add_argument(
             "--hmatch",
@@ -251,7 +257,8 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                 1: "scale_free",
                 2: "aspect_locked",
                 3: "normal",
-                4: None,
+                4: "plot_area",
+                5: None,
             }[self.options.marksf]
             for el in sel:
                 el.set("inkscape-scientific-scaletype", self.options.marksf)
@@ -307,7 +314,7 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                         + numgroup
                         + " selected plot (group ID "
                         + sel[i0].get_id()
-                        + ").\n\nDraw a box with a stroke to define the plot area."
+                        + ").\n\nDraw a box with a stroke to define the plot area or mark objects as plot area-determining in the Advanced tab."
                         + "\nScaling will still be performed, but the results may not be ideal."
                     )
             else:
@@ -427,7 +434,7 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                             + "first selected object (ID "
                             + firstsel.get_id()
                             + ").\n\nIts bounding box will be matched instead. If this is not ideal,"
-                            + " draw an outlined box to define the plot area.\n"
+                            + " draw an outlined box to define the plot area or mark objects as plot area-determining in the Advanced tab.\n"
                         )
                         bbmatch = bbox(gbbs[firstsel.get_id()])
                     else:
@@ -451,15 +458,15 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
 
             # Compute global transformation
             if self.options.tab != "correction":
-                if self.options.hdrag == 1:  # right
+                if DRAG_FROM_HORIZONTAL == 'right':  # right
                     refx = bba.g.x1
-                elif self.options.hdrag == 2:  # left
+                elif DRAG_FROM_HORIZONTAL == 'left':  # left
                     refx = bba.g.x2
                 else:  # center
                     refx = (bba.g.x1 + bba.g.x2) / 2
-                if self.options.vdrag == 1:  # bottom
+                if DRAG_FROM_HORIZONTAL == 'bottom':  # bottom
                     refy = bba.g.y1
-                elif self.options.vdrag == 2:  # top
+                elif DRAG_FROM_HORIZONTAL == 'top':  # top
                     refy = bba.g.y2
                 else:  # center
                     refy = (bba.g.y1 + bba.g.y2) / 2
@@ -652,7 +659,7 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                 fbbs = actfbbs
                 gbbs = actgbbs
 
-        dh.flush_stylesheet_entries(self.svg)
+        # dh.flush_stylesheet_entries(self.svg)
 
 
 if __name__ == "__main__":
