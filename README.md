@@ -1,12 +1,12 @@
 # Scientific Inkscape: Extensions for figure editing and resizing
-Scientific Inkscape is a set of Inkscape extensions for editing and exporting scientific figures.
+The Scientific Inkscape extensions help you edit beautiful scientific figures and export them in fully vector formats.
 <p align="center"><img src="https://github.com/burghoff/Scientific-Inkscape/blob/dev/examples/Resize_Optica.gif" alt="drawing" width="70%"></img></p>
 
 The core extensions are:
 1. **Scale Plots**: Changes the size or aspect ratio of a plot without modifying its text and ticks, making it easy to assemble multi-panel figures. Also works on non-plots.
 2. **Homogenizer**: Sets uniform fonts, font sizes, and stroke widths in a selection.
 3. **Flattener**: Eliminates the structure of imported figures, making them easier to edit. For most imports, this should be the first thing you run.
-4. **Autoexporter**: Automatically refreshes exports of SVGs in a folder. Also produces exports immune to the rendering bugs of Office and Acrobat.
+4. **Autoexporter**: Automatically refreshes exports of SVGs in a folder, while producing exports immune to the rendering bugs of Office and Acrobat.
 5. **Gallery Viewer**: Quickly view and edit all SVGs in a file or folder.
 
 It also includes the following utilities:
