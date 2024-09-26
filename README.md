@@ -1,12 +1,12 @@
-# Scientific Inkscape: Extensions for figure editing and resizing
-The Scientific Inkscape extensions help you edit beautiful scientific figures and export them in fully vector formats.
+# Scientific Inkscape: Extensions for figure editing and exporting
+Scientific Inkscape helps you craft beautiful scientific figures that can be inserted as a flawless vector file inside any document (including LaTeX, Word, and Powerpoint).
 <p align="center"><img src="https://github.com/burghoff/Scientific-Inkscape/blob/dev/examples/Resize_Optica.gif" alt="drawing" width="70%"></img></p>
 
 The core extensions are:
 1. **Scale Plots**: Changes the size or aspect ratio of a plot without modifying its text and ticks, making it easy to assemble multi-panel figures. Also works on non-plots.
-2. **Homogenizer**: Sets uniform fonts, font sizes, and stroke widths in a selection.
+2. **Autoexporter**: Automatically refreshes exports of SVGs in a folder, while producing plain SVG exports immune to the rendering bugs of Office and Acrobat.
 3. **Flattener**: Eliminates the structure of imported figures, making them easier to edit. For most imports, this should be the first thing you run.
-4. **Autoexporter**: Automatically refreshes exports of SVGs in a folder, while producing exports immune to the rendering bugs of Office and Acrobat.
+4. **Homogenizer**: Sets uniform fonts, font sizes, and stroke widths in a selection.
 5. **Gallery Viewer**: Quickly view and edit all SVGs in a file or folder.
 
 It also includes the following utilities:
@@ -36,6 +36,11 @@ Scale Plots has three modes. In Scaling Mode, the plot is scaled by a constant f
 ### Exclusions
 Sometimes, you may want to lock the aspect ratio of certain objects while scaling, or you may want to leave them unscaled altogether. For example, this is common for plots with markers—changing the aspect ratio usually makes them look bad. To exclude objects, (a) select them, (b) open the "Advanced" tab of Scale Plots, (c) select the appropriate option under Exclusions, and (d) click Apply. They are now invisibly marked for exclusion, and any subsequent scaling will ignore them.
 
+# Autoexporter
+When writing, it is common to iterate between figure adjustment and writing. The Autoexporter makes this easy, automatically exporting files to their final form as they are saved. It runs in the background and watches a directory; whenever any SVGs are changed, it automatically converts them to the specified formats. Just select (a) the formats you would like to export, (b) what directory you would like it to watch, and (c) where you would like the Autoexporter to put the exports. This is especially convenient for documents typset in LaTeX: edits to your SVGs can automatically show up in your document.  
+
+The Advanced options can be used to configure how images and text are stored. It can also generate plain SVGs resistant to Microsoft Office rendering bugs that can be directly inserted into Powerpoint and Word, as well as PDFs that are immune to Adobe Acrobat's rendering bugs. It also provides additional options for rasterizing certain elements during the export. For additional information on best practices for exporting, see [this page](https://github.com/burghoff/Scientific-Inkscape/blob/main/EXPORTING.md).
+
 # The Flattener
 The Flattener removes unwanted structure from figures imported into Inkscape. Several of the other extensions require the figure be pre-Flattened, so it is recommended that you map it to a keyboard shortcut for easy calling.
 1. *Deep ungroup*: Imported figures often have highly nested groupings. The Deep Ungroup removes these and unlinks any clones.
@@ -55,11 +60,6 @@ The Flattener removes unwanted structure from figures imported into Inkscape. Se
 # The Homogenizer
 The Homogenizer is a utility that can set all fonts, font sizes, and stroke widths in a selection to the same value. It also removes any text or path distortions. This is most useful when assembling sub-figures, as it allows you to ensure that the whole figure has a uniform look. 
 <p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Homogenizer_portable.svg" alt="drawing" ></img></p>
-
-# Autoexporter
-When writing, it is common to iterate between figure adjustment and writing. The Autoexporter makes this easy, automatically exporting files to their final form as they are saved. It runs in the background and watches a directory; whenever any SVGs are changed, it automatically converts them to the specified formats. Just select (a) the formats you would like to export, (b) what directory you would like it to watch, and (c) where you would like the Autoexporter to put the exports. This is especially convenient for documents typset in LaTeX: edits to your SVGs can automatically show up in your document.  
-
-The Advanced options can be used to configure how images and text are stored. It can also generate SVGs resistant to Microsoft Office rendering bugs that can be directly inserted into Powerpoint and Word, as well as PDFs that are immune to Adobe Acrobat's rendering bugs. It also provides additional options for rasterizing certain elements during the export. For additional information on best practices for exporting, see [this page](https://github.com/burghoff/Scientific-Inkscape/blob/main/EXPORTING.md).
 
 # Text Ghoster
 Placing text labels can sometimes be difficult for dense or small plots. The Text Ghoster adds a blurry semi-transparent background to text, allowing it to be legible without obscuring the underlying data.
