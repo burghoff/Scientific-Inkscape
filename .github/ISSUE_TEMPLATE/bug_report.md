@@ -8,7 +8,7 @@ assignees: ''
 ---
 
 **Describe the bug**
-A clear and concise description of what the bug is.
+A clear and concise description of what the bug is. Before raising the issue, please try out the version of Scientific Inkscape on the dev branch (https://github.com/burghoff/Scientific-Inkscape/tree/dev) to see if the issue was already fixed in pre-release.
 
 **To Reproduce**
 Steps to reproduce the behavior:
