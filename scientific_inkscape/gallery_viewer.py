@@ -22,7 +22,7 @@ dispprofile = False
 
 import dhelpers as dh
 import inkex
-import os, sys, copy, subprocess
+import os, sys, copy, subprocess, platform
 
 # Convenience functions
 def joinmod(dirc, f):
@@ -32,13 +32,11 @@ def joinmod(dirc, f):
 # Runs a Python script using a Python binary in a working directory
 # It detaches from Inkscape, allowing it to continue running after the extension has finished
 def run_python(python_bin, python_script, python_wd, interminal=False):
-    import platform
-
     if platform.system() == "Windows":
         DEVNULL = "nul"
     else:
         DEVNULL = "/dev/null"
-    DEVNULL = dh.si_tmp(filename="si_gv_output.txt")
+    # DEVNULL = dh.si_tmp(filename="si_gv_output.txt")
     # dh.idebug(DEVNULL)
     with open(DEVNULL, "w") as devnull:
         subprocess.Popen([python_bin, python_script], stdout=devnull, stderr=devnull)
@@ -74,15 +72,52 @@ class GalleryViewer(inkex.EffectExtension):
         optcopy.inkscape_bfn = bfn
         optcopy.syspath = sys.path
         optcopy.inshell = False
+        optcopy.logfile = dh.si_tmp(filename="si_gv_output.txt")
 
-        with open(dh.si_tmp(filename="si_gv_settings.p"), "wb") as f:
+        import tempfile
+        settings = os.path.join(
+            os.path.abspath(tempfile.gettempdir()), "si_gv_settings.p"
+        )
+
+        with open(settings, "wb") as f:
             pickle.dump(optcopy, f)
         import warnings
-
-        warnings.simplefilter("ignore", ResourceWarning)
-        # prevent warning that process is open
-
+        warnings.simplefilter("ignore", ResourceWarning) # prevent process open warning
         run_python(pybin, aepy, pyloc, optcopy.inshell)
+        
+        # Make a batch file that can run the Gallery Viewer directly on Windows
+        # Hardcodes the pickled settings
+        if platform.system() == "Windows":
+            python_cwd = os.getcwd()
+            pickled_file_path = settings
+            with open(pickled_file_path, "rb") as f:
+                pickled_data = f.read()
+            import base64
+            pickled_data_base64 = base64.b64encode(pickled_data).decode('utf-8')
+            current_script_dir = os.path.dirname(os.path.abspath(__file__))
+            batch_file_path = os.path.join(current_script_dir, "Gallery Viewer.bat")
+            batch_content = '''@echo off
+            cd "{python_cwd}"
+            
+            SET PYBIN="{pybin}"
+            SET AEPY="{aepy}"
+            SET PICKLED_FILE="{pickled_file}"
+            
+            REM Use PowerShell to decode the base64 string and write the binary pickled data
+            powershell -Command "[System.IO.File]::WriteAllBytes('%PICKLED_FILE%', [Convert]::FromBase64String('{pickled_data_base64}'))"
+            
+            REM Start the Python script in a new process without opening a new window
+            start "" %PYBIN% %AEPY%
+            '''.format(
+                python_cwd=python_cwd,  # Add the current working directory
+                pybin=sys.executable,
+                aepy=aepy,
+                pickled_file=pickled_file_path.replace('\\', '\\\\'),
+                pickled_data_base64=pickled_data_base64
+            )
+            with open(batch_file_path, "w") as batch_file:
+                batch_file.write(batch_content)
+
 
         if dispprofile:
             pr.disable()

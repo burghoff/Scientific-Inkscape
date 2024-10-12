@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="google" content="notranslate">
+    <title>Gallery Viewer</title>
+    <style>
+        /* Your CSS styles */
+        div.gallery {
+            margin: 5px;
+            border: 1px solid #ccc;
+            float: none;
+            width: {{ image_width }}px;
+            display: inline-block;
+            vertical-align: top;
+        }
+        div.gallery:hover {
+            border: 1px solid #777;
+        }
+        div.gallery img {
+            object-fit: contain;
+            width: {{ image_width }}px;
+            height: {{ image_height }}px;
+        }
+        div.desc {
+            padding: 15px;
+            text-align: center;
+            word-wrap: break-word;
+        }
+        body {
+            font-family: Roboto, Arial, sans-serif;
+            font-size: 14px;
+            margin: 10;  /* Remove default margins */
+            padding: 0; /* Remove default padding */
+        }
+        h2 {
+            margin: 0;  /* Remove all margins from the h2 element */
+            padding: 0; /* Remove any padding */
+        }
+        .serverdown {
+            color: #e41a1cff;
+            margin: 0;  /* Remove all margins from the serverdown div */
+            padding: 0; /* Remove any padding */
+        }
+        @supports not (-ms-ime-align: auto) {
+            details summary {
+                cursor: pointer;
+            }
+            details summary > * {
+                display: inline;
+            }
+        }
+    </style>
+    <script>
+        const port = {{ port | tojson }};
+        var mylastupdate = 0;  // Initialize the last update time
+    </script>
+</head>
+<body>
+
+    <h2>Gallery Viewer</h2>
+    <div class="serverdown"></div>
+
+    <div id="gallery-container">
+        <!-- The gallery content will be dynamically inserted here -->
+    </div>
+
+    <!-- JavaScript code -->
+    <script>
+        // Store the existing groups and their data
+        let existingGroups = {};
+        let existingGroupData = {};
+        let existingGroupNeedsRefresh = {}; // New object to track groups that need refresh
+
+        // Function to render or update a group
+        function renderGroup(group) {
+            const header = group.header;
+            let details = existingGroups[header];
+
+            // Serialize the group's data for comparison
+            const groupDataString = JSON.stringify(group);
+            const existingGroupDataString = existingGroupData[header] ? JSON.stringify(existingGroupData[header]) : null;
+
+            // Check if the group needs to be refreshed
+            const needsRefresh = existingGroupNeedsRefresh[header] || false;
+
+            // Flag to indicate if data has changed
+            let dataChanged = false;
+
+            if (!details) {
+                // New group, create it
+                details = document.createElement('details');
+
+                // Set the initial open state
+                details.open = true;
+
+                const summary = document.createElement('summary');
+                const title = document.createElement('h2');
+                title.textContent = header;
+                title.style.margin = '0';  // Remove margin from group headers
+                summary.appendChild(title);
+                details.appendChild(summary);
+
+                // Add processing text element
+                const processingText = document.createElement('div');
+                processingText.className = 'processing-text';
+                details.appendChild(processingText);
+
+                const divContainer = document.createElement('div');
+                divContainer.className = 'gallery-container';
+                details.appendChild(divContainer);
+
+                // Add the new details to the gallery container
+                document.getElementById('gallery-container').appendChild(details);
+
+                // Store in existingGroups and existingGroupData
+                existingGroups[header] = details;
+                existingGroupData[header] = group;
+
+                // Since this is a new group, data has "changed"
+                dataChanged = true;
+            } else {
+                // Group exists, check if data has changed or needs refresh
+                if (existingGroupDataString !== groupDataString || needsRefresh) {
+                    dataChanged = true;
+                    existingGroupData[header] = group;
+
+                    // Preserve the open/closed state
+                    const isOpen = details.open;
+
+                    // Clear existing content
+                    const divContainer = details.querySelector('.gallery-container');
+                    divContainer.innerHTML = '';
+
+                    // Restore the state
+                    details.open = isOpen;
+                } else {
+                    // Data hasn't changed and no refresh needed
+                    dataChanged = false;
+                }
+            }
+
+            // Update the processing text
+            const processingText = details.querySelector('.processing-text');
+            if (group.processing) {
+                processingText.textContent = 'Processing';
+                processingText.style.display = 'block';
+                processingText.style.marginLeft = '15px'; // Optional indentation
+            } else {
+                processingText.textContent = '';
+                processingText.style.display = 'none';
+            }
+
+            if (dataChanged) {
+                // After re-rendering, reset the needsRefresh flag
+                existingGroupNeedsRefresh[header] = false;
+
+                // Render the files inside the group
+                const divContainer = details.querySelector('.gallery-container');
+                group.files.forEach(file => {
+                    const galleryDiv = document.createElement('div');
+                    galleryDiv.className = 'gallery';
+
+                    const link = document.createElement('a');
+                    link.href = file.thumbnail_url;
+                    link.target = '_blank';
+
+                    const img = document.createElement('img');
+                    img.src = file.thumbnail_url;
+                    link.appendChild(img);
+
+                    // Add error event listener to the image
+                    img.addEventListener('error', () => {
+                        console.log(`Image failed to load in group "${header}". Marking group for refresh.`);
+                        existingGroupNeedsRefresh[header] = true;
+                    });
+
+                    const descDiv = document.createElement('div');
+                    descDiv.className = 'desc';
+                    descDiv.innerHTML = `
+                        <div>${file.label}</div>
+                        <div>
+                            <a href="http://localhost:${port}/process?param=${encodeURIComponent(file.file_uri)}" class="open">${file.currenttype}</a>
+                        </div>
+                    `;
+                    if (file.embed) {
+                        descDiv.innerHTML += `
+                            <div>
+                                <a href="http://localhost:${port}/process?param=${encodeURIComponent(file.embed)}" class="open">Original</a>
+                            </div>
+                        `;
+                    }
+
+                    galleryDiv.appendChild(link);
+                    galleryDiv.appendChild(descDiv);
+                    divContainer.appendChild(galleryDiv);
+                });
+
+                // Re-attach event listeners to the new links
+                attachEventListeners(details);
+
+                // Print to console
+                console.log(`Refreshing "${header}"`);
+            } else {
+                // No changes, do nothing
+                console.log(`No changes in "${header}"`);
+            }
+        }
+
+        // Function to attach event listeners to links with class 'open' within a given details element
+        function attachEventListeners(detailsElement) {
+            detailsElement.querySelectorAll("a.open").forEach(function(link) {
+                // Remove existing event listeners to avoid duplicates
+                const newLink = link.cloneNode(true);
+                link.parentNode.replaceChild(newLink, link);
+            });
+            detailsElement.querySelectorAll("a.open").forEach(function(link) {
+                link.addEventListener("click", function(event) {
+                    // Prevent the default link behavior
+                    event.preventDefault();
+
+                    // Store the original color of the link
+                    const originalColor = this.style.color;
+
+                    // Change the link color before the request is made
+                    this.style.color = "red"; // Change to any color you prefer
+
+                    // Use fetch API to send the GET request
+                    fetch(this.href)
+                        .then(response => {
+                            if (response.ok) {
+                                console.log("Request successful, staying on the same page.");
+                            } else {
+                                console.error("Request failed with status:", response.status);
+                            }
+                            // Ensure color stays changed for at least 500ms before restoring it
+                            setTimeout(() => {
+                                this.style.color = originalColor;
+                            }, 500); // Delay the restoration by 500ms
+                        })
+                        .catch(error => {
+                            console.error("Network error:", error);
+                            // Delay the restoration of the original color even in case of an error
+                            setTimeout(() => {
+                                this.style.color = originalColor;
+                            }, 500); // Delay the restoration by 500ms
+                        });
+                });
+            });
+        }
+
+        // Function to render the gallery from the JSON data
+        function renderGallery(data) {
+            // Create a set of headers from the new data
+            const newHeaders = new Set(data.map(group => group.header));
+
+            // Remove groups that are no longer present
+            Object.keys(existingGroups).forEach(header => {
+                if (!newHeaders.has(header)) {
+                    const details = existingGroups[header];
+                    details.remove();
+                    delete existingGroups[header];
+                    delete existingGroupData[header];
+                    delete existingGroupNeedsRefresh[header];
+                }
+            });
+
+            // Render or update groups
+            data.forEach(group => {
+                renderGroup(group);
+            });
+        }
+
+        // Fetch the gallery data from the server and render it dynamically
+        function fetchGalleryData() {
+            fetch('/gallery_data')
+                .then(response => response.json())
+                .then(data => {
+                    renderGallery(data.gallery_data);
+                })
+                .catch(error => console.error('Error fetching gallery data:', error));
+        }
+
+        // Function to check for refresh
+        function checkForRefresh() {
+            fetch('/check_for_refresh')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.lastupdate > mylastupdate) {
+                        mylastupdate = data.lastupdate;
+                        fetchGalleryData();
+                    } else {
+                        // Even if no data change, we need to re-render groups that need refresh
+                        Object.keys(existingGroupNeedsRefresh).forEach(header => {
+                            if (existingGroupNeedsRefresh[header]) {
+                                const group = existingGroupData[header];
+                                if (group) {
+                                    renderGroup(group);
+                                }
+                            }
+                        });
+                    }
+                    document.querySelector('.serverdown').innerHTML = "";
+                })
+                .catch(error => {
+                    console.error('Error checking for refresh:', error);
+                    document.querySelector('.serverdown').innerHTML = "Server is not running, files cannot be opened.";
+                });
+        }
+
+        // Fetch gallery data on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchGalleryData();
+            setInterval(checkForRefresh, 1000);  // Check for refresh every 1 second
+        });
+    </script>
+</body>
+</html>

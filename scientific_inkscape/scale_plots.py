@@ -217,7 +217,7 @@ class ScalePlots(inkex.EffectExtension):
         # regular selectable objects only
 
         itag = inkex.Image.ctag
-        if all([el.tag == itag for el in sel]):
+        if all([el.tag == itag for el in sel]) and self.options.tab!="options":
             inkex.utils.errormsg(
                 """Thanks for using Scientific Inkscape!
             
