@@ -389,6 +389,8 @@ class ConversionThread(threading.Thread):
                                 width, height = im.size
                                 new_width = 400
                                 new_height = int((new_width / width) * height)
+                                if 'info' in im.__dict__ and "dpi" in im.info and isinstance(im.info["dpi"],tuple) and len(im.info["dpi"]) == 2:
+                                    new_height = int((new_width / width * im.info["dpi"][0]/im.info["dpi"][1]) * height)
                                 resized_image = im.resize((new_width, new_height), Image.LANCZOS)
                                 resized_image.save(conversion_path)
 
@@ -402,13 +404,13 @@ class ConversionThread(threading.Thread):
                     nattempts += 1
 
             # Trigger a refresh and update the converted files dictionary
-            trigger_refresh()
             converted_files[hashed] = self.fileout
         else:
             # If already converted, copy the existing file
             shutil.copy2(converted_files[hashed], self.fileout)
         if os.path.exists(self.fileout):
             self.thumbnails[self.index] = self.fileout
+            trigger_refresh()
         self.done = True
     
 
@@ -806,7 +808,6 @@ class WatcherThread(threading.Thread):
                 
 
     def run(self):
-        self.run_on_fof()
         global myapp
         if myapp is None:
             myapp = True
@@ -817,9 +818,9 @@ class WatcherThread(threading.Thread):
             if not (openedgallery):
                 webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
                 openedgallery = True
-        else:
-            trigger_refresh()
-        self.convert_emfs()
+        self.run_on_fof()
+        trigger_refresh()
+        self.convert_emfs() # already refreshes
 
         def get_modtimes():
             modtimes = dict()
@@ -969,7 +970,7 @@ if guitype == "gtk":
 
         def on_file_button_clicked(self, widget):
             native = Gtk.FileChooserNative.new(
-                "Please choose files", self, Gtk.FileChooserAction.OPEN, None, None
+                "Please choose one or more files", self, Gtk.FileChooserAction.OPEN, None, None
             )
             native.set_select_multiple(True)
             filter_ppt = Gtk.FileFilter()
@@ -990,7 +991,7 @@ if guitype == "gtk":
 
         def on_folder_button_clicked(self, widget):
             native = Gtk.FileChooserNative.new(
-                "Please choose a file or directory",
+                "Please choose one or more directories",
                 self,
                 Gtk.FileChooserAction.SELECT_FOLDER,
                 None,
