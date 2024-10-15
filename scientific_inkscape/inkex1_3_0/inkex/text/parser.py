@@ -3930,4 +3930,5 @@ def xyset(elem, xyt, val):
     if not (val):
         elem.attrib.pop(xyt, None)  # pylint: disable=no-member
     else:
-        EBset(elem, xyt, str(val)[1:-1].replace(",", ""))
+        EBset(elem, xyt, ' '.join('%s' % v for v in val if v is not None))
+
