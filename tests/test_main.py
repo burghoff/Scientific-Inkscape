@@ -8,6 +8,7 @@ aepages = 'Multipage_nonuniform.svg'
 
 MAXPAPERS = 0
 flattentext = 'Text_tests.svg'
+flattentextdx = 'Text_tests_dx.svg'
 flattenrest = 'Acid_tests.svg';
 flattenflow = 'Flow_tests.svg';
 flattenfonts = 'Font_variants_all.svg'
@@ -22,9 +23,10 @@ usepango = True
 lprofile = False
 
 testflattentext,testflattentextdebug, testflattenrest,testflattenflow,testflattenpapers,testscalecorrection,testscalecorrection2,\
-testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp, testflattenfonts = (False,)*17
+testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp, testflattenfonts, testflattentextdx = (False,)*18
 
 testflattentext     = True;
+testflattentextdx   = True;
 testflattentextdebug = True;
 testflattenflow     = True; 
 testflattenrest     = True; 
@@ -87,6 +89,13 @@ if testflattentext:
         compare_filters = [CompareNumericFuzzy2(),]
         comparisons = [flattenerargs]
         compare_file = ['svg/'+flattentext]
+
+if testflattentextdx:
+    class TestFlattenerTextDx(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        comparisons = [flattenerargs]
+        compare_file = ['svg/'+flattentextdx]
         
 
 if testflattentextdebug:
