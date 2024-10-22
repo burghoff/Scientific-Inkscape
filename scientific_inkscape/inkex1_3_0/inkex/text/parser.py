@@ -81,6 +81,7 @@ from inkex.text.font_properties import (
     font_style,
     true_style,
 )
+from inkex.utils import debug
 
 KERN_TABLE = True  # generate a fine kerning table for each font?
 TEXTSIZE = 100  # size of rendered text
@@ -601,7 +602,6 @@ class ParsedText:
                             lns[-1], deltacnt
                         )
                         for afd in affected_cnts:
-                            # inkex.utils.debug(c)
                             affected_cnts[afd].append(tc)
                         deltacnt += 1
 
@@ -2510,6 +2510,7 @@ class TChunk:
 
         # Make new character as a copy of the last one of the current chunk
         c = copy(lchr)
+        c.chk = None # so we don't have problems during style setting
         c.c = ncv
         c.prop = ncprop
         c.cwd = ncprop.charw * c.utfs
@@ -2643,7 +2644,8 @@ class TChunk:
                         )
 
                 if newsty is not None:
-                    newc.add_style(newsty, newfs=newfs)
+                    newc.add_style(newsty, newfs=True)
+                    # debug((newc.c,newsty.get("baseline-shift")))
                 prevc = newc
 
             # Following the merge, append the new chunk's data to the orig pts lists
@@ -2706,6 +2708,7 @@ class TChunk:
                 newx = self.line.x
                 newx[self.chrs[0].lnindex] -= deltaanch
                 self.line.change_pos(newx)
+                self.charpos = None
             self.line.ptxt.update_delta()
 
     def get_fs(self):
@@ -2926,32 +2929,6 @@ class TChunk:
             self._cpts_t = None
 
 
-def style_derived(styv, pel, textel):
-    """Compute properties that need to be calculated from the style"""
-    if "letter-spacing" in styv:
-        lspv = styv.get("letter-spacing")
-        if "em" in lspv:  # em is basically the font size
-            fs2 = styv.get("font-size")
-            if fs2 is None:
-                fs2 = "12px"
-            lspv = float(lspv.strip("em")) * ipx(fs2)
-        else:
-            lspv = ipx(lspv) or 0
-    else:
-        lspv = 0
-
-    if "baseline-shift" in styv:
-        cel = pel
-        bshft = 0
-        while cel != textel:  # sum all ancestor baseline-shifts
-            if "baseline-shift" in cel.cstyle:
-                bshft += TChar.get_baseline(cel.cstyle, cel.getparent())
-            cel = cel.getparent()
-    else:
-        bshft = 0
-    return ()
-
-
 class TChar:
     """Represents a single character and its style."""
 
@@ -2987,7 +2964,6 @@ class TChar:
         self.chk = None
         # my chunk (to be assigned)
         self.windex = None  # index in chunk
-        self.type = None
         # 'normal','super', or 'sub' (to be assigned)
         self._dx = 0
         # get later
@@ -3307,14 +3283,12 @@ class TChar:
             fsz, scf, _ = composed_width(self.loc.sel, "font-size")
             self.utfs = fsz / scf
             self.tfs = fsz
-
-    def makesubsuper(self, nsz=65):
-        """Makes the character subscript or superscript."""
-        if self.type == "super":
-            sty = "font-size:" + str(nsz) + "%;baseline-shift:super"
-        else:  # sub
-            sty = "font-size:" + str(nsz) + "%;baseline-shift:sub"
-        self.add_style(sty)
+            self.scf = scf
+            self.cwd = self.prop.charw * self.utfs
+            self.chk.cwd[self.windex] = self.cwd
+            self.caph = self.prop.caph * self.utfs
+            self.chk.caph[self.windex] = self.caph
+            self.chk.charpos = None
 
     @property
     def pts_ut(self):
