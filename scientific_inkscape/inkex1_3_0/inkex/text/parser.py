@@ -593,7 +593,6 @@ class ParsedText:
                         tc = TChar(
                             c,
                             fsz,
-                            scf,
                             utfs,
                             prop,
                             sty,
@@ -1528,7 +1527,7 @@ class ParsedText:
                     csty = self.font_picker(txt, j, fsty, tsty)
                     prop = self.ctable.get_prop(c, csty)
                     tchr = TChar(
-                        c, fsz, scf, utfs, prop, sty, csty, CLoc(tel, typ, j), cln
+                        c, fsz, utfs, prop, sty, csty, CLoc(tel, typ, j), cln
                     )
                     tchr.lhs = (fabsp, fbbsp)
                     if j == 0:
@@ -1852,7 +1851,6 @@ class ParsedText:
                         lchr = TChar(
                             c.c,
                             c.tfs,
-                            c.scf,
                             c.utfs,
                             c.prop,
                             c._sty,
@@ -2299,7 +2297,7 @@ class TChunk:
         "ncs",
         "_xv",
         "_yv",
-        "scf",
+        # "scf",
         "line",
         "transform",
         "nextw",
@@ -2338,7 +2336,6 @@ class TChunk:
         self.ncs = len(self.iis)
         self._xv = x
         self._yv = y
-        self.scf = c.scf
         # all letters have the same scale
         self.line = line
         self.transform = line.transform
@@ -2370,7 +2367,6 @@ class TChunk:
         ret.ncs = self.ncs
         ret._xv = self._xv
         ret._yv = self._yv
-        ret.scf = self.scf
         ret.transform = self.transform
         ret.nextw = self.nextw
         ret.prevw = self.prevw
@@ -2478,6 +2474,11 @@ class TChunk:
             i = self.iis[0]  # first char
             return lny[i] if i < len(lny) else lny[-1]
         return 0
+    
+    @property
+    def scf(self):
+        """Get scale of first character"""
+        return self.chrs[0].scf if self.ncs>0 else None
 
     def del_chk(self,updatedelta=True):
         """Deletes the chunk from the line."""
@@ -2616,8 +2617,8 @@ class TChunk:
 
                 # Update the style
                 newsty = None
-                newfs = False
-                if c.sty != newc.sty or ntype in ["super", "sub"] or c.scf != newc.scf:
+                
+                if c.sty != newc.sty or ntype in ["super", "sub"] or abs(c.scf - newc.scf)>1e-4:
                     newsty = c.sty
                     if ntype in ["super", "sub"]:
                         # newsty = c.sty
@@ -2626,7 +2627,6 @@ class TChunk:
                             "super" if ntype == "super" else "sub"
                         )
                         newsty["font-size"] = "65%"
-                        newfs = True
                         # Leave size unchanged
                         # nsz = round((c.spw*c.scf)/(newc.spw*newc.scf)*100)
                         # newsty['font-size'] = str(nsz)+'%';
@@ -2634,7 +2634,7 @@ class TChunk:
                         # Leave baseline unchanged (works)
                         # shft = round(-(bl2.y-br1.y)/self.tfs*100*self.scf);
                         # newsty['baseline-shift']= str(shft)+'%';
-                    elif c.scf != newc.scf:
+                    elif abs(c.scf - newc.scf)>1e-4:
                         # Prevent accidental font size changes when differently
                         # transformed
                         nsz = round((c.spw * c.scf) / (newc.spw * newc.scf) * 100)
@@ -2645,7 +2645,6 @@ class TChunk:
 
                 if newsty is not None:
                     newc.add_style(newsty, newfs=True)
-                    # debug((newc.c,newsty.get("baseline-shift")))
                 prevc = newc
 
             # Following the merge, append the new chunk's data to the orig pts lists
@@ -2932,15 +2931,13 @@ class TChunk:
 class TChar:
     """Represents a single character and its style."""
 
-    def __init__(self, c, tfs, scf, utfs, prop, sty, tsty, loc, line, tcnt=None):
+    def __init__(self, c, tfs, utfs, prop, sty, tsty, loc, line, tcnt=None):
         """Initializes TChar with given parameters."""
         self.c = c
         self.tfs = tfs
         # transformed font size (uu)
         self.utfs = utfs
         # untransformed font size
-        self.scf = scf
-        # transform scale
         self.prop = prop
         # properties of a 1 uu character
         self.cwd = prop.charw * utfs
@@ -3133,6 +3130,11 @@ class TChar:
             bshft = ipx(bshft) or 0
         return bshft
     
+    @property
+    def scf(self):
+        """Returns the scale from the utfs to tfs."""
+        return self.tfs / self.utfs
+    
     def __str__(self):
         return str((self.c,self.loc.elem.get_id(), self.loc.typ, self.loc.ind))
 
@@ -3283,7 +3285,6 @@ class TChar:
             fsz, scf, _ = composed_width(self.loc.sel, "font-size")
             self.utfs = fsz / scf
             self.tfs = fsz
-            self.scf = scf
             self.cwd = self.prop.charw * self.utfs
             self.chk.cwd[self.windex] = self.cwd
             self.caph = self.prop.caph * self.utfs
