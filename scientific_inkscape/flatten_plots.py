@@ -334,30 +334,31 @@ class FlattenPlots(inkex.EffectExtension):
 
                             if self.options.revertpaths:
                                 bb = dh.bounding_box2(
-                                    el, includestroke=False, dotransform=False
+                                    el, includestroke=False, dotransform=False, includeclipmask=False
                                 )
-                                if bb.w < bb.h / RECT_THRESHOLD and not sf.fill_isurl:
-                                    el.object_to_path()
-                                    np = "m {0},{1} v {2}".format(bb.xc, bb.y1, bb.h)
-                                    el.set("d", np)
-                                    el.cstyle["stroke"] = sf.fill.to_rgb()
-                                    if sf.fill.alpha != 1.0:
-                                        el.cstyle["stroke-opacity"] = sf.fill.alpha
-                                        el.cstyle["opacity"] = 1
-                                    el.cstyle["fill"] = "none"
-                                    el.cstyle["stroke-width"] = str(bb.w)
-                                    el.cstyle["stroke-linecap"] = "butt"
-                                elif bb.h < bb.w / RECT_THRESHOLD and not sf.fill_isurl:
-                                    el.object_to_path()
-                                    np = "m {0},{1} h {2}".format(bb.x1, bb.yc, bb.w)
-                                    el.set("d", np)
-                                    el.cstyle["stroke"] = sf.fill.to_rgb()
-                                    if sf.fill.alpha != 1.0:
-                                        el.cstyle["stroke-opacity"] = sf.fill.alpha
-                                        el.cstyle["opacity"] = 1
-                                    el.cstyle["fill"] = "none"
-                                    el.cstyle["stroke-width"] = str(bb.h)
-                                    el.cstyle["stroke-linecap"] = "butt"
+                                if not bb.isnull:
+                                    if bb.w < bb.h / RECT_THRESHOLD and not sf.fill_isurl:
+                                        el.object_to_path()
+                                        np = "m {0},{1} v {2}".format(bb.xc, bb.y1, bb.h)
+                                        el.set("d", np)
+                                        el.cstyle["stroke"] = sf.fill.to_rgb()
+                                        if sf.fill.alpha != 1.0:
+                                            el.cstyle["stroke-opacity"] = sf.fill.alpha
+                                            el.cstyle["opacity"] = 1
+                                        el.cstyle["fill"] = "none"
+                                        el.cstyle["stroke-width"] = str(bb.w)
+                                        el.cstyle["stroke-linecap"] = "butt"
+                                    elif bb.h < bb.w / RECT_THRESHOLD and not sf.fill_isurl:
+                                        el.object_to_path()
+                                        np = "m {0},{1} h {2}".format(bb.x1, bb.yc, bb.w)
+                                        el.set("d", np)
+                                        el.cstyle["stroke"] = sf.fill.to_rgb()
+                                        if sf.fill.alpha != 1.0:
+                                            el.cstyle["stroke-opacity"] = sf.fill.alpha
+                                            el.cstyle["opacity"] = 1
+                                        el.cstyle["fill"] = "none"
+                                        el.cstyle["stroke-width"] = str(bb.h)
+                                        el.cstyle["stroke-linecap"] = "butt"
 
         if self.options.fixtext:
             if setreplacement:
@@ -405,10 +406,12 @@ class FlattenPlots(inkex.EffectExtension):
             ]
             bbs = dh.BB2(self, ngs2, roughpath=True, parsed=True)
             ngs3 = [el for el in ngs2 if el.get_id() in bbs]
+            # dh.idebug(ngs3)
             bbs = [dh.bbox(bbs.get(el.get_id())) for el in ngs3]
             wriis = [ii for ii, el in enumerate(ngs3) if el in wrects]
             wrbbs = [bbs[ii] for ii in wriis]
             intrscts = dh.bb_intersects(bbs, wrbbs)
+            # dh.idebug(intrscts)
             for jj, ii in enumerate(wriis):
                 if not any(intrscts[:ii, jj]):
                     ngs3[ii].delete(deleteup=True)

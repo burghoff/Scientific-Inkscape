@@ -677,7 +677,9 @@ class bbox:
             maxx = min([self.x2, bb2.x2])
             miny = max([self.y1, bb2.y1])
             maxy = min([self.y2, bb2.y2])
-            return bbox([minx, miny, abs(maxx - minx), abs(maxy - miny)])
+            if maxx < minx or maxy < miny:
+                return bbox(None)
+            return bbox([minx, miny, maxx - minx, maxy - miny])
         return bbox(bb2.sbb)
 
     def __mul__(self, scl):
