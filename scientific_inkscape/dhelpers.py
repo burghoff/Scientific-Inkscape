@@ -1755,7 +1755,7 @@ def split_text(elem):
 
 
 def Version_Check(caller):
-    siv = "v1.3.2"  # Scientific Inkscape version
+    siv = "v1.4.21"  # Scientific Inkscape version
     maxsupport = "1.4.0"
     minsupport = "1.1.0"
 

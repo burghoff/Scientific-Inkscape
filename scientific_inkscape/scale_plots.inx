@@ -26,7 +26,7 @@
             <spacer/><param name="wholeplot3" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
             <spacer/>
-            <label>Scientific Inkscape v1.3.2</label>
+            <label>Scientific Inkscape v1.4.21</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>David Burghoff, University of Texas at Austin</label>
         </page>
@@ -58,7 +58,7 @@
             <spacer/><param name="wholeplot2" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
             <spacer/>
-            <label>Scientific Inkscape v1.3.2</label>
+            <label>Scientific Inkscape v1.4.21</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>David Burghoff, University of Texas at Austin</label>
         </page>
@@ -76,7 +76,7 @@
             <spacer/><param name="wholeplot1" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
             <spacer/>
-            <label>Scientific Inkscape v1.3.2</label>
+            <label>Scientific Inkscape v1.4.21</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>David Burghoff, University of Texas at Austin</label>
         </page> 
@@ -105,7 +105,7 @@
                        <option value="5">(Clear markings)</option>
                     </param>
             <spacer/>
-            <label>Scientific Inkscape v1.3.2</label>
+            <label>Scientific Inkscape v1.4.21</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>David Burghoff, University of Texas at Austin</label>
         </page>

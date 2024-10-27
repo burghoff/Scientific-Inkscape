@@ -21,7 +21,7 @@
                     gui-text="Size (%)">100</param>
             
             <spacer/>
-            <label>Scientific Inkscape v1.3.2</label>
+            <label>Scientific Inkscape v1.4.21</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>David Burghoff, University of Texas at Austin</label>
         </page>
