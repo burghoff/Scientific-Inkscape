@@ -1161,7 +1161,7 @@ grouplike_tags.add(mask_tag)
 
 
 def bounding_box2(
-    self, dotransform=True, includestroke=True, roughpath=False, parsed=False
+    self, dotransform=True, includestroke=True, roughpath=False, parsed=False, includeclipmask=True
 ):
     """
     Cached bounding box that requires no command call
@@ -1174,7 +1174,8 @@ def bounding_box2(
     """
     if not (hasattr(self, "_cbbox")):
         self._cbbox = dict()
-    if (dotransform, includestroke, roughpath, parsed) not in self._cbbox:
+    inputs = (dotransform, includestroke, roughpath, parsed, includeclipmask)
+    if inputs not in self._cbbox:
         try:
             ret = bbox(None)
             if self.tag in ttags:
@@ -1256,20 +1257,21 @@ def bounding_box2(
                     ret = ret.transform(xyt @ lel.ctransform)
 
             if not (ret.isnull):
-                for cmv in ["clip-path", "mask"]:
-                    clip = self.get_link(cmv, llget=True)
-                    if clip is not None:
-                        cbb = bounding_box2(
-                            clip,
-                            dotransform=False,
-                            includestroke=False,
-                            roughpath=roughpath,
-                            parsed=parsed,
-                        )
-                        if not (cbb.isnull):
-                            ret = ret.intersection(cbb)
-                        else:
-                            ret = bbox(None)
+                if includeclipmask:
+                    for cmv in ["clip-path", "mask"]:
+                        clip = self.get_link(cmv, llget=True)
+                        if clip is not None:
+                            cbb = bounding_box2(
+                                clip,
+                                dotransform=False,
+                                includestroke=False,
+                                roughpath=roughpath,
+                                parsed=parsed,
+                            )
+                            if not (cbb.isnull):
+                                ret = ret.intersection(cbb)
+                            else:
+                                ret = bbox(None)
 
                 if dotransform:
                     if not (ret.isnull):
@@ -1279,8 +1281,8 @@ def bounding_box2(
             import traceback
 
             inkex.utils.debug(traceback.format_exc())
-        self._cbbox[(dotransform, includestroke, roughpath, parsed)] = ret
-    return self._cbbox[(dotransform, includestroke, roughpath, parsed)]
+        self._cbbox[inputs] = ret
+    return self._cbbox[inputs]
 
 
 def set_cbbox(self, val):
@@ -1753,7 +1755,7 @@ def split_text(elem):
 
 
 def Version_Check(caller):
-    siv = "v1.3.2"  # Scientific Inkscape version
+    siv = "v1.4.21"  # Scientific Inkscape version
     maxsupport = "1.4.0"
     minsupport = "1.1.0"
 
