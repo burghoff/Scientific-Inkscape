@@ -177,7 +177,7 @@ if testscalematching:
         compare_filters = [CompareNumericFuzzy2(),]
         compare_file = ['svg/'+fname]
         comparisons = [
-            ("--id=rect5248","--id=g4982","--tab=matching")
+            ("--id=rect5248","--id=g4982","--tab=matching","--hmatchopts=2","--vmatchopts=3")
         ]
 if testscalefixed:
     class TestScaleFixed(ComparisonMixin, TestCase):

@@ -39,9 +39,11 @@
             <label>Every selected plot will inherit the size of the first selected plot.</label>
             
             <spacer/>
+            <!--
             <param name="hmatch" type="bool" gui-text="Match width?">true</param>
             <param name="vmatch" type="bool" gui-text="Match height?">true</param>
-                    
+                   
+              
             <param name="matchwhat" type="optiongroup" appearance="combo"
                     gui-text="Match plot's">
                        <option value="1">Bounding box</option>
@@ -54,8 +56,36 @@
                        <option value="1">First selection's bounding box</option>
                        <option value="2">First selection's plot area</option>1
                     </param>
+            -->
             
-            <spacer/><param name="wholeplot2" type="bool" gui-text="Selection has no well-defined plot area"
+            <param name="hmatchopts" type="optiongroup" appearance="combo"
+                    gui-text="Horizontal " indent="0"
+                    gui-description="Matching the width makes each selection have the same width, while aligning also ensures they have the same x position.">
+                       <option value="1">Do not match</option>
+                       <option value="2">Match width</option>
+                       <option value="3">Match width and align</option>1
+                    </param>
+                    
+            <param name="vmatchopts" type="optiongroup" appearance="combo"
+                    gui-text="Vertical      " indent="0"
+                    gui-description="Matching the height makes each selection have the same height, while aligning also ensures they have the same y position.">
+                       <option value="1">Do not match</option>
+                       <option value="2">Match height</option>
+                       <option value="3">Match height and align</option>1
+                    </param>
+            
+            <param name="matchprop" type="optiongroup" appearance="combo"
+                    gui-text="Match the " indent="0"
+                    gui-description="Property to be matched. For plot area matching, the first selection should be a grouped plot.">
+                       <option value="1">Plot areas</option>
+                       <option value="2">Bounding boxes</option>1
+                    </param>
+            <spacer/>
+            
+            <param name="deletematch" type="bool" gui-text="Delete first selection after completion?" 
+            gui-description="Useful if you are replacing the first selection with the second">false</param>
+            
+            <param name="wholeplot2" type="bool" gui-text="Selection has no well-defined plot area"
             gui-description="Scale objects without axis or tick correction. This lets you scale arbitrary objects without affecting text or groups.">false</param>
             <spacer/>
             <label>Scientific Inkscape v1.4.21</label>
