@@ -93,6 +93,7 @@
             <label>David Burghoff, University of Texas at Austin</label>
         </page>
         
+        <!--
         <page name="scaling" gui-text="Fixed mode">
             <label>Scale the lines and data of a plot without affecting text, ticks, and groups.</label>
             <label>Fixed mode applies a numerical scale factor to a plot.</label>
@@ -109,7 +110,8 @@
             <label>Scientific Inkscape v1.4.21</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>David Burghoff, University of Texas at Austin</label>
-        </page> 
+        </page>
+        -->
         
         
         

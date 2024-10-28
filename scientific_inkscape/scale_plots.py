@@ -337,8 +337,8 @@ class ScalePlots(inkex.EffectExtension):
                 # allow for rotations
 
                 if not (self.options.figuremode):
-                    refx = (bbp.g.x1 + bbp.g.x2) / 2
-                    refy = (bbp.g.y1 + bbp.g.y2) / 2
+                    refx = bbp.g.xc
+                    refy = bbp.g.yc
                 else:
                     refx = bba.f.x1
                     refy = bba.f.y1
@@ -432,16 +432,25 @@ class ScalePlots(inkex.EffectExtension):
 
             # Compute global transformation
             if self.options.tab != "correction":
-                refx = (bbp.g.x1 + bbp.g.x2) / 2
-                refy = (bbp.g.y1 + bbp.g.y2) / 2
+                if self.options.matchwhat == 'plotarea':
+                    refx = bbp.g.xc
+                    refy = bbp.g.yc
+                else:
+                    refx = bba.g.xc
+                    refy = bba.g.yc
 
             finx = refx  # final x
             finy = refy  # final y
             if self.options.tab == "matching":
                 if matchxpos:
-                    finx = (bbmatch.x1 + bbmatch.x2) / 2
+                    finx = bbmatch.xc
                 if matchypos:
-                    finy = (bbmatch.y1 + bbmatch.y2) / 2
+                    finy = bbmatch.yc
+                if self.options.matchwhat == "bbox":
+                    # Following scaling, margins stay the same size so the
+                    # bounding box center has moved
+                    finx -= 1/2*( (bba.g.x2 - bbp.g.x2) - (bbp.g.x1 - bba.g.x1)) * (1-scalex)
+                    finy -= 1/2*( (bba.g.y2 - bbp.g.y2) - (bbp.g.y1 - bba.g.y1)) * (1-scaley)
 
             gtr = trtf(finx, finy) @ sctf(scalex, scaley) @ (-trtf(refx, refy))
             # global transformation
