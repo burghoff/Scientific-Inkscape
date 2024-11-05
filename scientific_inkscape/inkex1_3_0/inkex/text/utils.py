@@ -197,7 +197,8 @@ def isrectangle(elem, includingtransform=True):
     if not includingtransform and elem.tag == rect_tag:
         pth = elem.cpath
     elif elem.tag in rectlike_tags:
-        if elem.tag == pel_tag and not (1 <= cnt_pth_cmds(elem.get("d", "")) <= 5):
+        if elem.tag == pel_tag and not (1 <= cnt_pth_cmds(elem.get("d", "")) <= 6):
+        # Allow up to 6 (initial M + 4 lines + redundant close path)
             return False
         pth = elem.cpath
 

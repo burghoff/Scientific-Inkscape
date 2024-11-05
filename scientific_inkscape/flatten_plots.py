@@ -100,6 +100,12 @@ class FlattenPlots(inkex.EffectExtension):
             help="Revert certain paths to strokes?",
         )
         pars.add_argument(
+            "--removeduppaths",
+            type=inkex.Boolean,
+            default=True,
+            help="Delete overlapping duplicate paths?",
+        )
+        pars.add_argument(
             "--removetextclips",
             type=inkex.Boolean,
             default=True,
@@ -267,10 +273,10 @@ class FlattenPlots(inkex.EffectExtension):
                     dh.ungroup(g, removetextclips)
             # dh.flush_stylesheet_entries(self.svg)
 
+        prltag = dh.tags((PathElement, Rectangle, Line))
         if self.options.removerectw or reversions or self.options.revertpaths:
             from inkex.text.utils import default_style_atts as dsa
 
-            prltag = dh.tags((PathElement, Rectangle, Line))
             fltag = dh.tags((FlowPara, FlowRegion, FlowRoot))
             nones = {None, "none"}
             wrects = []
@@ -339,8 +345,8 @@ class FlattenPlots(inkex.EffectExtension):
                                 if not bb.isnull:
                                     if bb.w < bb.h / RECT_THRESHOLD and not sf.fill_isurl:
                                         el.object_to_path()
-                                        np = "m {0},{1} v {2}".format(bb.xc, bb.y1, bb.h)
-                                        el.set("d", np)
+                                        npv = "m {0},{1} v {2}".format(bb.xc, bb.y1, bb.h)
+                                        el.set("d", npv)
                                         el.cstyle["stroke"] = sf.fill.to_rgb()
                                         if sf.fill.alpha != 1.0:
                                             el.cstyle["stroke-opacity"] = sf.fill.alpha
@@ -350,8 +356,8 @@ class FlattenPlots(inkex.EffectExtension):
                                         el.cstyle["stroke-linecap"] = "butt"
                                     elif bb.h < bb.w / RECT_THRESHOLD and not sf.fill_isurl:
                                         el.object_to_path()
-                                        np = "m {0},{1} h {2}".format(bb.x1, bb.yc, bb.w)
-                                        el.set("d", np)
+                                        npv = "m {0},{1} h {2}".format(bb.x1, bb.yc, bb.w)
+                                        el.set("d", npv)
                                         el.cstyle["stroke"] = sf.fill.to_rgb()
                                         if sf.fill.alpha != 1.0:
                                             el.cstyle["stroke-opacity"] = sf.fill.alpha
@@ -360,6 +366,7 @@ class FlattenPlots(inkex.EffectExtension):
                                         el.cstyle["stroke-width"] = str(bb.h)
                                         el.cstyle["stroke-linecap"] = "butt"
 
+        TE_TAG = TextElement.ctag;
         if self.options.fixtext:
             if setreplacement:
                 repl = self.options.replacement
@@ -399,23 +406,96 @@ class FlattenPlots(inkex.EffectExtension):
                         el.set("clip-path", None)
                         el.set("mask", None)
 
-        if self.options.removerectw:
+        if self.options.removerectw or self.options.removeduppaths:
             ngset = set(ngs)
             ngs2 = [
                 el for el in self.svg.descendants2() if el in ngset and dh.isdrawn(el)
             ]
             bbs = dh.BB2(self, ngs2, roughpath=True, parsed=True)
-            ngs3 = [el for el in ngs2 if el.get_id() in bbs]
-            # dh.idebug(ngs3)
-            bbs = [dh.bbox(bbs.get(el.get_id())) for el in ngs3]
-            wriis = [ii for ii, el in enumerate(ngs3) if el in wrects]
-            wrbbs = [bbs[ii] for ii in wriis]
-            intrscts = dh.bb_intersects(bbs, wrbbs)
-            # dh.idebug(intrscts)
-            for jj, ii in enumerate(wriis):
-                if not any(intrscts[:ii, jj]):
-                    ngs3[ii].delete(deleteup=True)
-                    intrscts[ii, :] = False
+            
+            if self.options.removeduppaths:
+                # Prune identical overlapping paths
+                bbsp = {el:bbs[el.get_id()] for el in ngs2 if el.get_id() in bbs}
+                txts = [el for el in self.svg.descendants2() if el.tag==TE_TAG and 'shape-inside' in el.cspecified_style]
+                txt_inside = [el.cspecified_style.get_link("shape-inside",el.croot) for el in txts]
+                bbsp = {el:v for el,v in bbsp.items() if el.tag in prltag and el not in txt_inside}
+                
+                els = list(bbsp.keys())
+                sfs = [None]*len(els)
+                
+                import numpy as np
+                if len(els)>0:
+                    bbox_values = np.array(list(bbsp.values()))
+                    left = bbox_values[:, 0]
+                    top = bbox_values[:, 1]
+                    width = bbox_values[:, 2]
+                    height = bbox_values[:, 3]
+                    right = left + width
+                    bottom = top + height
+                    size = np.maximum(width, height)
+                    is_empty = (width == 0) | (height == 0)
+                    left_diff = np.abs(left[:, np.newaxis] - left[np.newaxis, :])
+                    top_diff = np.abs(top[:, np.newaxis] - top[np.newaxis, :])
+                    right_diff = np.abs(right[:, np.newaxis] - right[np.newaxis, :])
+                    bottom_diff = np.abs(bottom[:, np.newaxis] - bottom[np.newaxis, :])
+                    size_i = size[:, np.newaxis]
+                    size_j = size[np.newaxis, :]
+                    size_max = np.maximum(size_i, size_j)
+                    tol = 1e-6 * size_max
+                    is_empty_pair = is_empty[:, np.newaxis] | is_empty[np.newaxis, :]
+                    equal = (~is_empty_pair) & \
+                            (left_diff <= tol) & \
+                            (top_diff <= tol) & \
+                            (right_diff <= tol) & \
+                            (bottom_diff <= tol)
+                else:
+                    equal = np.zeros((0, 0), dtype=bool)
+                        
+                for jj in reversed(range(len(els))):
+                    for ii in range(jj):
+                        if equal[ii,jj]:
+                            for kk in [ii,jj]:
+                                if sfs[kk] is None:
+                                    sfs[kk] = dh.get_strokefill(els[kk])
+                            mysf  = sfs[jj]
+                            othsf = sfs[ii]
+                            if mysf.stroke is None and mysf.fill is None:
+                                continue
+                            if mysf.stroke is not None:
+                                if mysf.stroke.alpha != 1.0 or othsf.stroke is None:
+                                    continue
+                                if not mysf.stroke == othsf.stroke:
+                                    continue
+                            if mysf.fill is not None:
+                                if mysf.fill.alpha != 1.0 or othsf.fill is None:
+                                    continue
+                                if not mysf.fill == othsf.fill:
+                                    continue
+                            if not els[jj].cspecified_style == els[ii].cspecified_style:
+                                continue
+                                
+                            mypth = els[jj].cpath.transform(els[jj].ccomposed_transform).to_absolute();
+                            othpth= els[ii].cpath.transform(els[ii].ccomposed_transform).to_absolute();
+                            if mypth!=othpth and mypth!=othpth.reverse():
+                                continue
+                            # dh.idebug(els[ii].get_id())
+                            els[ii].delete(deleteup=True)
+                            equal[ii,:] = False
+                            ngs2.remove(els[ii])
+            
+            if self.options.removerectw:
+                ngs3 = [el for el in ngs2 if el.get_id() in bbs]
+                bbs3 = [dh.bbox(bbs.get(el.get_id())) for el in ngs3]
+                wriis = [ii for ii, el in enumerate(ngs3) if el in wrects]
+                wrbbs = [bbs3[ii] for ii in wriis]
+                intrscts = dh.bb_intersects(bbs3, wrbbs)
+                for jj, ii in enumerate(wriis):
+                    if not any(intrscts[:ii, jj]):
+                        ngs3[ii].delete(deleteup=True)
+                        intrscts[ii, :] = False
+                        ngs2.remove(ngs3[ii])
+                        
+                    
 
         # Remove any unused clips we made, unnecessary white space in document
         ds = self.svg.iddict.descendants
@@ -433,20 +513,17 @@ class FlattenPlots(inkex.EffectExtension):
                     el.delete(deleteup=True)
 
         ttags = dh.tags((Tspan, TextPath, FlowPara, FlowRegion, FlowSpan))
-        flow_types = (
-            inkex.FlowRoot,
-            inkex.FlowPara,
-            inkex.FlowRegion,
-            inkex.FlowSpan,
-        )
         ttags2 = dh.tags(
             (
                 StyleElement,
                 TextElement,
                 Tspan,
                 TextPath,
+                inkex.FlowRoot,
+                inkex.FlowPara,
+                inkex.FlowRegion,
+                inkex.FlowSpan,
             )
-            + flow_types
         )
         for el in reversed(ds):
             if not (el.tag in ttags):

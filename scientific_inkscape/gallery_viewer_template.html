@@ -42,6 +42,10 @@
             margin: 0;  /* Remove all margins from the serverdown div */
             padding: 0; /* Remove any padding */
         }
+        a.show-file svg {
+            vertical-align: middle;
+            /* Add any additional styling here */
+        }
         @supports not (-ms-ime-align: auto) {
             details summary {
                 cursor: pointer;
@@ -181,12 +185,32 @@
                         <div>${file.label}</div>
                         <div>
                             <a href="http://localhost:${port}/process?param=${encodeURIComponent(file.file_uri)}" class="open">${file.currenttype}</a>
+                            <a href="http://localhost:${port}/show_file?param=${encodeURIComponent(file.file_uri)}" class="show-file" style="margin-left:5px;">
+                                <!-- Folder SVG Icon -->
+                                <svg width="13.938748" height="11.034863" viewBox="0 0 20.908124 16.552295" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                    <path
+                                     id="path5"
+                                     style="font-variation-settings:normal;fill:none;fill-opacity:1;stroke:#000000;stroke-width:2.11176515;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;stop-color:#000000"
+                                     transform="matrix(0.3054317,0,0,0.3054317,-91.790233,-99.984673)"
+                                     d="m 311.31639,336.75961 c 0.96177,-2.24271 1.29727,-4.79155 2.33598,-5.87152 1.03871,-1.07997 4.14072,-0.95467 4.14072,-0.95467 l 9.7597,0.008 c 0,0 4.89538,-0.36509 6.05009,0.94701 1.15471,1.31211 1.64149,6.06092 1.64149,6.06092 m 30.25546,0.82173 c 1.14479,1.14479 0.80357,4.19344 0.80357,4.19344 v 37.09523 h -63.09438 v -37.43878 c 0,0 -0.33462,-2.75634 0.75893,-3.84989 1.09355,-1.09355 3.91132,-0.75893 3.91132,-0.75893 h 53.66265 c 0,0 2.81312,-0.38586 3.95791,0.75893 z" />
+                                </svg>
+                            </a>
                         </div>
                     `;
                     if (file.embed) {
                         descDiv.innerHTML += `
                             <div>
                                 <a href="http://localhost:${port}/process?param=${encodeURIComponent(file.embed)}" class="open">Original</a>
+                                <a href="http://localhost:${port}/show_file?param=${encodeURIComponent(file.file_uri)}" class="show-file" style="margin-left:5px;">
+                                    <!-- Folder SVG Icon -->
+                                    <svg width="13.938748" height="11.034863" viewBox="0 0 20.908124 16.552295" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                        <path
+                                         id="path5"
+                                         style="font-variation-settings:normal;fill:none;fill-opacity:1;stroke:#000000;stroke-width:2.11176515;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;stop-color:#000000"
+                                         transform="matrix(0.3054317,0,0,0.3054317,-91.790233,-99.984673)"
+                                         d="m 311.31639,336.75961 c 0.96177,-2.24271 1.29727,-4.79155 2.33598,-5.87152 1.03871,-1.07997 4.14072,-0.95467 4.14072,-0.95467 l 9.7597,0.008 c 0,0 4.89538,-0.36509 6.05009,0.94701 1.15471,1.31211 1.64149,6.06092 1.64149,6.06092 m 30.25546,0.82173 c 1.14479,1.14479 0.80357,4.19344 0.80357,4.19344 v 37.09523 h -63.09438 v -37.43878 c 0,0 -0.33462,-2.75634 0.75893,-3.84989 1.09355,-1.09355 3.91132,-0.75893 3.91132,-0.75893 h 53.66265 c 0,0 2.81312,-0.38586 3.95791,0.75893 z" />
+                                    </svg>
+                                </a>
                             </div>
                         `;
                     }
@@ -207,8 +231,9 @@
             }
         }
 
-        // Function to attach event listeners to links with class 'open' within a given details element
+        // Function to attach event listeners to links with class 'open' and 'show-file' within a given details element
         function attachEventListeners(detailsElement) {
+            // Existing code for 'open' class links
             detailsElement.querySelectorAll("a.open").forEach(function(link) {
                 // Remove existing event listeners to avoid duplicates
                 const newLink = link.cloneNode(true);
@@ -244,6 +269,32 @@
                             setTimeout(() => {
                                 this.style.color = originalColor;
                             }, 500); // Delay the restoration by 500ms
+                        });
+                });
+            });
+
+            // New code for 'show-file' class links
+            detailsElement.querySelectorAll("a.show-file").forEach(function(link) {
+                // Remove existing event listeners to avoid duplicates
+                const newLink = link.cloneNode(true);
+                link.parentNode.replaceChild(newLink, link);
+            });
+            detailsElement.querySelectorAll("a.show-file").forEach(function(link) {
+                link.addEventListener("click", function(event) {
+                    // Prevent the default link behavior
+                    event.preventDefault();
+
+                    // Use fetch API to send the GET request
+                    fetch(this.href)
+                        .then(response => {
+                            if (response.ok) {
+                                console.log("Request successful, staying on the same page.");
+                            } else {
+                                console.error("Request failed with status:", response.status);
+                            }
+                        })
+                        .catch(error => {
+                            console.error("Network error:", error);
                         });
                 });
             });

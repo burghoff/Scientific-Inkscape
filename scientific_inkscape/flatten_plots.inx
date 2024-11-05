@@ -9,12 +9,16 @@
                 gui-description="Remove all groupings, leaving individual objects on canvas"
                 >true</param>
             <param name="fixtext"  type="bool" gui-text="Apply text fixes?">true</param>
+            <param name="revertpaths" type="bool" gui-text="Revert simple paths to strokes?"
+                gui-description="Reverts certain strokes that have been converted to paths back to strokes"
+                >true</param>
+            <param name="removeduppaths" type="bool" gui-text="Remove overlapping duplicates?"
+                gui-description="When two identical elements overlap, removes the one on the bottom"
+                >true</param>
+                
         <label appearance="header">Other options</label>
             <param name="removerectw" type="bool" gui-text="Remove white background rectangles?"
                 gui-description="Removes white-filled rectangles that are behind other objects"
-                >true</param>
-            <param name="revertpaths" type="bool" gui-text="Revert simple paths to strokes?"
-                gui-description="Reverts certain strokes that have been converted to paths back to strokes"
                 >true</param>
             
             

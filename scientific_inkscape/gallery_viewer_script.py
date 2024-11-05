@@ -105,6 +105,69 @@ refreshapp = False
 def trigger_refresh():
     global refreshapp
     refreshapp = True
+    
+def show_in_file_browser(path):
+    import time
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"The path {path} does not exist.")
+
+    # Resolve the absolute path
+    path = os.path.abspath(path)
+
+    if sys.platform.startswith("win"):
+        import ctypes
+        from ctypes import wintypes
+
+        # Define necessary Windows types and constants
+        LPCTSTR = wintypes.LPCWSTR
+        HWND = wintypes.HWND
+        UINT = wintypes.UINT
+        LPVOID = ctypes.c_void_p
+
+        # Define the functions
+        SHOpenFolderAndSelectItems = ctypes.windll.shell32.SHOpenFolderAndSelectItems
+        ILCreateFromPathW = ctypes.windll.shell32.ILCreateFromPathW
+        ILFree = ctypes.windll.shell32.ILFree
+
+        # Create an ITEMIDLIST for the path
+        ILCreateFromPathW.restype = LPVOID
+        ILCreateFromPathW.argtypes = [LPCTSTR]
+        pidl = ILCreateFromPathW(path)
+
+        if not pidl:
+            raise FileNotFoundError(f"Unable to get PIDL for path: {path}")
+
+        # Open the folder and select the item
+        SHOpenFolderAndSelectItems.restype = ctypes.HRESULT
+        SHOpenFolderAndSelectItems.argtypes = [LPVOID, UINT, LPVOID, UINT]
+        res = SHOpenFolderAndSelectItems(pidl, 0, None, 0)
+
+        # Free the ITEMIDLIST
+        ILFree.argtypes = [LPVOID]
+        ILFree(pidl)
+
+        if res != 0:
+            raise OSError(f"Failed to open folder and select item. HRESULT: {res}")
+
+    elif sys.platform == "darwin":  # macOS
+        # Use AppleScript to bring Finder to the front
+        script = f'''
+        tell application "Finder"
+            activate
+            reveal POSIX file "{path}"
+        end tell
+        '''
+        subprocess.run(['osascript', '-e', script])
+
+    elif sys.platform.startswith("linux"):
+        directory, file = os.path.split(path)
+        # Open the directory and select the file using Nautilus or default file manager
+        subprocess.Popen(['xdg-open', directory])
+
+    else:
+        raise OSError(f"Unsupported OS: {sys.platform}")
+
+
 
 def Make_Flask_App():
     warnings.simplefilter("ignore", DeprecationWarning)
@@ -266,6 +329,15 @@ def Make_Flask_App():
                     subprocess.Popen([bfn, svg_file])
 
         return f"The parameter received is: {param}"
+    
+    @app.route("/show_file", methods=["GET"])
+    def show_file():
+        param = request.args.get("param")
+        svg_file = file_uri_to_path(param)
+        if svg_file is not None:
+            print("Showing in file browser: " + str(svg_file))
+            show_in_file_browser(str(svg_file))
+        return f"The parameter received is: {param}"
 
     @app.route("/check_for_refresh")
     def check_for_refresh():
@@ -382,17 +454,27 @@ class ConversionThread(threading.Thread):
     
                         # Execute the conversion command
                         dh.subprocess_repeat(args)
+                        print('Inkscape export of '+filein)
                     else:
                         from PIL import Image
                         with open(filein, "rb") as file:
                             with Image.open(file) as im:
                                 width, height = im.size
                                 new_width = 400
+                                
+                                if filein.endswith('.wmf'):
+                                    DEFAULT_DPI = 72
+                                    new_dpi = max(10,int(new_width / width * DEFAULT_DPI))
+                                    im.load(dpi=new_dpi)
+                                    width, height = im.size
+                                
                                 new_height = int((new_width / width) * height)
                                 if 'info' in im.__dict__ and "dpi" in im.info and isinstance(im.info["dpi"],tuple) and len(im.info["dpi"]) == 2:
+                                    print(im.info['dpi'])
                                     new_height = int((new_width / width * im.info["dpi"][0]/im.info["dpi"][1]) * height)
                                 resized_image = im.resize((new_width, new_height), Image.LANCZOS)
                                 resized_image.save(conversion_path)
+                                print('PIL export of '+filein + ' originally '+str(width)+' x '+str(height))
 
                     # Move the converted file to the final destination
                     shutil.move(conversion_path, self.fileout)

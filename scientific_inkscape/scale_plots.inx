@@ -63,7 +63,7 @@
                     gui-description="Matching the width makes each selection have the same width, while aligning also ensures they have the same x position.">
                        <option value="1">Do not match</option>
                        <option value="2">Match width</option>
-                       <option value="3">Match width and align</option>1
+                       <option value="3">Match width and align</option>
                     </param>
                     
             <param name="vmatchopts" type="optiongroup" appearance="combo"
@@ -71,14 +71,14 @@
                     gui-description="Matching the height makes each selection have the same height, while aligning also ensures they have the same y position.">
                        <option value="1">Do not match</option>
                        <option value="2">Match height</option>
-                       <option value="3">Match height and align</option>1
+                       <option value="3">Match height and align</option>
                     </param>
             
             <param name="matchprop" type="optiongroup" appearance="combo"
                     gui-text="Match the " indent="0"
                     gui-description="Property to be matched. For plot area matching, the first selection should be a grouped plot.">
                        <option value="1">Plot areas</option>
-                       <option value="2">Bounding boxes</option>1
+                       <option value="2">Bounding boxes</option>
                     </param>
             <spacer/>
             

@@ -18,7 +18,7 @@
         
         <label appearance="header">What to export</label>
         <param name="exportwhat" type="optiongroup" appearance="combo"
-                gui-text=""
+                gui-text="​"
                 gui-description="Autoexport runs in the background watching for changes to a directory. Single export is similar to Save a Copy.">
                    <option value="1">Autoexport to locations below</option>
                    <option value="2">Autoexport to this document's location</option>
