@@ -229,7 +229,6 @@ class ParsedTextList(list):
                 (float(pts_t[3][0][i]), float(pts_t[3][1][i])),
             ]
 
-            chk.parsed_bb = chk.bbx.copy()
             for j, c in enumerate(chk.chrs):
                 c.parsed_pts_ut = [
                     (float(chk._cpts_ut[0][j][0]), float(chk._cpts_ut[0][j][1])),
@@ -700,7 +699,18 @@ class ParsedText:
             odxs = [c.dx for line in self.lns for c in line.chrs]
             odys = [c.dy for line in self.lns for c in line.chrs]
             _ = [ddv.set("sodipodi:role", None) for ddv in self.tree.dds]
+            
+            pput = [c.parsed_pts_ut for line in self.lns for c in line.chrs]
+            ppt  = [c.parsed_pts_t  for line in self.lns for c in line.chrs]
+            
+            deleteempty(self.textel)
             self.reparse()
+            ii = 0;
+            for line in self.lns:
+                for c in line.chrs:
+                    c.parsed_pts_ut = pput[ii]
+                    c.parsed_pts_t  = ppt[ii]
+                    ii += 1
 
             # Correct the position of the first character
             chrs = [c for line in self.lns for c in line.chrs]
@@ -949,7 +959,7 @@ class ParsedText:
                 sty = changed_styles.get(elem, elem.cstyle)
                 maxsize = max([c.utfs for c in self.chrs])
                 if "font-size" not in sty or sty["font-size"] != maxsize:
-                    sty["font-size"] = max([c.utfs for c in self.chrs])
+                    sty["font-size"] = str(max([c.utfs for c in self.chrs]))
                     changed_styles[elem] = sty
         for k, val in changed_styles.items():
             k.cstyle = val
@@ -1024,6 +1034,52 @@ class ParsedText:
         return newtxt
 
     def delete_empty(self):
+        """Deletes empty elements from the doc. Generally this is done last"""
+        ocs = [c for line in self.lns for c in line.chrs]
+        dltd = deleteempty(self.textel)
+        if dltd:
+            self.tree = None
+            self.reparse()
+            # Correct the position of the first character
+            chrs = [c for line in self.lns for c in line.chrs]
+            for i, line in enumerate(self.lns):
+                myi = chrs.index(line.chrs[0])
+                dxt = ocs[myi].pts_t[0][0] - chrs[myi].pts_t[0][0]
+                dyt = ocs[myi].pts_t[0][1] - chrs[myi].pts_t[0][1]
+                
+                if abs(dxt) > 0.001 or abs(dyt) > 0.001:
+                    oldpos = vmultinv(chrs[myi].line.transform.matrix, ocs[myi].pts_t[0][0], ocs[myi].pts_t[0][1])
+                    dltax = oldpos[0] - chrs[myi].pts_ut[0][0]
+                    dltay = oldpos[1] - chrs[myi].pts_ut[0][1]
+                    newxv = [x + dltax for x in line.x]
+                    newyv = [y + dltay for y in line.y]
+                    
+                    if line.continuex or line.continuey:
+                        if line.chrs[0].loc.typ == TYP_TAIL:
+                            # wrap in a trivial Tspan so we can set x and y
+                            line.chrs[0].add_style(
+                                {"baseline-shift": "0%"}, setdefault=False
+                            )
+                        line.xsrc = line.chrs[0].loc.elem
+                        line.ysrc = line.chrs[0].loc.elem
+                        line.continuex = False
+                        line.continuey = False
+                    line.change_pos(newx=newxv, newy=newyv)
+
+            # Fix non-first dxs
+            ndxs = [c.dx for line in self.lns for c in line.chrs]
+            ndys = [c.dy for line in self.lns for c in line.chrs]
+            for i, c in enumerate(chrs):
+                if c.lnindex > 0:
+                    if abs(ocs[i].dx - ndxs[i]) > 0.001 or abs(ocs[i].dy - ndys[i]) > 0.001:
+                        c.dx = ocs[i].dx
+                        c.dy = ocs[i].dy
+            self.update_delta()
+            for line in self.lns:
+                for chk in line.chks:
+                    chk.charpos = None
+        
+    def old_delete_empty(self):
         """Deletes empty elements from the doc. Generally this is done last"""
         dxl = [c.dx for line in self.lns for c in line.chrs]
         dyl = [c.dy for line in self.lns for c in line.chrs]
@@ -2310,7 +2366,6 @@ class TChunk:
         "_charpos",
         "_cpts_ut",
         "_cpts_t",
-        "parsed_bb",
         "txt",
         "lsp",
         "dxeff",
@@ -2345,7 +2400,6 @@ class TChunk:
         self._dxeff = self._charpos = None
         self._cpts_ut = None
         self._cpts_t = None
-        self.parsed_bb = None
 
         # Character attribute lists
         self.txt = c.c
@@ -2378,7 +2432,6 @@ class TChunk:
         ret._charpos = self._charpos
         ret._cpts_ut = self._cpts_ut
         ret._cpts_t = self._cpts_t
-        ret.parsed_bb = self.parsed_bb
         ret.txt = self.txt
         ret.lsp = self.lsp[:]
         ret.dxeff = self.dxeff[:]
@@ -2609,6 +2662,17 @@ class TChunk:
 
                 self.appendc(c.c, c.prop, mydx, c.dy, totail=totail)
                 newc = self.chrs[-1]
+                
+                # Make sure items on tails have right font size
+                if totail is not None:
+                    fsz, scf, utfs = composed_width(totail.getparent(), "font-size")
+                    newc.utfs = utfs
+                    newc.tfs = fsz
+                    newc.cwd = newc.prop.charw * utfs
+                    newc.caph = newc.prop.caph * utfs
+                    newc.spw = newc.prop.spacew * utfs
+                    newc.chk.cwd[newc.windex] = newc.cwd
+                    newc.chk.caph[newc.windex] = newc.caph
 
                 newc.parsed_pts_ut = [
                     vmultinv(self.transform.matrix, p[0], p[1]) for p in c.parsed_pts_t
@@ -2617,7 +2681,6 @@ class TChunk:
 
                 # Update the style
                 newsty = None
-                
                 if c.sty != newc.sty or ntype in ["super", "sub"] or abs(c.scf - newc.scf)>1e-4:
                     newsty = c.sty
                     if ntype in ["super", "sub"]:
@@ -2647,9 +2710,6 @@ class TChunk:
                     newc.add_style(newsty, newfs=True)
                 prevc = newc
 
-            # Following the merge, append the new chunk's data to the orig pts lists
-            self.parsed_bb = self.parsed_bb.union(nchk.parsed_bb)
-
     def get_ut_pts(self, chk2, current_pts=False):
         """Gets the coordinates of another chunk in my coordinate system."""
         if current_pts:
@@ -2663,6 +2723,7 @@ class TChunk:
 
         minv = float("inf")
         chri = None
+        
         for i in range(len(chk2.chrs)):
             if c2uts[i] is not None:
                 if c2uts[i][0][0] < minv:
