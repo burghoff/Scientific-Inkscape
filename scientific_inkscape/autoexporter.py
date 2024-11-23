@@ -546,7 +546,7 @@ class AutoExporter(inkex.EffectExtension):
             AutoExporter.subsuper_fix(elem)
 
             # Preserve duplicate of text to be converted to paths
-            if opts.texttopath and elem.get("display") != "none":
+            if opts.texttopath and elem.get("display") != "none" and elem.croot is not None:
                 dup = elem.duplicate()
                 excludetxtids.append(dup.get_id())
                 grp = dh.group([dup])

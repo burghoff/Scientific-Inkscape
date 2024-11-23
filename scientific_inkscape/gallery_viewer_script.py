@@ -1092,10 +1092,11 @@ if guitype == "gtk":
                     if os.path.exists(selected_file):
                         for fnm in os.listdir(selected_file):
                             if fnm.endswith('.docx') or fnm.endswith('.pptx') or fnm.endswith('.one'):
-                                file_name = fnm
-                                file_dir = selected_file
-                                self.liststore.append([file_name, file_dir])
-                                process_selection(os.path.join(file_dir,file_name))
+                                if not fnm.startswith('~$'): # temp files
+                                    file_name = fnm
+                                    file_dir = selected_file
+                                    self.liststore.append([file_name, file_dir])
+                                    process_selection(os.path.join(file_dir,file_name))
             native.destroy()
 
         def gallery_button_clicked(self, widget):
