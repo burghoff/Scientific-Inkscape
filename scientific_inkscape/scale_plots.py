@@ -18,39 +18,42 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
-# Old Drag from options
-DRAG_FROM_HORIZONTAL = 'center'  # 'center', 'left', or 'right'
-DRAG_FROM_VERTICAL = 'center'    # 'center', 'top' , or 'bottom'
-
 import dhelpers as dh
 import inkex
-from inkex import (
-    TextElement,
-    FlowRoot,
-    Tspan,
-    Transform,
-    PathElement,
-    Line,
-    Rectangle,
-    Group,
-    Polyline,
-)
+from inkex import Transform
 import math, copy
 from dhelpers import bbox
 from inkex.text.utils import uniquetol
 
 It = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
+# Define global tags
+PATHLIKE_TAGS = [
+    inkex.PathElement.ctag,
+    inkex.Rectangle.ctag,
+    inkex.Line.ctag,
+    inkex.Polyline.ctag,
+]
+RECTANGLE_TAG = inkex.Rectangle.ctag
+TEXTLIKE_TAGS = [inkex.TextElement.ctag, inkex.FlowRoot.ctag]
+GROUP_TAG = inkex.Group.ctag
+EXCLUDE_TAGS = [
+    inkex.Tspan.ctag,
+    inkex.NamedView.ctag,
+    inkex.Defs.ctag,
+    inkex.Metadata.ctag,
+    inkex.ForeignObject.ctag,
+]
+
 
 def geometric_bbox(el, vis_bbox, irange=None):
     gbb = copy.copy(vis_bbox)
-    if isinstance(
-        el, (PathElement, Rectangle, Line, Polyline)
-    ):  # if path-like, use nodes instead
+    if el.tag in PATHLIKE_TAGS:  # if path-like, use nodes instead
         xs, ys = dh.get_points(el, irange=irange)
-        # For clipped objects the list of points is a bad description of the geometric bounding box.
-        # As a rough workaround, use the visual bbox if its limits are smaller than the geometric bbox.
-        # I think this is almost always fine since clips use the geometric bbox
+        # For clipped objects the list of points is a bad description of the
+        # geometric bounding box. As a rough workaround, use the visual bbox if
+        # its limits are smaller than the geometric bbox. I think this is almost
+        # always fine since clips use the geometric bbox.
         minx = max(min(xs), vis_bbox[0])
         maxx = min(max(xs), vis_bbox[0] + vis_bbox[2])
         miny = max(min(ys), vis_bbox[1])
@@ -68,7 +71,7 @@ def Find_Plot_Area(els, gbbs):
     plotareas = dict()
     for el in list(reversed(els)):
         isrect = False
-        if isinstance(el, (PathElement, Rectangle, Line, Polyline)):
+        if el.tag in PATHLIKE_TAGS:
             gbb = gbbs[el.get_id()]
             xs, ys = dh.get_points(el)
             if (max(xs) - min(xs)) < 0.001 * gbb[3]:
@@ -83,7 +86,7 @@ def Find_Plot_Area(els, gbbs):
                 and len(uniquetol(ys, tol)) == 2
             ):
                 isrect = True
-        if isrect or isinstance(el, (Rectangle)):
+        if isrect or el.tag == RECTANGLE_TAG:
             sf = dh.get_strokefill(el)
             hasfill = sf.fill is not None and sf.fill != [255, 255, 255, 1]
             hasstroke = sf.stroke is not None and sf.stroke != [255, 255, 255, 1]
@@ -92,10 +95,9 @@ def Find_Plot_Area(els, gbbs):
                 solids[el.get_id()] = gbb
             elif hasstroke:  # framed rectangle
                 boxes[el.get_id()] = gbb
-                
-        if el.get("inkscape-scientific-scaletype")=="plot_area":
+
+        if el.get("inkscape-scientific-scaletype") == "plot_area":
             plotareas[el.get_id()] = gbb
-            
 
     vels = dict()
     hels = dict()
@@ -135,11 +137,11 @@ def appendInt(num):
         return "th"
 
 
-def TrTransform(x, y):
+def trtf(x, y):
     return Transform("translate(" + str(x) + ", " + str(y) + ")")
 
 
-def SclTransform(x, y):
+def sctf(x, y):
     return Transform("scale(" + str(x) + ", " + str(y) + ")")
 
 
@@ -149,27 +151,21 @@ class ScalePlots(inkex.EffectExtension):
             "--hscale", type=float, default=100, help="Horizontal scaling"
         )
         pars.add_argument("--vscale", type=float, default=100, help="Vertical scaling")
-
-        pars.add_argument(
-            "--hmatch",
-            type=inkex.Boolean,
-            default=100,
-            help="Match width of first selected object?",
-        )
-        pars.add_argument(
-            "--vmatch",
-            type=inkex.Boolean,
-            default=100,
-            help="Match height of first selected object?",
-        )
         pars.add_argument(
             "--figuremode", type=int, default=1, help="Scale by bounding box?"
         )
-        pars.add_argument("--matchwhat", type=int, default=2, help="Match what?")
-        pars.add_argument("--matchto", type=int, default=1, help="Match to?")
-
+        pars.add_argument("--matchprop", type=int, default=1, help="Match what?")
+        pars.add_argument(
+            "--hmatchopts", type=int, default=1, help="Horizontal matching"
+        )
+        pars.add_argument("--vmatchopts", type=int, default=1, help="Vertical matching")
+        pars.add_argument(
+            "--deletematch",
+            type=inkex.Boolean,
+            default=False,
+            help="Delete first selection?",
+        )
         pars.add_argument("--marksf", type=int, default=1, help="Mark objects as")
-
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
         pars.add_argument(
             "--tickcorrect", type=inkex.Boolean, default=True, help="Auto tick correct?"
@@ -198,34 +194,20 @@ class ScalePlots(inkex.EffectExtension):
 
     def effect(self):
         sel = [self.svg.selection[ii] for ii in range(len(self.svg.selection))]
-        sel = [
-            k
-            for k in sel
-            if not (
-                isinstance(
-                    k,
-                    (
-                        Tspan,
-                        inkex.NamedView,
-                        inkex.Defs,
-                        inkex.Metadata,
-                        inkex.ForeignObject,
-                    ),
-                )
-            )
-        ]
+        sel = [k for k in sel if k.tag not in EXCLUDE_TAGS]
         # regular selectable objects only
 
         itag = inkex.Image.ctag
-        if all([el.tag == itag for el in sel]) and self.options.tab!="options":
+        if all([el.tag == itag for el in sel]) and self.options.tab != "options":
             inkex.utils.errormsg(
-                """Thanks for using Scientific Inkscape!
-            
-It appears that you're attempting to scale a raster Image object. Please note that Inkscape is mainly for working with vector images, not raster images. Vector images preserve all of the information used to generate them, whereas raster images do not. Read about the difference here:
-https://en.wikipedia.org/wiki/Vector_graphics
-            
-Unfortunately, this means that there is not much Scale Plots can do to edit raster images beyond simple stretching or scaling. If you want to edit a raster image, you will need to use a program like Photoshop or GIMP.
-            """
+                "Thanks for using Scientific Inkscape!\n\n"
+                "It appears that you're attempting to scale a raster Image object. Please note that "
+                "Inkscape is mainly for working with vector images, not raster images. Vector images "
+                "preserve all of the information used to generate them, whereas raster images do not. "
+                "Read about the difference here: \nhttps://en.wikipedia.org/wiki/Vector_graphics\n\n"
+                "Unfortunately, this means that there is not much Scale Plots can do to edit raster images "
+                "beyond simple stretching or scaling. If you want to edit a raster image, you will need to "
+                "use a program like Photoshop or GIMP."
             )
             quit()
 
@@ -239,14 +221,16 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
             scaley = vscale / 100
             wholesel = self.options.wholeplot1
         elif self.options.tab == "matching":
-            hmatch = self.options.hmatch
-            vmatch = self.options.vmatch
+            hmatch = self.options.hmatchopts in [2, 3]
+            vmatch = self.options.vmatchopts in [2, 3]
+            matchxpos = self.options.hmatchopts == 3
+            matchypos = self.options.vmatchopts == 3
             wholesel = self.options.wholeplot2
         elif self.options.tab == "correction":
             scalex = 1
             scaley = 1
             wholesel = self.options.wholeplot3
-            if not (all([isinstance(k, Group) for k in sel])):
+            if not all(k.tag == GROUP_TAG for k in sel):
                 inkex.utils.errormsg(
                     "Correction mode requires that every selected object be a group that has already been scaled."
                 )
@@ -263,19 +247,13 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
             for el in sel:
                 el.set("inkscape-scientific-scaletype", self.options.marksf)
             return
-        self.options.matchwhat = {1: "bbox", 2: "plotarea"}[self.options.matchwhat]
-        self.options.matchto = {
-            1: "firstbbox",
-            2: "firstplotarea",
-            3: "meanbbox",
-            4: "meanplotarea",
-        }[self.options.matchto]
+        self.options.matchwhat = {1: "plotarea", 2: "bbox"}[self.options.matchprop]
+        self.options.matchto = {1: "plotarea", 2: "bbox"}[self.options.matchprop]
         self.options.figuremode = {1: False, 2: True}[self.options.figuremode]
 
         if wholesel:
             tickcorrect = False
 
-        dsfchildren = []  # objects whose children are designated scale-free
         dsfels = []  # designated scale-free els, whether or not they're selected
 
         # full visual bbs
@@ -285,8 +263,8 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
             sel = sel[1:]
 
         all_pels = [sel]
-        if all([isinstance(k, Group) for k in sel]):  # grouped mode
-            trs = [Transform(s.get("transform")) for s in sel]
+        if all(k.tag == GROUP_TAG for k in sel):  # grouped mode
+            trs = [s.ctransform for s in sel]
             # for correction mode
             all_pels = [list(s) for s in sel]
 
@@ -359,27 +337,22 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                 # allow for rotations
 
                 if not (self.options.figuremode):
-                    refx = (bbp.g.x1 + bbp.g.x2) / 2
-                    refy = (bbp.g.y1 + bbp.g.y2) / 2
+                    refx = bbp.g.xc
+                    refy = bbp.g.yc
                 else:
                     refx = bba.f.x1
                     refy = bba.f.y1
-                trl = TrTransform(refx, refy)
-                scl = SclTransform(1 / scalex, 1 / scaley)
+                trl = trtf(refx, refy)
+                scl = sctf(1 / scalex, 1 / scaley)
                 iextr = trl @ scl @ (-trl)
                 # invert existing transform
                 dh.global_transform(sel[i0], iextr)
 
                 # Invert the transform on the bounding boxes (fix later)
-                import copy
-
-                actfbbs = copy.deepcopy(fbbs)
-                actgbbs = copy.deepcopy(gbbs)
-                for elid in fbbs.keys():
-                    fbbs[elid] = bbox(fbbs[elid]).transform(iextr).sbb
-                for elid in gbbs.keys():
-                    gbbs[elid] = bbox(gbbs[elid]).transform(iextr).sbb
-
+                actfbbs = {k: v for k, v in fbbs.items()}
+                actgbbs = {k: v for k, v in gbbs.items()}
+                fbbs = {k: bbox(v).transform(iextr).sbb for k, v in fbbs.items()}
+                gbbs = {k: bbox(v).transform(iextr).sbb for k, v in gbbs.items()}
                 tr_bba = bba
                 # bb with transform to be corrected
 
@@ -398,11 +371,11 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                     scalex = (
                         (tr_bba.f.x2 - tr_bba.f.x1)
                         - (bba.f.x2 - bba.f.x1 - (bbp.g.x2 - bbp.g.x1))
-                    ) / ((bbp.g.x2 - bbp.g.x1))
+                    ) / (bbp.g.x2 - bbp.g.x1)
                     scaley = (
                         (tr_bba.f.y2 - tr_bba.f.y1)
                         - (bba.f.y2 - bba.f.y1 - (bbp.g.y2 - bbp.g.y1))
-                    ) / ((bbp.g.y2 - bbp.g.y1))
+                    ) / (bbp.g.y2 - bbp.g.y1)
 
                     tlx = (tr_bba.f.x1 - refx) / oscalex + refx
                     # where top left is now
@@ -424,10 +397,15 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
 
             if self.options.tab == "matching":
                 bbmatch = None
-                if self.options.matchto == "firstbbox":
+                if self.options.matchto == "bbox":
                     bbmatch = bbox(gbbs[firstsel.get_id()])
-                elif self.options.matchto == "firstplotarea":
-                    vl0, hl0, lvel0, lhel0 = Find_Plot_Area(list(firstsel), gbbs)
+                elif self.options.matchto == "plotarea":
+                    if firstsel.tag == GROUP_TAG:
+                        plotareaels = list(firstsel)
+                    else:
+                        plotareaels = [firstsel]
+
+                    vl0, hl0, lvel0, lhel0 = Find_Plot_Area(plotareaels, gbbs)
                     if lvel0 is None or lhel0 is None:
                         inkex.utils.errormsg(
                             "A box-like plot area could not be automatically detected on the "
@@ -439,10 +417,6 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                         bbmatch = bbox(gbbs[firstsel.get_id()])
                     else:
                         bbmatch = bbox(gbbs[lvel0]).union(bbox(gbbs[lhel0]))
-                elif self.options.matchto == "meanbbox":
-                    pass
-                elif self.options.matchto == "meanplotarea":
-                    pass
 
                 scalex = scaley = 1
                 if hmatch:
@@ -458,27 +432,31 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
 
             # Compute global transformation
             if self.options.tab != "correction":
-                if DRAG_FROM_HORIZONTAL == 'right':  # right
-                    refx = bba.g.x1
-                elif DRAG_FROM_HORIZONTAL == 'left':  # left
-                    refx = bba.g.x2
-                else:  # center
-                    refx = (bba.g.x1 + bba.g.x2) / 2
-                if DRAG_FROM_HORIZONTAL == 'bottom':  # bottom
-                    refy = bba.g.y1
-                elif DRAG_FROM_HORIZONTAL == 'top':  # top
-                    refy = bba.g.y2
-                else:  # center
-                    refy = (bba.g.y1 + bba.g.y2) / 2
-            trl = TrTransform(refx, refy)
-            scl = SclTransform(scalex, scaley)
+                if self.options.matchwhat == 'plotarea':
+                    refx = bbp.g.xc
+                    refy = bbp.g.yc
+                else:
+                    refx = bba.g.xc
+                    refy = bba.g.yc
 
-            gtr = trl @ scl @ (-trl)
+            finx = refx  # final x
+            finy = refy  # final y
+            if self.options.tab == "matching":
+                if matchxpos:
+                    finx = bbmatch.xc
+                if matchypos:
+                    finy = bbmatch.yc
+                if self.options.matchwhat == "bbox":
+                    # Following scaling, margins stay the same size so the
+                    # bounding box center has moved
+                    finx -= 1/2*( (bba.g.x2 - bbp.g.x2) - (bbp.g.x1 - bba.g.x1)) * (1-scalex)
+                    finy -= 1/2*( (bba.g.y2 - bbp.g.y2) - (bbp.g.y1 - bba.g.y1)) * (1-scaley)
+
+            gtr = trtf(finx, finy) @ sctf(scalex, scaley) @ (-trtf(refx, refy))
             # global transformation
-            iscl = SclTransform(1 / scalex, 1 / scaley)  # inverse scale
+            iscl = sctf(1 / scalex, 1 / scaley)  # inverse scale
             liscl = (
-                SclTransform(math.sqrt(scalex * scaley), math.sqrt(scalex * scaley))
-                @ iscl
+                sctf(math.sqrt(scalex * scaley), math.sqrt(scalex * scaley)) @ iscl
             )  # aspect-scaled and inverse scaled
             trul = gtr.apply_to_point([bbp.g.x1, bbp.g.y1])  # transformed upper-left
             trbr = gtr.apply_to_point([bbp.g.x2, bbp.g.y2])  # transformed bottom-right
@@ -486,7 +464,7 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
             # Diagnostic mode
             diagmode = False
             if diagmode:
-                r = Rectangle()
+                r = inkex.Rectangle()
                 r.set("x", bbp.g.x1)
                 r.set("y", bbp.g.y1)
                 r.set("width", abs(bbp.g.x2 - bbp.g.x1))
@@ -500,15 +478,8 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
             # Make a list of elements to be transformed
             sclels = []
             for el in pels:
-                if (
-                    el in dsfchildren
-                ):  # Is a scale-free group, apply transform to children instead
-                    for k in list(el):
-                        if k not in sclels:
-                            sclels.append(k)
-                else:
-                    if el not in sclels:
-                        sclels.append(el)
+                if el not in sclels:
+                    sclels.append(el)
 
             # Apply transform and compute corrections (if needed)
             for el in sclels:
@@ -519,7 +490,7 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                 gbb = gbbs[elid]
                 fbb = fbbs[elid]
 
-                if isinstance(el, (TextElement, Group, FlowRoot)) or el in dsfels:
+                if el.tag in TEXTLIKE_TAGS + [GROUP_TAG] or el in dsfels:
                     stype = "scale_free"
                 else:
                     stype = "normal"
@@ -529,7 +500,7 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                     stype = mtype
 
                 if hasattr(self.options, "hcall") and self.options.hcall:
-                    if isinstance(el, (TextElement, Group, FlowRoot)):
+                    if el.tag in TEXTLIKE_TAGS + [GROUP_TAG]:
                         stype = "normal"
 
                 vtickt = vtickb = htickl = htickr = False
@@ -563,24 +534,24 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
 
                     if vtickt:
                         if cy > trul[1]:
-                            trl = TrTransform(cx, gbb_tr.y1)  # inner tick
+                            trl = trtf(cx, gbb_tr.y1)  # inner tick
                         else:
-                            trl = TrTransform(cx, gbb_tr.y2)  # outer tick
+                            trl = trtf(cx, gbb_tr.y2)  # outer tick
                     elif vtickb:
                         if cy < trbr[1]:
-                            trl = TrTransform(cx, gbb_tr.y2)  # inner tick
+                            trl = trtf(cx, gbb_tr.y2)  # inner tick
                         else:
-                            trl = TrTransform(cx, gbb_tr.y1)  # outer tick
+                            trl = trtf(cx, gbb_tr.y1)  # outer tick
                     elif htickl:
                         if cx > trul[0]:
-                            trl = TrTransform(gbb_tr.x1, cy)  # inner tick
+                            trl = trtf(gbb_tr.x1, cy)  # inner tick
                         else:
-                            trl = TrTransform(gbb_tr.x2, cy)  # outer tick
+                            trl = trtf(gbb_tr.x2, cy)  # outer tick
                     elif htickr:
                         if cx < trbr[0]:
-                            trl = TrTransform(gbb_tr.x2, cy)  # inner tick
+                            trl = trtf(gbb_tr.x2, cy)  # inner tick
                         else:
-                            trl = TrTransform(gbb_tr.x1, cy)  # outer tick
+                            trl = trtf(gbb_tr.x1, cy)  # outer tick
                     tr1 = trl @ iscl @ (-trl)
                     dh.global_transform(el, tr1)
                 # elif isalwayscorr or isoutsideplot or issf:
@@ -592,7 +563,7 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                         gbb_tr = bbox(gbb).transform(gtr)
                         cx = gbb_tr.xc
                         cy = gbb_tr.yc
-                        trl = TrTransform(cx, cy)
+                        trl = trtf(cx, cy)
                         if stype == "scale_free":
                             tr1 = trl @ iscl @ (-trl)
                         else:
@@ -614,7 +585,7 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                         if cy > trbr[1]:
                             oy = gbb[1] + gbb[3] / 2 - bbp.g.y2
                             dy = oy - (cy - trbr[1])
-                        tr2 = TrTransform(dx, dy)
+                        tr2 = trtf(dx, dy)
                         dh.global_transform(el, (tr2 @ tr1))
 
                     else:  # If previously combined, apply to subpaths instead
@@ -629,7 +600,7 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                             gbb = gbb_tr.transform(-gtr).sbb
                             cx = gbb_tr.xc
                             cy = gbb_tr.yc
-                            trl = TrTransform(cx, cy)
+                            trl = trtf(cx, cy)
                             # tr1 = trl @ iscl @ (-trl)
                             if stype == "scale_free":
                                 tr1 = trl @ iscl @ (-trl)
@@ -649,7 +620,7 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                             if cy > trbr[1]:
                                 oy = gbb[1] + gbb[3] / 2 - bbp.g.y2
                                 dy = oy - (cy - trbr[1])
-                            tr2 = TrTransform(dx, dy)
+                            tr2 = trtf(dx, dy)
                             irng.append([cbc[ii], cbc[ii + 1]])
                             trng.append((tr2 @ tr1))
                         dh.global_transform(el, It, irange=irng, trange=trng)
@@ -659,7 +630,8 @@ Unfortunately, this means that there is not much Scale Plots can do to edit rast
                 fbbs = actfbbs
                 gbbs = actgbbs
 
-        # dh.flush_stylesheet_entries(self.svg)
+        if self.options.tab == "matching" and self.options.deletematch:
+            firstsel.delete()
 
 
 if __name__ == "__main__":

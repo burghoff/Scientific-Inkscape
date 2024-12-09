@@ -9,12 +9,16 @@
                 gui-description="Remove all groupings, leaving individual objects on canvas"
                 >true</param>
             <param name="fixtext"  type="bool" gui-text="Apply text fixes?">true</param>
+            <param name="revertpaths" type="bool" gui-text="Revert simple paths to strokes?"
+                gui-description="Reverts certain strokes that have been converted to paths back to strokes"
+                >true</param>
+            <param name="removeduppaths" type="bool" gui-text="Remove overlapping duplicates?"
+                gui-description="When two identical elements overlap, removes the one on the bottom"
+                >true</param>
+                
         <label appearance="header">Other options</label>
             <param name="removerectw" type="bool" gui-text="Remove white background rectangles?"
                 gui-description="Removes white-filled rectangles that are behind other objects"
-                >true</param>
-            <param name="revertpaths" type="bool" gui-text="Revert simple paths to strokes?"
-                gui-description="Reverts certain strokes that have been converted to paths back to strokes"
                 >true</param>
             
             
@@ -22,7 +26,7 @@
             <label>For anyone using Inkscape to prepare figures, it is strongly recommended that you change the transformation preferences from Optimized to Preserved in Edit > Preferences > Behavior > Transforms. The Optimized setting can distort certain paths.</label>
 
             <spacer/>
-            <label>Scientific Inkscape v1.4.21</label>
+            <label>Scientific Inkscape v1.4.22</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>David Burghoff, University of Texas at Austin</label>
         </page>
@@ -45,7 +49,7 @@
             <param name="setreplacement" type="bool" gui-text="Replace missing fonts">false</param>
             <param name="replacement" type="string" gui-text="Missing font replacement">Arial</param>
             <spacer/>
-            <label>Scientific Inkscape v1.4.21</label>
+            <label>Scientific Inkscape v1.4.22</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>David Burghoff, University of Texas at Austin</label>
         </page>
@@ -58,7 +62,7 @@
                    <option value="2">Flattened</option>
                 </param>
             <spacer/>
-            <label>Scientific Inkscape v1.4.21</label>
+            <label>Scientific Inkscape v1.4.22</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>David Burghoff, University of Texas at Austin</label>
         </page>

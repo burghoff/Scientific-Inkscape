@@ -264,7 +264,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                 from scale_plots import (
                     geometric_bbox,
                     Find_Plot_Area,
-                    TrTransform,
+                    trtf,
                     appendInt,
                 )
 
@@ -322,7 +322,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                                     )
                                 else:
                                     dy = bb1.yc - bb2.yc
-                            tr2 = TrTransform(dx, dy)
+                            tr2 = trtf(dx, dy)
                             dh.global_transform(el, tr2)
 
         if setstroke:

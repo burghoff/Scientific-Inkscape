@@ -18,7 +18,7 @@
         
         <label appearance="header">What to export</label>
         <param name="exportwhat" type="optiongroup" appearance="combo"
-                gui-text=""
+                gui-text="​"
                 gui-description="Autoexport runs in the background watching for changes to a directory. Single export is similar to Save a Copy.">
                    <option value="1">Autoexport to locations below</option>
                    <option value="2">Autoexport to this document's location</option>
@@ -28,7 +28,7 @@
         <param type="path" name="writedir" gui-text="Write directory" mode="folder"/>
         
         <spacer/>
-        <label>Scientific Inkscape v1.4.21</label>
+        <label>Scientific Inkscape v1.4.22</label>
         <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>David Burghoff, University of Texas at Austin</label>
         </page>
@@ -62,7 +62,7 @@
          gui-description="Equivalent to same option when saving as PDF">false</param> 
          
         <spacer/>
-        <label>Scientific Inkscape v1.4.21</label>
+        <label>Scientific Inkscape v1.4.22</label>
         <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>David Burghoff, University of Texas at Austin</label>
         </page>
@@ -80,7 +80,7 @@
                    <option value="3">Left unchanged</option>
                 </param>
         <spacer/>
-        <label>Scientific Inkscape v1.4.21</label>
+        <label>Scientific Inkscape v1.4.22</label>
         <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>David Burghoff, University of Texas at Austin</label>
         </page>

@@ -38,6 +38,7 @@ XTOLMKP = (
     0.99
 )
 # right tolerance for manual kerning removal, should be fairly open-minded
+YTOLMK = .01
 XTOLSPLIT = 0.5
 # tolerance for manual kerning splitting, should be fairly tight
 SUBSUPER_THR = 0.99
@@ -140,7 +141,6 @@ def Make_All_Editable(els):
     for el in els:
         el.parsed_text.make_editable()
     return els
-
 
 def Change_Justification(els, justification):
     if justification is not None:
@@ -289,6 +289,7 @@ def Remove_Manual_Kerning(els, mergesupersub):
             dx = w.spw * (NUM_SPACES - trl_spcs - ldg_spcs)
             xtoln = XTOLMKN * w.spw
             xtolp = XTOLMKP * w.spw
+            ytol  = YTOLMK  * w.mch
 
             tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
 
@@ -297,6 +298,7 @@ def Remove_Manual_Kerning(els, mergesupersub):
 
             previoussp = w.txt == " " and w.prevw is not None
             validmerge = br1[0] - xtoln <= bl2[0] <= br1[0] + dx + xtolp
+            validmerge = validmerge and br1[1] - ytol <= bl2[1] <= br1[1] + ytol
 
             if previoussp and not (
                 validmerge
@@ -332,23 +334,26 @@ def External_Merges(els, mergenearby, mergesupersub):
     for ptxt in [el.parsed_text for el in els]:
         if ptxt.lns is not None:
             chks += [w for line in ptxt.lns for w in line.chks]
-    for w in chks:
+
+    pbbs = [None]*len(chks)
+    for ii, w in enumerate(chks):
+        cx = [v[0] for c in w.chrs for v in c.parsed_pts_t]
+        cy = [v[1] for c in w.chrs for v in c.parsed_pts_t]
+        pbbs[ii] = tp.bbox([min(cx),min(cy),max(cx)-min(cx),max(cy)-min(cy)]);
+    
+    for ii, w in enumerate(chks):
         dx = (
             w.spw * w.scf * (NUM_SPACES + XTOLEXT)
         )  # a big bounding box that includes the extra space
-        if w.parsed_bb is not None:
-            w.bb_big = tp.bbox(
-                [
-                    w.parsed_bb.x1 - dx,
-                    w.parsed_bb.y1 - dx,
-                    w.parsed_bb.w + 2 * dx,
-                    w.parsed_bb.h + 2 * dx,
-                ]
-            )
-        else:
-            w.bb_big = tp.bbox(
-                [w.bb.x1 - dx, w.bb.y1 - dx, w.bb.w + 2 * dx, w.bb.h + 2 * dx]
-            )
+        
+        w.bb_big = tp.bbox(
+            [
+                pbbs[ii].x1 - dx,
+                pbbs[ii].y1 - dx,
+                pbbs[ii].w + 2 * dx,
+                pbbs[ii].h + 2 * dx,
+            ]
+        )
         w.mw = []
 
     # Vectorized angle / bbox calculations
@@ -356,7 +361,7 @@ def External_Merges(els, mergenearby, mergesupersub):
     sameangle = abs(angles - angles.T) < 0.001
 
     bb1s = [w.bb_big for w in chks]
-    bb2s = [w.bb if w.parsed_bb is None else w.parsed_bb for w in chks]
+    bb2s = pbbs
     intersects = dh.bb_intersects(bb1s, bb2s)
 
     # reshape(-1,1) is a transpose
