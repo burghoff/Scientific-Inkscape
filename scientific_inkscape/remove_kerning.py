@@ -32,8 +32,9 @@ XTOLEXT = 0.6
 # kerning inaccuracies (as big as -0.56 in Whitney)
 YTOLEXT = 0.1
 # y tolerance (fraction of cap height), should be pretty small
-XTOLMKN = 0.99 * 1000
-# left tolerance for manual kerning removal, should be huge
+XTOLMKN = 0.99
+# left tolerance for manual kerning removal, used to be huge but is now tighter
+# since differential kerning was made default for PDF
 XTOLMKP = (
     0.99
 )
