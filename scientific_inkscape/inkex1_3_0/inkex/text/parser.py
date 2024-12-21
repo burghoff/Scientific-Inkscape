@@ -2154,6 +2154,8 @@ class TLine:
         ret.continuey = self.continuey
         ret.ptxt = self.ptxt
         ret.broken = self.broken
+        ret.effabsp = self.effabsp  # above-baseline space
+        ret.effbbsp = self.effbbsp  # below-baseline space
 
         return ret
 
