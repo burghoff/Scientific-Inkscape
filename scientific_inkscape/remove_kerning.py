@@ -270,7 +270,8 @@ def Split_Distant_Intrachunk(els):
                                     sstop = splitiis[ii + 1]
                                 else:
                                     sstop = len(chrs)
-                                newtxt = ptxt.split_off_characters(chrs[sstart:sstop])
+                                split_chrs = [chr for chr in w.chrs if chr in chrs[sstart:sstop]]
+                                newtxt = ptxt.split_off_characters(split_chrs)
                                 els.append(newtxt)
     return els
 

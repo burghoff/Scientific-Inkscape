@@ -970,67 +970,95 @@ class ParsedText:
 
     def split_off_characters(self, chrs):
         """Splits off specified characters into a new element."""
-        nll = self.duplicate()
-        newtxt = nll.textel
-
-        iln = self.lns.index(chrs[0].line)
+        npt = self.duplicate()
+        newtxt = npt.textel
+        
+        # Record position
+        cs1 = [c for ln in self.lns for c in ln.chrs]
+        cs2 = [c for ln in  npt.lns for c in ln.chrs]
+        dmemo = dict(zip(cs1,cs2))
+        
+        ps1 = {c:c.pts_ut[0] for c in cs1}
+        ps2 = {c:c.pts_ut[0] for c in cs2}
+        ds = {c:(c.dx,c.dy) for c in cs2}
+        fc = dmemo[chrs[0]]
+        
+        
         # chars' line index
+        iln = self.lns.index(chrs[0].line)
         ciis = [c.lnindex for c in chrs]  # indexs of charsin line
 
-        # Record position
-        dxl = [c.dx for c in chrs]
-        dyl = [c.dy for c in chrs]
-
-        fusex = self.lns[iln].continuex or ciis[0] > 0 or dxl[0] != 0
-        fusey = self.lns[iln].continuey or ciis[0] > 0 or dyl[0] != 0
+        fusex = self.lns[iln].continuex or ciis[0] > 0 or ds[fc][0] != 0
+        fusey = self.lns[iln].continuey or ciis[0] > 0 or ds[fc][1] != 0
         if fusex:
             anfr = self.lns[iln].anchfrac
             oldx = chrs[0].pts_ut[0][0] * (1 - anfr) + chrs[-1].pts_ut[3][0] * anfr
         if fusey:
-            oldy = chrs[0].chk.y + dyl[0]
+            oldy = chrs[0].chk.y + ds[fc][1]
 
         for c in reversed(chrs):
             c.delc(updatedelta=False)
 
         # Delete the other lines/chars in the copy
-        for il2 in reversed(range(len(nll.lns))):
+        for il2 in reversed(range(len(npt.lns))):
             if il2 != iln:
-                nll.lns[il2].dell()
+                npt.lns[il2].dell()
             else:
-                nln = nll.lns[il2]
+                nln = npt.lns[il2]
                 for j in reversed(range(len(nln.chrs))):
                     if j not in ciis:
                         nln.chrs[j].delc(updatedelta=False)
 
         # Deletion of text can cause the srcs to be wrong.
         # Reparse to find whereit is now
-        nln.xsrc, nln.ysrc = nll.parse_lines(srcsonly=True)
+        nln.xsrc, nln.ysrc = npt.parse_lines(srcsonly=True)
         nln.change_pos(newx=nln.x, newy=nln.y)
         nln.disablesodipodi(force=True)
         if len(self.lns) > 0:
             self.lns[0].xsrc, self.lns[0].ysrc = self.parse_lines(srcsonly=True)
             self.lns[0].change_pos(newx=self.lns[0].x, newy=self.lns[0].y)
-            # self.lns[0].disablesodipodi(force=True)
 
         if fusex:
             nln.continuex = False
             nln.change_pos(newx=[oldx])
-            dxl[0] = 0
+            ds[fc] = (0,ds[fc][1])
         if fusey:
             nln.continuey = False
             nln.change_pos(newy=[oldy])
-            dyl[0] = 0
+            ds[fc] = (ds[fc][0],0)
 
-        cnt = 0
-        for ln2 in nll.lns:
-            for c in ln2.chrs:
-                c.dx = dxl[cnt]
-                c.dy = dyl[cnt]
-                cnt += 1
-        nll.update_delta()
-        self.update_delta()
 
-        newtxt._parsed_text = nll
+        for ln in npt.lns:
+            for c in ln.chrs:
+                c.dx = ds[c][0]
+                c.dy = ds[c][1]
+        npt.update_delta()
+
+        # In case there are some errors, correct with deltas
+        for pt, ps in [(self,ps1), (npt,ps2)]:
+            for ln in pt.lns:
+                for chk in ln.chks:
+                    Deltax = [c.pts_ut[0][0] - ps[c][0] for c in chk.chrs]
+                    Deltay = [c.pts_ut[0][1] - ps[c][1] for c in chk.chrs]
+                    
+                    if any(abs(d) > 0.001 for d in Deltax + Deltay):
+                        for i in range(len(Deltax)):
+                            if i == 0:
+                                if ln.anchfrac == 0:
+                                    dx = Deltax[0]
+                                    dy = Deltay[0]
+                                elif ln.anchfrac == 0.5:
+                                    dx = Deltax[0] + Deltax[-1]
+                                    dy = Deltay[0] + Deltay[-1]
+                                # right aligned: would not be able to compute
+                            else:
+                                dx = Deltax[i] - Deltax[i - 1]
+                                dy = Deltay[i] - Deltay[i - 1]
+                            chk.chrs[i].dx -= dx
+                            chk.chrs[i].dy -= dy
+                        pt.update_delta()
+
+        newtxt._parsed_text = npt
         return newtxt
 
     def delete_empty(self):
@@ -2125,6 +2153,7 @@ class TLine:
         ret.continuex = self.continuex
         ret.continuey = self.continuey
         ret.ptxt = self.ptxt
+        ret.broken = self.broken
 
         return ret
 
@@ -3080,6 +3109,8 @@ class TChar:
         """Sets the dy property and invalidates dependent properties."""
         if self._dy != dxi:
             self._dy = dxi
+            if self.chk is not None:
+                self.chk.dy[self.windex] = dxi
             self.line.ptxt.dychange = True
 
     @property
