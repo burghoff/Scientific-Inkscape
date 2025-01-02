@@ -85,6 +85,7 @@ from inkex.utils import debug
 
 KERN_TABLE = True  # generate a fine kerning table for each font?
 TEXTSIZE = 100  # size of rendered text
+DEPATHOLOGIZE = True  # clean up pathological atts not normally made by Inkscape
 
 EBget = lxml.etree.ElementBase.get
 EBset = lxml.etree.ElementBase.set
@@ -282,9 +283,11 @@ class ParsedText:
         self._tree, self.dxs, self.dys, self.flatdelta = [None] * 4
         self.dxchange, self.hasdx, self.dychange, self.hasdy = [None] * 4
         if self.isflow:
-            self.lns = self.parse_lines_flow()
+            self.parse_lines_flow()
         else:
-            self.lns = self.parse_lines()
+            if DEPATHOLOGIZE:
+                remove_overflow_position_overflows(elem)
+            self.parse_lines()
         self.finish_lines()
 
         tlvllns = [
@@ -361,17 +364,13 @@ class ParsedText:
         # Next we find the top-level sodipodi:role lines
         xvs = [ParsedText.get_xy(ddv, "x") for ddv in dds]
         yvs = [ParsedText.get_xy(ddv, "y") for ddv in dds]
-        sprs = {ddv:ddv.get("sodipodi:role") for ddv in dds}
-        nspr = [spr for spr in sprs.values()]
-        nspr[0] = None
-        sprl = [
-            nspr[i] == "line" and len(xvs[i]) == 1 and len(yvs[i]) == 1
-            for i in range(len(dds))
-        ]
+        nsprl = {ddv:ddv.get("sodipodi:role")=='line' for ddv in dds}
 
         # Find effective sprls (ones that are not disabled)
-        esprl = sprl[:]
-        for i, _ in enumerate(dds):
+        esprl = [False]*len(dds)
+        for i, ddv in enumerate(dds):
+            esprl[i] = nsprl[ddv] and len(xvs[i]) == 1 and len(yvs[i]) == 1 and dds[i] in kids
+            
             # If I don't have text and any descendants have position, disables spr:l
             if esprl[i] and (text[i] == "" or text[i] is None):
                 dstop = [j for j in range(len(pts)) if dds[i] in pts[j]][0]
@@ -380,22 +379,28 @@ class ParsedText:
                     if xvs[ddi][0] is not None or yvs[ddi][0] is not None:
                         if text[ddi] is not None and text[ddi] != "":
                             esprl[i] = False
-
-            # Only top-level tspans are sprl
-            esprl[i] = esprl[i] and dds[i] in kids
+                            
+        if DEPATHOLOGIZE and not srcsonly:
+            # Prune any sodipodi:roles that are inactive
+            for ii, d in enumerate(dds):
+                if not esprl[ii] and nsprl[d]:
+                    d.set('sodipodi:role',None)
+                    nsprl[d] = False
 
         # Figure out which effective sprls are top-level
-        types = ["normal"] * len(dds)
-        for i in [i for i in range(len(dds)) if esprl[i]]:
-            if len(ptail[i]) > 0 and ptail[i][-1] is not None:
-                types[i] = "precededsprl"
+        types = [None] * len(dds)
+        for i,ddv in enumerate(dds):
+            if not esprl[i]:
+                types[i] = NORMAL
+            elif len(ptail[i]) > 0 and ptail[i][-1] is not None:
+                types[i] = PRECEDEDSPRL
             elif dds[i] == kids[0] and text[0] is not None:  # and len(text[0])>0:
                 # 2022.08.17: I am not sure if the len(text[0])==0 condition
                 # should be included. Inkscape prunes text='', so not relevant
                 # most of the time. It does seem to make a difference though.
-                types[i] = "precededsprl"
+                types[i] = PRECEDEDSPRL
             else:
-                types[i] = "tlvlsprl"
+                types[i] = TLVLSPRL
 
         # Position has a property of bidirectional inheritance. A tspan can inherit
         # position from its parent or its descendant unless there is text in between.
@@ -437,10 +442,8 @@ class ParsedText:
             return xyt[iin], dds[iin]
 
         # For positions that are None, inherit from ancestor/descendants if possible
-        ixs = xvs[:]
-        iys = yvs[:]
-        xsrcs = dds[:]
-        ysrcs = dds[:]
+        ixs, iys = xvs[:], yvs[:]
+        xsrcs, ysrcs = dds[:], dds[:]
 
         for i in [i for i in range(0, len(dds)) if ixs[i][0] is None]:
             ixs[i], xsrcs[i] = inherit_none(i, xvs)
@@ -454,16 +457,14 @@ class ParsedText:
 
         # Finally, walk the text tree generating lines
         lns = []
+        if not srcsonly:
+            self.lns = []
         sprl_inherits = None
         deltacnt = 0;
         affected_cnts = dict()
         for ddi, typ, tel, sel, txt in self.tree.dgenerator():
-            newsprl = typ == TYP_TEXT and types[ddi] == "tlvlsprl"
-            if (
-                typ == TYP_TAIL
-                and sprs.get(tel) == "line"
-                and self.tree.pdict[tel] == self.textel
-            ):
+            newsprl = typ == TYP_TEXT and types[ddi] == TLVLSPRL
+            if typ == TYP_TAIL and nsprl[tel] and self.tree.pdict[tel] == self.textel:
                 deltacnt += 1
                 affected_cnts[tel] = []
             
@@ -482,7 +483,7 @@ class ParsedText:
                 makeline |= typ == TYP_TEXT and (
                     newsprl
                     or (
-                        types[ddi] == "normal"
+                        types[ddi] == NORMAL
                         and (ixs[ddi][0] is not None or iys[ddi][0] is not None)
                     )
                 )
@@ -519,7 +520,6 @@ class ParsedText:
                                 xvl = ixs[0][:]
                                 xsrc = xsrcs[0]
                             continuex = True
-                            # issprl = True;
                         continuey = False
                         if yvl[0] is None:
                             if len(lns) > 0:
@@ -540,7 +540,7 @@ class ParsedText:
                         tlvlno = 0
 
                     anch = sty.get("text-anchor")
-                    if len(lns) > 0 and nspr[edi] != "line":
+                    if len(lns) > 0 and not nsprl[sel] and edi>0:
                         if lns[-1].anchor is not None:
                             anch = lns[
                                 -1
@@ -558,7 +558,7 @@ class ParsedText:
                     sprlabove = []
                     cel = dds[edi]
                     while cel != elem:
-                        if cel.get("sodipodi:role") == "line":
+                        if nsprl[cel]:
                             sprlabove.append(cel)
                         cel = pdict[cel]
 
@@ -611,7 +611,7 @@ class ParsedText:
                             lns[-1].chrs[-1].bshft = bshft0
               
         self.affected_cnts = affected_cnts # so src-only calls don't change                   
-        return lns
+        self.lns = lns
 
     def finish_lines(self):
         """Finalizes the parsed lines by calculating deltas and chunks."""
@@ -1423,6 +1423,7 @@ class ParsedText:
         For non-rectangular flow regions, uses svgpathtools to find where
         lines are drawn (this is imported conditionally).
         """
+        self.lns = []
         self.affected_cnts = dict();
         sty = self.textel.cspecified_style
         isflowroot = self.textel.tag == FRtag
@@ -1979,12 +1980,15 @@ class ParsedText:
             j = dds.index(lchr.loc.elem)
             if j < len(dds) - 1:
                 self.fparaafter = any(isinstance(ddv, FlowPara) for ddv in dds[j + 1 :])
-        return blns
+        self.lns = blns
 
 
 TYP_TEXT = 1
 TYP_TAIL = 0
 
+NORMAL = 0
+PRECEDEDSPRL = 1
+TLVLSPRL = 2
 
 class TextTree:
     """
@@ -2131,6 +2135,7 @@ class TLine:
         self.broken = None  # text is broken
         self.effabsp = None  # above-baseline space
         self.effbbsp = None  # below-baseline space
+        ptxt.lns.append(self)
 
     def copy(self, memo):
         """Creates a copy of the TLine instance."""
@@ -4016,3 +4021,87 @@ def xyset(elem, xyt, val):
     else:
         EBset(elem, xyt, ' '.join('%s' % v for v in val))
 
+def remove_overflow_position_overflows(el):
+    """
+    Normally Inkscape only produces multiple position attributes (x,y,dx,dy) on a
+    tspan corresponding to the number of characters. It does support more than this,
+    but that is a somewhat pathological case that makes editing difficult.
+    Removing this prior to parsing simplifies the logic needed.
+    """
+    xyvs = {(d, patt) : ParsedText.get_xy(d, patt) for d in el.descendants2() for patt in ['x','y','dx','dy']}
+    anyoverflow = False
+    ttree = [v for v in TextTree(el).dgenerator()]
+    for ddi0, typ0, src0, sel0, txt0 in ttree:
+        if typ0==TYP_TEXT:
+            for patt in ['x','y','dx','dy']:
+                anyoverflow |= (len(xyvs[src0,patt])>1 and 
+                                ((txt0 is not None and len(xyvs[src0,patt])>len(txt0)) 
+                                 or (txt0 is None)))
+                # inkex.utils.debug((anyoverflow, patt,src0.get_id(),typ0))
+    
+    
+    if anyoverflow:       
+        toplevels = list(el)
+        xvs, yvs, dxs, dys = [[] for _ in range(4)]
+        pos = {'x':xvs,'y':yvs,'dx':dxs,'dy':dys}
+        diffs = ['dx','dy']
+        topidx = 0
+        for ddi0, typ0, src0, sel0, txt0 in ttree:
+            if typ0==TYP_TEXT:
+                for patt in ['x','y','dx','dy']:
+                    xyv = xyvs[src0, patt]
+                    # Objects lower in the descendant list override ancestors
+                    # dx and dy don't affect flows
+                    if len(xyv) > 0 and xyv[0] is not None:
+                        if patt in diffs or len(xyv)>1:
+                            src0.set(patt,None)  # leave individual x,y alone
+                        cntd = 0
+                        cntl = 0
+                        for _, typ, src, _, txt in TextTree(el).dgenerator(subel=src0):
+                            if (
+                                typ == TYP_TAIL
+                                and src.get("sodipodi:role") == "line"
+                                and src in toplevels
+                            ):
+                                cntd += 1
+                                # top-level Tspans have an implicit CR at
+                                # the beginning of the tail
+                            
+                            if txt is not None:
+                                srtd = cntd
+                                stpd = min(len(xyv),cntd+len(txt))
+                                srtl = topidx+cntl
+                                stpl = topidx+cntl+stpd-srtd
+                                
+                                if stpl>=len(pos[patt]):
+                                    pos[patt] += [None] * (stpl-len(pos[patt])+1)
+                                pos[patt][srtl:stpl] = xyv[srtd:stpd]
+                                cntd += len(txt)
+                                cntl += len(txt)
+                            if cntd >= len(xyv):
+                                break
+            if txt0 is not None:
+                topidx += len(txt0)
+        
+        topidx = 0
+        for ddi, typ, src, sel, txt in ttree:
+            if txt is not None:
+                wrapped_tail = False
+                for patt in ['x','y','dx','dy']:
+                    vals = [v for v in pos[patt][topidx:topidx+len(txt)] if v is not None]
+                    if len(vals)>0:
+                        if typ==TYP_TAIL and not wrapped_tail:
+                            # Tails need to be wrapped in a new Tspan
+                            span = inkex.Tspan if el.tag == TEtag else inkex.FlowSpan
+                            t = span()
+                            t.text = txt
+                            src.tail = None
+                            src.getparent().insert(src.getparent().index(src) + 1, t)
+                            src = t
+                            typ = TYP_TAIL
+                            wrapped_tail = True
+
+                        if not(len(vals)==1 and patt not in diffs and wrapped_tail):
+                            # wrapping a tail could mess with sprl if single x/y specified
+                            xyset(src, patt, vals)
+                topidx += len(txt)
