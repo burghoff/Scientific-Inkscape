@@ -1,6 +1,6 @@
 # coding=utf-8
 
-STORE_REFS = True
+STORE_REFS = False
 OPEN_COMPARISON = True
 fname = 'Other_tests.svg'
 fname2 = 'Other_tests_nonuniform.svg'
