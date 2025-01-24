@@ -79,11 +79,11 @@ def remove_kerning(
         tels = [el for el in els if isinstance(el, (inkex.TextElement,))]
         ptl = tp.ParsedTextList(tels)
         ptl.precalcs()
-        ptl.next_chain()
+        ptl.make_next_chain()
         if removemanual:
             for pt in ptl:
-                pt.differential_to_manual_kerning()
-                pt.next_chain()
+                pt.differential_to_absolute_kerning()
+                pt.make_next_chain()
             tels = Remove_Manual_Kerning(tels, mergesupersub)
         if mergenearby or mergesupersub:
             tels = External_Merges(tels, mergenearby, mergesupersub)

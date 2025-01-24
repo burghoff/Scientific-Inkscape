@@ -247,9 +247,9 @@ class ParsedTextList(list):
                 ]
         # pylint:enable=protected-access
     
-    def next_chain(self):
+    def make_next_chain(self):
         for pt in self:
-            pt.next_chain()
+            pt.make_next_chain()
 
 
 def vmult(mat, x, y):
@@ -641,9 +641,8 @@ class ParsedText:
                     self.lns.remove(line)
                     # prune empty lines
 
-    def next_chain(self):
-        # For manual kerning removal, assign next and previous chunks. These
-        # can be in different lines
+    def make_next_chain(self):
+        """ For manual kerning removal, assign next and previous chunks """
         yvs = [
             line.y[0] for line in self.lns if line.y is not None and len(line.y) > 0
         ]
@@ -819,9 +818,6 @@ class ParsedText:
         For simplicity, this is best done at the ParsedText level all at once
         """
         if self.achange:
-            axs = [c.ax for line in self.lns for c in line.chrs]
-            ays = [c.ay for line in self.lns for c in line.chrs]
-
             # Group characters by location
             cs_loc = {(d,typ):[] for d in self.textel.descendants2() for typ in [TYP_TEXT,TYP_TAIL]}
             for ln in self.lns:
@@ -845,9 +841,13 @@ class ParsedText:
                         c.loc = CLoc(d,TYP_TEXT,c.loc.ind)
                         
                 if typ==TYP_TEXT:
-                    if axset is not None and None in axset:
+                    # When an x/y ends in Nones they can be trimmed off, but when
+                    # they have internal Nones the string must be split
+                    if (axset is not None and None in axset) or (ayset is not None and None in ayset):
                         span = inkex.Tspan if d.tag in TEtags else inkex.FlowSpan
-                        sidx = [i+1 for i,v in enumerate(axset[:-1]) if v is None and axset[i+1] is not None]
+                        sx = [i+1 for i,v in enumerate(axset[:-1]) if v is None and axset[i+1] is not None]
+                        sy = [i+1 for i,v in enumerate(ayset[:-1]) if v is None and ayset[i+1] is not None]
+                        sidx = sorted(sx+sy)
                         ranges = [(sidx[i-1] if i > 0 else 0, sidx[i] if i < len(sidx) else len(cd)) for i in range(len(sidx) + 1)]
                         txt = d.text
                         d.text = None
@@ -857,34 +857,15 @@ class ParsedText:
                             if k<len(ranges)-1:
                                 d.insert(0,t)
                             xyset(t,"x",trim_list(axset[r1:r2],None))
-                            for j,c in enumerate(cd[r1:r2]):
-                                c.loc = CLoc(t,TYP_TEXT,j)
-                    else:                    
-                        xyset(d,"x",axset)
-                        
-                    
-                    if ayset is not None and None in ayset:
-                        span = inkex.Tspan if d.tag in TEtags else inkex.FlowSpan
-                        sidx = [i+1 for i,v in enumerate(ayset[:-1]) if v is None and ayset[i+1] is not None]
-                        ranges = [(sidx[i-1] if i > 0 else 0, sidx[i] if i < len(sidx) else len(cd)) for i in range(len(sidx) + 1)]
-                        txt = d.text
-                        d.text = None
-                        for k,(r1,r2) in enumerate(reversed(ranges)):
-                            t = span() if k<len(ranges)-1 else d
-                            t.text = txt[r1:r2]
-                            if k<len(ranges)-1:
-                                d.insert(0,t)
                             xyset(t,"y",trim_list(ayset[r1:r2],None))
                             for j,c in enumerate(cd[r1:r2]):
                                 c.loc = CLoc(t,TYP_TEXT,j)
                     else:                    
+                        xyset(d,"x",axset) 
                         xyset(d,"y",ayset)
             
             for chk in [chk for line in self.lns for chk in line.chks]:
                 chk.charpos = None
-
-            self.hasax = any(axv is not None for axv in axs)
-            self.hasay = any(ayv is not None for ayv in ays)
             self.achange = False
 
     def make_editable(self):
@@ -1295,7 +1276,8 @@ class ParsedText:
             r.set("style", sty)
             self.textel.croot.append(r)
             
-    def differential_to_manual_kerning(self):
+    def differential_to_absolute_kerning(self):
+        """ Converts any differential kerning to absolute kerning """
         if not self.isflow and any(c.dx!=0 for c in self.chrs):
             for ln in self.lns:
                 ln.disablesodipodi()
