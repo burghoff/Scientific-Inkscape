@@ -32,7 +32,7 @@ XTOLEXT = 0.6
 # kerning inaccuracies (as big as -0.56 in Whitney)
 YTOLEXT = 0.1
 # y tolerance (fraction of cap height), should be pretty small
-XTOLMKN = 0.99
+XTOLMKN = 1.5
 # left tolerance for manual kerning removal, used to be huge but is now tighter
 # since differential kerning was made default for PDF
 XTOLMKP = (
@@ -79,19 +79,23 @@ def remove_kerning(
         tels = [el for el in els if isinstance(el, (inkex.TextElement,))]
         ptl = tp.ParsedTextList(tels)
         ptl.precalcs()
+        ptl.next_chain()
         if removemanual:
+            for pt in ptl:
+                pt.differential_to_manual_kerning()
+                pt.next_chain()
             tels = Remove_Manual_Kerning(tels, mergesupersub)
         if mergenearby or mergesupersub:
             tels = External_Merges(tels, mergenearby, mergesupersub)
-        # Then do splits (deciding based on current position, not original position,
-        # since merges intentionally change position)
+        # # Then do splits (deciding based on current position, not original position,
+        # # since merges intentionally change position)
         if splitdistant:
             tels = Split_Distant_Chunks(tels)
         if splitdistant:
             tels = Split_Distant_Intrachunk(tels)
         if splitdistant:
             tels = Split_Lines(tels)
-        # Final tweaks
+        # # Final tweaks
         tels = Change_Justification(tels, justification)
         tels, removedspc = Remove_Trailing_Leading_Spaces(tels)
         if removemanual or mergenearby or mergesupersub or removedspc:
@@ -193,7 +197,7 @@ def Split_Distant_Chunks(els):
                     w = sws[ii - 1]
                     w2 = sws[ii]
 
-                    trl_spcs, ldg_spcs = trailing_leading(w, w2)
+                    trl_spcs, ldg_spcs = trailing_leading(w.txt, w2.txt)
                     dx = w.spw * (NUM_SPACES - trl_spcs - ldg_spcs)
                     xtol = XTOLSPLIT * w.spw
 
@@ -286,8 +290,8 @@ def Remove_Manual_Kerning(els, mergesupersub):
     for w in chks:
         mw = []
         w2 = w.nextw
-        if w2 is not None and w2 in chks and not (twospaces(w, w2)):
-            trl_spcs, ldg_spcs = trailing_leading(w, w2)
+        if w2 is not None and w2 in chks and not (twospaces(w.txt, w2.txt)):
+            trl_spcs, ldg_spcs = trailing_leading(w.txt, w2.txt)
             dx = w.spw * (NUM_SPACES - trl_spcs - ldg_spcs)
             xtoln = XTOLMKN * w.spw
             xtolp = XTOLMKP * w.spw
@@ -301,16 +305,15 @@ def Remove_Manual_Kerning(els, mergesupersub):
             previoussp = w.txt == " " and w.prevw is not None
             validmerge = br1[0] - xtoln <= bl2[0] <= br1[0] + dx + xtolp
             validmerge = validmerge and br1[1] - ytol <= bl2[1] <= br1[1] + ytol
-
-            if previoussp and not (
-                validmerge
-            ):  # reconsider in case previous space was weirdly-kerned
+            if previoussp and not validmerge:
+                # reconsider in case previous space was weirdly-kerned
                 tr1p, br1p, tl2p, bl2p = w.prevw.get_ut_pts(w2)
                 dx = w.spw * (NUM_SPACES - trl_spcs - ldg_spcs + 1)
                 validmerge = br1p[0] - xtoln <= bl2p[0] <= br1p[0] + dx + xtolp
-
+                
             if validmerge:
                 mw.append([w2, "same", br1, bl2])
+
         w.mw = mw
 
     Perform_Merges(chks, mk=True)
@@ -376,7 +379,7 @@ def External_Merges(els, mergenearby, mergesupersub):
     for ii in range(goodl.shape[0]):
         w = chks[goodl[ii, 0]]
         w2 = chks[goodl[ii, 1]]
-        trl_spcs, ldg_spcs = trailing_leading(w, w2)
+        trl_spcs, ldg_spcs = trailing_leading(w.txt, w2.txt)
 
         dx = w.spw * (NUM_SPACES - trl_spcs - ldg_spcs)
         xtol = XTOLEXT * w.spw
@@ -386,7 +389,7 @@ def External_Merges(els, mergenearby, mergesupersub):
         tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
         xpenmatch = br1[0] - xtol <= bl2[0] <= br1[0] + dx + xtol
         neitherempty = len(wstrip(w.txt)) > 0 and len(wstrip(w2.txt)) > 0
-        if xpenmatch and neitherempty and not twospaces(w, w2):
+        if xpenmatch and neitherempty and not twospaces(w.txt, w2.txt):
             weight_match = w.chrs[-1].tsty['font-weight'] == w2.chrs[0].tsty['font-weight']
             # Don't sub/super merge when differences in font-weight
             # Helps prevent accidental merges of subfigure label to tick
@@ -624,29 +627,24 @@ def wstrip(txt):
     return txt.translate({ord(c): None for c in " \n\t\r"})
 
 
-def twospaces(w1, w2):
-    if w2 is not None:
-        w1txt = w1.txt
-        w2txt = w2.txt
-        if (
-            (w1txt is not None and len(w1txt) > 1 and w1txt[-2:] == "  ")
-            or (
-                w1txt is not None
-                and len(w1txt) > 0
-                and w1txt[-1:] == " "
-                and w2txt is not None
-                and len(w2txt) > 0
-                and w2txt[0] == " "
-            )
-            or (w2txt is not None and len(w2txt) > 1 and w2txt[:1] == "  ")
-        ):
-            return True  # resultant chunk has two spaces
+def twospaces(w1txt, w2txt):
+    if (
+        (w1txt is not None and len(w1txt) > 1 and w1txt[-2:] == "  ")
+        or (
+            w1txt is not None
+            and len(w1txt) > 0
+            and w1txt[-1:] == " "
+            and w2txt is not None
+            and len(w2txt) > 0
+            and w2txt[0] == " "
+        )
+        or (w2txt is not None and len(w2txt) > 1 and w2txt[:1] == "  ")
+    ):
+        return True  # resultant chunk has two spaces
     return False
 
 
-def trailing_leading(w1, w2):
-    wtxt = w1.txt
-    w2txt = w2.txt
+def trailing_leading(wtxt, w2txt):
     trl_spcs = sum([all([c == " " for c in wtxt[ii:]]) for ii in range(len(wtxt))])
     ldg_spcs = sum(
         [all([c == " " for c in w2txt[: ii + 1]]) for ii in range(len(w2txt))]
