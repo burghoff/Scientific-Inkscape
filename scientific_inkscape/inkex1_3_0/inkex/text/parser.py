@@ -654,14 +654,13 @@ class ParsedText:
                 if abs(yvs[i] - unqy) < tol
             ]
             sameyws = [chk for line in samey for chk in line.chks]
-            # xvs = [chk.x for line in samey for chk in line.chks]
             xvs = [0.5*(chk.pts_ut[0][0] + chk.pts_ut[3][0]) for line in samey for chk in line.chks]
             sws = [
                 x for _, x in sorted(zip(xvs, sameyws), key=lambda pair: pair[0])
             ]  # chunks sorted in ascending x
             for i in range(1, len(sws)):
                 # Account for space import bug where space has same position as prior char
-                if sws[i - 1].txt==' ' and sws[i - 1].x==sws[i].x:
+                if sws[i - 1].txt==' ' and abs(sws[i - 1].pts_ut[0][0]-sws[i].pts_ut[0][0])<.01*sws[i - 1].spw:
                     sws[i-1:i+1] = [sws[i],sws[i-1]]
             for i in range(1, len(sws)):
                 sws[i - 1].nextw = sws[i]
