@@ -85,12 +85,15 @@ from inkex.utils import debug
 
 KERN_TABLE = True  # generate a fine kerning table for each font?
 TEXTSIZE = 100  # size of rendered text
+DEPATHOLOGIZE = True  # clean up pathological atts not normally made by Inkscape
 
 EBget = lxml.etree.ElementBase.get
 EBset = lxml.etree.ElementBase.set
 
 TEtag, TStag, FRtag = TextElement.ctag, Tspan.ctag, FlowRoot.ctag
 TEFRtags = {TEtag, FRtag}
+TEtags = {TEtag, TStag}
+FRtags = {FRtag, FlowRegion.ctag, FlowPara.ctag, FlowSpan.ctag}
 
 LOCK = threading.Lock()
 
@@ -243,6 +246,10 @@ class ParsedTextList(list):
                     (float(chk._cpts_t[3][j][0]), float(chk._cpts_t[3][j][1])),
                 ]
         # pylint:enable=protected-access
+    
+    def make_next_chain(self):
+        for pt in self:
+            pt.make_next_chain()
 
 
 def vmult(mat, x, y):
@@ -279,12 +286,15 @@ class ParsedText:
             or sty.get_link("shape-inside", elem.croot) is not None
             or ipx(sty.get("inline-size"))
         )
-        self._tree, self.dxs, self.dys, self.flatdelta = [None] * 4
-        self.dxchange, self.hasdx, self.dychange, self.hasdy = [None] * 4
+        self._tree = None
+        self.dchange, self.writtendx, self.writtendy = [None] * 3
+        self.achange = False
+        if DEPATHOLOGIZE:
+            remove_overflow_position_overflows(elem)
         if self.isflow:
-            self.lns = self.parse_lines_flow()
+            self.parse_lines_flow()
         else:
-            self.lns = self.parse_lines()
+            self.parse_lines()
         self.finish_lines()
 
         tlvllns = [
@@ -310,7 +320,6 @@ class ParsedText:
         ret.tree = None
         cmemo = dict(zip(self.tree.dds, ret.tree.dds))
 
-        ret.dxs, ret.dys = ret.dxs[:], ret.dys[:]
         ret.lns = []
         for line in self.lns:
             if len(line.chrs) == 0:
@@ -318,8 +327,6 @@ class ParsedText:
             ret_ln = line.copy(cmemo)
             ret_ln.ptxt = ret
             ret.lns.append(ret_ln)
-    
-        ret.affected_cnts = {cmemo[k]: [cmemo[v2] for v2 in v if v2 in cmemo] for k,v in self.affected_cnts.items()}
 
         # nextw et al. could be from any line, update after copying
         for ret_ln in ret.lns:
@@ -361,17 +368,15 @@ class ParsedText:
         # Next we find the top-level sodipodi:role lines
         xvs = [ParsedText.get_xy(ddv, "x") for ddv in dds]
         yvs = [ParsedText.get_xy(ddv, "y") for ddv in dds]
-        sprs = {ddv:ddv.get("sodipodi:role") for ddv in dds}
-        nspr = [spr for spr in sprs.values()]
-        nspr[0] = None
-        sprl = [
-            nspr[i] == "line" and len(xvs[i]) == 1 and len(yvs[i]) == 1
-            for i in range(len(dds))
-        ]
+        dxvs = [ParsedText.get_xy(ddv, "dx") for ddv in dds]
+        dyvs = [ParsedText.get_xy(ddv, "dy") for ddv in dds]
+        nsprl = {ddv:ddv.get("sodipodi:role")=='line' for ddv in dds}
 
         # Find effective sprls (ones that are not disabled)
-        esprl = sprl[:]
-        for i, _ in enumerate(dds):
+        esprl = [False]*len(dds)
+        for i, ddv in enumerate(dds):
+            esprl[i] = nsprl[ddv] and len(xvs[i]) == 1 and len(yvs[i]) == 1 and dds[i] in kids
+            
             # If I don't have text and any descendants have position, disables spr:l
             if esprl[i] and (text[i] == "" or text[i] is None):
                 dstop = [j for j in range(len(pts)) if dds[i] in pts[j]][0]
@@ -380,22 +385,28 @@ class ParsedText:
                     if xvs[ddi][0] is not None or yvs[ddi][0] is not None:
                         if text[ddi] is not None and text[ddi] != "":
                             esprl[i] = False
-
-            # Only top-level tspans are sprl
-            esprl[i] = esprl[i] and dds[i] in kids
+                            
+        if DEPATHOLOGIZE and not srcsonly:
+            # Prune any sodipodi:roles that are inactive
+            for ii, d in enumerate(dds):
+                if not esprl[ii] and nsprl[d]:
+                    d.set('sodipodi:role',None)
+                    nsprl[d] = False
 
         # Figure out which effective sprls are top-level
-        types = ["normal"] * len(dds)
-        for i in [i for i in range(len(dds)) if esprl[i]]:
-            if len(ptail[i]) > 0 and ptail[i][-1] is not None:
-                types[i] = "precededsprl"
+        types = [None] * len(dds)
+        for i,ddv in enumerate(dds):
+            if not esprl[i]:
+                types[i] = NORMAL
+            elif len(ptail[i]) > 0 and ptail[i][-1] is not None:
+                types[i] = PRECEDEDSPRL
             elif dds[i] == kids[0] and text[0] is not None:  # and len(text[0])>0:
                 # 2022.08.17: I am not sure if the len(text[0])==0 condition
                 # should be included. Inkscape prunes text='', so not relevant
                 # most of the time. It does seem to make a difference though.
-                types[i] = "precededsprl"
+                types[i] = PRECEDEDSPRL
             else:
-                types[i] = "tlvlsprl"
+                types[i] = TLVLSPRL
 
         # Position has a property of bidirectional inheritance. A tspan can inherit
         # position from its parent or its descendant unless there is text in between.
@@ -437,10 +448,8 @@ class ParsedText:
             return xyt[iin], dds[iin]
 
         # For positions that are None, inherit from ancestor/descendants if possible
-        ixs = xvs[:]
-        iys = yvs[:]
-        xsrcs = dds[:]
-        ysrcs = dds[:]
+        ixs, iys = xvs[:], yvs[:]
+        xsrcs, ysrcs = dds[:], dds[:]
 
         for i in [i for i in range(0, len(dds)) if ixs[i][0] is None]:
             ixs[i], xsrcs[i] = inherit_none(i, xvs)
@@ -454,18 +463,11 @@ class ParsedText:
 
         # Finally, walk the text tree generating lines
         lns = []
+        if not srcsonly:
+            self.lns = []
         sprl_inherits = None
-        deltacnt = 0;
-        affected_cnts = dict()
         for ddi, typ, tel, sel, txt in self.tree.dgenerator():
-            newsprl = typ == TYP_TEXT and types[ddi] == "tlvlsprl"
-            if (
-                typ == TYP_TAIL
-                and sprs.get(tel) == "line"
-                and self.tree.pdict[tel] == self.textel
-            ):
-                deltacnt += 1
-                affected_cnts[tel] = []
+            newsprl = typ == TYP_TEXT and types[ddi] == TLVLSPRL
             
             if (txt is not None and len(txt) > 0) or newsprl:
                 sty = sel.cspecified_style
@@ -482,7 +484,7 @@ class ParsedText:
                 makeline |= typ == TYP_TEXT and (
                     newsprl
                     or (
-                        types[ddi] == "normal"
+                        types[ddi] == NORMAL
                         and (ixs[ddi][0] is not None or iys[ddi][0] is not None)
                     )
                 )
@@ -519,7 +521,6 @@ class ParsedText:
                                 xvl = ixs[0][:]
                                 xsrc = xsrcs[0]
                             continuex = True
-                            # issprl = True;
                         continuey = False
                         if yvl[0] is None:
                             if len(lns) > 0:
@@ -540,7 +541,7 @@ class ParsedText:
                         tlvlno = 0
 
                     anch = sty.get("text-anchor")
-                    if len(lns) > 0 and nspr[edi] != "line":
+                    if len(lns) > 0 and not nsprl[sel] and edi>0:
                         if lns[-1].anchor is not None:
                             anch = lns[
                                 -1
@@ -558,7 +559,7 @@ class ParsedText:
                     sprlabove = []
                     cel = dds[edi]
                     while cel != elem:
-                        if cel.get("sodipodi:role") == "line":
+                        if nsprl[cel]:
                             sprlabove.append(cel)
                         cel = pdict[cel]
 
@@ -586,10 +587,26 @@ class ParsedText:
                 fsty = font_style(sty)
                 tsty = true_style(fsty)
                 if txt is not None:
+                    if typ==TYP_TEXT:
+                        dxv = dxvs[ddi]
+                        dyv = dyvs[ddi]
+                        if dxv[0] is None:
+                            dxv = [0]*len(txt)
+                        else:
+                            dxv = dxv + [0]*(len(txt)-len(dxv))
+                        if dyv[0] is None:
+                            dyv = [0]*len(txt)
+                        else:
+                            dyv = dyv + [0]*(len(txt)-len(dyv))
+                    else:
+                        dxv = [0]*len(txt)
+                        dyv = [0]*len(txt)
+                    
+                    
                     for j, c in enumerate(txt):
                         csty = self.font_picker(txt, j, fsty, tsty)
                         prop = self.ctable.get_prop(c, csty)
-                        tc = TChar(
+                        _ = TChar(
                             c,
                             fsz,
                             utfs,
@@ -597,11 +614,8 @@ class ParsedText:
                             sty,
                             csty,
                             CLoc(tel, typ, j),
-                            lns[-1], deltacnt
+                            lns[-1], dxv[j], dyv[j]
                         )
-                        for afd in affected_cnts:
-                            affected_cnts[afd].append(tc)
-                        deltacnt += 1
 
                         if j == 0:
                             lsp0 = lns[-1].chrs[-1].lsp
@@ -609,23 +623,14 @@ class ParsedText:
                         else:
                             lns[-1].chrs[-1].lsp = lsp0
                             lns[-1].chrs[-1].bshft = bshft0
-              
-        self.affected_cnts = affected_cnts # so src-only calls don't change                   
-        return lns
+                                
+        self.lns = lns
 
     def finish_lines(self):
         """Finalizes the parsed lines by calculating deltas and chunks."""
         if self.lns is not None:
-            self.get_delta("dx")
-            self.get_delta("dy")
-
-            self.dxs = [c.dx for line in self.lns for c in line.chrs]
-            self.dys = [c.dy for line in self.lns for c in line.chrs]
-            self.flatdelta = False
-            self.dxchange = False
-            self.hasdx = any(dxv != 0 for dxv in self.dxs)
-            self.dychange = False
-            self.hasdy = any(dyv != 0 for dyv in self.dys)
+            self.writtendx = any(c.dx != 0 for c in self.chrs)
+            self.writtendy = any(c.dy != 0 for c in self.chrs)
 
             for line in self.lns:
                 line.ptxt = self
@@ -636,29 +641,33 @@ class ParsedText:
                     self.lns.remove(line)
                     # prune empty lines
 
-            # For manual kerning removal, assign next and previous chunks. These
-            # can be in different lines
-            yvs = [
-                line.y[0] for line in self.lns if line.y is not None and len(line.y) > 0
+    def make_next_chain(self):
+        """ For manual kerning removal, assign next and previous chunks """
+        yvs = [
+            line.y[0] for line in self.lns if line.y is not None and len(line.y) > 0
+        ]
+        tol = 0.001
+        for unqy in uniquetol(yvs, tol):
+            samey = [
+                self.lns[i]
+                for i in range(len(self.lns))
+                if abs(yvs[i] - unqy) < tol
             ]
-            tol = 0.001
-            for unqy in uniquetol(yvs, tol):
-                samey = [
-                    self.lns[i]
-                    for i in range(len(self.lns))
-                    if abs(yvs[i] - unqy) < tol
-                ]
-                sameyws = [chk for line in samey for chk in line.chks]
-                xvs = [chk.x for line in samey for chk in line.chks]
-                sws = [
-                    x for _, x in sorted(zip(xvs, sameyws), key=lambda pair: pair[0])
-                ]  # chunks sorted in ascending x
-                for i in range(1, len(sws)):
-                    sws[i - 1].nextw = sws[i]
-                    sws[i].prevw = sws[i - 1]
-                    sws[i].prevsametspan = (
-                        sws[i - 1].chrs[-1].loc.sel == sws[i].chrs[0].loc.sel
-                    )
+            sameyws = [chk for line in samey for chk in line.chks]
+            xvs = [0.5*(chk.pts_ut[0][0] + chk.pts_ut[3][0]) for line in samey for chk in line.chks]
+            sws = [
+                x for _, x in sorted(zip(xvs, sameyws), key=lambda pair: pair[0])
+            ]  # chunks sorted in ascending x
+            for i in range(1, len(sws)):
+                # Account for space import bug where space has same position as prior char
+                if sws[i - 1].txt==' ' and abs(sws[i - 1].pts_ut[0][0]-sws[i].pts_ut[0][0])<.01*sws[i - 1].spw:
+                    sws[i-1:i+1] = [sws[i],sws[i-1]]
+            for i in range(1, len(sws)):
+                sws[i - 1].nextw = sws[i]
+                sws[i].prevw = sws[i - 1]
+                sws[i].prevsametspan = (
+                    sws[i - 1].chrs[-1].loc.sel == sws[i].chrs[0].loc.sel
+                )
 
     def font_picker(self, txt, j, fsty, tsty):
         """Determine what font Inkscape will render a character as"""
@@ -731,7 +740,7 @@ class ParsedText:
                         line.ysrc = line.chrs[0].loc.elem
                         line.continuex = False
                         line.continuey = False
-                    line.change_pos(newx=newxv, newy=newyv)
+                    line.write_xy(newx=newxv, newy=newyv)
 
             # Fix non-first dxs
             ndxs = [c.dx for line in self.lns for c in line.chrs]
@@ -741,7 +750,7 @@ class ParsedText:
                     if abs(odxs[i] - ndxs[i]) > 0.001 or abs(odys[i] - ndys[i]) > 0.001:
                         c.dx = odxs[i]
                         c.dy = odys[i]
-            self.update_delta()
+            self.write_dxdy()
             for line in self.lns:
                 for chk in line.chks:
                     chk.charpos = None
@@ -755,7 +764,7 @@ class ParsedText:
                 self.textel.cstyle["baseline-shift"] = None
                 self.reparse()
                 newy = [y - bsv for y in lny]
-                self.lns[0].change_pos(newy=newy)
+                self.lns[0].write_xy(newy=newy)
 
     @staticmethod
     def get_xy(elem, xyt):
@@ -765,109 +774,98 @@ class ParsedText:
             return [None]  # None forces inheritance
         return [None if x == "none" else ipx(x) for x in val.split()]
 
-    def get_delta_num(self):
-        """Traverse the tree to find where deltas need to be located relative
-        to the top-level text"""
-        allcs = [c for line in self.lns for c in line.chrs]
-        topcnt = 0
-        for _, typ, src, _, txt in self.tree.dgenerator():
-            if (
-                typ == TYP_TAIL
-                and src.get("sodipodi:role") == "line"
-                and src.tag == TStag
-                and self.tree.pdict[src].tag == TEtag
-            ):
-                topcnt += 1
-                # top-level Tspans have an implicit CR at the beginning of the tail
-            if txt is not None:
-                for i, _ in enumerate(txt):
-                    thec = next((c for c in allcs if c.loc == CLoc(src, typ, i)), None)
-                    if thec.topcnt != topcnt:
-                        inkex.utils.debug((thec.line.ptxt.textel.get_id(),thec.c,thec.topcnt-topcnt))
-                    thec.deltanum = topcnt
-                    topcnt += 1
-
-
-    def get_delta(self, xyt):
-        """Calculates the delta values for the text lines."""
-        for ddv0 in self.tree.dds:
-            dxy = ParsedText.get_xy(ddv0, xyt)
-            # Objects lower in the descendant list override ancestors
-            # dx and dy don't affect flows
-            if len(dxy) > 0 and dxy[0] is not None and not (self.isflow):
-                allcs = [c for line in self.lns for c in line.chrs]
-                cnt = 0
-                for _, typ, src, _, txt in self.tree.dgenerator(subel=ddv0):
-                    if (
-                        typ == TYP_TAIL
-                        and src.get("sodipodi:role") == "line"
-                        and self.tree.pdict[src] == self.textel
-                    ):
-                        cnt += 1
-                        # top-level Tspans have an implicit CR at
-                        # the beginning of the tail
-                    if txt is not None:
-                        for i, _ in enumerate(txt):
-                            thec = next(
-                                (c for c in allcs if c.loc == CLoc(src, typ, i)), None
-                            )
-                            if cnt < len(dxy):
-                                if xyt == "dx":
-                                    thec.dx = dxy[cnt]
-                                if xyt == "dy":
-                                    thec.dy = dxy[cnt]
-                            cnt += 1
-                    if cnt >= len(dxy):
-                        break
-
-    def update_delta(self, forceupdate=False):
+    def write_dxdy(self):
         """
         After dx/dy has changed, call this to write them to the text element
         For simplicity, this is best done at the ParsedText level all at once
         """
-        if self.dxchange or self.dychange or forceupdate:
-            dxs = [c.dx for line in self.lns for c in line.chrs]
-            dys = [c.dy for line in self.lns for c in line.chrs]
+        if self.dchange:
+            # Group characters by location
+            cs_loc = {(d,typ):[] for d in self.textel.descendants2() for typ in [TYP_TEXT,TYP_TAIL]}
+            for ln in self.lns:
+                for c in ln.chrs:
+                    cs_loc[c.loc.elem,c.loc.typ].append(c)
 
-            anynewx = self.dxs != dxs and any(dxv != 0 for dxv in self.dxs + dxs)
-            anynewy = self.dys != dys and any(dyv != 0 for dyv in self.dys + dys)
-            # only if new is not old and at least one is non-zero
+            for (d, typ), cd in cs_loc.items():
+                dx = [c.dx for c in cd]
+                dy = [c.dy for c in cd]
 
-            if anynewx or anynewy or forceupdate:
-                # self.get_delta_num()
-                # for c in self.chrs:
-                #     c.deltanum = c.topcnt
-                dx = []
-                dy = []
-                for line in self.lns:
-                    for c in line.chrs:
-                        if c.topcnt is not None:
-                            dx = extendind(dx, c.topcnt, c.dx, 0)
-                            dy = extendind(dy, c.topcnt, c.dy, 0)
+                dxset = trim_list(dx,0)
+                dyset = trim_list(dy,0)
 
-                if not (self.flatdelta):  # flatten onto textel (only do once)
-                    for ddv in self.tree.dds:
-                        ddv.set("dx", None)
-                        ddv.set("dy", None)
-                    self.flatdelta = True
+                if typ==TYP_TAIL and (dxset is not None or dyset is not None):
+                    d = wrap_string(d,typ)
+                    self.tree = None  # invalidate
+                    typ = TYP_TEXT
+                    for c in cd:
+                        c.loc = CLoc(d,TYP_TEXT,c.loc.ind)
+                        
+                if typ==TYP_TEXT:
+                    xyset(d,"dx",dxset)
+                    xyset(d,"dy",dyset)
+            
+            for chk in [chk for line in self.lns for chk in line.chks]:
+                chk.charpos = None
 
-                dxset = None
-                dyset = None
-                if any(dxv != 0 for dxv in dx):
-                    dxset = " ".join([str(dxv) for dxv in dx])
-                if any(dyv != 0 for dyv in dy):
-                    dyset = " ".join([str(dyv) for dyv in dy])
-                self.textel.set("dx", dxset)
-                self.textel.set("dy", dyset)
-                for chk in [chk for line in self.lns for chk in line.chks]:
-                    chk.charpos = None
-            self.dxs = dxs
-            self.dys = dys
+            self.writtendx = any(c.dx != 0 for c in self.chrs)
+            self.writtendy = any(c.dy != 0 for c in self.chrs)
+            self.dchange = False
+            
+    def write_axay(self):
+        """
+        After dx/dy has changed, call this to write them to the text element
+        For simplicity, this is best done at the ParsedText level all at once
+        """
+        if self.achange:
+            # Group characters by location
+            cs_loc = {(d,typ):[] for d in self.textel.descendants2() for typ in [TYP_TEXT,TYP_TAIL]}
+            for ln in self.lns:
+                for c in ln.chrs:
+                    cs_loc[c.loc.elem,c.loc.typ].append(c)
 
-            self.hasdx = any(dxv != 0 for dxv in dxs)
-            self.dxchange = False
-            self.hasdy = any(dyv != 0 for dyv in dys)
-            self.dychange = False
+            for (d, typ), cd in cs_loc.items():
+                ax = [c.ax for c in cd]
+                ay = [c.ay for c in cd]
+
+                axset = trim_list(ax,None)
+                ayset = trim_list(ay,None)
+                if ayset is not None and all(ayset[0]==ayv for ayv in ayset):
+                    ayset = ayset[0:1]
+
+                if typ==TYP_TAIL and (axset is not None or ayset is not None):
+                    d = wrap_string(d,typ)
+                    self.tree = None  # invalidate
+                    typ = TYP_TEXT
+                    for c in cd:
+                        c.loc = CLoc(d,TYP_TEXT,c.loc.ind)
+                        
+                if typ==TYP_TEXT:
+                    # When an x/y ends in Nones they can be trimmed off, but when
+                    # they have internal Nones the string must be split
+                    if (axset is not None and None in axset) or (ayset is not None and None in ayset):
+                        span = inkex.Tspan if d.tag in TEtags else inkex.FlowSpan
+                        sx = [i+1 for i,v in enumerate(axset[:-1]) if v is None and axset[i+1] is not None]
+                        sy = [i+1 for i,v in enumerate(ayset[:-1]) if v is None and ayset[i+1] is not None]
+                        sidx = sorted(sx+sy)
+                        ranges = [(sidx[i-1] if i > 0 else 0, sidx[i] if i < len(sidx) else len(cd)) for i in range(len(sidx) + 1)]
+                        txt = d.text
+                        d.text = None
+                        for k,(r1,r2) in enumerate(reversed(ranges)):
+                            t = span() if k<len(ranges)-1 else d
+                            t.text = txt[r1:r2]
+                            if k<len(ranges)-1:
+                                d.insert(0,t)
+                            xyset(t,"x",trim_list(axset[r1:r2],None))
+                            xyset(t,"y",trim_list(ayset[r1:r2],None))
+                            for j,c in enumerate(cd[r1:r2]):
+                                c.loc = CLoc(t,TYP_TEXT,j)
+                    else:                    
+                        xyset(d,"x",axset) 
+                        xyset(d,"y",ayset)
+            
+            for chk in [chk for line in self.lns for chk in line.chks]:
+                chk.charpos = None
+            self.achange = False
 
     def make_editable(self):
         """
@@ -897,11 +895,11 @@ class ParsedText:
                 tlvl.set("sodipodi:role", "line")
                 # reenable sodipodi so we can insert returns
 
-                if self.hasdx or self.hasdy:
+                if self.writtendx or self.writtendy:
                     for i, chrv in enumerate(self.lns[0].chrs):
                         chrv.dx = olddx[i]
                         chrv.dy = olddy[i]
-                    self.update_delta(forceupdate=True)
+                    self.dchange = True
                     # may have deleted spr lines
 
         # For single lines, reset line-height to default
@@ -970,72 +968,105 @@ class ParsedText:
 
     def split_off_characters(self, chrs):
         """Splits off specified characters into a new element."""
-        nll = self.duplicate()
-        newtxt = nll.textel
-
-        iln = self.lns.index(chrs[0].line)
+        npt = self.duplicate()
+        newtxt = npt.textel
+        
+        # Record position
+        cs1 = [c for ln in self.lns for c in ln.chrs]
+        cs2 = [c for ln in  npt.lns for c in ln.chrs]
+        dmemo = dict(zip(cs1,cs2))
+        
+        ps1 = {c:c.pts_ut[0] for c in cs1}
+        ps2 = {c:c.pts_ut[0] for c in cs2}
+        ds = {c:(c.dx,c.dy) for c in cs2}
+        fc = dmemo[chrs[0]]
+        
+        
         # chars' line index
+        iln = self.lns.index(chrs[0].line)
         ciis = [c.lnindex for c in chrs]  # indexs of charsin line
 
-        # Record position
-        dxl = [c.dx for c in chrs]
-        dyl = [c.dy for c in chrs]
-
-        fusex = self.lns[iln].continuex or ciis[0] > 0 or dxl[0] != 0
-        fusey = self.lns[iln].continuey or ciis[0] > 0 or dyl[0] != 0
+        fusex = self.lns[iln].continuex or ciis[0] > 0 or ds[fc][0] != 0
+        fusey = self.lns[iln].continuey or ciis[0] > 0 or ds[fc][1] != 0
         if fusex:
             anfr = self.lns[iln].anchfrac
             oldx = chrs[0].pts_ut[0][0] * (1 - anfr) + chrs[-1].pts_ut[3][0] * anfr
         if fusey:
-            oldy = chrs[0].chk.y + dyl[0]
+            oldy = chrs[0].chk.y + ds[fc][1]
 
         for c in reversed(chrs):
             c.delc(updatedelta=False)
 
         # Delete the other lines/chars in the copy
-        for il2 in reversed(range(len(nll.lns))):
+        for il2 in reversed(range(len(npt.lns))):
             if il2 != iln:
-                nll.lns[il2].dell()
+                npt.lns[il2].dell()
             else:
-                nln = nll.lns[il2]
+                nln = npt.lns[il2]
                 for j in reversed(range(len(nln.chrs))):
                     if j not in ciis:
                         nln.chrs[j].delc(updatedelta=False)
 
         # Deletion of text can cause the srcs to be wrong.
         # Reparse to find whereit is now
-        nln.xsrc, nln.ysrc = nll.parse_lines(srcsonly=True)
-        nln.change_pos(newx=nln.x, newy=nln.y)
+        nln.xsrc, nln.ysrc = npt.parse_lines(srcsonly=True)
+        nln.write_xy(newx=nln.x, newy=nln.y)
         nln.disablesodipodi(force=True)
         if len(self.lns) > 0:
             self.lns[0].xsrc, self.lns[0].ysrc = self.parse_lines(srcsonly=True)
-            self.lns[0].change_pos(newx=self.lns[0].x, newy=self.lns[0].y)
-            # self.lns[0].disablesodipodi(force=True)
+            self.lns[0].write_xy(newx=self.lns[0].x, newy=self.lns[0].y)
 
         if fusex:
             nln.continuex = False
-            nln.change_pos(newx=[oldx])
-            dxl[0] = 0
+            nln.write_xy(newx=[oldx])
+            ds[fc] = (0,ds[fc][1])
         if fusey:
             nln.continuey = False
-            nln.change_pos(newy=[oldy])
-            dyl[0] = 0
+            nln.write_xy(newy=[oldy])
+            ds[fc] = (ds[fc][0],0)
 
-        cnt = 0
-        for ln2 in nll.lns:
-            for c in ln2.chrs:
-                c.dx = dxl[cnt]
-                c.dy = dyl[cnt]
-                cnt += 1
-        nll.update_delta()
-        self.update_delta()
 
-        newtxt._parsed_text = nll
+        for ln in npt.lns:
+            for c in ln.chrs:
+                c.dx = ds[c][0]
+                c.dy = ds[c][1]
+        npt.write_dxdy()
+
+        # In case there are some errors, correct with deltas
+        for pt, ps in [(self,ps1), (npt,ps2)]:
+            for ln in pt.lns:
+                for chk in ln.chks:
+                    Deltax = [c.pts_ut[0][0] - ps[c][0] for c in chk.chrs]
+                    Deltay = [c.pts_ut[0][1] - ps[c][1] for c in chk.chrs]
+                    
+                    if any(abs(d) > 0.001 for d in Deltax + Deltay):
+                        for i in range(len(Deltax)):
+                            if i == 0:
+                                if ln.anchfrac == 0:
+                                    dx = Deltax[0]
+                                    dy = Deltay[0]
+                                elif ln.anchfrac == 0.5:
+                                    dx = Deltax[0] + Deltax[-1]
+                                    dy = Deltay[0] + Deltay[-1]
+                                else:
+                                    dx = 0
+                                    dy = 0
+                                    # right aligned: would not be able to compute
+                            else:
+                                dx = Deltax[i] - Deltax[i - 1]
+                                dy = Deltay[i] - Deltay[i - 1]
+                            chk.chrs[i].dx -= dx
+                            chk.chrs[i].dy -= dy
+                        pt.write_dxdy()
+
+        newtxt._parsed_text = npt
         return newtxt
 
     def delete_empty(self):
         """Deletes empty elements from the doc. Generally this is done last"""
-        ocs = [c for line in self.lns for c in line.chrs]
+        ocs_pts = [c.pts_t for c in self.chrs]
+        ocs_dx  = [c.dx for c in self.chrs]
+        ocs_dy  = [c.dy for c in self.chrs]
         dltd = deleteempty(self.textel)
         if dltd:
             self.tree = None
@@ -1044,11 +1075,11 @@ class ParsedText:
             chrs = [c for line in self.lns for c in line.chrs]
             for i, line in enumerate(self.lns):
                 myi = chrs.index(line.chrs[0])
-                dxt = ocs[myi].pts_t[0][0] - chrs[myi].pts_t[0][0]
-                dyt = ocs[myi].pts_t[0][1] - chrs[myi].pts_t[0][1]
+                dxt = ocs_pts[myi][0][0] - chrs[myi].pts_t[0][0]
+                dyt = ocs_pts[myi][0][1] - chrs[myi].pts_t[0][1]
                 
                 if abs(dxt) > 0.001 or abs(dyt) > 0.001:
-                    oldpos = vmultinv(chrs[myi].line.transform.matrix, ocs[myi].pts_t[0][0], ocs[myi].pts_t[0][1])
+                    oldpos = vmultinv(chrs[myi].line.transform.matrix, ocs_pts[myi][0][0], ocs_pts[myi][0][1])
                     dltax = oldpos[0] - chrs[myi].pts_ut[0][0]
                     dltay = oldpos[1] - chrs[myi].pts_ut[0][1]
                     newxv = [x + dltax for x in line.x]
@@ -1064,37 +1095,20 @@ class ParsedText:
                         line.ysrc = line.chrs[0].loc.elem
                         line.continuex = False
                         line.continuey = False
-                    line.change_pos(newx=newxv, newy=newyv)
+                    line.write_xy(newx=newxv, newy=newyv)
 
             # Fix non-first dxs
             ndxs = [c.dx for line in self.lns for c in line.chrs]
             ndys = [c.dy for line in self.lns for c in line.chrs]
             for i, c in enumerate(chrs):
                 if c.lnindex > 0:
-                    if abs(ocs[i].dx - ndxs[i]) > 0.001 or abs(ocs[i].dy - ndys[i]) > 0.001:
-                        c.dx = ocs[i].dx
-                        c.dy = ocs[i].dy
-            self.update_delta()
+                    if abs(ocs_dx[i] - ndxs[i]) > 0.001 or abs(ocs_dy[i] - ndys[i]) > 0.001:
+                        c.dx = ocs_dx[i]
+                        c.dy = ocs_dy[i]
+            self.write_dxdy()
             for line in self.lns:
                 for chk in line.chks:
                     chk.charpos = None
-        
-    def old_delete_empty(self):
-        """Deletes empty elements from the doc. Generally this is done last"""
-        dxl = [c.dx for line in self.lns for c in line.chrs]
-        dyl = [c.dy for line in self.lns for c in line.chrs]
-        dltd = deleteempty(self.textel)
-        if dltd:
-            self.tree = None
-        cnt = 0
-        for line in self.lns:
-            for c in line.chrs:
-                c.dx = dxl[cnt]
-                c.dy = dyl[cnt]
-                cnt += 1
-        if self.hasdx or self.hasdy:
-            self.update_delta(forceupdate=True)
-            # force an update, could have deleted sodipodi lines
 
     def fuse_fonts(self):
         """
@@ -1218,7 +1232,7 @@ class ParsedText:
                             xvl + origx - npt.lns[0].chrs[0].pts_ut[0][0]
                             for xvl in npt.lns[0].x
                         ]
-                        npt.lns[0].change_pos(newx)
+                        npt.lns[0].write_xy(newx)
                     newtxts.append(newtxt)
 
             self.textel.delete()
@@ -1260,6 +1274,37 @@ class ParsedText:
             )
             r.set("style", sty)
             self.textel.croot.append(r)
+            
+    def differential_to_absolute_kerning(self):
+        """ Converts any differential kerning to absolute kerning """
+        if not self.isflow and any(c.dx!=0 for c in self.chrs):
+            for ln in self.lns:
+                ln.disablesodipodi()
+                for i,w in enumerate(ln.chks):                    
+                    pts = [c.pts_ut for c in w.chrs]
+                    for j, c in enumerate(w.chrs):
+                        if c.dx != 0:
+                            # Get last char in chunk without a dx
+                            lc = next((j + idx for idx, c in enumerate(w.chrs[j+1:]) if c.dx != 0), len(w.chrs) - 1)
+                            c.ax = pts[j][0][0] * (1 - ln.anchfrac) + pts[lc][3][0] * ln.anchfrac
+                            c.dx = 0
+                        else:
+                            c.ax = w.x if j==0 else None
+                            
+                        if c.dy !=0:
+                            c.ay = pts[j][0][1]
+                            c.dy = 0
+                        else:
+                            c.ay = w.y if j==0 else None
+            self.write_dxdy()
+            self.write_axay()
+            
+            ptsut = [c.parsed_pts_ut for c in self.chrs]
+            ptst = [c.parsed_pts_t for c in self.chrs]
+            self.reparse()
+            for i, c in enumerate(self.chrs):
+                c.parsed_pts_ut = ptsut[i]
+                c.parsed_pts_t = ptst[i]
 
     # Bounding box functions
     def get_char_inkbbox(self):
@@ -1395,7 +1440,7 @@ class ParsedText:
         For non-rectangular flow regions, uses svgpathtools to find where
         lines are drawn (this is imported conditionally).
         """
-        self.affected_cnts = dict();
+        self.lns = []
         sty = self.textel.cspecified_style
         isflowroot = self.textel.tag == FRtag
         isshapeins = (
@@ -1507,7 +1552,7 @@ class ParsedText:
         fparas = [
             k for k in list(self.textel) if isinstance(k, FlowPara)
         ]  # top-level FlowParas
-        for _, typ, tel, sel, txt in self.tree.dgenerator():
+        for ddi, typ, tel, sel, txt in self.tree.dgenerator():
             if txt is not None and len(txt) > 0:
                 if isflowroot:
                     lnno = [
@@ -1576,6 +1621,21 @@ class ParsedText:
                     cln.effbbsp = fbbsp
                 else:
                     cln = lns[lnno]
+                    
+                if typ==TYP_TEXT:
+                    dxv = ParsedText.get_xy(self.tree.dds[ddi],'dx')
+                    dyv = ParsedText.get_xy(self.tree.dds[ddi],'dy')
+                    if dxv[0] is None:
+                        dxv = [0]*len(txt)
+                    else:
+                        dxv = dxv + [0]*(len(txt)-len(dxv))
+                    if dyv[0] is None:
+                        dyv = [0]*len(txt)
+                    else:
+                        dyv = dyv + [0]*(len(txt)-len(dyv))
+                else:
+                    dxv = [0]*len(txt)
+                    dyv = [0]*len(txt)
 
                 fsty = font_style(sty)
                 tsty = true_style(fsty)
@@ -1583,7 +1643,7 @@ class ParsedText:
                     csty = self.font_picker(txt, j, fsty, tsty)
                     prop = self.ctable.get_prop(c, csty)
                     tchr = TChar(
-                        c, fsz, utfs, prop, sty, csty, CLoc(tel, typ, j), cln
+                        c, fsz, utfs, prop, sty, csty, CLoc(tel, typ, j), cln, dxv[j], dyv[j]
                     )
                     tchr.lhs = (fabsp, fbbsp)
                     if j == 0:
@@ -1912,7 +1972,7 @@ class ParsedText:
                             c._sty,
                             c.tsty,
                             c.loc,
-                            cln,
+                            cln, c._dx, c._dy
                         )
 
                     if len(chrs) > 0:
@@ -1951,12 +2011,15 @@ class ParsedText:
             j = dds.index(lchr.loc.elem)
             if j < len(dds) - 1:
                 self.fparaafter = any(isinstance(ddv, FlowPara) for ddv in dds[j + 1 :])
-        return blns
+        self.lns = blns
 
 
 TYP_TEXT = 1
 TYP_TAIL = 0
 
+NORMAL = 0
+PRECEDEDSPRL = 1
+TLVLSPRL = 2
 
 class TextTree:
     """
@@ -2103,6 +2166,7 @@ class TLine:
         self.broken = None  # text is broken
         self.effabsp = None  # above-baseline space
         self.effbbsp = None  # below-baseline space
+        ptxt.lns.append(self)
 
     def copy(self, memo):
         """Creates a copy of the TLine instance."""
@@ -2125,6 +2189,9 @@ class TLine:
         ret.continuex = self.continuex
         ret.continuey = self.continuey
         ret.ptxt = self.ptxt
+        ret.broken = self.broken
+        ret.effabsp = self.effabsp  # above-baseline space
+        ret.effbbsp = self.effbbsp  # below-baseline space
 
         return ret
 
@@ -2200,11 +2267,9 @@ class TLine:
             if i == 0:
                 chk = TChunk(i, self.x[0], self.y[0], self)
                 # open new chunk
-            elif i < len(self.x) and not (
-                self.x[i] is None
-            ):  # None means keep the same chunk
+            elif (i < len(self.x) and self.x[i] is not None) or (i < len(self.y) and self.y[i] is not None):  # None means keep the same chunk
                 self.addw(chk)  # close previous chunk
-                chk = TChunk(i, self.x[i], self.y[0], self)
+                chk = TChunk(i, self.x[min(i,len(self.x)-1)], self.y[min(i,len(self.y)-1)], self)
                 # open new chunk
             else:
                 chk.addc(i)
@@ -2214,7 +2279,7 @@ class TLine:
 
     def dell(self):
         """Deletes the whole line."""
-        self.change_pos(self.x[:1])
+        self.write_xy(self.x[:1])
         for _, c in enumerate(reversed(self.chrs)):
             if c.loc.typ == TYP_TEXT:
                 c.loc.elem.text = (
@@ -2224,14 +2289,7 @@ class TLine:
                 c.loc.elem.tail = (
                     c.loc.elem.tail[: c.loc.ind] + c.loc.elem.tail[c.loc.ind + 1 :]
                 )
-        
-        myln = self.ptxt.lns.index(self)
-        for ln in self.ptxt.lns[myln+1:]:
-            for c in ln.chrs:
-                c.topcnt = c.topcnt - len(self.chrs) - self.sprl if c.topcnt is not None else None
-                # inkex.utils.debug('updating' + c.c + 'in '+self.ptxt.textel.get_id())
-        
-        self.ptxt.update_delta()
+        self.ptxt.write_dxdy()
 
         if self in self.ptxt.lns:
             self.ptxt.lns.remove(self)
@@ -2268,7 +2326,7 @@ class TLine:
                     newxv = self.x
                     newxv[chk.chrs[0].lnindex] = newx
 
-                    self.change_pos(newxv)
+                    self.write_xy(newxv)
                     alignd = {"start": "start", "middle": "center", "end": "end"}
                     chk.chrs[0].loc.elem.cstyle.__setitem__(
                         "text-anchor", newanch, "text-align", alignd[newanch]
@@ -2285,11 +2343,6 @@ class TLine:
                 newsrc = self.chrs[0].loc.elem  # disabling snaps src to first char
                 if self.chrs[0].loc.typ == TYP_TAIL:
                     newsrc = self.chrs[0].loc.elem.getparent()
-                if newsrc.get("sodipodi:role")=='line':
-                    if newsrc in self.ptxt.affected_cnts:
-                        for c in self.ptxt.affected_cnts[newsrc]:
-                            c.topcnt -= 1;
-                        del self.ptxt.affected_cnts[newsrc]
                 newsrc.set("sodipodi:role", None)
 
                 self.sprlabove = []
@@ -2299,7 +2352,7 @@ class TLine:
                 xyset(self.ysrc, "y", self.y)
                 self.sprl = False
 
-    def change_pos(self, newx=None, newy=None, reparse=False):
+    def write_xy(self, newx=None, newy=None):
         """
         Changes the position of the line in the document.
         Update the line's position in the document, accounting for inheritance
@@ -2338,10 +2391,11 @@ class TLine:
                 len(oldy) > 1 and len(newy) == 1 and len(self.sprlabove) > 0
             ):  # would re-enable sprl
                 self.disablesodipodi()
-        if reparse:
-            self.parse_chunks()
-            # usually don't want to do this since it generates new chunks
-
+                
+    def split(self,i):
+        if i>=len(self.chrs):
+            return
+        self.ptxt.split_off_characters(self.chrs[i:])        
 
 class TChunk:
     """Represents a chunk, a group of characters with the same assigned anchor."""
@@ -2503,10 +2557,8 @@ class TChunk:
         """
         self.charpos = None
 
-        if self.line.ptxt.hasdx:
-            self.line.ptxt.dxchange = True
-        if self.line.ptxt.hasdy:
-            self.line.ptxt.dychange = True
+        if self.line.ptxt.writtendx or self.line.ptxt.writtendy:
+            self.line.ptxt.dchange = True
 
     @property
     def x(self):
@@ -2582,7 +2634,7 @@ class TChunk:
         if len(self.line.x) > 0:
             newx = self.line.x[0:myi] + [None] + self.line.x[myi:]
             newx = newx[0 : len(self.line.chrs) + 1]
-            self.line.change_pos(newx)
+            self.line.write_xy(newx)
 
         self.line.insertc(c, myi)
         for i in range(myi + 1, len(self.line.chrs)):
@@ -2601,19 +2653,9 @@ class TChunk:
         if deltax != 0:
             newx = self.line.x
             newx[self.chrs[0].lnindex] -= deltax
-            self.line.change_pos(newx)
-            
-            
-        # update topcnt
-        self.line.chrs[myi].topcnt = self.line.chrs[myi-1].topcnt+1
-        for c in self.line.chrs[myi+1:]:
-            c.topcnt += 1
-        myln = self.line.ptxt.lns.index(self.line)
-        for ln in self.line.ptxt.lns[myln+1:]:
-            for c in ln.chrs:
-                c.topcnt += 1
+            self.line.write_xy(newx)
         
-        self.line.ptxt.update_delta()
+        self.line.ptxt.write_dxdy()
 
     def append_chk(self, nchk, stype, maxspaces=None):
         """
@@ -2767,9 +2809,9 @@ class TChunk:
             if deltaanch != 0:
                 newx = self.line.x
                 newx[self.chrs[0].lnindex] -= deltaanch
-                self.line.change_pos(newx)
+                self.line.write_xy(newx)
                 self.charpos = None
-            self.line.ptxt.update_delta()
+            self.line.ptxt.write_dxdy()
 
     def get_fs(self):
         """Returns the font size of the chunk."""
@@ -2992,7 +3034,7 @@ class TChunk:
 class TChar:
     """Represents a single character and its style."""
 
-    def __init__(self, c, tfs, utfs, prop, sty, tsty, loc, line, tcnt=None):
+    def __init__(self, c, tfs, utfs, prop, sty, tsty, loc, line, dx, dy):
         """Initializes TChar with given parameters."""
         self.c = c
         self.tfs = tfs
@@ -3023,10 +3065,10 @@ class TChar:
         # my chunk (to be assigned)
         self.windex = None  # index in chunk
         # 'normal','super', or 'sub' (to be assigned)
-        self._dx = 0
-        # get later
-        self._dy = 0
-        # get later
+        self._dx = dx
+        self._dy = dy
+        self._ax = None
+        self._ay = None
         self.dkerns = lambda cL, cR: prop.dkerns.get((cL, cR), 0) * utfs
         self.parsed_pts_t = None
         self.parsed_pts_ut = None
@@ -3036,7 +3078,6 @@ class TChar:
         # letter spacing
         self.lhs = None
         # flow line-heights
-        self.topcnt = tcnt
 
     def copy(self, memo=None):
         """Creates a copy of the TChar instance."""
@@ -3068,7 +3109,7 @@ class TChar:
                 chk.dxeff[i] = (chk.chrs[i].dx if i < chk.ncs else 0) + (
                     chk.chrs[i - 1].lsp if i > 0 else 0
                 )
-            self.line.ptxt.dxchange = True
+            self.line.ptxt.dchange = True
 
     @property
     def dy(self):
@@ -3080,7 +3121,33 @@ class TChar:
         """Sets the dy property and invalidates dependent properties."""
         if self._dy != dxi:
             self._dy = dxi
-            self.line.ptxt.dychange = True
+            if self.chk is not None:
+                self.chk.dy[self.windex] = dxi
+            self.line.ptxt.dchange = True
+            
+    @property
+    def ax(self):
+        """Returns the ax property."""
+        return self._ax
+
+    @ax.setter
+    def ax(self, axi):
+        """Sets the ax property and invalidates dependent properties."""
+        if self._ax != axi:
+            self._ax = axi
+            self.line.ptxt.achange = True
+
+    @property
+    def ay(self):
+        """Returns the ay property."""
+        return self._ay
+
+    @ay.setter
+    def ay(self, axi):
+        """Sets the dy property and invalidates dependent properties."""
+        if self._ay != axi:
+            self._ay = axi
+            self.line.ptxt.achange = True
 
     @property
     def sty(self):
@@ -3231,9 +3298,10 @@ class TChar:
         lnx = self.line.x
         changedx = False
         if deltax != 0:
-            nnii = [i for i, x in enumerate(lnx) if x is not None]  # non-None
-            lnx[nnii[self.line.chks.index(self.chk)]] -= deltax
-            changedx = True
+            chkidx = self.line.chks.index(self.chk)
+            if chkidx < len(lnx) and lnx[chkidx] is not None:
+                lnx[chkidx] -= deltax
+                changedx = True
 
         # Delete from document
         if self.loc.typ == TYP_TEXT:
@@ -3261,15 +3329,7 @@ class TChar:
             # we haven't deleted the char yet, so make it len-1 long
             changedx = True
         if changedx:
-            self.line.change_pos(lnx)
-            
-        # Update topcnt
-        for c in self.line.chrs[self.lnindex+1:]:
-            c.topcnt -= 1
-        myln = self.line.ptxt.lns.index(self.line)
-        for ln in self.line.ptxt.lns[myln+1:]:
-            for c in ln.chrs:
-                c.topcnt -= 1
+            self.line.write_xy(lnx)
 
         # Delete from line
         _ = [
@@ -3295,7 +3355,7 @@ class TChar:
         
         # Update the dx/dy value in the ParsedText
         if updatedelta:
-            self.line.ptxt.update_delta()
+            self.line.ptxt.write_dxdy()
 
     def add_style(self, sty, setdefault=True, newfs=False):
         """Adds a style to the character by wrapping it in a new Tspan."""
@@ -3901,23 +3961,21 @@ class CharacterTable:
                 "times as is possible.)"
             )
             if sty not in self.ctable:
-                inkex.utils.debug("No style matches found!")
-                inkex.utils.debug(reset_msg)
-                inkex.utils.debug("     " + reset_action)
-                inkex.utils.debug(frequency_msg)
-                inkex.utils.debug("\nCharacter: " + char)
-                inkex.utils.debug("Style: " + str(sty))
-                inkex.utils.debug("Existing styles: " + str(list(self.ctable.keys())))
+                debug("No style matches found!")
+                debug(reset_msg)
+                debug("     " + reset_action)
+                debug(frequency_msg)
+                debug("\nCharacter: " + char)
+                debug("Style: " + str(sty))
+                debug("Existing styles: " + str(list(self.ctable.keys())))
             else:
-                inkex.utils.debug("No character matches!")
-                inkex.utils.debug(reset_msg)
-                inkex.utils.debug("     " + reset_action)
-                inkex.utils.debug(frequency_msg)
-                inkex.utils.debug("\nCharacter: " + char)
-                inkex.utils.debug("Style: " + str(sty))
-                inkex.utils.debug(
-                    "Existing chars: " + str(list(self.ctable[sty].keys()))
-                )
+                debug("No character matches!")
+                debug(reset_msg)
+                debug("     " + reset_action)
+                debug(frequency_msg)
+                debug("\nCharacter: " + char)
+                debug("Style: " + str(sty))
+                debug("Existing chars: " + str(list(self.ctable[sty].keys())))
             raise KeyError from excp
 
     def get_prop_mult(self, char, sty, scl):
@@ -3983,3 +4041,102 @@ def xyset(elem, xyt, val):
     else:
         EBset(elem, xyt, ' '.join('%s' % v for v in val))
 
+def remove_overflow_position_overflows(el):
+    """
+    Normally Inkscape only produces multiple position attributes (x,y,dx,dy) on a
+    tspan corresponding to the number of characters. It does support more than this,
+    but that is a somewhat pathological case that makes editing difficult.
+    Removing this prior to parsing simplifies the logic needed.
+    """
+    xyvs = {(d, patt) : ParsedText.get_xy(d, patt) for d in el.descendants2() for patt in ['x','y','dx','dy']}
+    anyoverflow = False
+    ttree = [v for v in TextTree(el).dgenerator()]
+    for ddi0, typ0, src0, sel0, txt0 in ttree:
+        if typ0==TYP_TEXT:
+            for patt in ['x','y','dx','dy']:
+                anyoverflow |= (len(xyvs[src0,patt])>1 and 
+                                ((txt0 is not None and len(xyvs[src0,patt])>len(txt0)) 
+                                 or (txt0 is None)))
+                # inkex.utils.debug((anyoverflow, patt,src0.get_id(),typ0))
+    
+    
+    if anyoverflow:       
+        toplevels = list(el)
+        xvs, yvs, dxs, dys = [[] for _ in range(4)]
+        pos = {'x':xvs,'y':yvs,'dx':dxs,'dy':dys}
+        diffs = ['dx','dy']
+        topidx = 0
+        for ddi0, typ0, src0, sel0, txt0 in ttree:
+            if typ0==TYP_TEXT:
+                for patt in ['x','y','dx','dy']:
+                    xyv = xyvs[src0, patt]
+                    # Objects lower in the descendant list override ancestors
+                    # dx and dy don't affect flows
+                    if len(xyv) > 0 and xyv[0] is not None:
+                        if patt in diffs or len(xyv)>1:
+                            src0.set(patt,None)  # leave individual x,y alone
+                        cntd = 0
+                        cntl = 0
+                        for _, typ, src, _, txt in TextTree(el).dgenerator(subel=src0):
+                            if (
+                                typ == TYP_TAIL
+                                and src.get("sodipodi:role") == "line"
+                                and src in toplevels
+                            ):
+                                cntd += 1
+                                # top-level Tspans have an implicit CR at
+                                # the beginning of the tail
+                            
+                            if txt is not None:
+                                srtd = cntd
+                                stpd = min(len(xyv),cntd+len(txt))
+                                srtl = topidx+cntl
+                                stpl = topidx+cntl+stpd-srtd
+                                
+                                if stpl>=len(pos[patt]):
+                                    pos[patt] += [None] * (stpl-len(pos[patt])+1)
+                                pos[patt][srtl:stpl] = xyv[srtd:stpd]
+                                cntd += len(txt)
+                                cntl += len(txt)
+                            if cntd >= len(xyv):
+                                break
+            if txt0 is not None:
+                topidx += len(txt0)
+        
+        topidx = 0
+        for ddi, typ, src, sel, txt in ttree:
+            if txt is not None:
+                wrapped_tail = False
+                for patt in ['x','y','dx','dy']:
+                    vals = [v for v in pos[patt][topidx:topidx+len(txt)] if v is not None]
+                    if len(vals)>0:
+                        if typ==TYP_TAIL and not wrapped_tail:
+                            # Tails need to be wrapped in a new Tspan
+                            src =  wrap_string(src,typ)
+                            wrapped_tail = True
+
+                        if not(len(vals)==1 and patt not in diffs and wrapped_tail):
+                            # wrapping a tail could mess with sprl if single x/y specified
+                            xyset(src, patt, vals)
+                topidx += len(txt)
+                
+def wrap_string(src,typ):
+    ''' Wrap a string in a new Tspan/FlowSpan'''
+    if typ==TYP_TAIL:
+        span = inkex.Tspan if src.tag in TEtags else inkex.FlowSpan
+        t = span()
+        t.text = src.tail
+        src.tail = None
+        src.getparent().insert(src.getparent().index(src) + 1, t)
+    else:
+        span = inkex.Tspan if src.tag in TEtags else inkex.FlowSpan
+        t = span()
+        t.text = src.text
+        src.text = None
+        src.insert(0, t)
+    return t
+
+def trim_list(lst,val):
+    """ Trims any values from the end of a list equal to val """
+    trim = lst[:len(lst) - next((i for i, x in enumerate(reversed(lst)) if x != val), len(lst))]
+    return trim if len(trim)>0 else None

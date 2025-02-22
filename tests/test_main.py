@@ -1,6 +1,7 @@
 # coding=utf-8
 
 STORE_REFS = False
+OPEN_COMPARISON = True
 fname = 'Other_tests.svg'
 fname2 = 'Other_tests_nonuniform.svg'
 aename = 'Autoexporter_tests.svg'
@@ -299,7 +300,13 @@ if __name__ == "__main__":
                     fout = os.path.abspath(pout2)
                     print(pout2)
                     obj.effect_class().run(args,fout);
-                    
+
+                    if OPEN_COMPARISON and not STORE_REFS:
+                        binloc = os.path.join(vpaths[version],'bin','inkscape.exe')
+                        import subprocess
+                        process = subprocess.run([binloc, fout], text=True)
+                        process = subprocess.run([binloc, os.path.abspath(pout)], text=True)
+
                     if STORE_REFS:
                         import shutil
                         os.chdir(mywd)
