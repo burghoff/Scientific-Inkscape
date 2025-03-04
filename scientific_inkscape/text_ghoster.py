@@ -59,7 +59,10 @@ class TextGhoster(inkex.EffectExtension):
             el.ctransform = None
             # Remove transform
             oldts[g.get_id()] = g.ccomposed_transform
-            dh.global_transform(g, -oldts[g.get_id()])
+            try:
+                dh.global_transform(g, -oldts[g.get_id()])
+            except ZeroDivisionError:
+                gs.remove(g)
 
         # dh.idebug(sel)
 

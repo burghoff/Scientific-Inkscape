@@ -297,7 +297,11 @@ def Remove_Manual_Kerning(els, mergesupersub):
             xtolp = XTOLMKP * w.spw
             ytol  = YTOLMK  * w.mch
 
-            tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
+            try:
+                tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
+            except ZeroDivisionError:
+                w.mw = mw
+                continue
 
             if isnumeric(w.txt) and isnumeric(w2.txt, True):
                 dx = w.spw * 0

@@ -189,6 +189,8 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                     sty = d.cspecified_style
                     if el == d or "font-size" in sty:
                         dfs, sf, utdfs = dh.composed_width(d, "font-size")
+                        if dfs==0:
+                            continue
                         bshift = parser.TChar.get_baseline(sty, d.getparent())
                         if bshift != 0 or "%" in sty.get("font-size", ""):
                             # Convert sub/superscripts into relative size
@@ -363,6 +365,8 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                         newsize = setstrokew
                     else:
                         newsize = szd[elid] * (setstrokew / 100)
+                    if sfd[elid]==0:
+                        continue
                     el.cstyle["stroke-width"] = str(newsize / sfd[elid]) + "px"
 
         if self.options.fusetransforms:

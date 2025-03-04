@@ -1369,6 +1369,8 @@ class AutoExporter(inkex.EffectExtension):
                 xyset(dsd, "dy", [v * scv for v in dyv])
 
             fsz, scf, _ = dh.composed_width(dsd, "font-size")
+            if scf==0:
+                continue
             dsd.cstyle["font-size"] = "{:.3f}".format(fsz / scf * scv)
 
             otherpx = [
