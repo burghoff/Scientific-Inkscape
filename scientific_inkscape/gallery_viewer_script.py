@@ -644,7 +644,9 @@ class WatcherThread(threading.Thread):
         def get_svgs(dirin):
             svg_filenames = []
             for file in os.listdir(dirin):
-                if file.endswith(".svg") or file.endswith(".emf") or file.endswith(".wmf"):
+                # if file.endswith(".svg") or file.endswith(".emf") or file.endswith(".wmf"):
+                valid_exts = ['svg','emf','wmf','png','gif','jpg','jpeg']
+                if any(file.lower().endswith('.'+ext) for ext in valid_exts):
                     svg_filenames.append(os.path.join(dirin, file))
             svg_filenames.sort()
             return svg_filenames
