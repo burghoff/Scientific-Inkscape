@@ -145,10 +145,10 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
         if setfontfamily or setfontsize or fixtextdistortion:
             tels = [d for d in sel if isinstance(d, (TextElement, FlowRoot))]
             if not self.options.plotaware:
-                bbs = dh.BB2(self, tels, False)
+                bbs = dh.BB2(self.svg, tels, False)
             else:
                 aels = [d for el in sel0 for d in el.descendants2()]
-                bbs = dh.BB2(self, aels, False)
+                bbs = dh.BB2(self.svg, aels, False)
 
         if setfontsize:
             # Get all font sizes and scale factors
@@ -246,7 +246,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             dh.character_fixer(tels)
 
         if setfontfamily or setfontsize or fixtextdistortion:
-            bbs2 = dh.BB2(self, tels, True)
+            bbs2 = dh.BB2(self.svg, tels, True)
             if not self.options.plotaware:
                 for el in sel:
                     myid = el.get_id()

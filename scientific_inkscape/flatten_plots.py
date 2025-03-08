@@ -411,7 +411,7 @@ class FlattenPlots(inkex.EffectExtension):
             ngs2 = [
                 el for el in self.svg.descendants2() if el in ngset and dh.isdrawn(el)
             ]
-            bbs = dh.BB2(self, ngs2, roughpath=True, parsed=True)
+            bbs = dh.BB2(self.svg, ngs2, roughpath=True, parsed=True)
             
             if self.options.removeduppaths:
                 # Prune identical overlapping paths

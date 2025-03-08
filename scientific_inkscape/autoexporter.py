@@ -623,7 +623,7 @@ class AutoExporter(inkex.EffectExtension):
                 act = "object-to-path"
 
             allacts += [
-                "select:{0}; {1}; export-filename:{2}; export-do;".format(
+                "select:{0}; {1}; export-filename:{2}; export-do; unselect:{0}; ".format(
                     celsj, act, tmpstp
                 )
             ]
@@ -637,6 +637,7 @@ class AutoExporter(inkex.EffectExtension):
             if len(els) > 0:
                 imgtype = "png"
                 acts, acts2, imgs_trnp, imgs_opqe = [], [], [], []
+                overlaps = dh.overlapping_els(svg,els)
                 for elem in els:
                     elid = elem.get_id()
                     tmpimg = temphead + "_im_" + elid + "." + imgtype
@@ -658,7 +659,21 @@ class AutoExporter(inkex.EffectExtension):
                         "export-filename:{2}; export-background-opacity:1.0; "
                         "export-do; "
                     )
-                    acts2.append(fmt2.format(elem.get_id(), int(mydpi), tmpimg2))
+                    actv = fmt2.format(elem.get_id(), int(mydpi), tmpimg2)
+                    
+                    # For export all, hide objects on top
+                    displays = {el: el.cstyle.get('display') for el in overlaps[elem]}
+                    hides = ['select:{0}; object-set-property:display,none; unselect:{0}; '.format(el.get_id()) for el in overlaps[elem]]
+                    unhides = ['select:{0}; object-set-property:display,{1}; unselect:{0}; '.format(el.get_id(), \
+                                displays[el] if displays[el] is not None else '') for el in overlaps[elem]]
+                    actv = ''.join(hides) + actv + ''.join(unhides)
+                    acts2.append(actv)
+
+                # acts2 += [
+                #     "export-filename:{2}; export-do;".format(
+                #         celsj, act, tmpstp+'2.svg'
+                #     )
+                # ]
 
                 if ih.hasPIL:
                     acts = acts2 + acts  # export-id-onlys need to go last
@@ -930,7 +945,8 @@ class AutoExporter(inkex.EffectExtension):
                 pgs = osvg.cdocsize.pgs
                 haspgs = inkex.installed_haspages
                 if (haspgs or opts.testmode) and len(pgs) > 0:
-                    bbs = dh.BB2(type("DummyClass", (), {"svg": osvg}))
+                    # bbs = dh.BB2(type("DummyClass", (), {"svg": osvg}))
+                    bbs = dh.BB2(osvg)
                     dlbl = opts.duplicatelabels
                     outputs = []
                     pgiis = (

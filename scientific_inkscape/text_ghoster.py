@@ -68,7 +68,7 @@ class TextGhoster(inkex.EffectExtension):
 
         # dh.idebug(dir(sel[0]))
         bbs = dh.BB2(
-            self, sel, forceupdate=True
+            self.svg, sel, forceupdate=True
         )  # need to investigate why sel didn't work
 
         for g in gs:

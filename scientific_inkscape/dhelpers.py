@@ -586,9 +586,9 @@ def isdrawn(el):
 
 
 # A wrapper that replaces get_bounding_boxes with Pythonic calls only if possible
-def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
+def BB2(svg, els=None, forceupdate=False, roughpath=False, parsed=False):
     if els is None:
-        els = slf.svg.descendants2()
+        els = svg.descendants2()
     if all([d.tag in bb2_support_tags or not (hasbbox(d)) for d in els]):
         # All descendants of all els in the list
         allds = set()
@@ -603,14 +603,14 @@ def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
 
         if len(tels) > 0:
             if forceupdate:
-                slf.svg.char_table = None
+                svg.char_table = None
                 for d in els:
                     d.cbbox = None
                     d.parsed_text = None
-            if not hasattr(slf.svg, "_char_table"):
+            if not hasattr(svg, "_char_table"):
                 from inkex.text import parser  # noqa
 
-                slf.svg.make_char_table(els=tels)
+                svg.make_char_table(els=tels)
                 # pts = [el.parsed_text for el in tels]
                 ptl = parser.ParsedTextList(tels)
                 ptl.precalcs()
@@ -625,17 +625,17 @@ def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
 
         with tempfile.TemporaryFile() as temp:
             tname = os.path.abspath(temp.name)
-            overwrite_svg(slf.svg, tname)
-            ret = get_bounding_boxes(filename=tname, svg=slf.svg)
+            overwrite_svg(svg, tname)
+            ret = get_bounding_boxes(filename=tname, svg=svg)
 
     return ret
 
 
 # For diagnosing BB2
-def Check_BB2(slf):
-    bb2 = BB2(slf)
+def Check_BB2(svg):
+    bb2 = BB2(svg)
     HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
-    for el in slf.svg.descendants2():
+    for el in svg.descendants2():
         if el.get_id() in bb2 and not el.tag in grouplike_tags:
             bb = bbox(bb2[el.get_id()])
             # bb = bbox(bb2[el.get_id()])*(1/slf.svg.cscale);
@@ -659,13 +659,42 @@ def bb_intersects(bbs, bb2s=None):
     if len(bbs) == 0 or len(bb2s) == 0:
         return np.zeros((len(bbs), len(bb2s)), dtype=bool)
     else:
-        xc1, yc1, wd1, ht1 = np.array([(bb.xc, bb.yc, bb.w, bb.h) for bb in bbs]).T
-        xc2, yc2, wd2, ht2 = np.array([(bb.xc, bb.yc, bb.w, bb.h) for bb in bb2s]).T
+        xc1, yc1, wd1, ht1 = np.array([
+            (bb.xc, bb.yc, bb.w, bb.h) if not bb.isnull else (np.nan, np.nan, np.nan, np.nan) 
+            for bb in bbs
+        ]).T
+        
+        xc2, yc2, wd2, ht2 = np.array([
+            (bb.xc, bb.yc, bb.w, bb.h) if not bb.isnull else (np.nan, np.nan, np.nan, np.nan) 
+            for bb in bb2s
+        ]).T
         return np.logical_and(
-            (abs(xc1.reshape(-1, 1) - xc2) * 2 < (wd1.reshape(-1, 1) + wd2)),
-            (abs(yc1.reshape(-1, 1) - yc2) * 2 < (ht1.reshape(-1, 1) + ht2)),
+            np.nan_to_num(abs(xc1.reshape(-1, 1) - xc2) * 2 < (wd1.reshape(-1, 1) + wd2), nan=False),
+            np.nan_to_num(abs(yc1.reshape(-1, 1) - yc2) * 2 < (ht1.reshape(-1, 1) + ht2), nan=False),
         )
 
+# Return list of objects on top of other objects
+def overlapping_els(svg,tocheck):
+    els = [el for el in svg.descendants2() if isdrawn(el)]
+    bbs = BB2(svg, els, roughpath=True, parsed=True)
+    bbs = [bbox(bbs.get(el.get_id())) for el in els]
+    
+    chki = [i for i,el in enumerate(els) if el in tocheck]
+    bbs_check = [bbs[i] for i in chki]
+    intrscts = bb_intersects(bbs, bbs_check)
+    
+    ret = {el: [] for el in tocheck}
+    for j,ci in enumerate(chki):
+        elj = els[ci]
+        for i in range(ci+1,len(els)):
+            eli = els[i]
+            ds = elj.descendants2()
+            if intrscts[i,j] and eli not in ds:
+                ret[elj].append(eli)
+    
+    # for k,v in ret.items():
+    #     dh.idebug(k.get_id()+': '+str([v2.get_id() for v2 in v]))
+    return ret
 
 # Get SVG from file
 from inkex import load_svg

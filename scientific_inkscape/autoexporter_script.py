@@ -782,8 +782,8 @@ else:
     try:
         import tkinter
 
-        promptstring = "\nEnter D to change directories, R to change DPI, F to"
-        " export a file, A to export all now, and Q to quit: "
+        promptstring = ("\nEnter D to change directories, R to change DPI, F to"
+        " export a file, A to export all now, and Q to quit: ")
         hastkinter = True
     except:
         promptstring = "\nEnter A to export all now, R to change DPI, and Q to quit: "
