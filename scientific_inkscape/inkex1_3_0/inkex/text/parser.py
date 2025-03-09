@@ -140,7 +140,7 @@ class ParsedTextList(list):
         for j, chk in enumerate(tws):
             if KERN_TABLE:
                 for i in range(1, chk.ncs):
-                    wadj[idx + i] = chk.chrs[i].dkerns(chk.chrs[i - 1].c, chk.chrs[i].c)
+                    wadj[idx + i] = chk.chrs[i].dkerns(chk.chrs[i - 1].c, chk.chrs[i].c)*(chk.dxeff[i]==0)
 
             for i in range(chk.ncs):
                 cwd[idx + i] = chk.cwd[i]
@@ -2865,7 +2865,7 @@ class TChunk:
             wadj = [0] * self.ncs
             if KERN_TABLE:
                 for i in range(1, self.ncs):
-                    wadj[i] = self.chrs[i].dkerns(self.chrs[i - 1].c, self.chrs[i].c)
+                    wadj[i] = self.chrs[i].dkerns(self.chrs[i - 1].c, self.chrs[i].c)*(self.dxeff[i]==0)
                     # default to 0 for chars of different style
 
             chks = [self.cwd[i] + self.dxeff[i] + wadj[i] for i in range(self.ncs)]
