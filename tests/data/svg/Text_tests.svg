@@ -3743,7 +3743,16 @@
          style="font-variant:normal;font-weight:500;font-size:7.99997px;font-family:'Whitney Book';writing-mode:lr-tb;fill:#262626;fill-opacity:1;fill-rule:nonzero;stroke:none"
          x="0"
          dx="0 -0.94399649 -0.14399946"
-         y="0">Transmission </tspan></text></g><style
+         y="0">Transmission </tspan></text><text
+       class="cls-16"
+       transform="matrix(0.36577291,0,0,0.36577291,12.694917,66.791416)"
+       id="text67"
+       style="font-size:9px;font-family:Avenir-Book, Avenir"><tspan
+         class="cls-18"
+         id="tspan66">V</tspan><tspan
+         x="5"
+         y="0"
+         id="tspan67">ertical</tspan></text></g><style
      type="text/css"
      id="style4742">
 	.st0{fill:#010202;}

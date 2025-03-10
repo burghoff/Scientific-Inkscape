@@ -2325,12 +2325,12 @@ class TLine:
                 if len(chk.chrs) > 0:
                     newxv = self.x
                     newxv[chk.chrs[0].lnindex] = newx
-
                     self.write_xy(newxv)
                     alignd = {"start": "start", "middle": "center", "end": "end"}
                     chk.chrs[0].loc.elem.cstyle.__setitem__(
                         "text-anchor", newanch, "text-align", alignd[newanch]
                     )
+                    self.continuex = False
 
                 self.anchor = newanch
                 self.anchfrac = anfr
