@@ -1405,7 +1405,8 @@ class AutoExporter(inkex.EffectExtension):
                     othv = default_style_atts[oth]
                 if othv is not None:
                     if "," not in othv:
-                        dsd.cstyle[oth] = str((dh.ipx(othv) or 0) * scv)
+                        if 'em' not in othv: # scaling not needed for em sizes
+                            dsd.cstyle[oth] = str((dh.ipx(othv) or 0) * scv)
                     else:
                         dsd.cstyle[oth] = ",".join(
                             [str((dh.ipx(v) or 0) * scv) for v in othv.split(",")]
