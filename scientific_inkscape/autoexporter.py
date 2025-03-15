@@ -490,6 +490,9 @@ class AutoExporter(inkex.EffectExtension):
                 # Inkscape inappropriately clips non-'optimizeQuality' images
                 # when generating PDFs and calculating bounding boxes
                 elem.cstyle["image-rendering"] = "optimizeQuality"
+                # Set image x,y,width,height to standard values to prevent Office
+                # from mishandling clips
+                AutoExporter.standardize_image(elem)
 
             # Remove style attributes with invalid URLs
             # (Office doesn't display the element while Inkscape ignores it)
@@ -1461,6 +1464,18 @@ class AutoExporter(inkex.EffectExtension):
                             elem.set("xlink:href", newstr)
                             mask.delete()
                             elem.set("mask", None)
+
+    @staticmethod
+    def standardize_image(elem):
+        """Office has difficulty with clipped images with a nonzero x or y."""
+        xv = dh.ipx(elem.get('x','0'))
+        yv = dh.ipx(elem.get('y','0'))
+        if xv!=0 or yv!=0:
+            grp = dh.group([elem], moveTCM=True)
+            elem.set('x','0')
+            elem.set('y','0')
+            elem.ctransform = inkex.Transform(f'translate({xv},{yv})')
+            dh.ungroup(grp)
 
     @staticmethod
     def replace_with_raster(elem, imgloc, bbx, imgbbox):

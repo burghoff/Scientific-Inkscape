@@ -507,13 +507,13 @@ def subprocess_repeat(argin):
         CompletedProcess: The result from the subprocess call.
     """
     base_timeout = 60
-    nattempts = 4
+    nattempts = 6
     import subprocess
 
     nfails = 0
     ntime = 0
     for i in range(nattempts):
-        timeout = base_timeout * (i + 1)
+        timeout = base_timeout * 2**i
         try:
             os.environ["SELF_CALL"] = "true"  # seems to be needed for 1.3
             proc = subprocess.run(
@@ -529,15 +529,14 @@ def subprocess_repeat(argin):
             nfails += 1
             ntime += timeout
     if nfails == nattempts:
-        inkex.utils.errormsg(
-            "Error: The call to the Inkscape binary timed out "
+        raise TimeoutError(
+            "\nThe call to the Inkscape binary timed out "
             + str(nattempts)
             + " times in "
             + str(ntime)
             + " seconds.\n\n"
             + "This may be a temporary issue; try running the extension again."
         )
-        sys.exit()
     else:
         return proc
 
