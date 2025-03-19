@@ -112,8 +112,6 @@ class BaseElementCache(BaseElement):
             self.elem = elem
             self.init = True
             super().__init__(val)
-            if "font" in self:
-                self.update(BaseElementCache.parse_font_shorthand(self['font']))
             self.init = False
 
         def __setitem__(self, *args):
@@ -137,36 +135,7 @@ class BaseElementCache(BaseElement):
                             changedvalue = True
                 if changedvalue:
                     self.elem.cstyle = self
-                    
-    @staticmethod
-    def parse_font_shorthand(font_string):
-        """ Parses a font shorthand into relevant properties """
-        font_pattern = re.compile(
-            r'^(?:(italic|oblique|normal)\s+)?'  # font-style
-            r'(?:(small-caps)\s+)?'             # font-variant
-            r'(?:(bold|bolder|lighter|\d{3})\s+)?'  # font-weight
-            r'(?:(ultra-condensed|extra-condensed|condensed|semi-condensed|normal|semi-expanded|expanded|extra-expanded|ultra-expanded)\s+)?'  # font-stretch
-            r'([0-9]+(?:\.[0-9]+)?(?:px|pt|em|rem|%)?)'  # font-size (with optional decimal)
-            r'(?:/([0-9]+(?:\.[0-9]+)?(?:px|pt|em|rem|%)?))?'  # optional line-height
-            r'\s+'  # one or more spaces
-            r'(.+)$'  # the rest is font-family
-        )
 
-        match = font_pattern.match(font_string)
-        if match:
-            font_style, font_variant, font_weight, font_stretch, font_size, line_height, font_family = match.groups()
-            font_data = {
-                "font-style": font_style,
-                "font-variant": font_variant,
-                "font-weight": font_weight,
-                "font-stretch": font_stretch,
-                "font-size": font_size,
-                "line-height": line_height,
-                "font-family": font_family.strip() if font_family else None,
-            }
-            return {k: v for k, v in font_data.items() if v is not None}
-        else:
-            return dict()  # Invalid or unsupported font string
 
     class CStyleDescriptor:
         """Descriptor for caching and managing style changes."""
@@ -209,6 +178,8 @@ class BaseElementCache(BaseElement):
                 ret = parent.cspecified_style + self.ccascaded_style
             else:
                 ret = self.ccascaded_style
+            if "font" in ret:
+                ret = ret + BaseElementCache.font_shorthand(ret["font"])
             self._cspecified_style = ret
         return self._cspecified_style
 
@@ -223,6 +194,37 @@ class BaseElementCache(BaseElement):
                 pass
 
     cspecified_style = property(get_cspecified_style, set_cspecified_style)
+    
+    shorthand_font_pattern = re.compile(
+        r'^(?:(italic|oblique|normal)\s+)?'  # font-style
+        r'(?:(small-caps)\s+)?'             # font-variant
+        r'(?:(bold|bolder|lighter|\d{3})\s+)?'  # font-weight
+        r'(?:(ultra-condensed|extra-condensed|condensed|semi-condensed|normal|semi-expanded|expanded|extra-expanded|ultra-expanded)\s+)?'  # font-stretch
+        r'([0-9]+(?:\.[0-9]+)?(?:px|pt|em|rem|%)?)'  # font-size (with optional decimal)
+        r'(?:/([0-9]+(?:\.[0-9]+)?(?:px|pt|em|rem|%)?))?'  # optional line-height
+        r'\s+'  # one or more spaces
+        r'(.+)$'  # the rest is font-family
+    )
+    
+    @staticmethod
+    def font_shorthand(fontstr):
+        """ Parses a font shorthand into relevant properties """
+        match = BaseElementCache.shorthand_font_pattern.match(fontstr)
+        if match:
+            font_style, font_variant, font_weight, font_stretch, font_size, line_height, font_family = match.groups()
+            font_data = {
+                "font-style": font_style,
+                "font-variant": font_variant,
+                "font-weight": font_weight,
+                "font-stretch": font_stretch,
+                "font-size": font_size,
+                "line-height": line_height,
+                "font-family": font_family.strip() if font_family else None,
+            }
+            ret = {k: v for k, v in font_data.items() if v is not None}
+        else:
+            ret = dict()  # Invalid or unsupported font string
+        return ret
 
     # Cached cascaded style property
     svgpres = {

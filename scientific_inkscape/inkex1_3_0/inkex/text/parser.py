@@ -283,14 +283,14 @@ class ParsedText:
         sty = elem.cspecified_style
         self.isflow = (
             elem.tag == FRtag
-            or sty.get_link("shape-inside", elem.croot) is not None
+            or (elem.croot is not None and sty.get_link("shape-inside", elem.croot) is not None)
             or ipx(sty.get("inline-size"))
         )
         self._tree = None
         self.dchange, self.writtendx, self.writtendy = [None] * 3
         self.achange = False
         if DEPATHOLOGIZE:
-            remove_overflow_position_overflows(elem)
+            remove_position_overflows(elem)
         if self.isflow:
             self.parse_lines_flow()
         else:
@@ -4042,7 +4042,7 @@ def xyset(elem, xyt, val):
     else:
         EBset(elem, xyt, ' '.join('%s' % v for v in val))
 
-def remove_overflow_position_overflows(el):
+def remove_position_overflows(el):
     """
     Normally Inkscape only produces multiple position attributes (x,y,dx,dy) on a
     tspan corresponding to the number of characters. It does support more than this,
