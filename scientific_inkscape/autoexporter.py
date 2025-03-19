@@ -55,7 +55,7 @@ import lxml
 import dhelpers as dh
 import inkex
 from inkex import TextElement, Transform, Vector2d
-from inkex.text.utils import default_style_atts, unique, get_bounding_boxes
+from inkex.text.utils import default_style_atts, unique
 from inkex.text.cache import BaseElementCache
 from inkex.text.parser import ParsedText, xyset
 
@@ -833,7 +833,7 @@ class AutoExporter(inkex.EffectExtension):
 
         try:
             eargs = ["--actions", "".join(acts)]
-            bbs = get_bounding_boxes(
+            bbs = dh.get_bounding_boxes(
                 filename=fnm, inkscape_binary=inkbin, extra_args=eargs
             )
             for i, act in enumerate(acts):

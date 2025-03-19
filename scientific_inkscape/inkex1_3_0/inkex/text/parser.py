@@ -46,7 +46,6 @@ which draws rectangles that tell you where the extents / bboxes are. For example
 - el.parsed_text.make_highlights('fullink') : shows the bbox of the whole element
 """
 
-import os
 import itertools
 import math
 from copy import copy
@@ -70,7 +69,6 @@ from inkex.text.utils import (
     composed_lineheight,
     default_style_atts,
     isrectangle,
-    get_bounding_boxes,
     ipx,
     bbox,
 )
@@ -3581,7 +3579,7 @@ class CharacterTable:
             # Prefer to measure with Pango if we have it (faster, more accurate)
             self.ctable = self.measure_characters()
         else:
-            # Can also extract directly using fonttools
+            # Can also extract directly using fonttools, which is pure Python
             self.ctable = self.extract_characters()
 
         self.mults = dict()
@@ -3626,6 +3624,7 @@ class CharacterTable:
     def extract_characters(self):
         """
         Direct extraction of character metrics from the font file using fonttools
+        fonttools is pure Python, so this usually works
         """
         badchars = {"\n", "\r"}
         ret = dict()
@@ -3673,63 +3672,24 @@ class CharacterTable:
                     ret[sty][c] = CProp(c, 0, 0, 0, dict(), [0, 0, 0, 0])
         return ret
 
-    def measure_characters(self, forcecommand=False):
+    def measure_characters(self):
         """
         Uses Pango to measure character properties by rendering them on an unseen
         context. Requires GTK Python bindings, generally present in Inkscape 1.1 and
-        later. If Pango is absent, a slow Inkscape command call is used instead.
+        later. If Pango is absent, extract_characters will be called instead.
 
         Generates prefixed, suffixed copies of each string, compares them to a blank
         version without any character. This measures the logical advance, i.e., the
         width including intercharacter space. Width corresponds to a character with
         a composed font size of 1 uu.
         """
-        if forcecommand:
-            # Examine the whole document if using command
-            ctels = [ddv for ddv in self.root.iddict.descendants if ddv.tag in TEFRtags]
-            self.tstyset, self.pchrset, self.fstyset, self.cstys = (
-                CharacterTable.collect_characters(ctels)
-            )
-
-        usepango = HASPANGO and not forcecommand
-        # usepango = False
         cnt = 0
-        if not usepango:
-            # A new document is generated instead of using the existing one.
-            # We don't have to parse an entire element tree
-            # test document has uu = 1 mm (210 mm / 210)
-            svgstart = (
-                '<svg width="210mm" height="297mm" viewBox="0 0 210 297" '
-                'id="svg60386" xmlns="http://www.w3.org/2000/svg" '
-                'xmlns:svg="http://www.w3.org/2000/svg"> '
-                '<defs id="defs60383" /> <g id="layer1">'
-            )
-            svgstop = "</g> </svg>"
-            txtfmt = (
-                '<text xml:space="preserve" style="{};font-size:{}px" '
-                'id="text{}">{}</text>'
-            )
-            svgtexts = ""
-            import tempfile
-
-            tmpf = tempfile.NamedTemporaryFile(mode="wb", delete=False)
-            tmpname = os.path.abspath(tmpf.name)
-            tmpf.write(svgstart.encode("utf8"))
-            from xml.sax.saxutils import escape
-        else:
-            pstrings = dict()
+        pstrings = dict()
 
         def make_string(c, sty):
             nonlocal cnt
             cnt += 1
-            if not (usepango):
-                nonlocal svgtexts
-                svgtexts += txtfmt.format(sty, TEXTSIZE, cnt, escape(c))
-                if cnt % 1000 == 0:
-                    tmpf.write(svgtexts.encode("utf8"))
-                    svgtexts = ""
-            else:
-                pstrings["text" + str(cnt)] = (c, sty)
+            pstrings["text" + str(cnt)] = (c, sty)
             return "text" + str(cnt)
 
         class StringInfo:
@@ -3798,79 +3758,73 @@ class CharacterTable:
             ctbl[sty][pistr] = StringInfo(pistr, make_string(pistr, sty), dict())
             ctbl[sty][empty] = StringInfo(empty, make_string(empty, sty), dict())
 
-        if not (usepango):
-            tmpf.write((svgtexts + svgstop).encode("utf8"))
-            tmpf.close()
-            nbb = get_bounding_boxes(filename=tmpname)
-            os.remove(tmpname)
-        else:
-            # Pango querying doesn't multithread well
-            lock = threading.Lock()
-            lock.acquire()
-            try:
-                pngr = PangoRenderer()
-                nbb = dict()
-                for sty in ctbl:
-                    joinch = " "
-                    mystrs = [val[0] for k, val in pstrings.items() if val[1] == sty]
-                    myids = [k for k, val in pstrings.items() if val[1] == sty]
+        # Pango querying doesn't multithread well
+        lock = threading.Lock()
+        lock.acquire()
+        try:
+            pngr = PangoRenderer()
+            nbb = dict()
+            for sty in ctbl:
+                joinch = " "
+                mystrs = [val[0] for k, val in pstrings.items() if val[1] == sty]
+                myids = [k for k, val in pstrings.items() if val[1] == sty]
 
-                    success, metrics = pngr.set_text_style(sty)
-                    if not (success):
-                        lock.release()
-                        return self.measure_characters(forcecommand=True)
-                    joinedstr = joinch.join(mystrs) + joinch + prefix
+                success, metrics = pngr.set_text_style(sty)
+                if not (success):
+                    lock.release()
+                    return self.extract_characters()
+                joinedstr = joinch.join(mystrs) + joinch + prefix
 
-                    # We need to render all the characters, but we don't
-                    # need all of their extents. For most of them we just
-                    # need the first character, unless the following string
-                    # has length 1 (and may be differently differentially kerned)
-                    modw = [
-                        any(
-                            len(mystrs[i]) == 1
-                            for i in range(i, i + 2)
-                            if 0 <= i < len(mystrs)
+                # We need to render all the characters, but we don't
+                # need all of their extents. For most of them we just
+                # need the first character, unless the following string
+                # has length 1 (and may be differently differentially kerned)
+                modw = [
+                    any(
+                        len(mystrs[i]) == 1
+                        for i in range(i, i + 2)
+                        if 0 <= i < len(mystrs)
+                    )
+                    for i in range(len(mystrs))
+                ]
+                needexts = [
+                    "1"
+                    if len(s) == 1
+                    else "1" + "0" * (len(s) - 2) + ("1" if modw[i] else "0")
+                    for i, s in enumerate(mystrs)
+                ]
+                needexts2 = "0".join(needexts) + "1" + "1" * len(prefix)
+                pngr.render_text(joinedstr)
+                exts, _ = pngr.get_character_extents(metrics[1], needexts2)
+
+                spw = exts[-len(prefix) - 1][0][2]
+                cnt = 0
+                x = 0
+                for i, mystr in enumerate(mystrs):
+                    if modw[i]:
+                        altw = (
+                            exts[cnt + len(mystr) - 1][0][0]
+                            + exts[cnt + len(mystr) - 1][0][2]
+                            - exts[cnt][0][0]
                         )
-                        for i in range(len(mystrs))
-                    ]
-                    needexts = [
-                        "1"
-                        if len(s) == 1
-                        else "1" + "0" * (len(s) - 2) + ("1" if modw[i] else "0")
-                        for i, s in enumerate(mystrs)
-                    ]
-                    needexts2 = "0".join(needexts) + "1" + "1" * len(prefix)
-                    pngr.render_text(joinedstr)
-                    exts, _ = pngr.get_character_extents(metrics[1], needexts2)
+                    else:
+                        altw = (
+                            exts[cnt + len(mystr) + 1][0][0] - exts[cnt][0][0] - spw
+                        )
+                    wdt = altw
 
-                    spw = exts[-len(prefix) - 1][0][2]
-                    cnt = 0
-                    x = 0
-                    for i, mystr in enumerate(mystrs):
-                        if modw[i]:
-                            altw = (
-                                exts[cnt + len(mystr) - 1][0][0]
-                                + exts[cnt + len(mystr) - 1][0][2]
-                                - exts[cnt][0][0]
-                            )
-                        else:
-                            altw = (
-                                exts[cnt + len(mystr) + 1][0][0] - exts[cnt][0][0] - spw
-                            )
-                        wdt = altw
+                    firstch = exts[cnt]
+                    (xbr, ybr, wbr, hbr) = tuple(firstch[2])
+                    if myids[i] not in bareids:
+                        xbr = x
+                        wbr = wdt
+                        # use logical width
 
-                        firstch = exts[cnt]
-                        (xbr, ybr, wbr, hbr) = tuple(firstch[2])
-                        if myids[i] not in bareids:
-                            xbr = x
-                            wbr = wdt
-                            # use logical width
-
-                        nbb[myids[i]] = [val * TEXTSIZE for val in [xbr, ybr, wbr, hbr]]
-                        cnt += len(mystr) + len(joinch)
-                        x += wdt
-            finally:
-                lock.release()
+                    nbb[myids[i]] = [val * TEXTSIZE for val in [xbr, ybr, wbr, hbr]]
+                    cnt += len(mystr) + len(joinch)
+                    x += wdt
+        finally:
+            lock.release()
 
         dadv = dict()
         for sty, chd in ctbl.items():
