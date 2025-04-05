@@ -1679,7 +1679,7 @@ class AutoExporter(inkex.EffectExtension):
                         # For paths with markers, scale to make stroke-width=1
                         # Prevents incorrect marker size
                         # https://gitlab.com/inkscape/inbox/-/issues/10506#note_1931910230
-                        scaleby = 1 / dh.ipx(swd)
+                        scaleby = 1 / dh.ipx(swd) if swd is not None else 1
 
                     tfm = Transform("scale({0})".format(scaleby)) @ Transform(
                         "translate({0},{1})".format(-bbx.x1, -bbx.y1)
