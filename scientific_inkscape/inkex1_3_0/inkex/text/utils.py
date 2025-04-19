@@ -32,7 +32,6 @@ from functools import lru_cache
 import lxml
 from lxml import etree
 import inkex
-from inkex import load_svg
 import inkex.command
 from inkex.properties import all_properties
 from inkex.units import CONVERSIONS, BOTH_MATCH
@@ -446,7 +445,7 @@ class InkscapeSystemInfo:
 inkex.inkscape_system_info = InkscapeSystemInfo()  # type: ignore
 
 
-def subprocess_repeat(argin):
+def subprocess_repeat(argin,cwd=None):
     """
     In the event of a timeout, repeats a subprocess call several times.
 
@@ -472,7 +471,7 @@ def subprocess_repeat(argin):
                 timeout=timeout,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
-                check=True,
+                check=True, cwd=cwd
             )
             break
         except subprocess.TimeoutExpired:

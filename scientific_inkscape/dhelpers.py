@@ -78,7 +78,6 @@ from applytransform_mod import fuseTransform
 import lxml, math, re, os, random, sys
 from functools import lru_cache
 
-
 # Parsed Inkex version, with extension back to v0.92.4
 if not hasattr(inkex, "__version__"):
     try:
@@ -565,7 +564,7 @@ unrendered.update(
 
 
 
-def get_bounding_boxes(filename, inkscape_binary=None, extra_args=None, svg=None):
+def wrapped_binary(filename, inkscape_binary=None, extra_args=None, svg=None, get_bbs=True,cwd=None):
     """
     Retrieves all of a document's bounding boxes using a call to the Inkscape binary.
 
@@ -583,8 +582,14 @@ def get_bounding_boxes(filename, inkscape_binary=None, extra_args=None, svg=None
     if inkscape_binary is None:
         inkscape_binary = inkex.inkscape_system_info.binary_location
     extra_args = [] if extra_args is None else extra_args
-    arg2 = [inkscape_binary, "--query-all"] + extra_args + [filename]
-    proc = subprocess_repeat(arg2)
+
+    if get_bbs:
+        arg2 = [inkscape_binary, "--query-all"] + extra_args + [filename]
+        proc = subprocess_repeat(arg2,cwd=cwd)
+    else:
+        arg2 = [inkscape_binary] + extra_args + [filename]
+        proc = subprocess_repeat(arg2,cwd=cwd)
+        return None
     tfstr = proc.stdout
 
     # Parse the output
@@ -605,7 +610,6 @@ def get_bounding_boxes(filename, inkscape_binary=None, extra_args=None, svg=None
     # Convert to user units for the output
     if svg is None:
         # If SVG not supplied, load from file from load_svg
-
         svg = load_svg(filename).getroot()
 
     dsz = svg.cdocsize
@@ -675,7 +679,7 @@ def BB2(svg, els=None, forceupdate=False, roughpath=False, parsed=False):
         with tempfile.TemporaryFile() as temp:
             tname = os.path.abspath(temp.name)
             overwrite_svg(svg, tname)
-            ret = get_bounding_boxes(filename=tname, svg=svg)
+            ret = wrapped_binary(filename=tname, svg=svg)
 
     return ret
 
@@ -1195,31 +1199,49 @@ def Get_Current_File(ext, msgstr):
     else:
         return myfile
 
+    
+import threading
+sema_temp = threading.Semaphore(1)
 
-# Generate a temporary file or folder in SI's location / tmp
-# tempfile does not always work with Linux Snap distributions
-def si_tmp(dirbase="", filename=None):
+def shared_temp(headprefix = None, filename=None):
+    """
+    Generate a temporary file in the system temp folder or SI's location
+    (tempfile does not always work with Linux Snap distributions)
+
+    Can also generate a unique temp_head that can be used to prefix all temp files.
+    Since the Inkscape binary cannot handle multiple cwd arguments when multithreading,
+    (and might switch dirs unexpectedly), any exports with multiple cwd's and relative
+    paths must be done here.
+
+    """
     if sys.executable[0:4] == "/tmp" or sys.executable[0:5] == "/snap":
         si_dir = os.path.dirname(
             os.path.realpath(__file__)
         )  # in case si_dir is not loaded
-        tmp_dir = os.path.join(si_dir, "tmp")
+        system_temp = si_dir
     else:
         import tempfile
+        system_temp = tempfile.gettempdir()
+    if not os.path.exists(system_temp):
+        os.mkdir(system_temp)
 
-        tmp_dir = tempfile.gettempdir()
-    if not os.path.exists(tmp_dir):
-        os.mkdir(tmp_dir)
-    if filename is not None:  # filename input
-        return os.path.join(tmp_dir, filename)
-    else:  # directory
-        subdir_name = dirbase + str(random.randint(1, 100000))
-        subdir_path = os.path.join(tmp_dir, subdir_name)
-        while os.path.exists(subdir_path):
-            subdir_name = dirbase + str(random.randint(1, 100000))
-            subdir_path = os.path.join(tmp_dir, subdir_name)
-        os.mkdir(subdir_path)
-        return subdir_path
+    tempdir = os.path.join(os.path.abspath(system_temp), 'si_temp')
+    if not os.path.exists(tempdir):
+        os.mkdir(tempdir)
+        
+    if headprefix is not None:
+        with sema_temp:
+            pnum = random.randint(1, 100000)
+            while any(t.startswith(f"{headprefix}{pnum:05d}") for t in os.listdir(tempdir)):
+                pnum = random.randint(1, 100000)
+            temphead = f"{headprefix}{pnum:05d}"
+            tempbase = os.path.join(tempdir, temphead)
+            open(tempbase+'.lock', 'w').close()
+        return tempdir, temphead
+    if filename is not None:
+        return os.path.join(tempdir,filename)
+    return tempdir
+    
 
 
 ttags = tags((inkex.TextElement, inkex.FlowRoot))

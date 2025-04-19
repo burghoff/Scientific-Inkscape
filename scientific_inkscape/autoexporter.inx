@@ -77,7 +77,8 @@
                 gui-text="Mark selected objects to be">
                    <option value="1">Rasterized as PNG</option>
                    <option value="2">Rasterized as JPG</option>
-                   <option value="3">Left unchanged</option>
+                   <option value="3">Converted to path</option>
+                   <option value="4">Left unchanged</option>
                 </param>
         <spacer/>
         <label>Scientific Inkscape v1.4.22</label>

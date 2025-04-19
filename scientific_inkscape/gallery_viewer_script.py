@@ -35,7 +35,6 @@ import builtins
 import dhelpers as dh
 import inkex
 import xml.etree.ElementTree as ET
-from dhelpers import si_tmp
 from autoexporter import ORIG_KEY
 from autoexporter import DUP_KEY
 from autoexporter import hash_file
@@ -43,6 +42,7 @@ from autoexporter import hash_file
 WHILESLEEP = 0.25
 IMAGE_WIDTH = 175
 IMAGE_HEIGHT = IMAGE_WIDTH * 0.7
+MAXATTEMPTS = 1
 
 original_print = print
 
@@ -200,7 +200,7 @@ def Make_Flask_App():
 
     @app.route("/gallery_data")
     def gallery_data():
-        global temp_dir, truepath, watcher_threads
+        global truepath, watcher_threads
     
         # Collect the gallery data to be sent dynamically
         gallery_data = []
@@ -293,7 +293,6 @@ def Make_Flask_App():
             with OpenWithEncoding(svg_file) as f:
                 file_content = f.read()
                 if DUP_KEY in file_content:
-                    global temp_dir
                     deembedsmade = False
                     while not (deembedsmade):
                         deembeds = os.path.join(temp_dir, "deembeds")
@@ -355,8 +354,8 @@ def Make_Flask_App():
     thread.start()
     return app
 
-global temp_dir
-temp_dir = si_tmp(dirbase="gv")
+temp_dir, temp_head = dh.shared_temp("gv")
+temp_base = os.path.join(temp_dir,temp_head)
 global conv_number, conv_lock, running_cthreads
 conv_number = 0
 conv_lock = threading.Lock()
@@ -410,7 +409,7 @@ class ConversionThread(threading.Thread):
             file_content = file.read()
             hashed = hashlib.sha256(file_content).hexdigest()
             
-        global converted_files, temp_dir, conv_number, conv_lock
+        global converted_files, conv_number, conv_lock
 
         # Check if the file has already been converted
         if hashed not in converted_files:
@@ -422,12 +421,12 @@ class ConversionThread(threading.Thread):
 
                     # Ensure the conversions directory exists
                     conv_lock.acquire()
-                    conversions_dir = os.path.join(temp_dir, "conversions")
+                    conversions_dir = os.path.join(temp_dir)
                     if not os.path.exists(conversions_dir):
                         os.mkdir(conversions_dir)
 
                     # Generate a unique conversion path
-                    conversion_path = os.path.join(conversions_dir, f"{conv_number}.png")
+                    conversion_path = os.path.join(conversions_dir, f"{temp_head}_conv{conv_number}.png")
                     conv_number += 1
                     conv_lock.release()
 
@@ -470,7 +469,7 @@ class ConversionThread(threading.Thread):
                                 
                                 new_height = int((new_width / width) * height)
                                 if 'info' in im.__dict__ and "dpi" in im.info and isinstance(im.info["dpi"],tuple) and len(im.info["dpi"]) == 2:
-                                    print(im.info['dpi'])
+                                    # print(im.info['dpi'])
                                     new_height = int((new_width / width * im.info["dpi"][0]/im.info["dpi"][1]) * height)
                                 resized_image = im.resize((new_width, new_height), Image.LANCZOS)
                                 resized_image.save(conversion_path)
@@ -516,6 +515,10 @@ class WatcherThread(threading.Thread):
         self.can_display = False
         
         self.cthreads = []  # conversion threads
+        
+        global thread_no
+        self.thread_no = thread_no
+        thread_no += 1
 
     def get_image_slidenums(self, dirin):
         relsdir = os.path.join(dirin, "ppt", "slides", "_rels")
@@ -630,12 +633,11 @@ class WatcherThread(threading.Thread):
 
     def run_on_fof(self):
         print("Running on file: " + self.fof)
-        global temp_dir
 
         contentsmade = False
         while not (contentsmade):
             contents = os.path.join(
-                temp_dir, "contents" + str(random.randint(1, 100000))
+                temp_dir, f"{temp_head}_cont{self.thread_no}"
             )
             if not (os.path.exists(contents)):
                 os.mkdir(contents)
@@ -660,7 +662,7 @@ class WatcherThread(threading.Thread):
             # Unzip the ppt file to the temp directory, allowing for multiple
             # attempts in case the file was not originally found (which can 
             # happen in cloud drives)
-            if self.fof.endswith(".pptx"):
+            if self.fof.endswith(".pptx") or self.fof.endswith(".pptm"):
                 ftype = "ppt"
             elif self.fof.endswith(".one"):
                 ftype = "onenote"
@@ -939,6 +941,7 @@ converted_files = dict()
 lastupdate = time.time()
 watcher_threads = []
 openedgallery = False
+thread_no = 0
 
 def process_selection(file, opened=True):
     if os.path.isdir(file) and os.path.isfile(os.path.join(file, "Gallery.cfg")):
@@ -966,15 +969,37 @@ def quitnow():
         "http://localhost:{}/stop".format(str(PORTNUMBER))
     )  # kill Flask app
 
+
+    # remove temp files
+    tmps = []
+    for t in os.listdir(temp_dir):
+        tmp = os.path.join(temp_dir, t)
+        try:
+            one_day_ago = time.time() - 24 * 60 * 60
+            if os.path.getmtime(tmp) < one_day_ago:
+                tmps.append(tmp)
+        except FileNotFoundError:  # already deleted
+            pass
+        if tmp.startswith(temp_base):
+            tmps.append(tmp)
+    
+    for tmp in tmps:
+        if os.path.exists(tmp):
+            deleted = False
+            nattempts = 0
+            while not deleted and nattempts < MAXATTEMPTS:
+                try:
+                    if os.path.isdir(tmp):
+                        shutil.rmtree(tmp)
+                    else:
+                        os.remove(tmp)
+                    deleted = True
+                except PermissionError:
+                    time.sleep(1)
+                    nattempts += 1
+
     for wt in watcher_threads:
         wt.stopped = True
-
-    global temp_dir
-    attempts = 0
-    while os.path.exists(temp_dir) and attempts < 5:
-        shutil.rmtree(temp_dir)
-        attempts += 1
-        time.sleep(5)
 
     pid = os.getpid()
     import signal
@@ -1061,6 +1086,7 @@ if guitype == "gtk":
             filter_ppt.set_name("Office files")
             filter_ppt.add_pattern("*.docx")
             filter_ppt.add_pattern("*.pptx")
+            filter_ppt.add_pattern("*.pptm")
             filter_ppt.add_pattern("*.one")
             native.add_filter(filter_ppt)
             response = native.run()

@@ -72,7 +72,7 @@ class GalleryViewer(inkex.EffectExtension):
         optcopy.inkscape_bfn = bfn
         optcopy.syspath = sys.path
         optcopy.inshell = False
-        optcopy.logfile = dh.si_tmp(filename="si_gv_output.txt")
+        optcopy.logfile = dh.shared_temp(filename="si_gv_output.txt")
 
         import tempfile
         settings = os.path.join(
