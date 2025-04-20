@@ -676,10 +676,20 @@ def BB2(svg, els=None, forceupdate=False, roughpath=False, parsed=False):
     else:
         import tempfile
 
-        with tempfile.TemporaryFile() as temp:
+        # with tempfile.TemporaryFile() as temp:
+        #     idebug(temp.name)
+        #     tname = os.path.abspath(temp.name)
+        #     overwrite_svg(svg, tname)
+        #     ret = wrapped_binary(filename=tname, svg=svg)
+            
+        with tempfile.NamedTemporaryFile(delete=False) as temp:
             tname = os.path.abspath(temp.name)
+        try:
             overwrite_svg(svg, tname)
             ret = wrapped_binary(filename=tname, svg=svg)
+        finally:
+            if os.path.exists(tname):
+                os.remove(tname)
 
     return ret
 
