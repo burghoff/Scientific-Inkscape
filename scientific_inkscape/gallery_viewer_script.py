@@ -20,7 +20,7 @@ PORTNUMBER = input_options.portnum
 sys.stdout = open(input_options.logfile, "w")
 sys.stderr = sys.stdout
 
-import sys, subprocess, threading, time, copy, pickle, chardet
+import sys, subprocess, threading, time, pickle, chardet
 import random
 import webbrowser, urllib, pathlib
 import warnings
@@ -107,7 +107,6 @@ def trigger_refresh():
     refreshapp = True
     
 def show_in_file_browser(path):
-    import time
     if not os.path.exists(path):
         raise FileNotFoundError(f"The path {path} does not exist.")
 
@@ -120,7 +119,7 @@ def show_in_file_browser(path):
 
         # Define necessary Windows types and constants
         LPCTSTR = wintypes.LPCWSTR
-        HWND = wintypes.HWND
+        # HWND = wintypes.HWND
         UINT = wintypes.UINT
         LPVOID = ctypes.c_void_p
 
@@ -206,15 +205,16 @@ def Make_Flask_App():
         gallery_data = []
         for wt in watcher_threads:
             files_data = []
-            for ii, svg in enumerate(wt.files):
+            for ii, f in enumerate(wt.files):
+                svg = f.name
                 svg_file_uri = pathlib.Path(svg).as_uri()
-                embed_uri = pathlib.Path(wt.embeds[ii]).as_uri() if wt.embeds[ii] else None
-                if wt.slidenums[ii] is not None:
-                    label = f"Slide {wt.slidenums[ii]}" 
+                embed_uri = pathlib.Path(wt.files[ii].embed).as_uri() if wt.files[ii].embed else None
+                if wt.files[ii].slidenum is not None:
+                    label = f"Slide {wt.files[ii].slidenum}" 
                 else:
                     pn = (
-                            " ({0})".format(wt.pagenums[ii])
-                            if wt.pagenums[ii] is not None
+                            " ({0})".format(wt.files[ii].pagenum)
+                            if wt.files[ii].pagenum is not None
                             else ""
                         )
                     label = os.path.split(svg)[-1] + pn
@@ -222,7 +222,7 @@ def Make_Flask_App():
                 # Determine currenttype accurately
                 if os.path.isdir(wt.fof):
                     currenttype = "Current"
-                elif wt.islinked[ii]:
+                elif wt.files[ii].islinked:
                     currenttype = "Linked"
                 else:
                     currenttype = "Embedded"
@@ -231,7 +231,9 @@ def Make_Flask_App():
                 truepath_lock.acquire()
                 svg_folder, svg_file_name = os.path.split(svg)
                 if svg_folder not in truepath.values():
-                    svg_folder_key = os.path.split(temp_dir)[-1] + "-dir" + str(len(truepath))
+                    svg_folder_key = os.path.split(temp_dir)[-1] + "-dir" + str(random.randint(1, 100000))
+                    while svg_folder_key in truepath:
+                        svg_folder_key = os.path.split(temp_dir)[-1] + "-dir" + str(random.randint(1, 100000))
                     truepath[svg_folder_key] = svg_folder
                 else:
                     svg_folder_key = next(key for key, value in truepath.items() if value == svg_folder)
@@ -239,10 +241,12 @@ def Make_Flask_App():
                 file_url = url_for("send_image", path=svg_file_name, folder=svg_folder_key)
     
                 # Get the folder key and URL for the thumbnail
-                thumbnail = wt.thumbnails[ii]
+                thumbnail = wt.files[ii].thumbnail
                 thumbnail_folder, thumbnail_file_name = os.path.split(thumbnail)
                 if thumbnail_folder not in truepath.values():
-                    thumbnail_folder_key = os.path.split(temp_dir)[-1] + "-dir" + str(len(truepath))
+                    thumbnail_folder_key = os.path.split(temp_dir)[-1] + "-dir" + str(random.randint(1, 100000))
+                    while thumbnail_folder_key in truepath:
+                        thumbnail_folder_key = os.path.split(temp_dir)[-1] + "-dir" + str(random.randint(1, 100000))
                     truepath[thumbnail_folder_key] = thumbnail_folder
                 else:
                     thumbnail_folder_key = next(key for key, value in truepath.items() if value == thumbnail_folder)
@@ -361,8 +365,6 @@ conv_number = 0
 conv_lock = threading.Lock()
 running_cthreads = []
 
-
-
 # Opens a file with unknown encoding, trying utf-8 first
 # chardet can be slow
 class OpenWithEncoding:
@@ -391,21 +393,18 @@ class OpenWithEncoding:
     
 class ConversionThread(threading.Thread):
     # Converts an EMF/WMF to PNG to be used as a thumbnail
-    def __init__(self, filein, index, parent_watcher, fileout):
+    def __init__(self, filein, parent_watcher, fileout):
         super().__init__()
-        self.filein = filein
-        self.thumbnails = parent_watcher.thumbnails
-        self.index = index
+        self.file = filein
         self.parent = parent_watcher  # Reference to the parent class instance
         self.done = False
         self.fileout = fileout
 
     def run(self):
-        filein = self.filein
-        # fileout = self.thumbnails[self.index]
+        fname = self.file.name
 
         # Read and hash the input file to check for duplicates
-        with open(filein, "rb") as file:
+        with open(fname, "rb") as file:
             file_content = file.read()
             hashed = hashlib.sha256(file_content).hexdigest()
             
@@ -417,7 +416,7 @@ class ConversionThread(threading.Thread):
             nattempts = 0
             while notdone and nattempts < 5:
                 try:
-                    print("Starting export of "+filein+' (attempt no. '+str(nattempts)+')')
+                    print("Starting export of "+fname+' (attempt no. '+str(nattempts)+')')
 
                     # Ensure the conversions directory exists
                     conv_lock.acquire()
@@ -448,20 +447,20 @@ class ConversionThread(threading.Thread):
                             "400",
                             "--export-filename",
                             conversion_path,
-                            filein,
+                            fname,
                         ]
     
                         # Execute the conversion command
                         dh.subprocess_repeat(args)
-                        print('Inkscape export of '+filein)
+                        print('Inkscape export of '+fname)
                     else:
                         from PIL import Image
-                        with open(filein, "rb") as file:
+                        with open(fname, "rb") as file:
                             with Image.open(file) as im:
                                 width, height = im.size
                                 new_width = 400
                                 
-                                if filein.endswith('.wmf'):
+                                if fname.endswith('.wmf'):
                                     DEFAULT_DPI = 72
                                     new_dpi = max(10,int(new_width / width * DEFAULT_DPI))
                                     im.load(dpi=new_dpi)
@@ -473,7 +472,7 @@ class ConversionThread(threading.Thread):
                                     new_height = int((new_width / width * im.info["dpi"][0]/im.info["dpi"][1]) * height)
                                 resized_image = im.resize((new_width, new_height), Image.LANCZOS)
                                 resized_image.save(conversion_path)
-                                print('PIL export of '+filein + ' originally '+str(width)+' x '+str(height))
+                                print('PIL export of '+fname + ' originally '+str(width)+' x '+str(height))
 
                     # Move the converted file to the final destination
                     shutil.move(conversion_path, self.fileout)
@@ -481,7 +480,7 @@ class ConversionThread(threading.Thread):
                     notdone = False
                     print("Finished export...")
                 except Exception as e:
-                    print(f"Error during export: {e}")
+                    print(f"Failed export: {e}")
                     nattempts += 1
 
             # Trigger a refresh and update the converted files dictionary
@@ -490,14 +489,31 @@ class ConversionThread(threading.Thread):
             # If already converted, copy the existing file
             shutil.copy2(converted_files[hashed], self.fileout)
         if os.path.exists(self.fileout):
-            self.thumbnails[self.index] = self.fileout
+            self.file.thumbnail = self.fileout
             trigger_refresh()
         self.done = True
+
+class DisplayedFile():
+    """ Represents a single file we are displaying """
+    def __init__(self,val):
+        self.name = str(val);
+        self.thumbnail = str(val)
+        self.slidenum = None
+        self.islinked = False
+        self.embed = None
+        self.pagenum = None
+        
+    def __str__(self):
+        return self.name
     
+    def __lt__(self, other):
+        if isinstance(other, DisplayedFile):
+            return self.name < other.name
+        return self.name < other  # Fallback for comparing with strings
 
 class WatcherThread(threading.Thread):
-    # A thread that generates an SVG gallery of files, then watches
-    # it for changes
+    """ A thread that generates an SVG gallery of files, then watches
+    it for changes """
     def __init__(self, file_or_folder, opened=True):
         threading.Thread.__init__(self)
         self.fof = file_or_folder
@@ -506,14 +522,8 @@ class WatcherThread(threading.Thread):
         self.run_on_fof_done = False
         
         self.files = []
-        self.thumbnails = []
         self.header = self.fof
-        self.slidenums = []
-        self.islinked = []
-        self.embeds = []
-        self.pagenums = []
         self.can_display = False
-        
         self.cthreads = []  # conversion threads
         
         global thread_no
@@ -649,7 +659,7 @@ class WatcherThread(threading.Thread):
                 # if file.endswith(".svg") or file.endswith(".emf") or file.endswith(".wmf"):
                 valid_exts = ['svg','emf','wmf','png','gif','jpg','jpeg']
                 if any(file.lower().endswith('.'+ext) for ext in valid_exts):
-                    svg_filenames.append(os.path.join(dirin, file))
+                    svg_filenames.append(DisplayedFile(os.path.join(dirin, file)))
             svg_filenames.sort()
             return svg_filenames
 
@@ -694,21 +704,20 @@ class WatcherThread(threading.Thread):
                         else:
                             print(f'Attempt {attempts} to unzip {self.fof} failed. Retrying...')
 
+            self.files = []
             if os.path.exists(media_dir):
-                self.files = get_svgs(media_dir)
-            else:
-                self.files = []
+                self.files += get_svgs(media_dir)
             if ftype == "ppt":
                 image_slides = self.get_image_slidenums(contents)
 
                 # Add linked images to self.files
                 linked = [
-                    str(file_uri_to_path(k))
+                    DisplayedFile(file_uri_to_path(k))
                     for k in image_slides.keys()
                     if "file:" in k
                 ]
                 self.files += linked
-                self.slidenums = {
+                slidenums = {
                     os.path.join(contents, "ppt", "media", os.path.basename(k))
                     if "file:" not in k
                     else str(file_uri_to_path(k)): v
@@ -717,48 +726,34 @@ class WatcherThread(threading.Thread):
 
                 # Sort the files by slide number and make slidenums a corresponding list
                 # Duplicates filenames if on multiple slides
-                new_files = []
-                new_slidenums = []
+                exp_files = []
                 for file in self.files:
-                    slides = self.slidenums.get(file, [float("inf")])
+                    slides = slidenums.get(file.name, [float("inf")])
                     for slide in slides:
-                        new_files.append(file)
-                        new_slidenums.append(slide)
-                if len(new_files)>0:
-                    new_files_and_slidenums = sorted(
-                        zip(new_files, new_slidenums), key=lambda x: (x[1], x[0])
-                    )
-                    self.files, self.slidenums = zip(*new_files_and_slidenums)
-                    self.files = list(self.files)
-                    self.slidenums = list(self.slidenums)
+                        exp_files.append((file,slide))
+                if len(exp_files)>0:
+                    # Sort by slide and then name
+                    self.files, slidenums = map(list, zip(*sorted(exp_files, key=lambda x: (x[1], x[0]))))
                 else:
-                    self.files = []
-                    self.slidenums = []
-                self.slidenums = [
-                    v if v != float("inf") else "?" for v in self.slidenums
-                ]
-                self.islinked = [f in linked for f in self.files]
+                    self.files, slidenums = [], []
+                for i, v in enumerate(slidenums):
+                    self.files[i].slidenum =  v if v != float("inf") else "?"
+                    self.files[i].islinked = self.files[i] in linked
             else:
                 if ftype=='word':
-                    linked = [str(file_uri_to_path(k)) for k in self.get_linked_images_word(contents)]
-                else:
-                    linked = []
-                self.islinked= [False]*len(self.files) + [True]*len(linked)
-                self.files   = self.files + linked
-                self.slidenums = [None] * len(self.files)
-                self.embeds = [None] * len(self.files)
+                    linked = [DisplayedFile(file_uri_to_path(k)) for k in self.get_linked_images_word(contents)]
+                    for f in linked:
+                        f.islinked = True
+                    self.files += linked
 
-            self.thumbnails = copy.copy(self.files)
             self.header = self.fof
             print("Temp dir: " + temp_dir)
 
-            self.embeds = [None] * len(self.files)
-            self.pagenums = [None] * len(self.files)
             subfiles = None
-            for ii, fn in enumerate(self.files):
+            for ii, fv in enumerate(self.files):
                 ev = False
-                if fn.endswith(".svg") and os.path.exists(fn):
-                    with OpenWithEncoding(fn) as f:
+                if fv.name.endswith(".svg") and os.path.exists(fv.name):
+                    with OpenWithEncoding(fv.name) as f:
                         file_content = f.read()
                         if ORIG_KEY in file_content:
                             key = ORIG_KEY + r":\s*(.+?)<"
@@ -803,38 +798,32 @@ class WatcherThread(threading.Thread):
                                             ev = os.path.abspath(tryfile)
                                             break
 
-                self.embeds[ii]=ev
+                self.files[ii].embed=ev
             self.can_display = True
 
         elif os.path.isdir(self.fof):
             self.files = get_svgs(self.fof)
-            self.thumbnails = copy.copy(self.files)
             self.header = self.fof
-            self.slidenums = [None] * len(self.files)
-            self.islinked  = [None] * len(self.files)
-            self.embeds    = [None] * len(self.files)
-            self.pagenums  = [None] * len(self.files)
-            
             self.can_display = True
 
             ii = 0
             while ii < len(self.files):
-                fn = self.files[ii]
+                fn = self.files[ii].name
                 tns = []
             
                 # Check if the file is an SVG file
                 if fn.endswith(".svg"):
                     with OpenWithEncoding(fn) as f:
-                        contents = f.read()
-                        match = re.search(r"<\s*inkscape:page[\s\S]*?>", contents)
-                        if match:
+                        try:
+                            contents = f.read()
+                        except OSError:
+                            raise(f'Could not open {fn}')
+                        if re.search(r"<\s*inkscape:page[\s\S]*?>", contents):
                             svg = dh.svg_from_file(fn)
                             pgs = svg.cdocsize.pgs
                             haspgs = inkex.installed_haspages
-
-            
                             # If the file has multiple pages, split it
-                            if haspgs and len(pgs) > 1:
+                            if haspgs and len(pgs) > 0:
                                 vbs = [svg.cdocsize.pxtouu(pg.bbpx) for pg in pgs]
                                 for vb in vbs:
                                     svg.set_viewbox(vb)
@@ -845,41 +834,34 @@ class WatcherThread(threading.Thread):
             
                 # If thumbnails were created (multiple pages), update files and thumbnails lists
                 if len(tns) > 0:
-                    self.files[ii:ii + 1] = [fn] * len(tns)  # Replace with repeated file name
-                    self.thumbnails[ii:ii + 1] = tns         # Replace with generated thumbnails
-                    self.pagenums[ii:ii + 1] = list(range(1, len(tns) + 1))  # Page numbers from 1 onward
-                    self.slidenums[ii:ii + 1] = [None]* len(tns)
-                    self.islinked[ii:ii + 1]  = [None]* len(tns)
-                    self.embeds[ii:ii + 1]    = [None]* len(tns)
-                else:
-                    self.files[ii:ii + 1] = [self.files[ii]]  # Keep as a single file
-                    self.thumbnails[ii:ii + 1] = [self.thumbnails[ii]]  # Single thumbnail
-                    self.pagenums[ii:ii + 1] = [None]  # Single file, no page numbers needed
-                    self.slidenums[ii:ii + 1] = [None]
-                    self.islinked[ii:ii + 1]  = [None]
-                    self.embeds[ii:ii + 1]    = [None]
+                    nfiles = [DisplayedFile(fn) for t in tns]
+                    for i, n in enumerate(nfiles):
+                        n.thumbnail = tns[i]
+                        n.pagenum = i+1
+                    self.files[ii:ii + 1] = nfiles
                 trigger_refresh()
             
                 # Move ii to the next set of files
                 ii += max(len(tns),1)
         
-        for ii, tn in enumerate(self.thumbnails):
+        for ii, f in enumerate(self.files):
+            tn = f.thumbnail
             if tn.endswith(".emf"):
-                self.thumbnails[ii] = os.path.join(dh.si_dir,'pngs','converting_emf.svg')
+                f.thumbnail = os.path.join(dh.si_dir,'pngs','converting_emf.svg')
             elif tn.endswith(".wmf"):
-                self.thumbnails[ii] = os.path.join(dh.si_dir,'pngs','converting_wmf.svg')
-            elif tn.endswith(".svg") and not os.path.exists(self.files[ii]):
-                self.thumbnails[ii] = os.path.join(dh.si_dir,'pngs','missing_svg.svg')
+                f.thumbnail = os.path.join(dh.si_dir,'pngs','converting_wmf.svg')
+            elif tn.endswith(".svg") and not os.path.exists(self.files[ii].name):
+                f.thumbnail = os.path.join(dh.si_dir,'pngs','missing_svg.svg')
                 
         
         self.run_on_fof_done = True
 
     def convert_emfs(self):    
         for ii, f in enumerate(self.files):
-            if f.endswith(".emf") or f.endswith(".wmf"):
+            if f.name.endswith(".emf") or f.name.endswith(".wmf"):
                 tnpng = os.path.join(self.tndir, str(self.numtns) + ".png")
                 self.numtns += 1
-                thread = ConversionThread(f, ii, self, tnpng)
+                thread = ConversionThread(f, self, tnpng)
                 self.cthreads.append(thread)
                 
         global running_cthreads
@@ -888,7 +870,7 @@ class WatcherThread(threading.Thread):
             # Limit the number of concurrent threads to 10
             while len([t for t in running_cthreads if t.is_alive()]) > 10:
                 time.sleep(0.1)
-            print(f"Making thumbnail {self.thumbnails[thread.index]}")
+            print(f"Making thumbnail {thread.file.thumbnail}")
             running_cthreads.append(thread)
             thread.start()
                 
