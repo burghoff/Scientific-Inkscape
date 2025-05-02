@@ -216,30 +216,30 @@ def Make_Flask_App():
         # Collect the gallery data to be sent dynamically
         gallery_data = []
         tic = time.time()
-        for wt in watcher_threads:
+        for fp in processors:
             files_data = []
-            for ii, f in enumerate(wt.files):
+            for ii, f in enumerate(fp.files):
                 svg = f.name
-                if wt.files[ii].slidenum is not None:
-                    label = f"Slide {wt.files[ii].slidenum}" 
+                if fp.files[ii].slidenum is not None:
+                    label = f"Slide {fp.files[ii].slidenum}" 
                 else:
                     pn = (
-                            " ({0})".format(wt.files[ii].pagenum)
-                            if wt.files[ii].pagenum is not None
+                            " ({0})".format(fp.files[ii].pagenum)
+                            if fp.files[ii].pagenum is not None
                             else ""
                         )
                     label = os.path.split(svg)[-1] + pn
     
                 # Determine currenttype accurately
-                if wt.isdir:
+                if fp.isdir:
                     currenttype = "Current"
-                elif wt.files[ii].islinked:
+                elif fp.files[ii].islinked:
                     currenttype = "Linked"
                 else:
                     currenttype = "Embedded"
                 
                 file_url = cached_url(svg)
-                thumbnail_url = cached_url(wt.files[ii].thumbnail)
+                thumbnail_url = cached_url(fp.files[ii].thumbnail)
     
                 # Add file data
                 files_data.append({
@@ -250,9 +250,9 @@ def Make_Flask_App():
                     "currenttype": currenttype,
                     "embed": f.embed_uri,
                 })
-            processing = not wt.run_on_fof_done or any(not t.done for t in wt.cthreads)
+            processing = not fp.run_on_fof_done or any(not t.done for t in fp.cthreads)
             gallery_data.append({
-                "header": wt.header,
+                "header": fp.header,
                 "files": files_data,
                 "processing": processing
             })
@@ -493,15 +493,13 @@ class DisplayedFile():
 
 wthread_no = 0
 wthread_lock = threading.Lock()
-class WatcherThread(threading.Thread):
-    """ A thread that generates an SVG gallery of files, then watches
-    it for changes """
+class Processor(threading.Thread):
+    """ Creates a gallery for a single selection, either a file or folder """
     def __init__(self, file_or_folder, opened=True):
         threading.Thread.__init__(self)
         self.fof = file_or_folder
         self.isdir = not os.path.isfile(self.fof)
         
-        self.stopped = False
         self.open_at_load = opened
         self.run_on_fof_done = False
         
@@ -513,7 +511,17 @@ class WatcherThread(threading.Thread):
         with wthread_lock:
             self.no = wthread_no
             wthread_no += 1
-
+        
+    def create_fcn(self,path):
+        print(f"Created: {path}")
+        self.run_on_fof()
+    def mod_fcn(self,path):
+        print(f"Modified: {path}")
+        self.run_on_fof()
+    def delete_fcn(self,path):
+        print(f"Deleted: {path}")
+        self.run_on_fof()
+        
     def get_image_slidenums(self, dirin):
         relsdir = os.path.join(dirin, "ppt", "slides", "_rels")
         numslides = len(os.listdir(relsdir))
@@ -660,7 +668,7 @@ class WatcherThread(threading.Thread):
 
         self.files = []
         if os.path.exists(media_dir):
-            self.files += WatcherThread.get_svgs(media_dir)    
+            self.files += Processor.get_svgs(media_dir)    
         trigger_refresh()
             
             
@@ -755,7 +763,8 @@ class WatcherThread(threading.Thread):
             self.files[ii].embed_uri = pathlib.Path(ev).as_uri() if ev else None
         
     def run_on_folder(self):
-        self.files = WatcherThread.get_svgs(self.fof)
+        self.files = Processor.get_svgs(self.fof)
+        trigger_refresh()
 
         ii = 0
         while ii < len(self.files):
@@ -790,18 +799,16 @@ class WatcherThread(threading.Thread):
                     n.thumbnail = svg_pgs[i]
                     n.pagenum = i+1
                 self.files[ii:ii + 1] = nfiles
-            trigger_refresh()
-        
-            # Move ii to the next set of files
-            ii += max(len(svg_pgs),1)
+                trigger_refresh()
+                ii += len(nfiles)
+            else:
+                ii += 1
 
     @staticmethod
     def get_svgs(dirin):
         svg_filenames = []
         for file in os.listdir(dirin):
-            # if file.endswith(".svg") or file.endswith(".emf") or file.endswith(".wmf"):
-            valid_exts = ['svg','emf','wmf','png','gif','jpg','jpeg']
-            if any(file.lower().endswith('.'+ext) for ext in valid_exts):
+            if should_display(file):
                 svg_filenames.append(DisplayedFile(os.path.join(dirin, file)))
         svg_filenames.sort()
         return svg_filenames
@@ -829,7 +836,9 @@ class WatcherThread(threading.Thread):
             if f.islinked and f.thumbnail.endswith(".svg") and not os.path.exists(self.files[ii].name):
                 f.thumbnail = os.path.join(dh.si_dir,'pngs','missing_svg.svg')
                 
+        self.convert_emfs() # start ConversionThreads
         self.run_on_fof_done = True
+        trigger_refresh()
 
     def convert_emfs(self):
         for ii, f in enumerate(self.files):
@@ -838,10 +847,7 @@ class WatcherThread(threading.Thread):
                 self.numtns += 1
                 thread = ConversionThread(f, self, tnpng)
                 self.cthreads.append(thread)
-                
-        for thread in self.cthreads:
-            thread.start()
-                
+                thread.start()                
 
     def run(self):
         with app_lock:
@@ -854,39 +860,138 @@ class WatcherThread(threading.Thread):
                     webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
                     openedgallery = True
         self.run_on_fof()
-        trigger_refresh()
-        self.convert_emfs() # ConversionThreads refresh
+        watcher.add_watch(self)
 
-        lmts = self.get_modtimes()
-        while not (self.stopped):
-            time.sleep(1)
-            mts = self.get_modtimes()
-            if lmts != mts:
-                print("Update " + self.fof)
-                self.run_on_fof()
-                trigger_refresh()
-            lmts = mts
-        trigger_refresh()
-        
-    def get_modtimes(self):
-        modtimes = dict()
-        if not self.isdir:
-            modtimes[self.fof] = os.path.getmtime(self.fof)
+def should_display(file):
+    """ Criteron for whether a file should be displayed in the gallery """
+    valid_exts = ['svg','emf','wmf','png','gif','jpg','jpeg']
+    return any(file.lower().endswith('.'+ext) for ext in valid_exts)
+
+
+warnings.filterwarnings(
+    "ignore", message="Failed to import fsevents. Fall back to kqueue"
+)
+mydir = os.path.dirname(os.path.abspath(__file__))
+packages = os.path.join(mydir, "packages")
+if packages not in sys.path:
+    sys.path.append(packages)
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from collections import defaultdict
+class Watcher(FileSystemEventHandler):
+    def __init__(self):
+        super().__init__()
+        self.observer = Observer()
+        self.dir_processors = defaultdict(list)  # dirpath -> list of Processor
+        self.dir_refs = defaultdict(int)       # dirpath -> number of watchers
+        self.dir_watches = {}                  # dirpath -> Watch object
+        self.debounce_timers = {}              # (watcher, path) -> timer
+        self.file_mod_times = {}               # full file path -> last mtime
+        self.observer.start()
+
+    def add_watch(self, fp):
+        path = os.path.abspath(fp.fof)
+        dir_path = path if fp.isdir else os.path.dirname(path)
+
+        # Initialize mod times since watchdog sometimes does modifier events
+        # that don't seem to be real
+        if fp.isdir:
+            cfiles = [os.path.join(fp.fof, f) for f in os.listdir(fp.fof)]
         else:
-            fs = []
-            for f in os.scandir(self.fof):
-                if f.name.endswith(".svg") or f.name.endswith(".emf") or f.name.endswith(".wmf"):
-                    fs.append(os.path.join(os.path.abspath(self.fof), f.name))
-            for f in fs:
-                try:
-                    modtimes[f] = os.path.getmtime(f)
-                except FileNotFoundError:
-                    modtimes[f] = None
-        return modtimes
+            cfiles = [fp.fof]
+        for f in cfiles:
+            if os.path.isfile(f) and self.is_target_file(f,fp):
+                mtime = self.get_mod_time(f)
+                if mtime:
+                    self.file_mod_times[os.path.abspath(f)] = mtime
+
+        if self.dir_refs[dir_path] == 0:
+            watch = self.observer.schedule(self, dir_path, recursive=False)
+            self.dir_watches[dir_path] = watch
+            print(f"Scheduled observer for {dir_path}")
+
+        self.dir_processors[dir_path].append(fp)
+        self.dir_refs[dir_path] += 1
+
+    def remove_watch(self, fp):
+        path = os.path.abspath(fp.fof)
+        dir_path = path if fp.isdir else os.path.dirname(path)
+
+        if fp in self.dir_processors[dir_path]:
+            self.dir_processors[dir_path].remove(fp)
+            self.dir_refs[dir_path] -= 1
+
+        if self.dir_refs[dir_path] <= 0:
+            print(f"Unscheduling observer for {dir_path}")
+            watch = self.dir_watches.pop(dir_path, None)
+            if watch:
+                self.observer.unschedule(watch)
+            self.dir_processors.pop(dir_path, None)
+            self.dir_refs.pop(dir_path, None)
+
+    def stop(self):
+        self.observer.stop()
+        self.observer.join()
+
+    @staticmethod
+    def get_mod_time(path):
+        try:
+            return os.path.getmtime(path)
+        except FileNotFoundError:
+            return None
+
+    def is_target_file(self, file_path, watcher):
+        file_name = os.path.basename(file_path)
+        if not watcher.isdir:
+            return os.path.abspath(file_path) == os.path.abspath(watcher.fof)
+        return should_display(file_name)
+
+    def handle_event(self, event):
+        if event.is_directory:
+            return
+        dir_path = os.path.dirname(event.src_path)
+        for watcher in self.dir_processors.get(dir_path, []):
+            if not self.is_target_file(event.src_path, watcher):
+                continue
+            key = (watcher, event.src_path)
+            
+            if key in self.debounce_timers:
+                self.debounce_timers[key].cancel()
+            self.debounce_timers[key] = threading.Timer(
+                0.5, self.run_callback, [watcher, event]
+            )
+            self.debounce_timers[key].start()
+            
+
+    def run_callback(self, watcher, event):
+        if event.event_type == "created" and watcher.create_fcn:
+            watcher.create_fcn(event.src_path)
+        elif event.event_type == "modified" and watcher.mod_fcn:
+            watcher.mod_fcn(event.src_path)
+        elif event.event_type == "deleted" and watcher.delete_fcn:
+            watcher.delete_fcn(event.src_path)
+
+    def on_created(self, event):
+        self.handle_event(event)
+
+    def on_deleted(self, event):
+        self.file_mod_times.pop(event.src_path, None)
+        self.handle_event(event)
+
+    def on_modified(self, event):
+        if event.is_directory:
+            return
+        new_mtime = self.get_mod_time(os.path.abspath(event.src_path))
+        old_mtime = self.file_mod_times.get(os.path.abspath(event.src_path))
+
+        if new_mtime and new_mtime != old_mtime:
+            self.file_mod_times[event.src_path] = new_mtime
+            self.handle_event(event)
+watcher = Watcher()
 
 converted_files = dict()
 lastupdate = time.time()
-watcher_threads = []
+processors = []
 openedgallery = False
 
 def process_selection(file, opened=True):
@@ -898,15 +1003,15 @@ def process_selection(file, opened=True):
                 process_selection(os.path.join(file, ln), True)
             return
 
-    for wt in watcher_threads:
-        if file == wt.fof:
-            wt.stopped = True
-            watcher_threads.remove(wt)
+    for fp in processors:
+        if file == fp.fof:
+            processors.remove(fp)
+            watcher.remove_watch(fp)
     print("About to start")
-    wt = WatcherThread(file, opened=opened)
-    wt.win = win
-    watcher_threads.append(wt)
-    wt.start()
+    fp = Processor(file, opened=opened)
+    fp.win = win
+    processors.append(fp)
+    fp.start()
 
 def quitnow():
     requests.get(
@@ -942,8 +1047,10 @@ def quitnow():
                     time.sleep(1)
                     nattempts += 1
 
-    for wt in watcher_threads:
-        wt.stopped = True
+    for fp in processors:
+        watcher.remove_watch(fp)
+        
+    watcher.stop()
 
     pid = os.getpid()
     import signal
@@ -1075,9 +1182,9 @@ if guitype == "gtk":
             webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
 
         def clear_clicked(self, widget):
-            for wt in reversed(watcher_threads):
-                wt.stopped = True
-                watcher_threads.remove(wt)
+            for fp in reversed(processors):
+                processors.remove(fp)
+                watcher.remove_watch(fp)
             self.liststore.clear()
 
     win = GalleryViewerServer()

@@ -464,7 +464,7 @@ class Exporter():
 
         # Do png before any preprocessing
         if "png" in self.formats:
-            finished, myo = self.export_file(cfile, "png", None)
+            finished, myo = self.export_file(cfile, "png")
 
         # Do preprocessing
         if any(fmt in self.formats for fmt in ["pdf", "emf", "eps", "psvg"]):
