@@ -19,7 +19,7 @@ exclude_flatten = ['Ohtani_SA_2019_Deep_group.svg',flattentext,flattenrest,fname
 flattenerargs = ("--id=layer1","--testmode=True")
 aeargs = ("--testmode=True",)
 
-version = '1.4'
+version = '1.4.2'
 usepango = True
 lprofile = False
 
@@ -54,7 +54,7 @@ vpaths = {'1.0' : 'inkscape-1.0.2-2-x64',
           '1.3' : 'inkscape-1.3.1_2023-11-16_91b66b0783-x64',
           '1.3e': 'inkscape-1.3_2023-07-21_0e150ed6c4-x64_extensions',
           '1.4' : 'inkscape-1.4_2024-10-11_86a8ad7-x64',
-          '1.4.2' : 'inkscape-1.4.2_2025-05-08_ebf0e94-x64',
+          '1.4.2' : 'inkscape-1.4.2_2025-05-13_f4327f4-x64',
           }
 vpaths = {k: os.path.join(INKSAPES_LOCATION, v) for k,v in vpaths.items()}
 
