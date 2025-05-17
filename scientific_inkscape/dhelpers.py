@@ -26,7 +26,7 @@
 
 # Locate the installed Inkex so we can assess the version. Do not import!
 import pkgutil
-
+installed_inkex = None
 for finder in pkgutil.iter_importers():
     if hasattr(finder, "find_spec"):
         try:
@@ -66,7 +66,6 @@ from inkex.text.utils import (
     composed_width,
     unique,
     isrectangle,
-    get_bounding_boxes,
     subprocess_repeat,
     tags,
     bbox,
@@ -78,7 +77,6 @@ from inkex import Tspan, Transform, Path, PathElement, BaseElement
 from applytransform_mod import fuseTransform
 import lxml, math, re, os, random, sys
 from functools import lru_cache
-
 
 # Parsed Inkex version, with extension back to v0.92.4
 if not hasattr(inkex, "__version__"):
@@ -124,17 +122,21 @@ def count_callers():
 
 
 # Discover the version of Inkex installed, NOT the version packaged with SI
-with open(installed_inkex, "r") as file:
-    content = file.read()
-match = re.search(r'__version__\s*=\s*"(.*?)"', content)
-vstr = match.group(1) if match else "1.0.0"
-if vstr=='1.2.0': # includes 1.2.0, 1.2.1, 1.2.2
-    extpy = os.path.join(os.path.dirname(installed_inkex),'extensions.py')
-    with open(extpy, "r") as file:
+if installed_inkex is not None:
+    with open(installed_inkex, "r") as file:
         content = file.read()
-    match = re.search(r'Pattern', content) # appeared in 1.2.2
-    if match:
-        vstr='1.2.2'
+    match = re.search(r'__version__\s*=\s*"(.*?)"', content)
+    vstr = match.group(1) if match else "1.0.0"
+    if vstr=='1.2.0': # includes 1.2.0, 1.2.1, 1.2.2
+        extpy = os.path.join(os.path.dirname(installed_inkex),'extensions.py')
+        with open(extpy, "r") as file:
+            content = file.read()
+        match = re.search(r'Pattern', content) # appeared in 1.2.2
+        if match:
+            vstr='1.2.2'
+else:
+    # No installed Inkex, probably not called by Inkscape
+    vstr = inkex.__version__
 
 inkex.installed_ivp = inkex.vparse(vstr)  # type: ignore
 inkex.installed_haspages = inkex.installed_ivp[0] >= 1 and inkex.installed_ivp[1] >= 2
@@ -565,6 +567,61 @@ unrendered.update(
 )
 
 
+
+def wrapped_binary(filename, inkscape_binary=None, extra_args=None, svg=None, get_bbs=True,cwd=None):
+    """
+    Retrieves all of a document's bounding boxes using a call to the Inkscape binary.
+
+    Parameters:
+        filename (str): The path to the SVG file.
+        inkscape_binary (str): The path to the Inkscape binary. If not provided,
+        it will attempt to find it.
+        extra_args (list): Additional arguments to pass to the Inkscape command.
+        svg: An optional svg to use instead of loading from file.
+
+    Returns:
+        dict: A dictionary where keys are element IDs and values are bounding
+        boxes in user units.
+    """
+    if inkscape_binary is None:
+        inkscape_binary = inkex.inkscape_system_info.binary_location
+    extra_args = [] if extra_args is None else extra_args
+
+    if get_bbs:
+        arg2 = [inkscape_binary, "--query-all"] + extra_args + [filename]
+        proc = subprocess_repeat(arg2,cwd=cwd)
+    else:
+        arg2 = [inkscape_binary] + extra_args + [filename]
+        proc = subprocess_repeat(arg2,cwd=cwd)
+        return None
+    tfstr = proc.stdout
+
+    # Parse the output
+    tbbli = tfstr.splitlines()
+    bbs = dict()
+    for line in tbbli:
+        keyv = str(line).split(",", maxsplit=1)[0]
+        if keyv[0:2] == "b'":  # pre version 1.1
+            keyv = keyv[2:]
+        if str(line)[2:52] == "WARNING: Requested update while update in progress":
+            continue
+            # skip warnings (version 1.0 only?)
+        data = [float(x.strip("'")) for x in str(line).split(",")[1:]]
+        if keyv != "'":  # sometimes happens in v1.3
+            bbs[keyv] = data
+
+    # Inkscape always reports a bounding box in pixels, relative to the viewbox
+    # Convert to user units for the output
+    if svg is None:
+        # If SVG not supplied, load from file from load_svg
+        svg = load_svg(filename).getroot()
+
+    dsz = svg.cdocsize
+    for k in bbs:
+        bbs[k] = dsz.pxtouu(bbs[k])
+    return bbs
+
+
 # Determine if object has a bbox
 @lru_cache(maxsize=None)
 def hasbbox(el):
@@ -586,9 +643,9 @@ def isdrawn(el):
 
 
 # A wrapper that replaces get_bounding_boxes with Pythonic calls only if possible
-def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
+def BB2(svg, els=None, forceupdate=False, roughpath=False, parsed=False):
     if els is None:
-        els = slf.svg.descendants2()
+        els = svg.descendants2()
     if all([d.tag in bb2_support_tags or not (hasbbox(d)) for d in els]):
         # All descendants of all els in the list
         allds = set()
@@ -603,14 +660,14 @@ def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
 
         if len(tels) > 0:
             if forceupdate:
-                slf.svg.char_table = None
+                svg.char_table = None
                 for d in els:
                     d.cbbox = None
                     d.parsed_text = None
-            if not hasattr(slf.svg, "_char_table"):
+            if not hasattr(svg, "_char_table"):
                 from inkex.text import parser  # noqa
 
-                slf.svg.make_char_table(els=tels)
+                svg.make_char_table(els=tels)
                 # pts = [el.parsed_text for el in tels]
                 ptl = parser.ParsedTextList(tels)
                 ptl.precalcs()
@@ -623,19 +680,29 @@ def BB2(slf, els=None, forceupdate=False, roughpath=False, parsed=False):
     else:
         import tempfile
 
-        with tempfile.TemporaryFile() as temp:
+        # with tempfile.TemporaryFile() as temp:
+        #     idebug(temp.name)
+        #     tname = os.path.abspath(temp.name)
+        #     overwrite_svg(svg, tname)
+        #     ret = wrapped_binary(filename=tname, svg=svg)
+            
+        with tempfile.NamedTemporaryFile(delete=False) as temp:
             tname = os.path.abspath(temp.name)
-            overwrite_svg(slf.svg, tname)
-            ret = get_bounding_boxes(filename=tname, svg=slf.svg)
+        try:
+            overwrite_svg(svg, tname)
+            ret = wrapped_binary(filename=tname, svg=svg)
+        finally:
+            if os.path.exists(tname):
+                os.remove(tname)
 
     return ret
 
 
 # For diagnosing BB2
-def Check_BB2(slf):
-    bb2 = BB2(slf)
+def Check_BB2(svg):
+    bb2 = BB2(svg)
     HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
-    for el in slf.svg.descendants2():
+    for el in svg.descendants2():
         if el.get_id() in bb2 and not el.tag in grouplike_tags:
             bb = bbox(bb2[el.get_id()])
             # bb = bbox(bb2[el.get_id()])*(1/slf.svg.cscale);
@@ -659,13 +726,42 @@ def bb_intersects(bbs, bb2s=None):
     if len(bbs) == 0 or len(bb2s) == 0:
         return np.zeros((len(bbs), len(bb2s)), dtype=bool)
     else:
-        xc1, yc1, wd1, ht1 = np.array([(bb.xc, bb.yc, bb.w, bb.h) for bb in bbs]).T
-        xc2, yc2, wd2, ht2 = np.array([(bb.xc, bb.yc, bb.w, bb.h) for bb in bb2s]).T
+        xc1, yc1, wd1, ht1 = np.array([
+            (bb.xc, bb.yc, bb.w, bb.h) if not bb.isnull else (np.nan, np.nan, np.nan, np.nan) 
+            for bb in bbs
+        ]).T
+        
+        xc2, yc2, wd2, ht2 = np.array([
+            (bb.xc, bb.yc, bb.w, bb.h) if not bb.isnull else (np.nan, np.nan, np.nan, np.nan) 
+            for bb in bb2s
+        ]).T
         return np.logical_and(
-            (abs(xc1.reshape(-1, 1) - xc2) * 2 < (wd1.reshape(-1, 1) + wd2)),
-            (abs(yc1.reshape(-1, 1) - yc2) * 2 < (ht1.reshape(-1, 1) + ht2)),
+            np.nan_to_num(abs(xc1.reshape(-1, 1) - xc2) * 2 < (wd1.reshape(-1, 1) + wd2), nan=False),
+            np.nan_to_num(abs(yc1.reshape(-1, 1) - yc2) * 2 < (ht1.reshape(-1, 1) + ht2), nan=False),
         )
 
+# Return list of objects on top of other objects
+def overlapping_els(svg,tocheck):
+    els = [el for el in svg.descendants2() if isdrawn(el)]
+    bbs = BB2(svg, els, roughpath=True, parsed=True)
+    bbs = [bbox(bbs.get(el.get_id())) for el in els]
+    
+    chki = [i for i,el in enumerate(els) if el in tocheck]
+    bbs_check = [bbs[i] for i in chki]
+    intrscts = bb_intersects(bbs, bbs_check)
+    
+    ret = {el: [] for el in tocheck}
+    for j,ci in enumerate(chki):
+        elj = els[ci]
+        for i in range(ci+1,len(els)):
+            eli = els[i]
+            ds = elj.descendants2()
+            if intrscts[i,j] and eli not in ds:
+                ret[elj].append(eli)
+    
+    # for k,v in ret.items():
+    #     dh.idebug(k.get_id()+': '+str([v2.get_id() for v2 in v]))
+    return ret
 
 # Get SVG from file
 from inkex import load_svg
@@ -1117,31 +1213,49 @@ def Get_Current_File(ext, msgstr):
     else:
         return myfile
 
+    
+import threading
+sema_temp = threading.Semaphore(1)
 
-# Generate a temporary file or folder in SI's location / tmp
-# tempfile does not always work with Linux Snap distributions
-def si_tmp(dirbase="", filename=None):
+def shared_temp(headprefix = None, filename=None):
+    """
+    Generate a temporary file in the system temp folder or SI's location
+    (tempfile does not always work with Linux Snap distributions)
+
+    Can also generate a unique temp_head that can be used to prefix all temp files.
+    Since the Inkscape binary cannot handle multiple cwd arguments when multithreading,
+    (and might switch dirs unexpectedly), any exports with multiple cwd's and relative
+    paths must be done here.
+
+    """
     if sys.executable[0:4] == "/tmp" or sys.executable[0:5] == "/snap":
         si_dir = os.path.dirname(
             os.path.realpath(__file__)
         )  # in case si_dir is not loaded
-        tmp_dir = os.path.join(si_dir, "tmp")
+        system_temp = si_dir
     else:
         import tempfile
+        system_temp = tempfile.gettempdir()
+    if not os.path.exists(system_temp):
+        os.mkdir(system_temp)
 
-        tmp_dir = tempfile.gettempdir()
-    if not os.path.exists(tmp_dir):
-        os.mkdir(tmp_dir)
-    if filename is not None:  # filename input
-        return os.path.join(tmp_dir, filename)
-    else:  # directory
-        subdir_name = dirbase + str(random.randint(1, 100000))
-        subdir_path = os.path.join(tmp_dir, subdir_name)
-        while os.path.exists(subdir_path):
-            subdir_name = dirbase + str(random.randint(1, 100000))
-            subdir_path = os.path.join(tmp_dir, subdir_name)
-        os.mkdir(subdir_path)
-        return subdir_path
+    tempdir = os.path.join(os.path.abspath(system_temp), 'si_temp')
+    if not os.path.exists(tempdir):
+        os.mkdir(tempdir)
+        
+    if headprefix is not None:
+        with sema_temp:
+            pnum = random.randint(1, 100000)
+            while any(t.startswith(f"{headprefix}{pnum:05d}") for t in os.listdir(tempdir)):
+                pnum = random.randint(1, 100000)
+            temphead = f"{headprefix}{pnum:05d}"
+            tempbase = os.path.join(tempdir, temphead)
+            open(tempbase+'.lock', 'w').close()
+        return tempdir, temphead
+    if filename is not None:
+        return os.path.join(tempdir,filename)
+    return tempdir
+    
 
 
 ttags = tags((inkex.TextElement, inkex.FlowRoot))
@@ -1755,8 +1869,8 @@ def split_text(elem):
 
 
 def Version_Check(caller):
-    siv = "v1.4.22"  # Scientific Inkscape version
-    maxsupport = "1.4.0"
+    siv = "v1.4.23"  # Scientific Inkscape version
+    maxsupport = "1.4.2"
     minsupport = "1.1.0"
 
     logname = "Log.txt"

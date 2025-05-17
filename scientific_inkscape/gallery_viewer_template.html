@@ -58,13 +58,21 @@
     <script>
         const port = {{ port | tojson }};
         var mylastupdate = 0;  // Initialize the last update time
+		var showRasterGraphics = false; // Default to showing vector images
+        function toggleRasterGraphics() {
+			showRasterGraphics = document.getElementById('show-raster-checkbox').checked;
+			fetchGalleryData(true); // Force re-render
+		}
     </script>
 </head>
 <body>
 
     <h2>Gallery Viewer</h2>
     <div class="serverdown"></div>
-
+    <div class="filter-container">
+        <input type="checkbox" id="show-raster-checkbox" onclick="toggleRasterGraphics()" title="When checked, non-vector graphics will also be shown in the gallery">
+        <label for="show-raster-checkbox" title="When checked, non-vector graphics will also be shown in the gallery">Show raster graphics in gallery</label>
+    </div>
     <div id="gallery-container">
         <!-- The gallery content will be dynamically inserted here -->
     </div>
@@ -162,6 +170,10 @@
                 // Render the files inside the group
                 const divContainer = details.querySelector('.gallery-container');
                 group.files.forEach(file => {
+					const fileExtension = file.file_uri.toLowerCase().split('.').pop();
+                    const isRaster = ['png', 'jpg', 'jpeg', 'gif'].includes(fileExtension);
+                    if (!showRasterGraphics && isRaster) return;
+				
                     const galleryDiv = document.createElement('div');
                     galleryDiv.className = 'gallery';
 
@@ -301,13 +313,13 @@
         }
 
         // Function to render the gallery from the JSON data
-        function renderGallery(data) {
+        function renderGallery(data, forceRender = false) {
             // Create a set of headers from the new data
             const newHeaders = new Set(data.map(group => group.header));
 
             // Remove groups that are no longer present
             Object.keys(existingGroups).forEach(header => {
-                if (!newHeaders.has(header)) {
+                if (!newHeaders.has(header) || forceRender) {
                     const details = existingGroups[header];
                     details.remove();
                     delete existingGroups[header];
@@ -323,14 +335,15 @@
         }
 
         // Fetch the gallery data from the server and render it dynamically
-        function fetchGalleryData() {
-            fetch('/gallery_data')
-                .then(response => response.json())
-                .then(data => {
-                    renderGallery(data.gallery_data);
-                })
-                .catch(error => console.error('Error fetching gallery data:', error));
-        }
+        function fetchGalleryData(forceRender = false) {
+			fetch('/gallery_data')
+				.then(response => response.json())
+				.then(data => {
+					renderGallery(data.gallery_data, forceRender);
+				})
+				.catch(error => console.error('Error fetching gallery data:', error));
+		}
+
 
         // Function to check for refresh
         function checkForRefresh() {

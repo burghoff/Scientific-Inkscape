@@ -117,16 +117,10 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
         if not (transf == Itr and irange is None and trange is None):
             # Don't do anything if there is effectively no transform applied
             if el.tag in poly_tags:
-                points = el.get("points")
-                points = points.strip().split(" ")
-                for k, p in enumerate(points):
-                    if "," in p:
-                        p = p.split(",")
-                        p = [float(p[0]), float(p[1])]
-                        p = transf.apply_to_point(p)
-                        p = [str(p[0]), str(p[1])]
-                        p = ",".join(p)
-                        points[k] = p
+                points = []
+                for p in el.cpath.end_points:
+                    p = transf.apply_to_point([p[0],p[1]])
+                    points.append(f"{p[0]},{p[1]}")
                 points = " ".join(points)
                 el.set("points", points)
             elif el.tag in round_tags:

@@ -145,10 +145,10 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
         if setfontfamily or setfontsize or fixtextdistortion:
             tels = [d for d in sel if isinstance(d, (TextElement, FlowRoot))]
             if not self.options.plotaware:
-                bbs = dh.BB2(self, tels, False)
+                bbs = dh.BB2(self.svg, tels, False)
             else:
                 aels = [d for el in sel0 for d in el.descendants2()]
-                bbs = dh.BB2(self, aels, False)
+                bbs = dh.BB2(self.svg, aels, False)
 
         if setfontsize:
             # Get all font sizes and scale factors
@@ -189,6 +189,8 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                     sty = d.cspecified_style
                     if el == d or "font-size" in sty:
                         dfs, sf, utdfs = dh.composed_width(d, "font-size")
+                        if dfs==0:
+                            continue
                         bshift = parser.TChar.get_baseline(sty, d.getparent())
                         if bshift != 0 or "%" in sty.get("font-size", ""):
                             # Convert sub/superscripts into relative size
@@ -244,7 +246,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             dh.character_fixer(tels)
 
         if setfontfamily or setfontsize or fixtextdistortion:
-            bbs2 = dh.BB2(self, tels, True)
+            bbs2 = dh.BB2(self.svg, tels, True)
             if not self.options.plotaware:
                 for el in sel:
                     myid = el.get_id()
@@ -363,6 +365,8 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                         newsize = setstrokew
                     else:
                         newsize = szd[elid] * (setstrokew / 100)
+                    if sfd[elid]==0:
+                        continue
                     el.cstyle["stroke-width"] = str(newsize / sfd[elid]) + "px"
 
         if self.options.fusetransforms:

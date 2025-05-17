@@ -32,7 +32,6 @@ from functools import lru_cache
 import lxml
 from lxml import etree
 import inkex
-from inkex import load_svg
 import inkex.command
 from inkex.properties import all_properties
 from inkex.units import CONVERSIONS, BOTH_MATCH
@@ -242,56 +241,6 @@ def isrectangle(elem, includingtransform=True):
             ret = False
     return ret
 
-
-def get_bounding_boxes(filename, inkscape_binary=None, extra_args=None, svg=None):
-    """
-    Retrieves all of a document's bounding boxes using a call to the Inkscape binary.
-
-    Parameters:
-        filename (str): The path to the SVG file.
-        inkscape_binary (str): The path to the Inkscape binary. If not provided,
-        it will attempt to find it.
-        extra_args (list): Additional arguments to pass to the Inkscape command.
-        svg: An optional svg to use instead of loading from file.
-
-    Returns:
-        dict: A dictionary where keys are element IDs and values are bounding
-        boxes in user units.
-    """
-    if inkscape_binary is None:
-        inkscape_binary = inkex.inkscape_system_info.binary_location
-    extra_args = [] if extra_args is None else extra_args
-    arg2 = [inkscape_binary, "--query-all"] + extra_args + [filename]
-    proc = subprocess_repeat(arg2)
-    tfstr = proc.stdout
-
-    # Parse the output
-    tbbli = tfstr.splitlines()
-    bbs = dict()
-    for line in tbbli:
-        keyv = str(line).split(",", maxsplit=1)[0]
-        if keyv[0:2] == "b'":  # pre version 1.1
-            keyv = keyv[2:]
-        if str(line)[2:52] == "WARNING: Requested update while update in progress":
-            continue
-            # skip warnings (version 1.0 only?)
-        data = [float(x.strip("'")) for x in str(line).split(",")[1:]]
-        if keyv != "'":  # sometimes happens in v1.3
-            bbs[keyv] = data
-
-    # Inkscape always reports a bounding box in pixels, relative to the viewbox
-    # Convert to user units for the output
-    if svg is None:
-        # If SVG not supplied, load from file from load_svg
-
-        svg = load_svg(filename).getroot()
-
-    dsz = svg.cdocsize
-    for k in bbs:
-        bbs[k] = dsz.pxtouu(bbs[k])
-    return bbs
-
-
 class InkscapeSystemInfo:
     """
     Discovers and caches Inkscape System info.
@@ -496,7 +445,7 @@ class InkscapeSystemInfo:
 inkex.inkscape_system_info = InkscapeSystemInfo()  # type: ignore
 
 
-def subprocess_repeat(argin):
+def subprocess_repeat(argin,cwd=None):
     """
     In the event of a timeout, repeats a subprocess call several times.
 
@@ -507,13 +456,13 @@ def subprocess_repeat(argin):
         CompletedProcess: The result from the subprocess call.
     """
     base_timeout = 60
-    nattempts = 4
+    nattempts = 6
     import subprocess
 
     nfails = 0
     ntime = 0
     for i in range(nattempts):
-        timeout = base_timeout * (i + 1)
+        timeout = base_timeout * 2**i
         try:
             os.environ["SELF_CALL"] = "true"  # seems to be needed for 1.3
             proc = subprocess.run(
@@ -522,22 +471,21 @@ def subprocess_repeat(argin):
                 timeout=timeout,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
-                check=True,
+                check=True, cwd=cwd
             )
             break
         except subprocess.TimeoutExpired:
             nfails += 1
             ntime += timeout
     if nfails == nattempts:
-        inkex.utils.errormsg(
-            "Error: The call to the Inkscape binary timed out "
+        raise TimeoutError(
+            "\nThe call to the Inkscape binary timed out "
             + str(nattempts)
             + " times in "
             + str(ntime)
             + " seconds.\n\n"
             + "This may be a temporary issue; try running the extension again."
         )
-        sys.exit()
     else:
         return proc
 

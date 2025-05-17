@@ -46,7 +46,6 @@ which draws rectangles that tell you where the extents / bboxes are. For example
 - el.parsed_text.make_highlights('fullink') : shows the bbox of the whole element
 """
 
-import os
 import itertools
 import math
 from copy import copy
@@ -70,7 +69,6 @@ from inkex.text.utils import (
     composed_lineheight,
     default_style_atts,
     isrectangle,
-    get_bounding_boxes,
     ipx,
     bbox,
 )
@@ -83,7 +81,7 @@ from inkex.text.font_properties import (
 )
 from inkex.utils import debug
 
-KERN_TABLE = True  # generate a fine kerning table for each font?
+DIFF_ADVANCES = True  # generate a differential advances table for each font?
 TEXTSIZE = 100  # size of rendered text
 DEPATHOLOGIZE = True  # clean up pathological atts not normally made by Inkscape
 
@@ -119,7 +117,7 @@ class ParsedTextList(list):
         nchrs = sum(chk.ncs for chk in tws)
 
         # Preallocate arrays
-        wadj, cwd, dxeff, dy, bshft, caph, unsp, anfr = np.zeros(
+        dadv, cwd, dxeff, dy, bshft, caph, unsp, anfr = np.zeros(
             (8, nchrs), dtype=float
         )
         fidx, lidx, widx = np.zeros((3, nchrs)).astype(int)
@@ -135,12 +133,12 @@ class ParsedTextList(list):
         )
         lx2, rx2, by2, ty2 = np.zeros((4, len(tws))).astype(float)
 
-        # Collect values for wadj, cwd, dxeff, dy, bshft, and caph
+        # Collect values for dadv, cwd, dxeff, dy, bshft, and caph
         idx = 0
         for j, chk in enumerate(tws):
-            if KERN_TABLE:
+            if DIFF_ADVANCES:
                 for i in range(1, chk.ncs):
-                    wadj[idx + i] = chk.chrs[i].dkerns(chk.chrs[i - 1].c, chk.chrs[i].c)
+                    dadv[idx + i] = chk.chrs[i].dadvs(chk.chrs[i - 1].c, chk.chrs[i].c)*(chk.dxeff[i]==0)
 
             for i in range(chk.ncs):
                 cwd[idx + i] = chk.cwd[i]
@@ -154,7 +152,7 @@ class ParsedTextList(list):
             idx += chk.ncs
 
         # Calculate wds, cstop, and cstrt
-        wds = cwd + dxeff + wadj
+        wds = cwd + dxeff + dadv
         cstop = np.array(list(itertools.accumulate(wds)), dtype=float)
         cstop += wds[fidx] - cstop[fidx]
         cstrt = cstop - cwd
@@ -283,14 +281,14 @@ class ParsedText:
         sty = elem.cspecified_style
         self.isflow = (
             elem.tag == FRtag
-            or sty.get_link("shape-inside", elem.croot) is not None
+            or (elem.croot is not None and sty.get_link("shape-inside", elem.croot) is not None)
             or ipx(sty.get("inline-size"))
         )
         self._tree = None
         self.dchange, self.writtendx, self.writtendy = [None] * 3
         self.achange = False
         if DEPATHOLOGIZE:
-            remove_overflow_position_overflows(elem)
+            remove_position_overflows(elem)
         if self.isflow:
             self.parse_lines_flow()
         else:
@@ -2325,12 +2323,12 @@ class TLine:
                 if len(chk.chrs) > 0:
                     newxv = self.x
                     newxv[chk.chrs[0].lnindex] = newx
-
                     self.write_xy(newxv)
                     alignd = {"start": "start", "middle": "center", "end": "end"}
                     chk.chrs[0].loc.elem.cstyle.__setitem__(
                         "text-anchor", newanch, "text-align", alignd[newanch]
                     )
+                    self.continuex = False
 
                 self.anchor = newanch
                 self.anchfrac = anfr
@@ -2862,13 +2860,14 @@ class TChunk:
         Returns the character positions relative to the left side of the chunk.
         """
         if self._charpos is None:
-            wadj = [0] * self.ncs
-            if KERN_TABLE:
+            dadv = [0] * self.ncs
+            if DIFF_ADVANCES:
                 for i in range(1, self.ncs):
-                    wadj[i] = self.chrs[i].dkerns(self.chrs[i - 1].c, self.chrs[i].c)
+                    dadv[i] = self.chrs[i].dadvs(self.chrs[i - 1].c, self.chrs[i].c)*(self.dxeff[i]==0)
                     # default to 0 for chars of different style
+                    # any dx value overrides differential advances
 
-            chks = [self.cwd[i] + self.dxeff[i] + wadj[i] for i in range(self.ncs)]
+            chks = [self.cwd[i] + self.dxeff[i] + dadv[i] for i in range(self.ncs)]
             cstop = list(itertools.accumulate(chks))
             # cumulative width up to and including the ith char
             cstrt = [cstop[i] - self.cwd[i] for i in range(self.ncs)]
@@ -3069,7 +3068,7 @@ class TChar:
         self._dy = dy
         self._ax = None
         self._ay = None
-        self.dkerns = lambda cL, cR: prop.dkerns.get((cL, cR), 0) * utfs
+        self.dadvs = lambda cL, cR: prop.dadvs.get((cL, cR), 0) * utfs
         self.parsed_pts_t = None
         self.parsed_pts_ut = None
         # for merging later
@@ -3276,11 +3275,11 @@ class TChar:
         # Differential kerning affect on character width
         dko1 = dko2 = dkn = 0
         if myi < len(lncs) - 1:
-            dko2 = self.dkerns(lncs[myi].c, lncs[myi + 1].c)  # old from right
+            dko2 = self.dadvs(lncs[myi].c, lncs[myi + 1].c)  # old from right
             if myi > 0:
-                dkn = self.dkerns(lncs[myi - 1].c, lncs[myi + 1].c)  # new
+                dkn = self.dadvs(lncs[myi - 1].c, lncs[myi + 1].c)  # new
         if myi > 0:
-            dko1 = self.dkerns(lncs[myi - 1].c, lncs[myi].c)  # old from left
+            dko1 = self.dadvs(lncs[myi - 1].c, lncs[myi].c)  # old from left
         tdk = dko1 + dko2 - dkn
 
         cwo = self.cwd + tdk + self._dx + self.lsp * (self.windex != 0)
@@ -3486,9 +3485,9 @@ class CProp:
     It is meant to be immutable...do not modify attributes
     """
 
-    __slots__ = ("char", "charw", "spacew", "caph", "dkerns", "inkbb")
+    __slots__ = ("char", "charw", "spacew", "caph", "dadvs", "inkbb")
 
-    def __init__(self, char, cwd, spw, caph, dkerns, inkbb):
+    def __init__(self, char, cwd, spw, caph, dadvs, inkbb):
         """Initializes CProp with given parameters."""
         self.char = char
         self.charw = cwd
@@ -3497,20 +3496,20 @@ class CProp:
         # space width
         self.caph = caph
         # cap height
-        self.dkerns = dkerns
+        self.dadvs = dadvs
         # table of how much extra width a preceding character adds to me
         self.inkbb = inkbb
 
     def __mul__(self, scl):
         """Scales the character properties by a given factor."""
-        dkern2 = {k: val * scl for k, val in self.dkerns.items()}
+        dadv2 = {k: val * scl for k, val in self.dadvs.items()}
         inkbb2 = [val * scl for val in self.inkbb]
         return CProp(
             self.char,
             self.charw * scl,
             self.spacew * scl,
             self.caph * scl,
-            dkern2,
+            dadv2,
             inkbb2,
         )
 
@@ -3580,7 +3579,7 @@ class CharacterTable:
             # Prefer to measure with Pango if we have it (faster, more accurate)
             self.ctable = self.measure_characters()
         else:
-            # Can also extract directly using fonttools
+            # Can also extract directly using fonttools, which is pure Python
             self.ctable = self.extract_characters()
 
         self.mults = dict()
@@ -3625,6 +3624,7 @@ class CharacterTable:
     def extract_characters(self):
         """
         Direct extraction of character metrics from the font file using fonttools
+        fonttools is pure Python, so this usually works
         """
         badchars = {"\n", "\r"}
         ret = dict()
@@ -3651,13 +3651,13 @@ class CharacterTable:
                         }
                     else:
                         pct2 = dict()
-                    advs, dkern, inkbbs = ftfnt.get_char_advances(chs, pct2)
+                    advs, dadv, inkbbs = ftfnt.get_char_advances(chs, pct2)
                     for c in chs:
                         cwd = advs[c]
                         caph = ftfnt.cap_height
                         # dr = 0
                         inkbb = inkbbs[c]
-                        ret[sty][c] = CProp(c, cwd, None, caph, dkern, inkbb)
+                        ret[sty][c] = CProp(c, cwd, None, caph, dadv, inkbb)
                 spc = ret[sty][" "]
                 for c in ret[sty]:
                     ret[sty][c].spacew = spc.charw
@@ -3672,72 +3672,33 @@ class CharacterTable:
                     ret[sty][c] = CProp(c, 0, 0, 0, dict(), [0, 0, 0, 0])
         return ret
 
-    def measure_characters(self, forcecommand=False):
+    def measure_characters(self):
         """
         Uses Pango to measure character properties by rendering them on an unseen
         context. Requires GTK Python bindings, generally present in Inkscape 1.1 and
-        later. If Pango is absent, a slow Inkscape command call is used instead.
+        later. If Pango is absent, extract_characters will be called instead.
 
         Generates prefixed, suffixed copies of each string, compares them to a blank
         version without any character. This measures the logical advance, i.e., the
         width including intercharacter space. Width corresponds to a character with
         a composed font size of 1 uu.
         """
-        if forcecommand:
-            # Examine the whole document if using command
-            ctels = [ddv for ddv in self.root.iddict.descendants if ddv.tag in TEFRtags]
-            self.tstyset, self.pchrset, self.fstyset, self.cstys = (
-                CharacterTable.collect_characters(ctels)
-            )
-
-        usepango = HASPANGO and not forcecommand
-        # usepango = False
         cnt = 0
-        if not usepango:
-            # A new document is generated instead of using the existing one.
-            # We don't have to parse an entire element tree
-            # test document has uu = 1 mm (210 mm / 210)
-            svgstart = (
-                '<svg width="210mm" height="297mm" viewBox="0 0 210 297" '
-                'id="svg60386" xmlns="http://www.w3.org/2000/svg" '
-                'xmlns:svg="http://www.w3.org/2000/svg"> '
-                '<defs id="defs60383" /> <g id="layer1">'
-            )
-            svgstop = "</g> </svg>"
-            txtfmt = (
-                '<text xml:space="preserve" style="{};font-size:{}px" '
-                'id="text{}">{}</text>'
-            )
-            svgtexts = ""
-            import tempfile
-
-            tmpf = tempfile.NamedTemporaryFile(mode="wb", delete=False)
-            tmpname = os.path.abspath(tmpf.name)
-            tmpf.write(svgstart.encode("utf8"))
-            from xml.sax.saxutils import escape
-        else:
-            pstrings = dict()
+        pstrings = dict()
 
         def make_string(c, sty):
             nonlocal cnt
             cnt += 1
-            if not (usepango):
-                nonlocal svgtexts
-                svgtexts += txtfmt.format(sty, TEXTSIZE, cnt, escape(c))
-                if cnt % 1000 == 0:
-                    tmpf.write(svgtexts.encode("utf8"))
-                    svgtexts = ""
-            else:
-                pstrings["text" + str(cnt)] = (c, sty)
+            pstrings["text" + str(cnt)] = (c, sty)
             return "text" + str(cnt)
 
         class StringInfo:
             """Stores metadata on strings"""
 
-            def __init__(self, strval, strid, dkern, bareid=None):
+            def __init__(self, strval, strid, dadv, bareid=None):
                 self.strval = strval
                 self.strid = strid
-                self.dkern = dkern
+                self.dadv = dadv
                 self.bareid = bareid
 
         badchars = {"\n": " ", "\r": " "}
@@ -3779,8 +3740,8 @@ class CharacterTable:
                 t = make_string(prefix + effc(myc) + suffix, sty)
                 tbare = make_string(effc(myc), sty)
                 bareids.append(tbare)
-                dkern = dict()
-                if KERN_TABLE:
+                dadv = dict()
+                if DIFF_ADVANCES:
                     for pchr in chrs:
                         if (
                             sty in self.pchrset
@@ -3791,106 +3752,100 @@ class CharacterTable:
                                 prefix + effc(pchr) + effc(myc) + suffix, sty
                             )
                             # precede by all chars of the same style
-                            dkern[pchr] = tpc
-                ctbl[sty][myc] = StringInfo(myc, t, dkern, tbare)
+                            dadv[pchr] = tpc
+                ctbl[sty][myc] = StringInfo(myc, t, dadv, tbare)
 
             ctbl[sty][pistr] = StringInfo(pistr, make_string(pistr, sty), dict())
             ctbl[sty][empty] = StringInfo(empty, make_string(empty, sty), dict())
 
-        if not (usepango):
-            tmpf.write((svgtexts + svgstop).encode("utf8"))
-            tmpf.close()
-            nbb = get_bounding_boxes(filename=tmpname)
-            os.remove(tmpname)
-        else:
-            # Pango querying doesn't multithread well
-            lock = threading.Lock()
-            lock.acquire()
-            try:
-                pngr = PangoRenderer()
-                nbb = dict()
-                for sty in ctbl:
-                    joinch = " "
-                    mystrs = [val[0] for k, val in pstrings.items() if val[1] == sty]
-                    myids = [k for k, val in pstrings.items() if val[1] == sty]
+        # Pango querying doesn't multithread well
+        lock = threading.Lock()
+        lock.acquire()
+        try:
+            pngr = PangoRenderer()
+            nbb = dict()
+            for sty in ctbl:
+                joinch = " "
+                mystrs = [val[0] for k, val in pstrings.items() if val[1] == sty]
+                myids = [k for k, val in pstrings.items() if val[1] == sty]
 
-                    success, metrics = pngr.set_text_style(sty)
-                    if not (success):
-                        lock.release()
-                        return self.measure_characters(forcecommand=True)
-                    joinedstr = joinch.join(mystrs) + joinch + prefix
+                success, metrics = pngr.set_text_style(sty)
+                if not (success):
+                    lock.release()
+                    return self.extract_characters()
+                joinedstr = joinch.join(mystrs) + joinch + prefix
 
-                    # We need to render all the characters, but we don't
-                    # need all of their extents. For most of them we just
-                    # need the first character, unless the following string
-                    # has length 1 (and may be differently differentially kerned)
-                    modw = [
-                        any(
-                            len(mystrs[i]) == 1
-                            for i in range(i, i + 2)
-                            if 0 <= i < len(mystrs)
+                # We need to render all the characters, but we don't
+                # need all of their extents. For most of them we just
+                # need the first character, unless the following string
+                # has length 1 (and may be differently differentially kerned)
+                modw = [
+                    any(
+                        len(mystrs[i]) == 1
+                        for i in range(i, i + 2)
+                        if 0 <= i < len(mystrs)
+                    )
+                    for i in range(len(mystrs))
+                ]
+                needexts = [
+                    "1"
+                    if len(s) == 1
+                    else "1" + "0" * (len(s) - 2) + ("1" if modw[i] else "0")
+                    for i, s in enumerate(mystrs)
+                ]
+                needexts2 = "0".join(needexts) + "1" + "1" * len(prefix)
+                pngr.render_text(joinedstr)
+                exts, _ = pngr.get_character_extents(metrics[1], needexts2)
+
+                spw = exts[-len(prefix) - 1][0][2]
+                cnt = 0
+                x = 0
+                for i, mystr in enumerate(mystrs):
+                    if modw[i]:
+                        altw = (
+                            exts[cnt + len(mystr) - 1][0][0]
+                            + exts[cnt + len(mystr) - 1][0][2]
+                            - exts[cnt][0][0]
                         )
-                        for i in range(len(mystrs))
-                    ]
-                    needexts = [
-                        "1"
-                        if len(s) == 1
-                        else "1" + "0" * (len(s) - 2) + ("1" if modw[i] else "0")
-                        for i, s in enumerate(mystrs)
-                    ]
-                    needexts2 = "0".join(needexts) + "1" + "1" * len(prefix)
-                    pngr.render_text(joinedstr)
-                    exts, _ = pngr.get_character_extents(metrics[1], needexts2)
+                    else:
+                        altw = (
+                            exts[cnt + len(mystr) + 1][0][0] - exts[cnt][0][0] - spw
+                        )
+                    wdt = altw
 
-                    spw = exts[-len(prefix) - 1][0][2]
-                    cnt = 0
-                    x = 0
-                    for i, mystr in enumerate(mystrs):
-                        if modw[i]:
-                            altw = (
-                                exts[cnt + len(mystr) - 1][0][0]
-                                + exts[cnt + len(mystr) - 1][0][2]
-                                - exts[cnt][0][0]
-                            )
-                        else:
-                            altw = (
-                                exts[cnt + len(mystr) + 1][0][0] - exts[cnt][0][0] - spw
-                            )
-                        wdt = altw
+                    firstch = exts[cnt]
+                    (xbr, ybr, wbr, hbr) = tuple(firstch[2])
+                    if myids[i] not in bareids:
+                        xbr = x
+                        wbr = wdt
+                        # use logical width
 
-                        firstch = exts[cnt]
-                        (xbr, ybr, wbr, hbr) = tuple(firstch[2])
-                        if myids[i] not in bareids:
-                            xbr = x
-                            wbr = wdt
-                            # use logical width
+                    nbb[myids[i]] = [val * TEXTSIZE for val in [xbr, ybr, wbr, hbr]]
+                    cnt += len(mystr) + len(joinch)
+                    x += wdt
+        finally:
+            lock.release()
 
-                        nbb[myids[i]] = [val * TEXTSIZE for val in [xbr, ybr, wbr, hbr]]
-                        cnt += len(mystr) + len(joinch)
-                        x += wdt
-            finally:
-                lock.release()
-
-        dkern = dict()
+        dadv = dict()
         for sty, chd in ctbl.items():
             prefix, suffix, empty, pistr = ixes[sty]
             for i in chd:
                 chd[i].bbx = bbox(nbb[chd[i].strid])
-                if KERN_TABLE:
+                if DIFF_ADVANCES:
                     precwidth = dict()
-                    for j in chd[i].dkern:
-                        precwidth[j] = bbox(nbb[chd[i].dkern[j]]).w
+                    for j in chd[i].dadv:
+                        precwidth[j] = bbox(nbb[chd[i].dadv[j]]).w
                         # width including the preceding character and extra kerning
                     chd[i].precwidth = precwidth
 
-            if KERN_TABLE:
-                dkern[sty] = dict()
+            if DIFF_ADVANCES:
+                dadv[sty] = dict()
                 for i in chd:
                     mcw = chd[i].bbx.w - chd[empty].bbx.w  # my character width
                     for j in chd[i].precwidth:
                         pcw = chd[j].bbx.w - chd[empty].bbx.w  # preceding char width
                         bcw = chd[i].precwidth[j] - chd[empty].bbx.w  # both char widths
-                        dkern[sty][j, chd[i].strval] = bcw - pcw - mcw
+                        dadv[sty][j, chd[i].strval] = bcw - pcw - mcw
                         # preceding char, then next char
 
         for sty, chd in ctbl.items():
@@ -3900,10 +3855,10 @@ class CharacterTable:
             caph = -chd[empty].bbx.y1
             # cap height is the top of I (relative to baseline)
 
-            dkernscl = dict()
-            if KERN_TABLE:
-                for k in dkern[sty]:
-                    dkernscl[k] = dkern[sty][k] / TEXTSIZE
+            dadvscl = dict()
+            if DIFF_ADVANCES:
+                for k in dadv[sty]:
+                    dadvscl[k] = dadv[sty][k] / TEXTSIZE
 
             for i in chd:
                 cwd = chd[i].bbx.w - blnkwd
@@ -3921,7 +3876,7 @@ class CharacterTable:
                     cwd / TEXTSIZE,
                     spw / TEXTSIZE,
                     caph / TEXTSIZE,
-                    dkernscl,
+                    dadvscl,
                     [val / TEXTSIZE for val in inkbb],
                 )
         if None in self.tstyset:
@@ -3938,7 +3893,7 @@ class CharacterTable:
             for c, val in self.ctable[sty].items():
                 ret += "    " + c + " : " + str(vars(val)) + "\n"
             if val is not None:
-                ret += "    " + str(val.dkerns)
+                ret += "    " + str(val.dadvs)
         return ret
 
     @staticmethod
@@ -4041,7 +3996,7 @@ def xyset(elem, xyt, val):
     else:
         EBset(elem, xyt, ' '.join('%s' % v for v in val))
 
-def remove_overflow_position_overflows(el):
+def remove_position_overflows(el):
     """
     Normally Inkscape only produces multiple position attributes (x,y,dx,dy) on a
     tspan corresponding to the number of characters. It does support more than this,

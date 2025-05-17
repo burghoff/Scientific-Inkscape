@@ -4,7 +4,7 @@
 
 DEBUG = False
 WHILESLEEP = 0.5
-MAXTHREADS = 10
+MAXTHREADS = 1000
 
 import sys, platform, os, threading, time, copy, pickle
 
@@ -25,7 +25,7 @@ import inkex
 import inkex.text.parser  # needed to prevent GTK crashing
 
 import autoexporter
-from autoexporter import AutoExporter
+from autoexporter import Exporter
 
 
 def mprint(*args, **kwargs):
@@ -294,28 +294,6 @@ class FileCheckerThread(threading.Thread):
             self.running_threads.remove(thr)
             self.finished_threads.append(thr)
 
-        leftover_temps = []
-        lftover_tmp = os.path.join(systmpdir, "si_ae_leftovertemp.p")
-        if os.path.exists(lftover_tmp):
-            with open(lftover_tmp, "rb") as f:
-                leftover_temps = pickle.load(f)
-                for tf in reversed(leftover_temps):
-                    if os.path.exists(tf):
-                        try:
-                            os.rmdir(tf)
-                            leftover_temps.remove(tf)
-                        except:
-                            pass
-            os.remove(lftover_tmp)
-        for thr in self.finished_threads:
-            if hasattr(thr, "tempdir"):
-                if os.path.isdir(thr.tempdir):
-                    leftover_temps.append(thr.tempdir)
-        if len(leftover_temps) > 0:
-            with open(lftover_tmp, "wb") as f:
-                pickle.dump(leftover_temps, f)
-
-
 class PromptThread(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
@@ -353,10 +331,10 @@ class AutoExporterThread(threading.Thread):
             )
             if use
         ]
+        opts.outtemplate = self.outtemplate
+        opts.bfn = bfn
         try:
-            AutoExporter.export_all(
-                bfn, self.file, self.outtemplate, opts.formats, opts
-            )
+            Exporter(self.file, opts).export_all()
         except SystemExit:
             pass
         except:
@@ -364,7 +342,6 @@ class AutoExporterThread(threading.Thread):
             error_message = f"Exception in {fname}\n"
             error_message += traceback.format_exc()
             mprint(error_message)
-
 
 if guitype == "gtk":
     import warnings
@@ -782,8 +759,8 @@ else:
     try:
         import tkinter
 
-        promptstring = "\nEnter D to change directories, R to change DPI, F to"
-        " export a file, A to export all now, and Q to quit: "
+        promptstring = ("\nEnter D to change directories, R to change DPI, F to"
+        " export a file, A to export all now, and Q to quit: ")
         hastkinter = True
     except:
         promptstring = "\nEnter A to export all now, R to change DPI, and Q to quit: "

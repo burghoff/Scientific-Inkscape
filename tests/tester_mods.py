@@ -25,6 +25,10 @@ def mod_xmldiff(data_a,data_b):
                     toremove.append((value_a, value_b))
             except:
                 pass
+        elif value_a is not None and value_b is not None and len(value_a)>2 and len(value_b)>2 and \
+            'Cambria' in value_a[2]:
+            if value_a[2].replace('Cambria Math','Cambria')==value_b[2].replace('Cambria Math','Cambria'):
+                toremove.append((value_a, value_b))
         elif version=='1.0' and \
             value_a is not None and value_b is not None and len(value_a)>0 and len(value_b)>0 and \
            ((value_a[1]=='height' and value_b[1]=='height')):

@@ -51,7 +51,7 @@ SUBSUPER_YTHR = 1 / 3
 import inkex
 import inkex.text.parser as tp
 
-import os, sys
+import os, sys, re
 
 sys.path.append(
     os.path.dirname(os.path.realpath(sys.argv[0]))
@@ -297,7 +297,11 @@ def Remove_Manual_Kerning(els, mergesupersub):
             xtolp = XTOLMKP * w.spw
             ytol  = YTOLMK  * w.mch
 
-            tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
+            try:
+                tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
+            except ZeroDivisionError:
+                w.mw = mw
+                continue
 
             if isnumeric(w.txt) and isnumeric(w2.txt, True):
                 dx = w.spw * 0
@@ -393,6 +397,9 @@ def External_Merges(els, mergenearby, mergesupersub):
             weight_match = w.chrs[-1].tsty['font-weight'] == w2.chrs[0].tsty['font-weight']
             # Don't sub/super merge when differences in font-weight
             # Helps prevent accidental merges of subfigure label to tick
+            letterinpar = bool(re.fullmatch(r"^\([a-zA-Z]\)$", w.txt))
+            # Don't sub/super merge when is letter enclosed in parentheses
+            # Helps prevent accidental merges of subfigure label to tick
             mtype = None
             if (
                 abs(bl2[1] - br1[1]) < ytol
@@ -407,7 +414,7 @@ def External_Merges(els, mergenearby, mergesupersub):
                 else:
                     mtype = "same"
             elif (
-                br1[1] + ytol >= bl2[1] >= tr1[1] - ytol and mergesupersub and weight_match
+                br1[1] + ytol >= bl2[1] >= tr1[1] - ytol and mergesupersub and weight_match and not letterinpar
             ):  # above baseline
                 aboveline = (
                     br1[1] * (1 - SUBSUPER_YTHR) + tr1[1] * SUBSUPER_YTHR + ytol
@@ -428,7 +435,7 @@ def External_Merges(els, mergenearby, mergesupersub):
                             # could be either, decide later
                     else:
                         mtype = "subreturn"
-            elif br1[1] + ytol >= tl2[1] >= tr1[1] - ytol and mergesupersub and weight_match:
+            elif br1[1] + ytol >= tl2[1] >= tr1[1] - ytol and mergesupersub and weight_match and not letterinpar:
                 belowline = (
                     tl2[1]
                     >= br1[1] * SUBSUPER_YTHR + tr1[1] * (1 - SUBSUPER_YTHR) - ytol
