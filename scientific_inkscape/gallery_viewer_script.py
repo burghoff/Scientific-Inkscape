@@ -520,7 +520,7 @@ class Processor(threading.Thread):
         self.run_on_fof()
     def delete_fcn(self,path):
         print(f"Deleted: {path}")
-        self.run_on_fof()
+        # self.run_on_fof()
         
     def get_image_slidenums(self, dirin):
         relsdir = os.path.join(dirin, "ppt", "slides", "_rels")

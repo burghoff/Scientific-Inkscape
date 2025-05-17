@@ -26,7 +26,7 @@
 
 # Locate the installed Inkex so we can assess the version. Do not import!
 import pkgutil
-
+installed_inkex = None
 for finder in pkgutil.iter_importers():
     if hasattr(finder, "find_spec"):
         try:
@@ -122,17 +122,21 @@ def count_callers():
 
 
 # Discover the version of Inkex installed, NOT the version packaged with SI
-with open(installed_inkex, "r") as file:
-    content = file.read()
-match = re.search(r'__version__\s*=\s*"(.*?)"', content)
-vstr = match.group(1) if match else "1.0.0"
-if vstr=='1.2.0': # includes 1.2.0, 1.2.1, 1.2.2
-    extpy = os.path.join(os.path.dirname(installed_inkex),'extensions.py')
-    with open(extpy, "r") as file:
+if installed_inkex is not None:
+    with open(installed_inkex, "r") as file:
         content = file.read()
-    match = re.search(r'Pattern', content) # appeared in 1.2.2
-    if match:
-        vstr='1.2.2'
+    match = re.search(r'__version__\s*=\s*"(.*?)"', content)
+    vstr = match.group(1) if match else "1.0.0"
+    if vstr=='1.2.0': # includes 1.2.0, 1.2.1, 1.2.2
+        extpy = os.path.join(os.path.dirname(installed_inkex),'extensions.py')
+        with open(extpy, "r") as file:
+            content = file.read()
+        match = re.search(r'Pattern', content) # appeared in 1.2.2
+        if match:
+            vstr='1.2.2'
+else:
+    # No installed Inkex, probably not called by Inkscape
+    vstr = inkex.__version__
 
 inkex.installed_ivp = inkex.vparse(vstr)  # type: ignore
 inkex.installed_haspages = inkex.installed_ivp[0] >= 1 and inkex.installed_ivp[1] >= 2
@@ -1865,8 +1869,8 @@ def split_text(elem):
 
 
 def Version_Check(caller):
-    siv = "v1.4.22"  # Scientific Inkscape version
-    maxsupport = "1.4.0"
+    siv = "v1.4.23"  # Scientific Inkscape version
+    maxsupport = "1.4.2"
     minsupport = "1.1.0"
 
     logname = "Log.txt"
