@@ -1374,7 +1374,8 @@ def bounding_box2(
                 if includeclipmask:
                     for cmv in ["clip-path", "mask"]:
                         clip = self.get_link(cmv, llget=True)
-                        if clip is not None:
+                        if clip is not None and clip!=self.getparent():
+                            # ignore self-clipping
                             cbb = bounding_box2(
                                 clip,
                                 dotransform=False,
