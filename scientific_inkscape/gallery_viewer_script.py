@@ -277,14 +277,14 @@ def Make_Flask_App():
         svg_file = file_uri_to_path(param)
         if svg_file is not None:
             print("Opening " + str(svg_file))
-
+            warnings.simplefilter("ignore", ResourceWarning) # prevent process open warning
             if str(svg_file).endswith(".emf") or str(svg_file).endswith(".wmf"):
                 subprocess.Popen([bfn,svg_file])
                 return f"The parameter received is: {param}"
 
             with OpenWithEncoding(svg_file) as f:
                 file_content = f.read()
-                warnings.simplefilter("ignore", ResourceWarning) # prevent process open warning
+                
                 if DUP_KEY in file_content:
                     deembedsmade = False
                     while not (deembedsmade):
@@ -452,7 +452,16 @@ class ConversionThread(threading.Thread):
                 # Execute the conversion command
                 with conv_sema:
                     print('Inkscape export of '+fname)
-                    dh.subprocess_repeat(args)
+                    try:
+                        dh.subprocess_repeat(args)
+                    except subprocess.CalledProcessError:
+                        ws = os.path.join(dh.si_dir,'pngs','cannot_display.png')
+                        shutil.copy(ws, conv_path)
+                    
+                    if not os.path.exists(conv_path):
+                        # Still no png, probably a blank file
+                        ws = os.path.join(dh.si_dir,'pngs','white_square.png')
+                        shutil.copy(ws, conv_path)
 
             # Move the converted file to the final destination
             shutil.move(conv_path, self.fileout)
