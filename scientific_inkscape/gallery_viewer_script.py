@@ -16,7 +16,7 @@ bfn_dir = os.path.dirname(bfn)
 if bfn_dir not in sys.path:
     sys.path.append(bfn_dir)
 PORTNUMBER = input_options.portnum
-sys.stdout = open(input_options.logfile, "w")
+sys.stdout = open(input_options.logfile, "w", encoding="utf-8", errors="replace")
 sys.stderr = sys.stdout
 
 import sys, subprocess, threading, time, chardet
@@ -284,6 +284,7 @@ def Make_Flask_App():
 
             with OpenWithEncoding(svg_file) as f:
                 file_content = f.read()
+                warnings.simplefilter("ignore", ResourceWarning) # prevent process open warning
                 if DUP_KEY in file_content:
                     deembedsmade = False
                     while not (deembedsmade):
@@ -309,10 +310,11 @@ def Make_Flask_App():
                                 dup.delete()
                             g = d.getparent()
                             d.delete()
-                            g.set("display", None)  # office converts to att
-                            g.cstyle["display"] = None
-                            list(g)[0].set_id(dupid)
-                            dh.ungroup(g)
+                            if g is not None and len(g)==1:
+                                g.set("display", None)  # office converts to att
+                                g.cstyle["display"] = None
+                                list(g)[0].set_id(dupid)
+                                dh.ungroup(g)
 
                     dh.overwrite_svg(svg, tsvg)
                     subprocess.Popen([bfn, tsvg])
