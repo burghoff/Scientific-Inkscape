@@ -342,29 +342,29 @@ class FlattenPlots(inkex.EffectExtension):
                                 bb = dh.bounding_box2(
                                     el, includestroke=False, dotransform=False, includeclipmask=False
                                 )
-                                if not bb.isnull:
-                                    if bb.w < bb.h / RECT_THRESHOLD and not sf.fill_isurl:
-                                        el.object_to_path()
-                                        npv = "m {0},{1} v {2}".format(bb.xc, bb.y1, bb.h)
-                                        el.set("d", npv)
-                                        el.cstyle["stroke"] = sf.fill.to_rgb()
-                                        if sf.fill.alpha != 1.0:
-                                            el.cstyle["stroke-opacity"] = sf.fill.alpha
-                                            el.cstyle["opacity"] = 1
-                                        el.cstyle["fill"] = "none"
-                                        el.cstyle["stroke-width"] = str(bb.w)
-                                        el.cstyle["stroke-linecap"] = "butt"
-                                    elif bb.h < bb.w / RECT_THRESHOLD and not sf.fill_isurl:
-                                        el.object_to_path()
-                                        npv = "m {0},{1} h {2}".format(bb.x1, bb.yc, bb.w)
-                                        el.set("d", npv)
-                                        el.cstyle["stroke"] = sf.fill.to_rgb()
-                                        if sf.fill.alpha != 1.0:
-                                            el.cstyle["stroke-opacity"] = sf.fill.alpha
-                                            el.cstyle["opacity"] = 1
-                                        el.cstyle["fill"] = "none"
-                                        el.cstyle["stroke-width"] = str(bb.h)
-                                        el.cstyle["stroke-linecap"] = "butt"
+                                darkpath = not bb.isnull and not sf.fill_isurl and dh.get_strokefill(el).fill.efflightness<16/255
+                                if darkpath and bb.w < bb.h / RECT_THRESHOLD:
+                                    el.object_to_path()
+                                    npv = "m {0},{1} v {2}".format(bb.xc, bb.y1, bb.h)
+                                    el.set("d", npv)
+                                    el.cstyle["stroke"] = sf.fill.to_rgb()
+                                    if sf.fill.alpha != 1.0:
+                                        el.cstyle["stroke-opacity"] = sf.fill.alpha
+                                        el.cstyle["opacity"] = 1
+                                    el.cstyle["fill"] = "none"
+                                    el.cstyle["stroke-width"] = str(bb.w)
+                                    el.cstyle["stroke-linecap"] = "butt"
+                                elif darkpath and bb.h < bb.w / RECT_THRESHOLD:
+                                    el.object_to_path()
+                                    npv = "m {0},{1} h {2}".format(bb.x1, bb.yc, bb.w)
+                                    el.set("d", npv)
+                                    el.cstyle["stroke"] = sf.fill.to_rgb()
+                                    if sf.fill.alpha != 1.0:
+                                        el.cstyle["stroke-opacity"] = sf.fill.alpha
+                                        el.cstyle["opacity"] = 1
+                                    el.cstyle["fill"] = "none"
+                                    el.cstyle["stroke-width"] = str(bb.h)
+                                    el.cstyle["stroke-linecap"] = "butt"
 
         TE_TAG = TextElement.ctag;
         if self.options.fixtext:
