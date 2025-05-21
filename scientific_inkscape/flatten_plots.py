@@ -389,6 +389,13 @@ class FlattenPlots(inkex.EffectExtension):
                             el.cstyle["font-family"] = ",".join(ff)
 
             if removemanualkerning or mergesubsuper or splitdistant or mergenearby:
+                # Remove language switching
+                stag = inkex.addNS("switch", "svg")
+                for el in ngs:
+                    if el.tag==stag:
+                        dh.deswitch(el)
+                ngs = [el for el in ngs if el.getparent() is not None]
+                
                 jdict = {1: "middle", 2: "start", 3: "end", 4: None}
                 justification = jdict[self.options.justification]
                 ngs = remove_kerning(

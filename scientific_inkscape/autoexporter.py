@@ -535,35 +535,11 @@ class Exporter():
 
         # Prune hidden items and remove language switching
         stag = inkex.addNS("switch", "svg")
-        todelete, todelang, switches = [], [], []
         for elem in dh.visible_descendants(svg):
             if elem.cspecified_style.get("display") == "none":
-                todelete.append(elem)
-            if elem.get("systemLanguage") is not None:
-                lang = inkex.inkscape_system_info.language
-                if elem.get("systemLanguage") == lang:
-                    todelang.append(elem)
-                    # Remove other languages from switches
-                    if elem.getparent().tag == stag:
-                        todelete.extend(
-                            [
-                                k
-                                for k in elem.getparent()
-                                if k.get("systemLanguage") != lang
-                            ]
-                        )
-                else:
-                    # Remove non-matching languages
-                    todelete.append(elem)
-            if elem.tag == stag:
-                switches.append(elem)
-        for elem in unique(todelete):
-            elem.delete()
-        for elem in todelang:
-            elem.set("systemLanguage", None)
-        for elem in switches:
-            if len(elem)==1:
-                dh.ungroup(elem)
+                elem.delete()
+            elif elem.tag==stag:
+                dh.deswitch(elem)
 
         # Embed linked images into the SVG. This should be done prior to clone unlinking
         # since some images may be cloned

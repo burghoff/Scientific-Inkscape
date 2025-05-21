@@ -333,6 +333,19 @@ def group(el_list, moveTCM=False):
     return g
 
 
+def deswitch(el):
+    ''' Removes language switching '''
+    lang = inkex.inkscape_system_info.language
+    for k in reversed(list(el)):
+        if k.get("systemLanguage",lang) != lang and len(el)>1:
+            # leave at least first element
+            k.delete()
+    for k in el[1:]:
+        k.delete()
+    if len(el)>0:
+        el[0].set("systemLanguage", None)
+    ungroup(el)
+
 # For composing a group's properties onto its children (also group-like objects like Uses)
 Itmat = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
 
