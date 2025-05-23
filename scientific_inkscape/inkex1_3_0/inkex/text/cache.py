@@ -49,34 +49,6 @@ import lxml
 
 EBget = lxml.etree.ElementBase.get
 EBset = lxml.etree.ElementBase.set
-
-
-def get_link_fcn(elem, typestr, svg=None, llget=False):
-    """
-    Function that references URLs, returning the referenced element
-    Returns None if it does not exist or is invalid
-    Accepts both elements and styles as inputs
-    """
-    if llget:
-        urlv = EBget(elem, typestr)
-        # fine for 'clip-path' & 'mask'
-    else:
-        urlv = elem.get(typestr)
-    if urlv is not None:
-        if svg is None:
-            svg = elem.croot  # need to specify svg for Styles but not BaseElements
-            if svg is None:
-                return None
-        if typestr == "xlink:href":
-            urlel = svg.getElementById(urlv[1:])
-        elif urlv.startswith("url"):
-            urlel = svg.getElementById(urlv[5:-1])
-        else:
-            urlel = None
-        return urlel
-    return None
-
-
 BE_set_id = BaseElement.set_id
 
 # Fast empty Style initialization
@@ -95,12 +67,56 @@ else:
         return ret
 
 
+xlinkhref = inkex.addNS("href", "xlink")
+linkmap = {'clip-path':'clips','mask':'masks',xlinkhref:'linked_by'}
+patmap =  {'clip-path':re.compile(r'url\(#([^)]+)\)'),
+           'mask':re.compile(r'url\(#([^)]+)\)'),
+           xlinkhref:re.compile(r'^#([A-Za-z_][\w\-]*)$')}
+
 # pylint:disable=attribute-defined-outside-init
 class BaseElementCache(BaseElement):
     """Adds caching of style and transformation properties of base elements."""
 
-    get_link = get_link_fcn
-
+    def get_link(self, typestr, svg=None, llget=False):
+        """
+        Function that references URLs, returning the referenced element
+        Returns None if it does not exist or is invalid
+        Accepts both elements and styles as inputs
+        """
+        if llget:
+            urlv = EBget(self, typestr)
+            # fine for 'clip-path' & 'mask'
+        else:
+            urlv = self.get(typestr)
+        if urlv is not None:
+            if svg is None:
+                svg = self.croot  # need to specify svg for Styles but not BaseElements
+                if svg is None:
+                    return None
+            if typestr == "xlink:href":
+                urlel = svg.getElementById(urlv[1:])
+            elif urlv.startswith("url"):
+                urlel = svg.getElementById(urlv[5:-1])
+            else:
+                urlel = None
+            return urlel
+        return None
+    
+    def set_link(self,att,val):
+        ''' Sets a linky attribute (currently clip-path, mask, xlink:href)
+        while updating the iddicts '''
+        if att=='xlink:href':
+            att = xlinkhref
+        
+        if self.croot is not None:
+            self.croot.iddict.remove_from_linkdict(self,att)
+        if val is None:
+            self.attrib.pop(att, None)  # pylint: disable=no-member
+        else:
+            EBset(self,att,val)
+            if self.croot is not None:
+                self.croot.iddict.add_to_linkdict(self,att)
+            
     class CStyle(Style):
         """
         Cached style attribute that invalidates the cached cascaded / specified
@@ -602,6 +618,16 @@ class BaseElementCache(BaseElement):
                 except (KeyError, AttributeError):
                     pass
                 svg.iddict.remove(ddv)
+                
+                # Remove any clips/masks that refer to this element so as not
+                # to leave behind orphan references
+                if did in svg.iddict.clips:
+                    for el in svg.iddict.clips[did]:
+                        el.set_link('clip-path',None)
+                if did in svg.iddict.masks:
+                    for el in svg.iddict.masks[did]:
+                        el.set_link('mask',None)
+                
             ddv.croot = None
         if hasattr(svg, "_cd2"):
             svg.cdescendants2.delel(self)
@@ -818,14 +844,14 @@ class SvgDocumentElementCache(SvgDocumentElement):
         running count"""
         new_id = None
         cnt = self.iddict.prefixcounter.get(prefix, 0)
-        if blacklist is None:
-            while new_id is None or new_id in self.iddict:
-                new_id = prefix + str(cnt)
-                cnt += 1
-        else:
-            while new_id is None or new_id in self.iddict or new_id in blacklist:
-                new_id = prefix + str(cnt)
-                cnt += 1
+
+        while new_id is None or (new_id in self.iddict or
+            new_id in self.iddict.clips or
+            new_id in self.iddict.masks or
+            (blacklist is not None and new_id in blacklist)):
+            new_id = prefix + str(cnt)
+            cnt += 1
+
         self.iddict.prefixcounter[prefix] = cnt
         return new_id
 
@@ -847,6 +873,9 @@ class SvgDocumentElementCache(SvgDocumentElement):
             super().__init__()
             self.svg = svg
             self.prefixcounter = dict()
+            self.clips = dict()
+            self.masks = dict()
+            self.linked_by = dict()
             toassign = []
             for elem in svg.descendants2():
                 if "id" in elem.attrib:
@@ -854,6 +883,12 @@ class SvgDocumentElementCache(SvgDocumentElement):
                 else:
                     toassign.append(elem)
                 elem.croot = svg  # do now to speed up later
+                
+                # While we're iterating, we gather clips/masks/links
+                self.add_to_linkdict(elem,'clip-path')
+                self.add_to_linkdict(elem,'mask')
+                self.add_to_linkdict(elem,xlinkhref)
+                    
             for elem in toassign:
                 # Reduced version of get_unique_id_fcn
                 # Cannot call it since it relies on iddict
@@ -870,14 +905,16 @@ class SvgDocumentElementCache(SvgDocumentElement):
 
         def add(self, elem):
             """Add an element to the ID dict"""
-            elid = (
-                elem.get_id()
-            )  # fine since elem should have a croot to get called here
+            elid = elem.get_id()
+            # fine since elem should have a croot to get called here
             if elid in self and not self[elid] == elem:
                 # Make a new id when there's a conflict
                 elem.set_random_id(elem.TAG)
                 elid = elem.get_id()
             self[elid] = elem
+            self.add_to_linkdict(elem,'clip-path')
+            self.add_to_linkdict(elem,'mask')
+            self.add_to_linkdict(elem,xlinkhref)
 
         @property
         def descendants(self):
@@ -888,7 +925,35 @@ class SvgDocumentElementCache(SvgDocumentElement):
             """Remove from ID dict"""
             elid = elem.get_id()
             if elid in self:
-                del self[elid]
+                del self[elid]                            
+            self.remove_from_linkdict(elem,'clip-path')
+            self.remove_from_linkdict(elem,'mask')
+            self.remove_from_linkdict(elem,xlinkhref)
+                            
+            
+        def add_to_linkdict(self,elem,att):
+            '''
+            Maintain a dictionary of linky attributes like clip-path, mask, etc.
+            Keys are ids that are referenced, whether or not they actually exist.
+            Values are a list of nodes linking to that id.
+            '''
+            linkdict = self.__dict__[linkmap[att]]
+            cid=EBget(elem,att)
+            if cid:
+                match = patmap[att].search(cid)
+                if match:
+                    linkdict.setdefault(match.group(1),set()).add(elem)
+        def remove_from_linkdict(self,elem,att):
+            linkdict = self.__dict__[linkmap[att]]
+            cid=EBget(elem,att)
+            if cid:
+                match = patmap[att].search(cid)
+                if match:
+                    cid = match.group(1)
+                    if cid in linkdict and elem in linkdict[cid]:
+                        linkdict[cid].remove(elem)
+                        if len(linkdict[cid])==0:
+                            del linkdict[cid]
 
     @property
     def iddict(self):
@@ -1288,7 +1353,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
 class StyleCache(Style):
     """Caches and manages style data with enhanced functionality."""
 
-    get_link = get_link_fcn
+    get_link = BaseElementCache.get_link
 
     def __hash__(self):
         """Generates a hash based on the style items."""

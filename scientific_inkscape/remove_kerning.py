@@ -597,7 +597,7 @@ def Perform_Merges(chks, mk=False):
             if len(mels) > 1:
                 clips = [el.get_link("clip-path") for el in mels]
                 if any([c is None for c in clips]):
-                    w.line.ptxt.textel.set("clip-path", None)
+                    w.line.ptxt.textel.set_link("clip-path", None)
                 else:
                     # Duplicate main clip
                     dc = clips[0].duplicate()
@@ -609,7 +609,7 @@ def Perform_Merges(chks, mk=False):
                         dc.append(ng)
                         ng.ctransform = (-wt) @ mels[ii].ccomposed_transform
                         dc2.delete()
-                    mels[0].set("clip-path", dc.get_id(2))
+                    mels[0].set_link("clip-path", dc.get_id(2))
 
 
 # Check if text represents a number

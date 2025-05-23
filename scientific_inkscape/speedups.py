@@ -234,11 +234,7 @@ def fast_control_points(self):
 
 
 inkex.paths.Path.control_points = property(fast_control_points)  # type: ignore
-from typing import (
-    Union,
-    List,
-    Generator,
-)
+from typing import Generator
 
 
 def fast_control_points_move(

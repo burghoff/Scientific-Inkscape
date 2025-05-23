@@ -410,8 +410,8 @@ class FlattenPlots(inkex.EffectExtension):
             if removetextclips:
                 for el in ngs:
                     if el.tag in dh.ttags:
-                        el.set("clip-path", None)
-                        el.set("mask", None)
+                        el.set_link("clip-path", None)
+                        el.set_link("mask", None)
 
         if self.options.removerectw or self.options.removeduppaths:
             ngset = set(ngs)
@@ -505,19 +505,20 @@ class FlattenPlots(inkex.EffectExtension):
                     
 
         # Remove any unused clips we made, unnecessary white space in document
-        ds = self.svg.iddict.descendants
-        clips = [dh.EBget(el, "clip-path") for el in ds]
-        masks = [dh.EBget(el, "mask") for el in ds]
-        clips = [url[5:-1] for url in clips if url is not None]
-        masks = [url[5:-1] for url in masks if url is not None]
-
         ctag = inkex.ClipPath.ctag
+        mtag = inkex.addNS("mask", "svg")
         if hasattr(self.svg, "newclips"):
-            for el in self.svg.newclips:
-                if el.tag == ctag and not (el.get_id() in clips):
-                    el.delete(deleteup=True)
-                elif dh.isMask(el) and not (el.get_id() in masks):
-                    el.delete(deleteup=True)
+            potential_orphans = set(self.svg.newclips)
+            while len(potential_orphans)>0:
+                deleted_cms = set()
+                for po in potential_orphans:
+                    if po in self.svg.newclips and (
+                        (po.tag == ctag and po.get_id() not in self.svg.iddict.clips) or 
+                        (po.tag == mtag and po.get_id() not in self.svg.iddict.masks)):
+                        oldcms = [ddv.get_link(cm) for ddv in po.descendants2() for cm in ['clip-path','mask']]
+                        deleted_cms.update({v for v in oldcms if v is not None and v in self.svg.newclips})
+                        po.delete(deleteup=True)
+                potential_orphans = deleted_cms
 
         ttags = dh.tags((Tspan, TextPath, FlowPara, FlowRegion, FlowSpan))
         ttags2 = dh.tags(
@@ -532,7 +533,7 @@ class FlattenPlots(inkex.EffectExtension):
                 inkex.FlowSpan,
             )
         )
-        for el in reversed(ds):
+        for el in reversed(self.svg.iddict.descendants):
             if not (el.tag in ttags):
                 if el.tail is not None:
                     el.tail = None

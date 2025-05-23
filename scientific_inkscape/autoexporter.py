@@ -51,13 +51,12 @@ import shutil
 import tempfile
 import hashlib
 import lxml
-import random
 import threading
 
 import dhelpers as dh
 import inkex
 from inkex import TextElement, Transform, Vector2d
-from inkex.text.utils import default_style_atts, unique
+from inkex.text.utils import default_style_atts
 from inkex.text.cache import BaseElementCache
 from inkex.text.parser import ParsedText, xyset
 
@@ -1624,9 +1623,9 @@ class Exporter():
                             # pylint: enable=import-outside-toplevel
 
                             newstr = ih.ImagePIL_to_str(ImagePIL.fromarray(nda))
-                            elem.set("xlink:href", newstr)
+                            elem.set_link("xlink:href", newstr)
                             mask.delete()
-                            elem.set("mask", None)
+                            elem.set_link("mask", None)
 
     @staticmethod
     def standardize_image(elem):
@@ -1652,9 +1651,9 @@ class Exporter():
         # Correct by putting transform/clip/mask on a new parent group, then
         # fix location, then ungroup
         grp = dh.group([elem], moveTCM=True)
-        grp.set("clip-path", None)
+        grp.set_link("clip-path", None)
         # conversion to bitmap already includes clips
-        grp.set("mask", None)  # conversion to bitmap already includes masks
+        grp.set_link("mask", None)  # conversion to bitmap already includes masks
 
         # Calculate what transform is needed to preserve the image's location
         ctf = elem.ccomposed_transform
@@ -1679,7 +1678,7 @@ class Exporter():
         myw = dh.ipx(newel.get("width"))
         newel.set("height", 1)
         myh = dh.ipx(newel.get("height"))
-        newel.set("xlink:href", elem.get("xlink:href"))
+        newel.set_link("xlink:href", elem.get("xlink:href"))
 
         # Inkscape inappropriately clips non-'optimizeQuality' images
         # when generating PDFs

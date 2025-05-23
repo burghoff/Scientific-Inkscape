@@ -326,10 +326,10 @@ def group(el_list, moveTCM=False):
     if moveTCM and len(el_list) == 1:
         g.ctransform = el.ctransform
         el.ctransform = None
-        g.set("clip-path", el.get("clip-path"))
-        el.set("clip-path", None)
-        g.set("mask", el.get("mask"))
-        el.set("mask", None)
+        g.set_link("clip-path", el.get("clip-path"))
+        el.set_link("clip-path", None)
+        g.set_link("mask", el.get("mask"))
+        el.set_link("mask", None)
     return g
 
 
@@ -360,8 +360,8 @@ def compose_all(el, clip, mask, transform, style, removetextclip=False):
         el.cstyle = compsty
 
     if removetextclip and el.tag in ttags:
-        el.set("clip-path", None)
-        el.set("mask", None)
+        el.set_link("clip-path", None)
+        el.set_link("mask", None)
         cout = False
     else:
         if clip is not None:
@@ -472,7 +472,7 @@ def merge_clipmask(node, newclip, mask=False):
             if not (hasattr(svg, "newclips")):
                 svg.newclips = []
             svg.newclips.append(d)  # for later cleanup
-            node.set(cmstr, d.get_id(2))
+            node.set_link(cmstr, d.get_id(2))
 
             newclipisrect = False
             if newclip is not None and len(newclip) == 1:
@@ -495,7 +495,7 @@ def merge_clipmask(node, newclip, mask=False):
             cout = all(couts)
 
         if oldclip is None:
-            node.set(cmstr, newclip.get_id(2))
+            node.set_link(cmstr, newclip.get_id(2))
             cout = False
 
         return cout
@@ -1101,9 +1101,9 @@ def combine_paths(els, mergeii=0):
     mel.set("d", str(pnew.transform(-mel.ccomposed_transform)))
 
     # Release clips/masks
-    mel.set("clip-path", "none")
+    mel.set_link("clip-path", "none")
     # release any clips
-    mel.set("mask", "none")
+    mel.set_link("mask", "none")
     # release any masks
     fix_css_clipmask(mel, mask=False)  # fix CSS bug
     fix_css_clipmask(mel, mask=True)
@@ -1502,7 +1502,7 @@ def Run_SI_Extension(effext, name):
                 lp = LineProfiler()
                 from inkex.text import parser
                 from inkex.text import font_properties
-                from inkex.text import speedups
+                from inkex.text import speedups # noqa
                 from inkex.text import cache
                 import remove_kerning
                 from inspect import getmembers, isfunction, isclass, getmodule
@@ -1629,51 +1629,8 @@ def Run_SI_Extension(effext, name):
     for key, value in sorted_items:
         idebug(f"{key}: {value}")
 
-
-# Give early versions of Style a .to_xpath function
-def to_xpath_func(sty):
-    # pre-1.2: use v1.1 version of to_xpath from inkex.Style
-    import re
-
-    step_to_xpath = [
-        (
-            re.compile(r"\[(\w+)\^=([^\]]+)\]"),
-            r"[starts-with(@\1,\2)]",
-        ),  # Starts With
-        (re.compile(r"\[(\w+)\$=([^\]]+)\]"), r"[ends-with(@\1,\2)]"),  # Ends With
-        (re.compile(r"\[(\w+)\*=([^\]]+)\]"), r"[contains(@\1,\2)]"),  # Contains
-        (re.compile(r"\[([^@\(\)\]]+)\]"), r"[@\1]"),  # Attribute (start)
-        (re.compile(r"#(\w+)"), r"[@id='\1']"),  # Id Match
-        (re.compile(r"\s*>\s*([^\s>~\+]+)"), r"/\1"),  # Direct child match
-        # (re.compile(r'\s*~\s*([^\s>~\+]+)'), r'/following-sibling::\1'),
-        # (re.compile(r'\s*\+\s*([^\s>~\+]+)'), r'/following-sibling::\1[1]'),
-        (re.compile(r"\s*([^\s>~\+]+)"), r"//\1"),  # Decendant match
-        (
-            re.compile(r"\.([-\w]+)"),
-            r"[contains(concat(' ', normalize-space(@class), ' '), ' \1 ')]",
-        ),
-        (re.compile(r"//\["), r"//*["),  # Attribute only match
-        (re.compile(r"//(\w+)"), r"//svg:\1"),  # SVG namespace addition
-    ]
-
-    def style_to_xpath(styin):
-        return "|".join([rule_to_xpath(rule) for rule in styin.rules])
-
-    def rule_to_xpath(rulein):
-        ret = rulein.rule
-        for matcher, replacer in step_to_xpath:
-            ret = matcher.sub(replacer, ret)
-        return ret
-
-    return style_to_xpath(sty)
-
-
-if not hasattr(Style, "to_xpath"):
-    Style.to_xpath = to_xpath_func
-if not hasattr(inkex.Style, "to_xpath"):
-    inkex.Style.to_xpath = to_xpath_func
-
 # Patch Style string conversion to restore single-quote strings
+# Do not delete, needed in future maybe
 # FQUOTE = r'^[^\'"]*\"'
 # def swap_quotes(s):
 #     return s.translate(str.maketrans({"'": '"', '"': "'"}))
