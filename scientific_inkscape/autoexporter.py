@@ -1892,7 +1892,15 @@ def joinmod(dirc, fname):
 def get_svg(fin):
     """Load an SVG file and return the root svg element."""
     try:
-        svg = inkex.load_svg(fin).getroot()
+        for _ in range(3):
+            try:
+                svg = inkex.load_svg(fin).getroot()
+                break
+            except OSError:  # seems to happen rarely
+                time.sleep(1)
+        else:
+            # Final attempt to raise the original error if all retries failed
+            svg = inkex.load_svg(fin).getroot()
     except lxml.etree.XMLSyntaxError:
         # Try removing problematic bytes
         with open(fin, "rb") as file:
