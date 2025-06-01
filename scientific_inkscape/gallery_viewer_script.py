@@ -241,6 +241,8 @@ def Make_Flask_App():
                 file_url = cached_url(f.name)
                 thumbnail_url = cached_url(fp.files[ii].thumbnail)
     
+                embed_val = f.original_uri if f.original_present else (None if f.original is None else 'Missing: '+f.original)
+    
                 # Add file data
                 files_data.append({
                     "file_url": file_url,
@@ -248,7 +250,7 @@ def Make_Flask_App():
                     "file_uri": f.name_uri,
                     "label": label,
                     "currenttype": currenttype,
-                    "embed": f.embed_uri,
+                    "embed": embed_val,
                 })
             processing = not fp.run_on_fof_done or any(not t.done for t in fp.cthreads)
             gallery_data.append({
@@ -490,8 +492,9 @@ class DisplayedFile():
         self.name_uri = pathlib.Path(self.name).as_uri()
         self.slidename = None
         self.islinked = False
-        self.embed = None
-        self.embed_uri = None
+        self.original = None
+        self.original_uri = None
+        self.original_present = False
         self.pagenum = None
         
     def __str__(self):
@@ -598,6 +601,7 @@ class Processor(threading.Thread):
         subfiles = None
         for ii, fv in enumerate(self.files):
             ev = False
+            orig_file = None
             if fv.name.endswith(".svg") and os.path.exists(fv.name):
                 with OpenWithEncoding(fv.name) as f:
                     file_content = f.read()
@@ -613,38 +617,69 @@ class Processor(threading.Thread):
                                 orig_file, orig_hash = orig_file.split(
                                     ", hash: "
                                 )
-                            if os.path.exists(orig_file):
-                                ev = os.path.abspath(orig_file)
-                            else:
-                                # Check subdirectories of the file's location in case it was moved
+                                
+                            # Gather directory names we consider identical
+                            # from the config file
+                            idir_groups = dh.si_config.identical_dirs_gv
+                            ipaths = []
+                            of_abs = os.path.abspath(orig_file)
+                            for idirg in idir_groups:
+                                for idir in idirg:
+                                    id_abs = os.path.abspath(idir)
+                                    if id_abs in of_abs:
+                                        for idir2 in idirg:
+                                            if not idir==idir2:
+                                                ipaths.append(of_abs.replace(id_abs,os.path.abspath(idir2)))
+                                                
+                            subdirs = dh.si_config.subdirs_gv
+                            for ipth in ipaths[:]:
+                                for sd in subdirs:
+                                    dn = os.path.dirname(ipth)
+                                    bn = os.path.basename(ipth)
+                                    ipaths.append(os.path.join(dn,sd,bn))
+                                    
+                            if 'EOSAM' in of_abs:
+                                print(ipaths)
+                                                
+                            ipaths = [of_abs] + ipaths
+                                
+                            if any(os.path.exists(p) for p in ipaths):
+                                ev = [p for p in ipaths if os.path.exists(p)][0]
+                            # else:
+                            #     # Check subdirectories of the file's location in case it was moved
 
-                                def list_all_files(directory):
-                                    for dirpath, dirs, files in os.walk(
-                                        directory
-                                    ):
-                                        for filename in files:
-                                            yield os.path.join(
-                                                dirpath, filename
-                                            )
+                            #     def list_all_files(directory):
+                            #         for dirpath, dirs, files in os.walk(
+                            #             directory
+                            #         ):
+                            #             for filename in files:
+                            #                 yield os.path.join(
+                            #                     dirpath, filename
+                            #                 )
 
-                                fndir = os.path.split(self.fof)[0]
-                                subfiles = (
-                                    list(list_all_files(fndir))
-                                    if subfiles is None
-                                    else subfiles
-                                )
+                            #     fndir = os.path.split(self.fof)[0]
+                            #     subfiles = (
+                            #         list(list_all_files(fndir))
+                            #         if subfiles is None
+                            #         else subfiles
+                            #     )
 
-                                for tryfile in subfiles:
-                                    if os.path.split(orig_file)[
-                                        -1
-                                    ] == os.path.split(tryfile)[-1] and (
-                                        orig_hash is None
-                                        or hash_file(tryfile) == orig_hash
-                                    ):
-                                        ev = os.path.abspath(tryfile)
-                                        break
-            self.files[ii].embed=ev
-            self.files[ii].embed_uri = pathlib.Path(ev).as_uri() if ev else None
+                            #     for tryfile in subfiles:
+                            #         if os.path.split(orig_file)[
+                            #             -1
+                            #         ] == os.path.split(tryfile)[-1] and (
+                            #             orig_hash is None
+                            #             or hash_file(tryfile) == orig_hash
+                            #         ):
+                            #             ev = os.path.abspath(tryfile)
+                            #             break
+
+            if ev and orig_file is not None:
+                self.files[ii].original=ev
+                self.files[ii].original_uri = pathlib.Path(ev).as_uri()
+                self.files[ii].original_present = True
+            elif orig_file is not None:
+                self.files[ii].original=orig_file
         
     def run_on_folder(self):
         self.files = Processor.get_svgs(self.fof)

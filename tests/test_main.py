@@ -47,7 +47,7 @@ testae              = True;
 # testflattenfonts     = True; 
 
 import os, sys, re
-INKSAPES_LOCATION = "D:\\Inkscapes"
+INKSCAPES_LOCATION = "C:\\Inkscapes"
 vpaths = {'1.0' : 'inkscape-1.0.2-2-x64',
           '1.1' : 'inkscape-1.1.2_2022-02-05_b8e25be833-x64',
           '1.2' : 'inkscape-1.2.2_2022-12-09_732a01da63-x64', 
@@ -56,7 +56,7 @@ vpaths = {'1.0' : 'inkscape-1.0.2-2-x64',
           '1.4' : 'inkscape-1.4_2024-10-11_86a8ad7-x64',
           '1.4.2' : 'inkscape-1.4.2_2025-05-13_f4327f4-x64',
           }
-vpaths = {k: os.path.join(INKSAPES_LOCATION, v) for k,v in vpaths.items()}
+vpaths = {k: os.path.join(INKSCAPES_LOCATION, v) for k,v in vpaths.items()}
 
 if 'TESTMAINVERSION' in os.environ:
     version = os.environ['TESTMAINVERSION']

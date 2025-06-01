@@ -210,6 +210,29 @@
                         </div>
                     `;
                     if (file.embed) {
+                    if (file.embed.startsWith("Missing")) {
+                        const missingText = file.embed;
+                        const rawPath = missingText.replace(/^Missing:\s*/, "");  // Strip "Missing: "
+                        const encodedHref = encodeURI(rawPath);  // Prevent lowercase transformation
+                
+                        const link = document.createElement("a");
+                        link.textContent = "Original missing";
+                        link.href = encodedHref;
+                        link.style.color = "#a00";
+                        link.style.textDecoration = "none";
+                        link.title = rawPath;  // Tooltip now only shows clean path
+                
+                        // Blank SVG to match folder icon dimensions
+                        const blankSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                        blankSvg.setAttribute("width", "13.938748");
+                        blankSvg.setAttribute("height", "11.034863");
+                        blankSvg.setAttribute("viewBox", "0 0 20.908124 16.552295");
+                
+                        const div = document.createElement("div");
+                        div.appendChild(link);
+                        div.appendChild(blankSvg);
+                        descDiv.appendChild(div);
+                    } else {
                         descDiv.innerHTML += `
                             <div>
                                 <a href="http://localhost:${port}/process?param=${encodeURIComponent(file.embed)}" class="open">Original</a>
@@ -226,6 +249,10 @@
                             </div>
                         `;
                     }
+                }
+
+
+
 
                     galleryDiv.appendChild(link);
                     galleryDiv.appendChild(descDiv);

@@ -1226,6 +1226,47 @@ def Get_Current_File(ext, msgstr):
     else:
         return myfile
 
+class SI_Config:
+    """
+    Loads a config json file that can be used to adjust certain Scientific
+    Inkscape behaviors.
+    identical_dirs_gv: A list of directories that the Gallery Viewer should treat
+                       as identical when searching for pre-export files. Useful
+                       for cloud drives.
+    """
+    def __init__(self, filename="config.json"):
+        self.config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),filename)
+        self.data = {}
+        self.loaded = False
+
+    def _load(self):
+        import json
+        if os.path.exists(self.config_path):
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                self.data = json.load(f)
+        self.loaded = True
+
+    @property
+    def identical_dirs_gv(self):
+        if not self.loaded:
+            self._load()
+        groups = self.data.get("identical_dirs_gv", [])
+        if isinstance(groups, list) and all(isinstance(g, list) for g in groups):
+            return groups
+        return []
+    
+    @property
+    def subdirs_gv(self):
+        if not self.loaded:
+            self._load()
+        subdirs = self.data.get("subdirs_gv", [])
+        if isinstance(subdirs, list):
+            return subdirs
+        return []
+
+    def get_option(self, section, key, default=None):
+        return self.data.get(section, {}).get(key, default)
+si_config = SI_Config()
     
 import threading
 sema_temp = threading.Semaphore(1)
