@@ -137,6 +137,9 @@ class AutoExporter(inkex.EffectExtension):
             "--rasterizermode", type=int, default=1, help="Mark for rasterization"
         )
         pars.add_argument(
+            "--finalizermode", type=int, default=1, help="Finalization options"
+        )
+        pars.add_argument(
             "--margin", type=float, default=0.5, help="Document margin (mm)"
         )
         pars.add_argument(
@@ -1343,6 +1346,26 @@ class Exporter():
         )
         tel.set("style", "display:none")
         dh.clean_up_document(svg)  # Clean up
+        
+    def finalize(self):
+        from office import Unzipped_Office
+        tempdir, temphead = dh.shared_temp('aef')
+        tempdir = os.path.join(tempdir, temphead)
+        uzo = Unzipped_Office(self.filein,tempdir)
+        uzo.embed_linked()
+        if self.finalizermode==3:
+            uzo.leave_fallback_png()
+        elif self.finalizermode==4:
+            uzo.delete_fallback_png()
+        uzo.cleanup_unused_rels_and_media()
+        base, ext = os.path.splitext(self.filein)
+        output_pptx = f"{base} finalized{ext}"
+        uzo.rezip(output_pptx)
+        import shutil
+        shutil.rmtree(uzo.temp_dir)
+        if os.path.exists(tempdir+'.lock'):
+            os.remove(tempdir+'.lock')
+        self.prints(os.path.basename(self.filein) + ": Finalization complete", flush=True)
 
     PTH_COMMANDS = list("MLHVCSQTAZmlhvcsqtaz")
 
