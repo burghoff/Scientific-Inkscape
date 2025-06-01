@@ -51,13 +51,12 @@ import shutil
 import tempfile
 import hashlib
 import lxml
-import random
 import threading
 
 import dhelpers as dh
 import inkex
 from inkex import TextElement, Transform, Vector2d
-from inkex.text.utils import default_style_atts, unique
+from inkex.text.utils import default_style_atts
 from inkex.text.cache import BaseElementCache
 from inkex.text.parser import ParsedText, xyset
 
@@ -136,6 +135,9 @@ class AutoExporter(inkex.EffectExtension):
         pars.add_argument("--v", type=str, default="1.2", help="Version for debugging")
         pars.add_argument(
             "--rasterizermode", type=int, default=1, help="Mark for rasterization"
+        )
+        pars.add_argument(
+            "--finalizermode", type=int, default=1, help="Finalization options"
         )
         pars.add_argument(
             "--margin", type=float, default=0.5, help="Document margin (mm)"
@@ -535,30 +537,11 @@ class Exporter():
 
         # Prune hidden items and remove language switching
         stag = inkex.addNS("switch", "svg")
-        todelete, todelang = [], []
         for elem in dh.visible_descendants(svg):
             if elem.cspecified_style.get("display") == "none":
-                todelete.append(elem)
-            if elem.get("systemLanguage") is not None:
-                lang = inkex.inkscape_system_info.language
-                if elem.get("systemLanguage") == lang:
-                    todelang.append(elem)
-                    # Remove other languages from switches
-                    if elem.getparent().tag == stag:
-                        todelete.extend(
-                            [
-                                k
-                                for k in elem.getparent()
-                                if k.get("systemLanguage") != lang
-                            ]
-                        )
-                else:
-                    # Remove non-matching languages
-                    todelete.append(elem)
-        for elem in unique(todelete):
-            elem.delete()
-        for elem in todelang:
-            elem.set("systemLanguage", None)
+                elem.delete()
+            elif elem.tag==stag:
+                dh.deswitch(elem)
 
         # Embed linked images into the SVG. This should be done prior to clone unlinking
         # since some images may be cloned
@@ -1363,6 +1346,26 @@ class Exporter():
         )
         tel.set("style", "display:none")
         dh.clean_up_document(svg)  # Clean up
+        
+    def finalize(self):
+        from office import Unzipped_Office
+        tempdir, temphead = dh.shared_temp('aef')
+        tempdir = os.path.join(tempdir, temphead)
+        uzo = Unzipped_Office(self.filein,tempdir)
+        uzo.embed_linked()
+        if self.finalizermode==3:
+            uzo.leave_fallback_png()
+        elif self.finalizermode==4:
+            uzo.delete_fallback_png()
+        uzo.cleanup_unused_rels_and_media()
+        base, ext = os.path.splitext(self.filein)
+        output_pptx = f"{base} finalized{ext}"
+        uzo.rezip(output_pptx)
+        import shutil
+        shutil.rmtree(uzo.temp_dir)
+        if os.path.exists(tempdir+'.lock'):
+            os.remove(tempdir+'.lock')
+        self.prints(os.path.basename(self.filein) + ": Finalization complete", flush=True)
 
     PTH_COMMANDS = list("MLHVCSQTAZmlhvcsqtaz")
 
@@ -1643,9 +1646,9 @@ class Exporter():
                             # pylint: enable=import-outside-toplevel
 
                             newstr = ih.ImagePIL_to_str(ImagePIL.fromarray(nda))
-                            elem.set("xlink:href", newstr)
+                            elem.set_link("xlink:href", newstr)
                             mask.delete()
-                            elem.set("mask", None)
+                            elem.set_link("mask", None)
 
     @staticmethod
     def standardize_image(elem):
@@ -1671,9 +1674,9 @@ class Exporter():
         # Correct by putting transform/clip/mask on a new parent group, then
         # fix location, then ungroup
         grp = dh.group([elem], moveTCM=True)
-        grp.set("clip-path", None)
+        grp.set_link("clip-path", None)
         # conversion to bitmap already includes clips
-        grp.set("mask", None)  # conversion to bitmap already includes masks
+        grp.set_link("mask", None)  # conversion to bitmap already includes masks
 
         # Calculate what transform is needed to preserve the image's location
         ctf = elem.ccomposed_transform
@@ -1698,7 +1701,7 @@ class Exporter():
         myw = dh.ipx(newel.get("width"))
         newel.set("height", 1)
         myh = dh.ipx(newel.get("height"))
-        newel.set("xlink:href", elem.get("xlink:href"))
+        newel.set_link("xlink:href", elem.get("xlink:href"))
 
         # Inkscape inappropriately clips non-'optimizeQuality' images
         # when generating PDFs
@@ -1912,7 +1915,15 @@ def joinmod(dirc, fname):
 def get_svg(fin):
     """Load an SVG file and return the root svg element."""
     try:
-        svg = inkex.load_svg(fin).getroot()
+        for _ in range(3):
+            try:
+                svg = inkex.load_svg(fin).getroot()
+                break
+            except OSError:  # seems to happen rarely
+                time.sleep(1)
+        else:
+            # Final attempt to raise the original error if all retries failed
+            svg = inkex.load_svg(fin).getroot()
     except lxml.etree.XMLSyntaxError:
         # Try removing problematic bytes
         with open(fin, "rb") as file:
