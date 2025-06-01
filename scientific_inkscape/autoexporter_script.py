@@ -38,35 +38,27 @@ def mprint(*args, **kwargs):
 
 # Get svg files in directory
 def get_files(dirin):
-    import re
-    from datetime import datetime
-
-    def ends_with_date(s):
-        pattern = r"\.(\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.\d{1,6})\.svg$"
-        match = re.search(pattern, s)
-        if match:
-            date_string = match.group(1)
-            custom_format = "%Y_%m_%d_%H_%M_%S.%f"
-            try:
-                datetime.strptime(date_string, custom_format)
-                return True
-            except ValueError:
-                return False
-        return False
-
-    fs = []
     try:
-        for f in os.scandir(dirin):
-            excludes = ["_portable.svg", "_plain.svg"]
-            if (
-                f.name.endswith(".svg")
-                and all([not (f.name.endswith(ex)) for ex in excludes])
-                and not (ends_with_date(f.name))
-            ):
-                fs.append(os.path.join(os.path.abspath(dirin), f.name))
-        return fs
-    except:  # (FileNotFoundError, OSError):
-        return None  # directory missing (cloud drive error?)
+        return [
+            os.path.join(os.path.abspath(dirin), f.name)
+            for f in os.scandir(dirin)
+            if is_target_file(f.name)
+        ]
+    except: # (FileNotFoundError, OSError):
+        return None
+    
+
+def is_target_file(file_name):
+    flower = file_name.lower()
+    excludes = ["_portable.svg", "_plain.svg"," finalized.pptx"," finalized.docx"]
+    if any(file_name.endswith(ex) for ex in excludes):
+        return False
+    if input_options.finalizermode>1 and  (flower.endswith(".pptx") or flower.endswith(".docx")) and not flower.startswith('~$'):
+        return True
+    pattern = r"\.(\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.\d{1,6})\.svg$"
+    if re.search(pattern, file_name):
+        return False
+    return flower.endswith(".svg")
 
 import warnings
 from threading import Timer
@@ -108,16 +100,6 @@ class Watcher(FileSystemEventHandler):
         self.observer.join()
 
     @staticmethod
-    def is_target_file(file_name):
-        excludes = ["_portable.svg", "_plain.svg"]
-        pattern = r"\.(\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.\d{1,6})\.svg$"
-        if any(file_name.endswith(ex) for ex in excludes):
-            return False
-        if re.search(pattern, file_name):
-            return False
-        return file_name.endswith(".svg")
-
-    @staticmethod
     def get_mod_time(file_path):
         try:
             return os.path.getmtime(file_path)
@@ -127,7 +109,7 @@ class Watcher(FileSystemEventHandler):
     def initialize_mod_times(self, directory):
         for file in os.listdir(directory):
             file_path = os.path.join(directory, file)
-            if os.path.isfile(file_path) and self.is_target_file(file_path):
+            if os.path.isfile(file_path) and is_target_file(file_path):
                 mod_time = self.get_mod_time(file_path)
                 if mod_time:
                     self.file_mod_times[file_path] = mod_time
@@ -146,7 +128,7 @@ class Watcher(FileSystemEventHandler):
     def handle_event(self, event):
         if event.is_directory:
             return
-        if self.is_target_file(event.src_path):
+        if is_target_file(event.src_path):
             if event.src_path in self.debounce_timers:
                 self.debounce_timers[event.src_path].cancel()
             self.last_event[event.src_path] = event
@@ -159,7 +141,7 @@ class Watcher(FileSystemEventHandler):
     def on_modified(self, event):
         if event.is_directory:
             return
-        if self.is_target_file(event.src_path):
+        if is_target_file(event.src_path):
             new_mod_time = self.get_mod_time(event.src_path)
             old_mod_time = self.file_mod_times.get(event.src_path)
             if new_mod_time and new_mod_time != old_mod_time:
@@ -297,7 +279,10 @@ class AutoExporterThread(threading.Thread):
         except:
             offset = 40
         fname = fname + " " * max(0, offset - len(fname))
-        mprint(fname + ": Beginning export")
+        if self.file.lower().endswith(".svg"):
+            mprint(fname + ": Beginning export")
+        else:
+            mprint(fname + ": Beginning finalization")
         opts = copy.copy(input_options)
         opts.debug = DEBUG
         opts.prints = mprint
@@ -314,7 +299,10 @@ class AutoExporterThread(threading.Thread):
         opts.outtemplate = self.outtemplate
         opts.bfn = bfn
         try:
-            Exporter(self.file, opts).export_all()
+            if self.file.lower().endswith(".svg"):
+                Exporter(self.file, opts).export_all()
+            else: # non-svg: finalizing
+                Exporter(self.file, opts).finalize()
         except SystemExit:
             pass
         except:
@@ -525,6 +513,20 @@ if guitype == "gtk":
                 label="Omit text in PDF and create LaTeX file"
             )
             tab2_box.pack_start(self.omit_text_check, False, False, 5)
+            
+            # Finalizer options
+            finalizer_label = Gtk.Label(label="Document finalizer", xalign=0)
+            finalizer_label.get_style_context().add_class("label-bold")
+            tab2_box.pack_start(finalizer_label, False, False, 0)
+            self.finalizer_combo = Gtk.ComboBoxText()
+            self.finalizer_combo.append("1", "Do not finalize")
+            self.finalizer_combo.append("2", "Embed linked images")
+            self.finalizer_combo.append("3", "Embed and convert SVGs to PNGs")
+            self.finalizer_combo.append("4", "Embed and delete backup PNGs")
+            self.finalizer_combo.set_active(int(getattr(input_options, "finalizermode", 1)) - 1)
+            self.finalizer_combo.connect("changed", self.on_finalizer_changed)
+            tab2_box.pack_start(self.finalizer_combo, False, False, 1)
+
         
             # Initialize from input_options
             self.pdf_check.set_active(input_options.usepdf)
@@ -564,6 +566,10 @@ if guitype == "gtk":
             self.omit_text_check.connect("toggled", self.on_omit_text_toggled)
         
             self.ct = ct
+            
+        def on_finalizer_changed(self, widget):
+            input_options.finalizermode = int(widget.get_active_id())
+            # mprint("Finalizer mode changed:", input_options.finalizermode)
 
 
         def on_treeview_size_allocate(self, widget, allocation):
