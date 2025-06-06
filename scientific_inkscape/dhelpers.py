@@ -951,6 +951,7 @@ urlatts = [
     "marker-mid",
     "marker-end",
     "marker",
+    "shape-inside"
 ]
 
 

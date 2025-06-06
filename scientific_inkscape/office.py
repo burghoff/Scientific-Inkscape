@@ -124,10 +124,15 @@ class Unzipped_Office():
         Returns a dict mapping absolute paths to a list of (slide_name, mode) tuples
         """
         index = {}
-        all_targets = {
-            slide.slide_name: slide.get_slide_targets()
-            for slide in self.slides
-        }
+        all_targets = {}
+        for slide in self.slides:
+            name = slide.slide_name
+            targets = slide.get_slide_targets()
+            if name in all_targets:
+                all_targets[name].extend(targets)
+            else:
+                all_targets[name] = targets[:]
+
         for slide_name, targets in all_targets.items():
             for target in targets:
                 if target.abs_path:
@@ -218,7 +223,6 @@ class Slide_and_Rels():
                 abs_path = os.path.normpath(os.path.join(rel_base, target))
     
             results.append(SlideTarget(target, mode, abs_path))
-    
         return results
         
     def embed_linked(self):

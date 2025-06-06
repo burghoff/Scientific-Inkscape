@@ -637,9 +637,6 @@ class Processor(threading.Thread):
                                     dn = os.path.dirname(ipth)
                                     bn = os.path.basename(ipth)
                                     ipaths.append(os.path.join(dn,sd,bn))
-                                    
-                            if 'EOSAM' in of_abs:
-                                print(ipaths)
                                                 
                             ipaths = [of_abs] + ipaths
                                 

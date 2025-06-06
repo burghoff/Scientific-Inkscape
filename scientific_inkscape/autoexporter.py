@@ -554,6 +554,10 @@ class Exporter():
             ih.embed_external_image(elem, lls[k])
 
         vds = dh.visible_descendants(svg)
+        tetag = inkex.TextElement.ctag
+        frtag = inkex.FlowRoot.ctag
+        ttags = {tetag,frtag}
+        self.duplicatelabels = dict()
         raster_ids, image_ids, jpgs = [], [], []
         for elem in vds:
             # Unlink any clones for the PDF image and marker fixes
@@ -592,6 +596,19 @@ class Exporter():
                     for grp in list(cpth):
                         if isinstance(grp, inkex.Group):
                             dh.ungroup(grp)
+
+            # Preserve duplicates of text to be converted to paths, as well as paths
+            if (((self.thinline or self.stroketopath) and elem.tag in BaseElementCache.otp_support_tags)
+                ) and elem.get("display") != "none" and elem.croot is not None:
+                dup = elem.duplicate()
+                self.duplicatelabels[dup.get_id()] = None
+                grp = dh.group([dup])
+                grp.set("display", "none")
+                tel = inkex.TextElement()
+                grp.append(tel)  # Remember the original ID
+                tel.text = "{0}: {1}".format(DUP_KEY, elem.get_id())
+                tel.set("display", "none")
+                self.duplicatelabels[tel.get_id()] = elem.get_id()
 
         stps = []
         ttps = []
@@ -663,16 +680,12 @@ class Exporter():
                     elem.delete(deleteup=True)
 
         # Fix Avenir/Whitney
-        tetag = inkex.TextElement.ctag
-        frtag = inkex.FlowRoot.ctag
-        tels = [elem for elem in vds if elem.tag in {tetag, frtag}]
+        tels = [elem for elem in vds if elem.tag in ttags]
 
         dh.character_fixer(tels)
 
         # Strip all sodipodi:role lines from document
         # Conversion to plain SVG does this automatically but poorly
-        excludetxtids = []
-        self.duplicatelabels = dict()
         # if self.usepsvg:
         if len(tels) > 0:
             svg.make_char_table()
@@ -682,7 +695,12 @@ class Exporter():
         nels = []
         for elem in reversed(tels):
             if elem.parsed_text.isflow:
-                nels += elem.parsed_text.flow_to_text()
+                elid = elem.get_id()
+                frels = elem.parsed_text.flow_to_text()
+                g = dh.group(frels)
+                g.set_id(elid)
+                
+                nels += frels
                 tels.remove(elem)
         tels += nels
 
@@ -692,19 +710,16 @@ class Exporter():
             elem.parsed_text.fuse_fonts()
             Exporter.subsuper_fix(elem)
 
-            # Preserve duplicate of text to be converted to paths
             if self.texttopath and elem.get("display") != "none" and elem.croot is not None:
                 dup = elem.duplicate()
-                excludetxtids.append(dup.get_id())
+                self.duplicatelabels[dup.get_id()] = None
                 grp = dh.group([dup])
                 grp.set("display", "none")
 
-                # tel = svg.new_element(inkex.TextElement, svg)
                 tel = inkex.TextElement()
                 grp.append(tel)  # Remember the original ID
                 tel.text = "{0}: {1}".format(DUP_KEY, elem.get_id())
                 tel.set("display", "none")
-                excludetxtids.append(tel.get_id())
                 self.duplicatelabels[tel.get_id()] = elem.get_id()
 
                 # Make sure nested tspans have fill specified (STP bug)
@@ -718,7 +733,6 @@ class Exporter():
         tmp = self.tempbase + "_mod.svg"
         dh.overwrite_svg(svg, tmp)
         cfile = tmp
-        self.excludetxtids = excludetxtids
 
         do_rasterizations = len(raster_ids + image_ids) > 0
         do_stroketopaths = self.texttopath or self.stroketopath or len(stps) > 0 or len(ttps)>0
@@ -800,7 +814,7 @@ class Exporter():
             tels = []
             if self.texttopath or len(ttps)>0:
                 for elem in vdd:
-                    if (elem.get_id() in ttps or self.texttopath) and (elem.tag == tetag and elem.get_id() not in excludetxtids):
+                    if (elem.get_id() in ttps or self.texttopath) and (elem.tag in ttags and elem.get_id() not in self.duplicatelabels):
                         tels.append(elem.get_id())
                         for dsd in elem.descendants2():
                             # Fuse fill and stroke to account for STP bugs
@@ -818,7 +832,7 @@ class Exporter():
                     stpels = vdd
                 elif len(stps) > 0:
                     stpels = [el for el in vdd if el.get_id() in stps]
-                stpels = [el for el in stpels if el.get_id() not in raster_ids]
+                stpels = [el for el in stpels if el.get_id() not in raster_ids+list(self.duplicatelabels.keys())]
                 pels, dgroups = Exporter.stroke_to_path_fixes(stpels)
                 updatefile = True
 
@@ -1062,9 +1076,9 @@ class Exporter():
         if self.thinline and notpng:
             svg = get_svg(cfile)
             if fformat in ["pdf", "eps"]:
-                Exporter.thinline_dehancement(svg, "bezier")
+                Exporter.thinline_dehancement(svg, "bezier",self.duplicatelabels)
             else:
-                Exporter.thinline_dehancement(svg, "split")
+                Exporter.thinline_dehancement(svg, "split",self.duplicatelabels)
             tmp = self.tempbase + "_tld" + fformat[0] + ".svg"
             dh.overwrite_svg(svg, tmp)
             cfile = copy.copy(tmp)
@@ -1116,7 +1130,7 @@ class Exporter():
                 if (haspgs or self.testmode) and len(pgs) > 0:
                     # bbs = dh.BB2(type("DummyClass", (), {"svg": osvg}))
                     bbs = dh.BB2(osvg)
-                    dlbl = self.duplicatelabels
+                    dlbl = {k:v for k,v in self.duplicatelabels.items() if v is not None}
                     outputs = []
                     pgiis = (
                         range(len(pgs)) if not (self.testmode) else [self.testpage - 1]
@@ -1263,7 +1277,7 @@ class Exporter():
         for dsd in vds:
             if (
                 isinstance(dsd, (TextElement))
-                and dsd.get_id() not in self.excludetxtids
+                and dsd.get_id() not in self.duplicatelabels
             ):
                 scaleto = 100 if not self.testmode else 10
                 # Make 10 px in test mode so that errors are not unnecessarily large
@@ -1370,7 +1384,7 @@ class Exporter():
     PTH_COMMANDS = list("MLHVCSQTAZmlhvcsqtaz")
 
     @staticmethod
-    def thinline_dehancement(svg, mode="split"):
+    def thinline_dehancement(svg, mode="split",duplabels=[]):
         """
         Prevents thin-line enhancement in certain bad PDF renderers
         'bezier' mode converts h,v,l path commands to trivial Beziers
@@ -1382,7 +1396,7 @@ class Exporter():
 
         command_chars = {"h", "v", "l", "H", "V", "L"}
         split = mode == "split"
-        for elem in svg.descendants2():
+        for elem in (v for v in svg.descendants2() if v.get_id() not in duplabels):
             if elem.tag in otp_support_tags and not elem.tag == peltag:
                 elem.object_to_path()
 
