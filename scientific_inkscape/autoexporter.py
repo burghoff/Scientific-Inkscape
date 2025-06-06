@@ -692,17 +692,12 @@ class Exporter():
             self.ctable = svg.char_table
             # store for later
 
-        nels = []
         for elem in reversed(tels):
             if elem.parsed_text.isflow:
                 elid = elem.get_id()
-                frels = elem.parsed_text.flow_to_text()
-                g = dh.group(frels)
-                g.set_id(elid)
-                
-                nels += frels
+                frgrp = elem.parsed_text.flow_to_text()
+                tels += list(frgrp)
                 tels.remove(elem)
-        tels += nels
 
         for elem in tels:
             elem.parsed_text.strip_text_baseline_shift()

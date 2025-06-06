@@ -316,6 +316,8 @@ def ungroup(g, removetextclip=False):
 # Group a list of elements, placing the group in the location of the first element
 def group(el_list, moveTCM=False):
     g = inkex.Group()
+    if not el_list:
+        return g
     myi = list(el_list[0].getparent()).index(el_list[0])
     el_list[0].getparent().insert(myi + 1, g)
     for el in el_list:
@@ -942,37 +944,22 @@ def benchmark_functions(func1, func2):
 
 # style atts that could have urls
 urlatts = [
-    "fill",
-    "stroke",
-    "clip-path",
-    "mask",
-    "filter",
-    "marker-start",
-    "marker-mid",
-    "marker-end",
-    "marker",
-    "shape-inside"
+    "fill", "stroke", "clip-path", "mask",
+    "filter", "marker-start", "marker-mid", "marker-end",
+    "marker", "shape-inside", "shape-subtract", "fill-opacity",
+    "stroke-opacity", "lighting-color", "flood-color", "flood-opacity",
+    "stop-color", "stop-opacity", "enable-background", "background-image",
+    "cursor"
 ]
-
 
 # An efficient Pythonic version of Clean Up Document
 def clean_up_document(svg):
     # defs types that do nothing unless they are referenced
     prune = [
-        "clipPath",
-        "mask",
-        "linearGradient",
-        "radialGradient",
-        "pattern",
-        "symbol",
-        "marker",
-        "filter",
-        "animate",
-        "animateTransform",
-        "animateMotion",
-        "textPath",
-        "font",
-        "font-face",
+        "clipPath", "mask", "linearGradient", "radialGradient",
+        "pattern", "symbol", "marker", "filter",
+        "animate", "animateTransform", "animateMotion", "textPath",
+        "font", "font-face",
     ]
     prune = [inkex.addNS(v, "svg") for v in prune]
 
