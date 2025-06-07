@@ -26,6 +26,7 @@
 
 # Locate the installed Inkex so we can assess the version. Do not import!
 import pkgutil
+
 installed_inkex = None
 for finder in pkgutil.iter_importers():
     if hasattr(finder, "find_spec"):
@@ -127,13 +128,13 @@ if installed_inkex is not None:
         content = file.read()
     match = re.search(r'__version__\s*=\s*"(.*?)"', content)
     vstr = match.group(1) if match else "1.0.0"
-    if vstr=='1.2.0': # includes 1.2.0, 1.2.1, 1.2.2
-        extpy = os.path.join(os.path.dirname(installed_inkex),'extensions.py')
+    if vstr == "1.2.0":  # includes 1.2.0, 1.2.1, 1.2.2
+        extpy = os.path.join(os.path.dirname(installed_inkex), "extensions.py")
         with open(extpy, "r") as file:
             content = file.read()
-        match = re.search(r'Pattern', content) # appeared in 1.2.2
+        match = re.search(r"Pattern", content)  # appeared in 1.2.2
         if match:
-            vstr='1.2.2'
+            vstr = "1.2.2"
 else:
     # No installed Inkex, probably not called by Inkscape
     vstr = inkex.__version__
@@ -144,7 +145,11 @@ inkex.installed_haspages = inkex.installed_ivp[0] >= 1 and inkex.installed_ivp[1
 # On v1.1-1.2.1 gi produces an error for some reason that is actually fine
 import platform
 
-if platform.system().lower() == "windows" and inkex.installed_ivp[0:2] == [1, 1] or (inkex.installed_ivp[0:2] == [1, 2] and inkex.installed_ivp[2]<2):   
+if (
+    platform.system().lower() == "windows"
+    and inkex.installed_ivp[0:2] == [1, 1]
+    or (inkex.installed_ivp[0:2] == [1, 2] and inkex.installed_ivp[2] < 2)
+):
     if inkex.text.font_properties.HASPANGOFT2:
         from gi.repository import GLib
 
@@ -336,17 +341,18 @@ def group(el_list, moveTCM=False):
 
 
 def deswitch(el):
-    ''' Removes language switching '''
+    """Removes language switching"""
     lang = inkex.inkscape_system_info.language
     for k in reversed(list(el)):
-        if k.get("systemLanguage",lang) != lang and len(el)>1:
+        if k.get("systemLanguage", lang) != lang and len(el) > 1:
             # leave at least first element
             k.delete()
     for k in el[1:]:
         k.delete()
-    if len(el)>0:
+    if len(el) > 0:
         el[0].set("systemLanguage", None)
     ungroup(el)
+
 
 # For composing a group's properties onto its children (also group-like objects like Uses)
 Itmat = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
@@ -582,8 +588,9 @@ unrendered.update(
 )
 
 
-
-def wrapped_binary(filename, inkscape_binary=None, extra_args=None, svg=None, get_bbs=True,cwd=None):
+def wrapped_binary(
+    filename, inkscape_binary=None, extra_args=None, svg=None, get_bbs=True, cwd=None
+):
     """
     Retrieves all of a document's bounding boxes using a call to the Inkscape binary.
 
@@ -604,10 +611,10 @@ def wrapped_binary(filename, inkscape_binary=None, extra_args=None, svg=None, ge
 
     if get_bbs:
         arg2 = [inkscape_binary, "--query-all"] + extra_args + [filename]
-        proc = subprocess_repeat(arg2,cwd=cwd)
+        proc = subprocess_repeat(arg2, cwd=cwd)
     else:
         arg2 = [inkscape_binary] + extra_args + [filename]
-        proc = subprocess_repeat(arg2,cwd=cwd)
+        proc = subprocess_repeat(arg2, cwd=cwd)
         return None
     tfstr = proc.stdout
 
@@ -700,7 +707,7 @@ def BB2(svg, els=None, forceupdate=False, roughpath=False, parsed=False):
         #     tname = os.path.abspath(temp.name)
         #     overwrite_svg(svg, tname)
         #     ret = wrapped_binary(filename=tname, svg=svg)
-            
+
         with tempfile.NamedTemporaryFile(delete=False) as temp:
             tname = os.path.abspath(temp.name)
         try:
@@ -741,42 +748,58 @@ def bb_intersects(bbs, bb2s=None):
     if len(bbs) == 0 or len(bb2s) == 0:
         return np.zeros((len(bbs), len(bb2s)), dtype=bool)
     else:
-        xc1, yc1, wd1, ht1 = np.array([
-            (bb.xc, bb.yc, bb.w, bb.h) if not bb.isnull else (np.nan, np.nan, np.nan, np.nan) 
-            for bb in bbs
-        ]).T
-        
-        xc2, yc2, wd2, ht2 = np.array([
-            (bb.xc, bb.yc, bb.w, bb.h) if not bb.isnull else (np.nan, np.nan, np.nan, np.nan) 
-            for bb in bb2s
-        ]).T
+        xc1, yc1, wd1, ht1 = np.array(
+            [
+                (bb.xc, bb.yc, bb.w, bb.h)
+                if not bb.isnull
+                else (np.nan, np.nan, np.nan, np.nan)
+                for bb in bbs
+            ]
+        ).T
+
+        xc2, yc2, wd2, ht2 = np.array(
+            [
+                (bb.xc, bb.yc, bb.w, bb.h)
+                if not bb.isnull
+                else (np.nan, np.nan, np.nan, np.nan)
+                for bb in bb2s
+            ]
+        ).T
         return np.logical_and(
-            np.nan_to_num(abs(xc1.reshape(-1, 1) - xc2) * 2 < (wd1.reshape(-1, 1) + wd2), nan=False),
-            np.nan_to_num(abs(yc1.reshape(-1, 1) - yc2) * 2 < (ht1.reshape(-1, 1) + ht2), nan=False),
+            np.nan_to_num(
+                abs(xc1.reshape(-1, 1) - xc2) * 2 < (wd1.reshape(-1, 1) + wd2),
+                nan=False,
+            ),
+            np.nan_to_num(
+                abs(yc1.reshape(-1, 1) - yc2) * 2 < (ht1.reshape(-1, 1) + ht2),
+                nan=False,
+            ),
         )
 
+
 # Return list of objects on top of other objects
-def overlapping_els(svg,tocheck):
+def overlapping_els(svg, tocheck):
     els = [el for el in svg.descendants2() if isdrawn(el)]
     bbs = BB2(svg, els, roughpath=True, parsed=True)
     bbs = [bbox(bbs.get(el.get_id())) for el in els]
-    
-    chki = [i for i,el in enumerate(els) if el in tocheck]
+
+    chki = [i for i, el in enumerate(els) if el in tocheck]
     bbs_check = [bbs[i] for i in chki]
     intrscts = bb_intersects(bbs, bbs_check)
-    
+
     ret = {el: [] for el in tocheck}
-    for j,ci in enumerate(chki):
+    for j, ci in enumerate(chki):
         elj = els[ci]
-        for i in range(ci+1,len(els)):
+        for i in range(ci + 1, len(els)):
             eli = els[i]
             ds = elj.descendants2()
-            if intrscts[i,j] and eli not in ds:
+            if intrscts[i, j] and eli not in ds:
                 ret[elj].append(eli)
-    
+
     # for k,v in ret.items():
     #     dh.idebug(k.get_id()+': '+str([v2.get_id() for v2 in v]))
     return ret
+
 
 # Get SVG from file
 from inkex import load_svg
@@ -944,22 +967,48 @@ def benchmark_functions(func1, func2):
 
 # style atts that could have urls
 urlatts = [
-    "fill", "stroke", "clip-path", "mask",
-    "filter", "marker-start", "marker-mid", "marker-end",
-    "marker", "shape-inside", "shape-subtract", "fill-opacity",
-    "stroke-opacity", "lighting-color", "flood-color", "flood-opacity",
-    "stop-color", "stop-opacity", "enable-background", "background-image",
-    "cursor"
+    "fill",
+    "stroke",
+    "clip-path",
+    "mask",
+    "filter",
+    "marker-start",
+    "marker-mid",
+    "marker-end",
+    "marker",
+    "shape-inside",
+    "shape-subtract",
+    "fill-opacity",
+    "stroke-opacity",
+    "lighting-color",
+    "flood-color",
+    "flood-opacity",
+    "stop-color",
+    "stop-opacity",
+    "enable-background",
+    "background-image",
+    "cursor",
 ]
+
 
 # An efficient Pythonic version of Clean Up Document
 def clean_up_document(svg):
     # defs types that do nothing unless they are referenced
     prune = [
-        "clipPath", "mask", "linearGradient", "radialGradient",
-        "pattern", "symbol", "marker", "filter",
-        "animate", "animateTransform", "animateMotion", "textPath",
-        "font", "font-face",
+        "clipPath",
+        "mask",
+        "linearGradient",
+        "radialGradient",
+        "pattern",
+        "symbol",
+        "marker",
+        "filter",
+        "animate",
+        "animateTransform",
+        "animateMotion",
+        "textPath",
+        "font",
+        "font-face",
     ]
     prune = [inkex.addNS(v, "svg") for v in prune]
 
@@ -1108,15 +1157,16 @@ def combine_paths(els, mergeii=0):
 # Note to self: inkex.Color inherits from list
 from inkex.text.utils import default_style_atts as dsa
 
+NONES = [None, "none"]
+
 
 def get_strokefill(el):
     sty = el.cspecified_style
     strk = sty.get("stroke", dsa.get("stroke"))
     fill = sty.get("fill", dsa.get("fill"))
     op = float(sty.get("opacity", 1.0))
-    nones = [None, "none"]
     strk_isurl, fill_isurl = False, False
-    if not (strk in nones):
+    if not (strk in NONES):
         try:
             strk = inkex.Color(strk).to_rgb()
             strkl = strk.lightness
@@ -1133,7 +1183,7 @@ def get_strokefill(el):
                 strk = None
     else:
         strk = None
-    if not (fill in nones):
+    if not (fill in NONES):
         try:
             fill = inkex.Color(fill).to_rgb()
             filll = fill.lightness
@@ -1153,9 +1203,9 @@ def get_strokefill(el):
 
     sw, _, _ = composed_width(el, "stroke-width")
     sd, _ = composed_list(el, "stroke-dasharray")
-    if sd in nones:
+    if sd in NONES:
         sd = None
-    if sw in nones or sw == 0 or strk is None:
+    if sw in NONES or sw == 0 or strk is None:
         sw = None
         strk = None
         sd = None
@@ -1214,6 +1264,7 @@ def Get_Current_File(ext, msgstr):
     else:
         return myfile
 
+
 class SI_Config:
     """
     Loads a config json file that can be used to adjust certain Scientific
@@ -1222,13 +1273,17 @@ class SI_Config:
                        as identical when searching for pre-export files. Useful
                        for cloud drives.
     """
+
     def __init__(self, filename="config.json"):
-        self.config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),filename)
+        self.config_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), filename
+        )
         self.data = {}
         self.loaded = False
 
     def _load(self):
         import json
+
         if os.path.exists(self.config_path):
             with open(self.config_path, "r", encoding="utf-8") as f:
                 self.data = json.load(f)
@@ -1242,7 +1297,7 @@ class SI_Config:
         if isinstance(groups, list) and all(isinstance(g, list) for g in groups):
             return groups
         return []
-    
+
     @property
     def subdirs_gv(self):
         if not self.loaded:
@@ -1254,12 +1309,16 @@ class SI_Config:
 
     def get_option(self, section, key, default=None):
         return self.data.get(section, {}).get(key, default)
+
+
 si_config = SI_Config()
-    
+
 import threading
+
 sema_temp = threading.Semaphore(1)
 
-def shared_temp(headprefix = None, filename=None):
+
+def shared_temp(headprefix=None, filename=None):
     """
     Generate a temporary file in the system temp folder or SI's location
     (tempfile does not always work with Linux Snap distributions)
@@ -1277,27 +1336,29 @@ def shared_temp(headprefix = None, filename=None):
         system_temp = si_dir
     else:
         import tempfile
+
         system_temp = tempfile.gettempdir()
     if not os.path.exists(system_temp):
         os.mkdir(system_temp)
 
-    tempdir = os.path.join(os.path.abspath(system_temp), 'si_temp')
+    tempdir = os.path.join(os.path.abspath(system_temp), "si_temp")
     if not os.path.exists(tempdir):
         os.mkdir(tempdir)
-        
+
     if headprefix is not None:
         with sema_temp:
             pnum = random.randint(1, 100000)
-            while any(t.startswith(f"{headprefix}{pnum:05d}") for t in os.listdir(tempdir)):
+            while any(
+                t.startswith(f"{headprefix}{pnum:05d}") for t in os.listdir(tempdir)
+            ):
                 pnum = random.randint(1, 100000)
             temphead = f"{headprefix}{pnum:05d}"
             tempbase = os.path.join(tempdir, temphead)
-            open(tempbase+'.lock', 'w').close()
+            open(tempbase + ".lock", "w").close()
         return tempdir, temphead
     if filename is not None:
-        return os.path.join(tempdir,filename)
+        return os.path.join(tempdir, filename)
     return tempdir
-    
 
 
 ttags = tags((inkex.TextElement, inkex.FlowRoot))
@@ -1317,7 +1378,12 @@ grouplike_tags.add(mask_tag)
 
 
 def bounding_box2(
-    self, dotransform=True, includestroke=True, roughpath=False, parsed=False, includeclipmask=True
+    self,
+    dotransform=True,
+    includestroke=True,
+    roughpath=False,
+    parsed=False,
+    includeclipmask=True,
 ):
     """
     Cached bounding box that requires no command call
@@ -1340,7 +1406,7 @@ def bounding_box2(
                 pth = self.cpath
                 if len(pth) > 0:
                     swd = ipx(self.cspecified_style.get("stroke-width", "0px"))
-                    if self.cspecified_style.get("stroke") is None or not (
+                    if self.cspecified_style.get("stroke") in NONES or not (
                         includestroke
                     ):
                         swd = 0
@@ -1393,9 +1459,7 @@ def bounding_box2(
                     if not (dbb.isnull):
                         ret = ret.union(dbb.transform(kid.ctransform))
             elif isinstance(self, (inkex.Image)):
-                ret = bbox(
-                    [ipx(self.get(v, "0")) for v in ["x", "y", "width", "height"]]
-                )
+                ret = bbox(self.xywh())
             elif isinstance(self, (inkex.Use,)):
                 lel = self.get_link("xlink:href")
                 if lel is not None:
@@ -1416,7 +1480,7 @@ def bounding_box2(
                 if includeclipmask:
                     for cmv in ["clip-path", "mask"]:
                         clip = self.get_link(cmv, llget=True)
-                        if clip is not None and clip!=self.getparent():
+                        if clip is not None and clip != self.getparent():
                             # ignore self-clipping
                             cbb = bounding_box2(
                                 clip,
@@ -1492,7 +1556,7 @@ def ctoc():
         ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
         ps.print_stats()
         ppath = os.path.abspath(os.path.join(profiledir, "cprofile.csv"))
-    
+
         result = s.getvalue()
         prefix = result.split("ncalls")[0]
         # chop the string into a csv-like buffer
@@ -1503,7 +1567,7 @@ def ctoc():
         result = prefix + "\n" + result
         with open(ppath, "w") as f:
             f.write(result)
-    except OSError: # occasional irreproducible error, doesn't matter
+    except OSError:  # occasional irreproducible error, doesn't matter
         return
 
 
@@ -1531,7 +1595,7 @@ def Run_SI_Extension(effext, name):
                 lp = LineProfiler()
                 from inkex.text import parser
                 from inkex.text import font_properties
-                from inkex.text import speedups # noqa
+                from inkex.text import speedups  # noqa
                 from inkex.text import cache
                 import remove_kerning
                 from inspect import getmembers, isfunction, isclass, getmodule
@@ -1657,6 +1721,7 @@ def Run_SI_Extension(effext, name):
     sorted_items = sorted(callinfo.items(), key=lambda x: x[1], reverse=True)
     for key, value in sorted_items:
         idebug(f"{key}: {value}")
+
 
 # Patch Style string conversion to restore single-quote strings
 # Do not delete, needed in future maybe

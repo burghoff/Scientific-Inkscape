@@ -68,10 +68,13 @@ else:
 
 
 xlinkhref = inkex.addNS("href", "xlink")
-linkmap = {'clip-path':'clips','mask':'masks',xlinkhref:'linked_by'}
-patmap =  {'clip-path':re.compile(r'url\(#([^)]+)\)'),
-           'mask':re.compile(r'url\(#([^)]+)\)'),
-           xlinkhref:re.compile(r'^#([A-Za-z_][\w\-]*)$')}
+linkmap = {"clip-path": "clips", "mask": "masks", xlinkhref: "linked_by"}
+patmap = {
+    "clip-path": re.compile(r"url\(#([^)]+)\)"),
+    "mask": re.compile(r"url\(#([^)]+)\)"),
+    xlinkhref: re.compile(r"^#([A-Za-z_][\w\-]*)$"),
+}
+
 
 # pylint:disable=attribute-defined-outside-init
 class BaseElementCache(BaseElement):
@@ -101,22 +104,22 @@ class BaseElementCache(BaseElement):
                 urlel = None
             return urlel
         return None
-    
-    def set_link(self,att,val):
-        ''' Sets a linky attribute (currently clip-path, mask, xlink:href)
-        while updating the iddicts '''
-        if att=='xlink:href':
+
+    def set_link(self, att, val):
+        """Sets a linky attribute (currently clip-path, mask, xlink:href)
+        while updating the iddicts"""
+        if att == "xlink:href":
             att = xlinkhref
-        
+
         if self.croot is not None:
-            self.croot.iddict.remove_from_linkdict(self,att)
+            self.croot.iddict.remove_from_linkdict(self, att)
         if val is None:
             self.attrib.pop(att, None)  # pylint: disable=no-member
         else:
-            EBset(self,att,val)
+            EBset(self, att, val)
             if self.croot is not None:
-                self.croot.iddict.add_to_linkdict(self,att)
-            
+                self.croot.iddict.add_to_linkdict(self, att)
+
     class CStyle(Style):
         """
         Cached style attribute that invalidates the cached cascaded / specified
@@ -151,7 +154,6 @@ class BaseElementCache(BaseElement):
                             changedvalue = True
                 if changedvalue:
                     self.elem.cstyle = self
-
 
     class CStyleDescriptor:
         """Descriptor for caching and managing style changes."""
@@ -210,24 +212,32 @@ class BaseElementCache(BaseElement):
                 pass
 
     cspecified_style = property(get_cspecified_style, set_cspecified_style)
-    
+
     shorthand_font_pattern = re.compile(
-        r'^(?:(italic|oblique|normal)\s+)?'  # font-style
-        r'(?:(small-caps)\s+)?'             # font-variant
-        r'(?:(bold|bolder|lighter|\d{3})\s+)?'  # font-weight
-        r'(?:(ultra-condensed|extra-condensed|condensed|semi-condensed|normal|semi-expanded|expanded|extra-expanded|ultra-expanded)\s+)?'  # font-stretch
-        r'([0-9]+(?:\.[0-9]+)?(?:px|pt|em|rem|%)?)'  # font-size (with optional decimal)
-        r'(?:/([0-9]+(?:\.[0-9]+)?(?:px|pt|em|rem|%)?))?'  # optional line-height
-        r'\s+'  # one or more spaces
-        r'(.+)$'  # the rest is font-family
+        r"^(?:(italic|oblique|normal)\s+)?"  # font-style
+        r"(?:(small-caps)\s+)?"  # font-variant
+        r"(?:(bold|bolder|lighter|\d{3})\s+)?"  # font-weight
+        r"(?:(ultra-condensed|extra-condensed|condensed|semi-condensed|normal|semi-expanded|expanded|extra-expanded|ultra-expanded)\s+)?"  # font-stretch
+        r"([0-9]+(?:\.[0-9]+)?(?:px|pt|em|rem|%)?)"  # font-size (with optional decimal)
+        r"(?:/([0-9]+(?:\.[0-9]+)?(?:px|pt|em|rem|%)?))?"  # optional line-height
+        r"\s+"  # one or more spaces
+        r"(.+)$"  # the rest is font-family
     )
-    
+
     @staticmethod
     def font_shorthand(fontstr):
-        """ Parses a font shorthand into relevant properties """
+        """Parses a font shorthand into relevant properties"""
         match = BaseElementCache.shorthand_font_pattern.match(fontstr)
         if match:
-            font_style, font_variant, font_weight, font_stretch, font_size, line_height, font_family = match.groups()
+            (
+                font_style,
+                font_variant,
+                font_weight,
+                font_stretch,
+                font_size,
+                line_height,
+                font_family,
+            ) = match.groups()
             font_data = {
                 "font-style": font_style,
                 "font-variant": font_variant,
@@ -406,10 +416,7 @@ class BaseElementCache(BaseElement):
             if self.tag == BaseElementCache.path_tag:
                 ret = inkex.Path(self.get("d"))
             elif self.tag == BaseElementCache.rect_tag:
-                left = ipx(self.get("x", "0"))
-                top = ipx(self.get("y", "0"))
-                width = ipx(self.get("width", "0"))
-                height = ipx(self.get("height", "0"))
+                left, top, width, height = self.xywh()
                 rx = ipx(self.get("rx", self.get("ry", "0")))
                 ry = ipx(self.get("ry", self.get("rx", "0")))
                 right = left + width
@@ -501,6 +508,29 @@ class BaseElementCache(BaseElement):
 
     # Cached root property
     svgtag = SvgDocumentElement.ctag
+
+    def xywh(self, att=None):
+        """
+        For rectangle-like attributes, get x, y, width values
+        Can handle percentages that inherit from the viewbox
+        """
+        if not att:
+            return (
+                self.xywh("x"),
+                self.xywh("y"),
+                self.xywh("width"),
+                self.xywh("height"),
+            )
+        val = self.get(att, "0")
+        try:
+            return ipx(val)
+        except KeyError:
+            if "%" in val and att in ["x", "width"]:
+                return self.croot.cdocsize.rawvb[2] * float(val.strip("%")) / 100
+            elif "%" in val and att in ["y", "height"]:
+                return self.croot.cdocsize.rawvb[3] * float(val.strip("%")) / 100
+            else:
+                return ipx(val)  # not handled, re-raise
 
     def get_croot(self):
         """Returns the cached root of the SVG document."""
@@ -618,16 +648,16 @@ class BaseElementCache(BaseElement):
                 except (KeyError, AttributeError):
                     pass
                 svg.iddict.remove(ddv)
-                
+
                 # Remove any clips/masks that refer to this element so as not
                 # to leave behind orphan references
                 if did in svg.iddict.clips:
                     for el in svg.iddict.clips[did]:
-                        el.set_link('clip-path',None)
+                        el.set_link("clip-path", None)
                 if did in svg.iddict.masks:
                     for el in svg.iddict.masks[did]:
-                        el.set_link('mask',None)
-                
+                        el.set_link("mask", None)
+
             ddv.croot = None
         if hasattr(svg, "_cd2"):
             svg.cdescendants2.delel(self)
@@ -845,10 +875,12 @@ class SvgDocumentElementCache(SvgDocumentElement):
         new_id = None
         cnt = self.iddict.prefixcounter.get(prefix, 0)
 
-        while new_id is None or (new_id in self.iddict or
-            new_id in self.iddict.clips or
-            new_id in self.iddict.masks or
-            (blacklist is not None and new_id in blacklist)):
+        while new_id is None or (
+            new_id in self.iddict
+            or new_id in self.iddict.clips
+            or new_id in self.iddict.masks
+            or (blacklist is not None and new_id in blacklist)
+        ):
             new_id = prefix + str(cnt)
             cnt += 1
 
@@ -883,12 +915,12 @@ class SvgDocumentElementCache(SvgDocumentElement):
                 else:
                     toassign.append(elem)
                 elem.croot = svg  # do now to speed up later
-                
+
                 # While we're iterating, we gather clips/masks/links
-                self.add_to_linkdict(elem,'clip-path')
-                self.add_to_linkdict(elem,'mask')
-                self.add_to_linkdict(elem,xlinkhref)
-                    
+                self.add_to_linkdict(elem, "clip-path")
+                self.add_to_linkdict(elem, "mask")
+                self.add_to_linkdict(elem, xlinkhref)
+
             for elem in toassign:
                 # Reduced version of get_unique_id_fcn
                 # Cannot call it since it relies on iddict
@@ -912,9 +944,9 @@ class SvgDocumentElementCache(SvgDocumentElement):
                 elem.set_random_id(elem.TAG)
                 elid = elem.get_id()
             self[elid] = elem
-            self.add_to_linkdict(elem,'clip-path')
-            self.add_to_linkdict(elem,'mask')
-            self.add_to_linkdict(elem,xlinkhref)
+            self.add_to_linkdict(elem, "clip-path")
+            self.add_to_linkdict(elem, "mask")
+            self.add_to_linkdict(elem, xlinkhref)
 
         @property
         def descendants(self):
@@ -925,34 +957,34 @@ class SvgDocumentElementCache(SvgDocumentElement):
             """Remove from ID dict"""
             elid = elem.get_id()
             if elid in self:
-                del self[elid]                            
-            self.remove_from_linkdict(elem,'clip-path')
-            self.remove_from_linkdict(elem,'mask')
-            self.remove_from_linkdict(elem,xlinkhref)
-                            
-            
-        def add_to_linkdict(self,elem,att):
-            '''
+                del self[elid]
+            self.remove_from_linkdict(elem, "clip-path")
+            self.remove_from_linkdict(elem, "mask")
+            self.remove_from_linkdict(elem, xlinkhref)
+
+        def add_to_linkdict(self, elem, att):
+            """
             Maintain a dictionary of linky attributes like clip-path, mask, etc.
             Keys are ids that are referenced, whether or not they actually exist.
             Values are a list of nodes linking to that id.
-            '''
+            """
             linkdict = self.__dict__[linkmap[att]]
-            cid=EBget(elem,att)
+            cid = EBget(elem, att)
             if cid:
                 match = patmap[att].search(cid)
                 if match:
-                    linkdict.setdefault(match.group(1),set()).add(elem)
-        def remove_from_linkdict(self,elem,att):
+                    linkdict.setdefault(match.group(1), set()).add(elem)
+
+        def remove_from_linkdict(self, elem, att):
             linkdict = self.__dict__[linkmap[att]]
-            cid=EBget(elem,att)
+            cid = EBget(elem, att)
             if cid:
                 match = patmap[att].search(cid)
                 if match:
                     cid = match.group(1)
                     if cid in linkdict and elem in linkdict[cid]:
                         linkdict[cid].remove(elem)
-                        if len(linkdict[cid])==0:
+                        if len(linkdict[cid]) == 0:
                             del linkdict[cid]
 
     @property
@@ -1084,11 +1116,12 @@ class SvgDocumentElementCache(SvgDocumentElement):
             hstr = self.get("height")
 
             if rvb == [0, 0, 0, 0]:
-                wval = ipx(wstr) if '%' not in wstr else 300
-                hval = ipx(hstr) if '%' not in hstr else 150
+                wval = ipx(wstr) if "%" not in wstr else 300
+                hval = ipx(hstr) if "%" not in hstr else 150
                 vbx = [0, 0, wval, hval]
             else:
                 vbx = [float(v) for v in rvb]  # just in case
+            rawvb = vbx[:]
 
             # Get document width and height in pixels
             wvl, wun = (
@@ -1211,6 +1244,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
                     xfr,
                     yfr,
                     pgs,
+                    rawvb,
                 ):
                     self.effvb = effvb
                     self.uuw = uuw
@@ -1223,6 +1257,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
                     self.rawxf = xfr
                     self.rawyf = yfr
                     self.pgs = pgs
+                    self.rawvb = rawvb
 
                 def uutopx(self, x):
                     """Converts a bounding box specified in uu to pixels"""
@@ -1270,8 +1305,16 @@ class SvgDocumentElementCache(SvgDocumentElement):
                         x[3] / self.rawyf,
                     ]
 
+                def __repr__(self):
+                    return (
+                        f"DocSize(effvb={self.effvb}, uuw={self.uuw}, uuh={self.uuh}, "
+                        f"uupx={self.uupx}, wunit='{self.wunit}', hunit='{self.hunit}', "
+                        f"wpx={self.wpx}, hpx={self.hpx}, xfr={self.rawxf}, yfr={self.rawyf}, "
+                        f"pgs={self.pgs}), rawvb={self.rawvb}"
+                    )
+
             self._cdocsize = DocSize(
-                vbx, uuw, uuh, uupx, wun, hun, wpx, hpx, xfr, yfr, pgs
+                vbx, uuw, uuh, uupx, wun, hun, wpx, hpx, xfr, yfr, pgs, rawvb
             )
         return self._cdocsize
 

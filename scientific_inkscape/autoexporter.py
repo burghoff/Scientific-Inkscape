@@ -1707,9 +1707,9 @@ class Exporter():
         newel.set("y", 0)
         myy = 0
         newel.set("width", 1)
-        myw = dh.ipx(newel.get("width"))
+        myw = newel.xywh("width")
         newel.set("height", 1)
-        myh = dh.ipx(newel.get("height"))
+        myh = newel.xywh("height")
         newel.set_link("xlink:href", elem.get("xlink:href"))
 
         # Inkscape inappropriately clips non-'optimizeQuality' images

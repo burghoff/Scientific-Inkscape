@@ -16,7 +16,6 @@ from inkex.text.cache import BaseElementCache
 
 Itr = Transform([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
-
 # @staticmethod
 def remove_attrs(el):
     if el.tag == inkex.addNS("g", "svg"):
@@ -176,10 +175,7 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
                 el.set("y2", str(p2[1]))
 
             elif el.tag in rect_tag:
-                x = dh.ipx(el.get("x"))
-                y = dh.ipx(el.get("y"))
-                w = dh.ipx(el.get("width"))
-                h = dh.ipx(el.get("height"))
+                x,y,w,h = el.xywh()
                 pts = [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]]
                 xs = []
                 ys = []
