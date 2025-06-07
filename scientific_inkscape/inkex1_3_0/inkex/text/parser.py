@@ -1226,11 +1226,12 @@ class ParsedText:
                         and len(npt.lns[0].chrs) > 0
                     ):
                         npt.reparse()
-                        newx = [
-                            xvl + origx - npt.lns[0].chrs[0].pts_ut[0][0]
-                            for xvl in npt.lns[0].x
-                        ]
-                        npt.lns[0].write_xy(newx)
+                        if len(npt.lns)>0:
+                            newx = [
+                                xvl + origx - npt.lns[0].chrs[0].pts_ut[0][0]
+                                for xvl in npt.lns[0].x
+                            ]
+                            npt.lns[0].write_xy(newx)
                     g.append(newtxt)
 
 

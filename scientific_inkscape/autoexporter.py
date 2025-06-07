@@ -660,7 +660,7 @@ class Exporter():
             for satt in list(sty.keys()):
                 if (
                     satt in dh.urlatts
-                    and sty.get(satt).startswith("url")
+                    and str(sty.get(satt)).startswith("url")
                     and sty.get_link(satt, svg) is None
                 ):
                     elem.cstyle[satt] = None
