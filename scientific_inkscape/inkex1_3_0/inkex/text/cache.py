@@ -1020,7 +1020,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
                     # inkex.utils.debug(rules)
                     if rules == ("*",):
                         hasall = True
-                    elif all(patcls.match(r) for r in rules):
+                    elif all(patcls.fullmatch(r) for r in rules):
                         # all rules are classes
                         simpleclasses[rules] = [patcls.sub(r"\1", r) for r in rules]
                     elif all(patid.match(r) for r in rules):
