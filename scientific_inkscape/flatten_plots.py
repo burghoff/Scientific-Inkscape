@@ -342,29 +342,29 @@ class FlattenPlots(inkex.EffectExtension):
                                 bb = dh.bounding_box2(
                                     el, includestroke=False, dotransform=False, includeclipmask=False
                                 )
-                                if not bb.isnull:
-                                    if bb.w < bb.h / RECT_THRESHOLD and not sf.fill_isurl:
-                                        el.object_to_path()
-                                        npv = "m {0},{1} v {2}".format(bb.xc, bb.y1, bb.h)
-                                        el.set("d", npv)
-                                        el.cstyle["stroke"] = sf.fill.to_rgb()
-                                        if sf.fill.alpha != 1.0:
-                                            el.cstyle["stroke-opacity"] = sf.fill.alpha
-                                            el.cstyle["opacity"] = 1
-                                        el.cstyle["fill"] = "none"
-                                        el.cstyle["stroke-width"] = str(bb.w)
-                                        el.cstyle["stroke-linecap"] = "butt"
-                                    elif bb.h < bb.w / RECT_THRESHOLD and not sf.fill_isurl:
-                                        el.object_to_path()
-                                        npv = "m {0},{1} h {2}".format(bb.x1, bb.yc, bb.w)
-                                        el.set("d", npv)
-                                        el.cstyle["stroke"] = sf.fill.to_rgb()
-                                        if sf.fill.alpha != 1.0:
-                                            el.cstyle["stroke-opacity"] = sf.fill.alpha
-                                            el.cstyle["opacity"] = 1
-                                        el.cstyle["fill"] = "none"
-                                        el.cstyle["stroke-width"] = str(bb.h)
-                                        el.cstyle["stroke-linecap"] = "butt"
+                                darkpath = not bb.isnull and not sf.fill_isurl and dh.get_strokefill(el).fill.efflightness<16/255
+                                if darkpath and bb.w < bb.h / RECT_THRESHOLD:
+                                    el.object_to_path()
+                                    npv = "m {0},{1} v {2}".format(bb.xc, bb.y1, bb.h)
+                                    el.set("d", npv)
+                                    el.cstyle["stroke"] = sf.fill.to_rgb()
+                                    if sf.fill.alpha != 1.0:
+                                        el.cstyle["stroke-opacity"] = sf.fill.alpha
+                                        el.cstyle["opacity"] = 1
+                                    el.cstyle["fill"] = "none"
+                                    el.cstyle["stroke-width"] = str(bb.w)
+                                    el.cstyle["stroke-linecap"] = "butt"
+                                elif darkpath and bb.h < bb.w / RECT_THRESHOLD:
+                                    el.object_to_path()
+                                    npv = "m {0},{1} h {2}".format(bb.x1, bb.yc, bb.w)
+                                    el.set("d", npv)
+                                    el.cstyle["stroke"] = sf.fill.to_rgb()
+                                    if sf.fill.alpha != 1.0:
+                                        el.cstyle["stroke-opacity"] = sf.fill.alpha
+                                        el.cstyle["opacity"] = 1
+                                    el.cstyle["fill"] = "none"
+                                    el.cstyle["stroke-width"] = str(bb.h)
+                                    el.cstyle["stroke-linecap"] = "butt"
 
         TE_TAG = TextElement.ctag;
         if self.options.fixtext:
@@ -389,6 +389,13 @@ class FlattenPlots(inkex.EffectExtension):
                             el.cstyle["font-family"] = ",".join(ff)
 
             if removemanualkerning or mergesubsuper or splitdistant or mergenearby:
+                # Remove language switching
+                stag = inkex.addNS("switch", "svg")
+                for el in ngs:
+                    if el.tag==stag:
+                        dh.deswitch(el)
+                ngs = [el for el in ngs if el.getparent() is not None]
+                
                 jdict = {1: "middle", 2: "start", 3: "end", 4: None}
                 justification = jdict[self.options.justification]
                 ngs = remove_kerning(
@@ -403,8 +410,8 @@ class FlattenPlots(inkex.EffectExtension):
             if removetextclips:
                 for el in ngs:
                     if el.tag in dh.ttags:
-                        el.set("clip-path", None)
-                        el.set("mask", None)
+                        el.set_link("clip-path", None)
+                        el.set_link("mask", None)
 
         if self.options.removerectw or self.options.removeduppaths:
             ngset = set(ngs)
@@ -498,19 +505,20 @@ class FlattenPlots(inkex.EffectExtension):
                     
 
         # Remove any unused clips we made, unnecessary white space in document
-        ds = self.svg.iddict.descendants
-        clips = [dh.EBget(el, "clip-path") for el in ds]
-        masks = [dh.EBget(el, "mask") for el in ds]
-        clips = [url[5:-1] for url in clips if url is not None]
-        masks = [url[5:-1] for url in masks if url is not None]
-
         ctag = inkex.ClipPath.ctag
+        mtag = inkex.addNS("mask", "svg")
         if hasattr(self.svg, "newclips"):
-            for el in self.svg.newclips:
-                if el.tag == ctag and not (el.get_id() in clips):
-                    el.delete(deleteup=True)
-                elif dh.isMask(el) and not (el.get_id() in masks):
-                    el.delete(deleteup=True)
+            potential_orphans = set(self.svg.newclips)
+            while len(potential_orphans)>0:
+                deleted_cms = set()
+                for po in potential_orphans:
+                    if po in self.svg.newclips and (
+                        (po.tag == ctag and po.get_id() not in self.svg.iddict.clips) or 
+                        (po.tag == mtag and po.get_id() not in self.svg.iddict.masks)):
+                        oldcms = [ddv.get_link(cm) for ddv in po.descendants2() for cm in ['clip-path','mask']]
+                        deleted_cms.update({v for v in oldcms if v is not None and v in self.svg.newclips})
+                        po.delete(deleteup=True)
+                potential_orphans = deleted_cms
 
         ttags = dh.tags((Tspan, TextPath, FlowPara, FlowRegion, FlowSpan))
         ttags2 = dh.tags(
@@ -525,7 +533,7 @@ class FlattenPlots(inkex.EffectExtension):
                 inkex.FlowSpan,
             )
         )
-        for el in reversed(ds):
+        for el in reversed(self.svg.iddict.descendants):
             if not (el.tag in ttags):
                 if el.tail is not None:
                     el.tail = None

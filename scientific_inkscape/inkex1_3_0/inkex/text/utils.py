@@ -200,7 +200,7 @@ def isrectangle(elem, includingtransform=True):
         # Allow up to 6 (initial M + 4 lines + redundant close path)
             return False
         pth = elem.cpath
-
+        pts = list(pth.end_points)
         if includingtransform:
             tmat = elem.ctransform.matrix
             x, y = list(
@@ -210,16 +210,16 @@ def isrectangle(elem, includingtransform=True):
                             tmat[0][0] * pt.x + tmat[0][1] * pt.y + tmat[0][2],
                             tmat[1][0] * pt.x + tmat[1][1] * pt.y + tmat[1][2],
                         )
-                        for pt in pth.end_points
+                        for pt in pts
                     ]
                 )
             )
         else:
-            x, y = list(zip(*[(pt.x, pt.y) for pt in pth.end_points]))
+            x, y = list(zip(*[(pt.x, pt.y) for pt in pts]))
 
         maxsz = max(max(x) - min(x), max(y) - min(y))
         tol = 1e-3 * maxsz
-        if len(uniquetol(x, tol)) != 2 or len(uniquetol(y, tol)) != 2:
+        if len(pts)<4 or len(uniquetol(x, tol)) != 2 or len(uniquetol(y, tol)) != 2:
             ret = False
     elif elem.tag == usetag:
         useel = elem.get_link("xlink:href")

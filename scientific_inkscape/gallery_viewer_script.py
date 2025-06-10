@@ -16,7 +16,7 @@ bfn_dir = os.path.dirname(bfn)
 if bfn_dir not in sys.path:
     sys.path.append(bfn_dir)
 PORTNUMBER = input_options.portnum
-sys.stdout = open(input_options.logfile, "w")
+sys.stdout = open(input_options.logfile, "w", encoding="utf-8", errors="replace")
 sys.stderr = sys.stdout
 
 import sys, subprocess, threading, time, chardet
@@ -34,7 +34,6 @@ import builtins
 
 import dhelpers as dh
 import inkex
-import xml.etree.ElementTree as ET
 from autoexporter import ORIG_KEY
 from autoexporter import DUP_KEY
 from autoexporter import hash_file
@@ -219,27 +218,30 @@ def Make_Flask_App():
         for fp in processors:
             files_data = []
             for ii, f in enumerate(fp.files):
-                svg = f.name
-                if fp.files[ii].slidenum is not None:
-                    label = f"Slide {fp.files[ii].slidenum}" 
+                if fp.files[ii].slidename not in [None,"Document"]:
+                    label = fp.files[ii].slidename
                 else:
                     pn = (
                             " ({0})".format(fp.files[ii].pagenum)
                             if fp.files[ii].pagenum is not None
                             else ""
                         )
-                    label = os.path.split(svg)[-1] + pn
+                    label = os.path.split(f.name)[-1] + pn
     
                 # Determine currenttype accurately
+                base, ext = os.path.splitext(f.name)
+                ext = ext.upper().strip('.')
                 if fp.isdir:
                     currenttype = "Current"
                 elif fp.files[ii].islinked:
-                    currenttype = "Linked"
+                    currenttype = f"Linked {ext}"
                 else:
-                    currenttype = "Embedded"
+                    currenttype = f"Embedded {ext}"
                 
-                file_url = cached_url(svg)
+                file_url = cached_url(f.name)
                 thumbnail_url = cached_url(fp.files[ii].thumbnail)
+    
+                embed_val = f.original_uri if f.original_present else (None if f.original is None else 'Missing: '+f.original)
     
                 # Add file data
                 files_data.append({
@@ -248,7 +250,7 @@ def Make_Flask_App():
                     "file_uri": f.name_uri,
                     "label": label,
                     "currenttype": currenttype,
-                    "embed": f.embed_uri,
+                    "embed": embed_val,
                 })
             processing = not fp.run_on_fof_done or any(not t.done for t in fp.cthreads)
             gallery_data.append({
@@ -277,13 +279,14 @@ def Make_Flask_App():
         svg_file = file_uri_to_path(param)
         if svg_file is not None:
             print("Opening " + str(svg_file))
-
+            warnings.simplefilter("ignore", ResourceWarning) # prevent process open warning
             if str(svg_file).endswith(".emf") or str(svg_file).endswith(".wmf"):
                 subprocess.Popen([bfn,svg_file])
                 return f"The parameter received is: {param}"
 
             with OpenWithEncoding(svg_file) as f:
                 file_content = f.read()
+                
                 if DUP_KEY in file_content:
                     deembedsmade = False
                     while not (deembedsmade):
@@ -309,10 +312,11 @@ def Make_Flask_App():
                                 dup.delete()
                             g = d.getparent()
                             d.delete()
-                            g.set("display", None)  # office converts to att
-                            g.cstyle["display"] = None
-                            list(g)[0].set_id(dupid)
-                            dh.ungroup(g)
+                            if g is not None and len(g)==1:
+                                g.set("display", None)  # office converts to att
+                                g.cstyle["display"] = None
+                                list(g)[0].set_id(dupid)
+                                dh.ungroup(g)
 
                     dh.overwrite_svg(svg, tsvg)
                     subprocess.Popen([bfn, tsvg])
@@ -450,7 +454,16 @@ class ConversionThread(threading.Thread):
                 # Execute the conversion command
                 with conv_sema:
                     print('Inkscape export of '+fname)
-                    dh.subprocess_repeat(args)
+                    try:
+                        dh.subprocess_repeat(args)
+                    except subprocess.CalledProcessError:
+                        ws = os.path.join(dh.si_dir,'pngs','cannot_display.png')
+                        shutil.copy(ws, conv_path)
+                    
+                    if not os.path.exists(conv_path):
+                        # Still no png, probably a blank file
+                        ws = os.path.join(dh.si_dir,'pngs','white_square.png')
+                        shutil.copy(ws, conv_path)
 
             # Move the converted file to the final destination
             shutil.move(conv_path, self.fileout)
@@ -477,10 +490,11 @@ class DisplayedFile():
         else:
             self.thumbnail = self.name
         self.name_uri = pathlib.Path(self.name).as_uri()
-        self.slidenum = None
+        self.slidename = None
         self.islinked = False
-        self.embed = None
-        self.embed_uri = None
+        self.original = None
+        self.original_uri = None
+        self.original_present = False
         self.pagenum = None
         
     def __str__(self):
@@ -521,116 +535,6 @@ class Processor(threading.Thread):
     def delete_fcn(self,path):
         print(f"Deleted: {path}")
         # self.run_on_fof()
-        
-    def get_image_slidenums(self, dirin):
-        relsdir = os.path.join(dirin, "ppt", "slides", "_rels")
-        numslides = len(os.listdir(relsdir))
-        slide_filenames = []
-        for slide_num in range(1, numslides + 1):
-            tree = ET.parse(
-                os.path.join(
-                    dirin, "ppt", "slides", "_rels", f"slide{slide_num}.xml.rels"
-                )
-            )
-            root = tree.getroot()
-            image_filenames = []
-            for elem in root.iter(
-                "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
-            ):
-                if (
-                    elem.attrib["Type"]
-                    == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
-                ):
-                    image_filenames.append(elem.attrib["Target"])
-            slide_filenames.append(image_filenames)
-        slide_lookup = {}
-        for index, filenames in enumerate(slide_filenames):
-            for filename in filenames:
-                slide_lookup[filename] = slide_lookup.get(filename, []) + [
-                    index + 1
-                ]
-        return slide_lookup
-    
-    def get_linked_images_word(self,dirin):
-        rels_path = os.path.join(dirin, "word", "_rels", "document.xml.rels")
-        
-        # Parse the relationships file
-        tree = ET.parse(rels_path)
-        root = tree.getroot()
-        
-        linked_images = []
-        for elem in root.iter("{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"):
-            # Check if the relationship is an image and has an external TargetMode
-            if elem.attrib["Type"] == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image":
-                if elem.attrib.get("TargetMode") == "External":
-                    linked_images.append(elem.attrib["Target"])
-        
-        return linked_images
-    
-    def get_images_onenote(self,target_file,outputdir):
-        ''' Extracts OneNote files to the output directory '''
-        pkg_dir = os.path.join(dh.si_dir,'packages')
-        if pkg_dir not in sys.path:
-            sys.path.append(pkg_dir)
-        from onenoteextractor.one import OneNoteExtractor
-        from pathlib import Path
-        with Path(target_file).open("rb") as infile:
-            data = infile.read()
-        document = OneNoteExtractor(data=data, password=None)
-        import struct
-        def is_emf(file_data: bytes) -> bool:
-            """Check if the file_data represents an EMF file by inspecting the header."""
-            if len(file_data) < 88:
-                return False  # EMF header should be at least 88 bytes
-            # Unpack the first 4 bytes to get the Record Type
-            record_type, = struct.unpack('<I', file_data[0:4])
-            # Unpack bytes 40 to 44 to get the Signature
-            signature, = struct.unpack('<I', file_data[40:44])
-            # EMF specific values
-            EMR_HEADER = 0x00000001
-            EMF_SIGNATURE = 0x464D4520 # ' EMF' in ASCII (note the leading space)
-            
-            return record_type == EMR_HEADER and signature == EMF_SIGNATURE
-        def is_wmf(file_data: bytes) -> bool:
-            """Check if the file_data represents a WMF file by inspecting the header."""
-            if len(file_data) < 4:
-                return False  # WMF header should be at least 4 bytes
-            # Check for Placeable WMF magic number
-            if file_data.startswith(b'\xD7\xCD\xC6\x9A'):
-                return True
-            # For non-placeable WMF files, check the Type and Header Size
-            if len(file_data) < 18:  # Minimum WMF header size
-                return False
-            try:
-                type_, header_size, version = struct.unpack('<HHH', file_data[0:6])
-                if type_ in (1, 2) and header_size == 9 and version in (0x0300, 0x0100):
-                    return True
-            except struct.error:
-                pass
-            return False
-        def is_png(file_data: bytes) -> bool:
-            """Check if the file_data represents a PNG file by inspecting the header."""
-            return file_data.startswith(b'\x89PNG\r\n\x1a\n')
-
-        def is_jpeg(file_data: bytes) -> bool:
-            """Check if the file_data represents a JPEG file by inspecting the header."""
-            return file_data.startswith(b'\xFF\xD8\xFF')
-        for index, file_data in enumerate(document.extract_files()):
-            bn = Path(target_file).stem  # Use stem to get filename without extension
-            if is_emf(file_data):
-                extension = '.emf'
-            elif is_wmf(file_data):
-                extension = '.wmf'
-            elif is_png(file_data):
-                extension = '.png'
-            elif is_jpeg(file_data):
-                extension = '.jpg'
-            else:
-                extension = '.bin'  # Default extension for unknown types
-            target_path = Path(outputdir) / f"{bn}_{index}{extension}"
-            print(f"Writing extracted file to: {target_path}")
-            with target_path.open("wb") as outf:
-                outf.write(file_data)
 
     def run_on_file(self, contents):
         # Unzip the ppt file to the temp directory, allowing for multiple
@@ -647,15 +551,16 @@ class Processor(threading.Thread):
         if ftype == "onenote":
             media_dir = os.path.join(contents, ftype)
             os.mkdir(media_dir)
-            self.get_images_onenote(self.fof,media_dir)
+            from office import get_images_onenote
+            get_images_onenote(self.fof,media_dir)
         else:
+            from office import Unzipped_Office
             media_dir = os.path.join(contents, ftype, "media")
             attempts = 0
             max_attempts = 3
             while attempts < max_attempts:
                 try:
-                    with zipfile.ZipFile(self.fof, "r") as zip_ref:
-                        zip_ref.extractall(contents)
+                    uzo = Unzipped_Office(self.fof,contents)
                     break  # Exit the loop if successful
                 except zipfile.BadZipFile:
                     attempts += 1
@@ -665,55 +570,38 @@ class Processor(threading.Thread):
                         return
                     else:
                         print(f'Attempt {attempts} to unzip {self.fof} failed. Retrying...')
-
         self.files = []
         if os.path.exists(media_dir):
-            self.files += Processor.get_svgs(media_dir)    
+            self.files += Processor.get_svgs(media_dir)
         trigger_refresh()
             
+        if ftype in ['ppt','word']:
+            tidx = uzo.get_target_index()
             
-        if ftype == "ppt":
-            image_slides = self.get_image_slidenums(contents)
-
-            # Add linked images to self.files
-            linked = [
-                DisplayedFile(file_uri_to_path(k))
-                for k in image_slides.keys()
-                if "file:" in k
-            ]
-            self.files += linked
-            slidenums = {
-                os.path.join(contents, "ppt", "media", os.path.basename(k))
-                if "file:" not in k
-                else str(file_uri_to_path(k)): v
-                for k, v in image_slides.items()
-            }
-
-            # Sort the files by slide number and make slidenums a corresponding list
-            # Duplicates filenames if on multiple slides
-            exp_files = []
-            for file in self.files:
-                slides = slidenums.get(file.name, [float("inf")])
-                for slide in slides:
-                    exp_files.append((file,slide))
-            if len(exp_files)>0: # Sort by slide and then name
-                self.files, slidenums = map(list, zip(*sorted(exp_files, key=lambda x: (x[1], x[0]))))
-            else:
-                self.files, slidenums = [], []
-            for i, v in enumerate(slidenums):
-                self.files[i].slidenum =  v if v != float("inf") else "?"
-                self.files[i].islinked = self.files[i] in linked
-        else:
-            if ftype=='word':
-                linked = [DisplayedFile(file_uri_to_path(k)) for k in self.get_linked_images_word(contents)]
-                for f in linked:
-                    f.islinked = True
-                self.files += linked
+            # Flatten and sort
+            sorted_items = sorted(
+                [(abs_path, slide_name, mode) for abs_path, slides in tidx.items() for slide_name, mode in slides],
+                key=lambda x: (
+                    re.match(r'^(.*?)[\s_]?(\d+)?$', x[1]).group(1).strip().lower(),  # word portion
+                    int(re.match(r'^(.*?)[\s_]?(\d+)?$', x[1]).group(2)) if re.match(r'^(.*?)[\s_]?(\d+)?$', x[1]).group(2) else float('inf'),  # numeric portion, inf if absent
+                    os.path.basename(x[0]).lower(),  # filename
+                    x[2] == "embed"  # embed comes after link
+                )
+            )
+            
+            self.files = []
+            for abs_path, slide_name, mode in sorted_items:
+                if should_display(abs_path):
+                    f = DisplayedFile(abs_path)
+                    f.slidename = slide_name
+                    f.islinked = (mode == "link")
+                    self.files.append(f)
         trigger_refresh()
 
         subfiles = None
         for ii, fv in enumerate(self.files):
             ev = False
+            orig_file = None
             if fv.name.endswith(".svg") and os.path.exists(fv.name):
                 with OpenWithEncoding(fv.name) as f:
                     file_content = f.read()
@@ -729,38 +617,66 @@ class Processor(threading.Thread):
                                 orig_file, orig_hash = orig_file.split(
                                     ", hash: "
                                 )
-                            if os.path.exists(orig_file):
-                                ev = os.path.abspath(orig_file)
-                            else:
-                                # Check subdirectories of the file's location in case it was moved
+                                
+                            # Gather directory names we consider identical
+                            # from the config file
+                            idir_groups = dh.si_config.identical_dirs_gv
+                            ipaths = []
+                            of_abs = os.path.abspath(orig_file)
+                            for idirg in idir_groups:
+                                for idir in idirg:
+                                    id_abs = os.path.abspath(idir)
+                                    if id_abs in of_abs:
+                                        for idir2 in idirg:
+                                            if not idir==idir2:
+                                                ipaths.append(of_abs.replace(id_abs,os.path.abspath(idir2)))
+                                                
+                            subdirs = dh.si_config.subdirs_gv
+                            for ipth in ipaths[:]:
+                                for sd in subdirs:
+                                    dn = os.path.dirname(ipth)
+                                    bn = os.path.basename(ipth)
+                                    ipaths.append(os.path.join(dn,sd,bn))
+                                                
+                            ipaths = [of_abs] + ipaths
+                                
+                            if any(os.path.exists(p) for p in ipaths):
+                                ev = [p for p in ipaths if os.path.exists(p)][0]
+                            # else:
+                            #     # Check subdirectories of the file's location in case it was moved
 
-                                def list_all_files(directory):
-                                    for dirpath, dirs, files in os.walk(
-                                        directory
-                                    ):
-                                        for filename in files:
-                                            yield os.path.join(
-                                                dirpath, filename
-                                            )
+                            #     def list_all_files(directory):
+                            #         for dirpath, dirs, files in os.walk(
+                            #             directory
+                            #         ):
+                            #             for filename in files:
+                            #                 yield os.path.join(
+                            #                     dirpath, filename
+                            #                 )
 
-                                fndir = os.path.split(self.fof)[0]
-                                subfiles = (
-                                    list(list_all_files(fndir))
-                                    if subfiles is None
-                                    else subfiles
-                                )
+                            #     fndir = os.path.split(self.fof)[0]
+                            #     subfiles = (
+                            #         list(list_all_files(fndir))
+                            #         if subfiles is None
+                            #         else subfiles
+                            #     )
 
-                                for tryfile in subfiles:
-                                    if os.path.split(orig_file)[
-                                        -1
-                                    ] == os.path.split(tryfile)[-1] and (
-                                        orig_hash is None
-                                        or hash_file(tryfile) == orig_hash
-                                    ):
-                                        ev = os.path.abspath(tryfile)
-                                        break
-            self.files[ii].embed=ev
-            self.files[ii].embed_uri = pathlib.Path(ev).as_uri() if ev else None
+                            #     for tryfile in subfiles:
+                            #         if os.path.split(orig_file)[
+                            #             -1
+                            #         ] == os.path.split(tryfile)[-1] and (
+                            #             orig_hash is None
+                            #             or hash_file(tryfile) == orig_hash
+                            #         ):
+                            #             ev = os.path.abspath(tryfile)
+                            #             break
+
+            if ev and orig_file is not None:
+                self.files[ii].original=ev
+                self.files[ii].original_uri = pathlib.Path(ev).as_uri()
+                self.files[ii].original_present = True
+            elif orig_file is not None:
+                self.files[ii].original=orig_file
         
     def run_on_folder(self):
         self.files = Processor.get_svgs(self.fof)

@@ -51,13 +51,12 @@ import shutil
 import tempfile
 import hashlib
 import lxml
-import random
 import threading
 
 import dhelpers as dh
 import inkex
 from inkex import TextElement, Transform, Vector2d
-from inkex.text.utils import default_style_atts, unique
+from inkex.text.utils import default_style_atts
 from inkex.text.cache import BaseElementCache
 from inkex.text.parser import ParsedText, xyset
 
@@ -136,6 +135,9 @@ class AutoExporter(inkex.EffectExtension):
         pars.add_argument("--v", type=str, default="1.2", help="Version for debugging")
         pars.add_argument(
             "--rasterizermode", type=int, default=1, help="Mark for rasterization"
+        )
+        pars.add_argument(
+            "--finalizermode", type=int, default=1, help="Finalization options"
         )
         pars.add_argument(
             "--margin", type=float, default=0.5, help="Document margin (mm)"
@@ -535,30 +537,11 @@ class Exporter():
 
         # Prune hidden items and remove language switching
         stag = inkex.addNS("switch", "svg")
-        todelete, todelang = [], []
         for elem in dh.visible_descendants(svg):
             if elem.cspecified_style.get("display") == "none":
-                todelete.append(elem)
-            if elem.get("systemLanguage") is not None:
-                lang = inkex.inkscape_system_info.language
-                if elem.get("systemLanguage") == lang:
-                    todelang.append(elem)
-                    # Remove other languages from switches
-                    if elem.getparent().tag == stag:
-                        todelete.extend(
-                            [
-                                k
-                                for k in elem.getparent()
-                                if k.get("systemLanguage") != lang
-                            ]
-                        )
-                else:
-                    # Remove non-matching languages
-                    todelete.append(elem)
-        for elem in unique(todelete):
-            elem.delete()
-        for elem in todelang:
-            elem.set("systemLanguage", None)
+                elem.delete()
+            elif elem.tag==stag:
+                dh.deswitch(elem)
 
         # Embed linked images into the SVG. This should be done prior to clone unlinking
         # since some images may be cloned
@@ -571,6 +554,10 @@ class Exporter():
             ih.embed_external_image(elem, lls[k])
 
         vds = dh.visible_descendants(svg)
+        tetag = inkex.TextElement.ctag
+        frtag = inkex.FlowRoot.ctag
+        ttags = {tetag,frtag}
+        self.duplicatelabels = dict()
         raster_ids, image_ids, jpgs = [], [], []
         for elem in vds:
             # Unlink any clones for the PDF image and marker fixes
@@ -609,6 +596,19 @@ class Exporter():
                     for grp in list(cpth):
                         if isinstance(grp, inkex.Group):
                             dh.ungroup(grp)
+
+            # Preserve duplicates of text to be converted to paths, as well as paths
+            if (((self.thinline or self.stroketopath) and elem.tag in BaseElementCache.otp_support_tags)
+                ) and elem.get("display") != "none" and elem.croot is not None:
+                dup = elem.duplicate()
+                self.duplicatelabels[dup.get_id()] = None
+                grp = dh.group([dup])
+                grp.set("display", "none")
+                tel = inkex.TextElement()
+                grp.append(tel)  # Remember the original ID
+                tel.text = "{0}: {1}".format(DUP_KEY, elem.get_id())
+                tel.set("display", "none")
+                self.duplicatelabels[tel.get_id()] = elem.get_id()
 
         stps = []
         ttps = []
@@ -660,7 +660,7 @@ class Exporter():
             for satt in list(sty.keys()):
                 if (
                     satt in dh.urlatts
-                    and sty.get(satt).startswith("url")
+                    and str(sty.get(satt)).startswith("url")
                     and sty.get_link(satt, svg) is None
                 ):
                     elem.cstyle[satt] = None
@@ -680,28 +680,24 @@ class Exporter():
                     elem.delete(deleteup=True)
 
         # Fix Avenir/Whitney
-        tetag = inkex.TextElement.ctag
-        frtag = inkex.FlowRoot.ctag
-        tels = [elem for elem in vds if elem.tag in {tetag, frtag}]
+        tels = [elem for elem in vds if elem.tag in ttags]
 
         dh.character_fixer(tels)
 
         # Strip all sodipodi:role lines from document
         # Conversion to plain SVG does this automatically but poorly
-        excludetxtids = []
-        self.duplicatelabels = dict()
         # if self.usepsvg:
         if len(tels) > 0:
             svg.make_char_table()
             self.ctable = svg.char_table
             # store for later
 
-        nels = []
         for elem in reversed(tels):
             if elem.parsed_text.isflow:
-                nels += elem.parsed_text.flow_to_text()
+                elid = elem.get_id()
+                frgrp = elem.parsed_text.flow_to_text()
+                tels += list(frgrp)
                 tels.remove(elem)
-        tels += nels
 
         for elem in tels:
             elem.parsed_text.strip_text_baseline_shift()
@@ -709,19 +705,16 @@ class Exporter():
             elem.parsed_text.fuse_fonts()
             Exporter.subsuper_fix(elem)
 
-            # Preserve duplicate of text to be converted to paths
             if self.texttopath and elem.get("display") != "none" and elem.croot is not None:
                 dup = elem.duplicate()
-                excludetxtids.append(dup.get_id())
+                self.duplicatelabels[dup.get_id()] = None
                 grp = dh.group([dup])
                 grp.set("display", "none")
 
-                # tel = svg.new_element(inkex.TextElement, svg)
                 tel = inkex.TextElement()
                 grp.append(tel)  # Remember the original ID
                 tel.text = "{0}: {1}".format(DUP_KEY, elem.get_id())
                 tel.set("display", "none")
-                excludetxtids.append(tel.get_id())
                 self.duplicatelabels[tel.get_id()] = elem.get_id()
 
                 # Make sure nested tspans have fill specified (STP bug)
@@ -735,7 +728,6 @@ class Exporter():
         tmp = self.tempbase + "_mod.svg"
         dh.overwrite_svg(svg, tmp)
         cfile = tmp
-        self.excludetxtids = excludetxtids
 
         do_rasterizations = len(raster_ids + image_ids) > 0
         do_stroketopaths = self.texttopath or self.stroketopath or len(stps) > 0 or len(ttps)>0
@@ -817,7 +809,7 @@ class Exporter():
             tels = []
             if self.texttopath or len(ttps)>0:
                 for elem in vdd:
-                    if (elem.get_id() in ttps or self.texttopath) and (elem.tag == tetag and elem.get_id() not in excludetxtids):
+                    if (elem.get_id() in ttps or self.texttopath) and (elem.tag in ttags and elem.get_id() not in self.duplicatelabels):
                         tels.append(elem.get_id())
                         for dsd in elem.descendants2():
                             # Fuse fill and stroke to account for STP bugs
@@ -835,7 +827,7 @@ class Exporter():
                     stpels = vdd
                 elif len(stps) > 0:
                     stpels = [el for el in vdd if el.get_id() in stps]
-                stpels = [el for el in stpels if el.get_id() not in raster_ids]
+                stpels = [el for el in stpels if el.get_id() not in raster_ids+list(self.duplicatelabels.keys())]
                 pels, dgroups = Exporter.stroke_to_path_fixes(stpels)
                 updatefile = True
 
@@ -1079,9 +1071,9 @@ class Exporter():
         if self.thinline and notpng:
             svg = get_svg(cfile)
             if fformat in ["pdf", "eps"]:
-                Exporter.thinline_dehancement(svg, "bezier")
+                Exporter.thinline_dehancement(svg, "bezier",self.duplicatelabels)
             else:
-                Exporter.thinline_dehancement(svg, "split")
+                Exporter.thinline_dehancement(svg, "split",self.duplicatelabels)
             tmp = self.tempbase + "_tld" + fformat[0] + ".svg"
             dh.overwrite_svg(svg, tmp)
             cfile = copy.copy(tmp)
@@ -1133,7 +1125,7 @@ class Exporter():
                 if (haspgs or self.testmode) and len(pgs) > 0:
                     # bbs = dh.BB2(type("DummyClass", (), {"svg": osvg}))
                     bbs = dh.BB2(osvg)
-                    dlbl = self.duplicatelabels
+                    dlbl = {k:v for k,v in self.duplicatelabels.items() if v is not None}
                     outputs = []
                     pgiis = (
                         range(len(pgs)) if not (self.testmode) else [self.testpage - 1]
@@ -1280,7 +1272,7 @@ class Exporter():
         for dsd in vds:
             if (
                 isinstance(dsd, (TextElement))
-                and dsd.get_id() not in self.excludetxtids
+                and dsd.get_id() not in self.duplicatelabels
             ):
                 scaleto = 100 if not self.testmode else 10
                 # Make 10 px in test mode so that errors are not unnecessarily large
@@ -1363,11 +1355,31 @@ class Exporter():
         )
         tel.set("style", "display:none")
         dh.clean_up_document(svg)  # Clean up
+        
+    def finalize(self):
+        from office import Unzipped_Office
+        tempdir, temphead = dh.shared_temp('aef')
+        tempdir = os.path.join(tempdir, temphead)
+        uzo = Unzipped_Office(self.filein,tempdir)
+        uzo.embed_linked()
+        if self.finalizermode==3:
+            uzo.leave_fallback_png()
+        elif self.finalizermode==4:
+            uzo.delete_fallback_png()
+        uzo.cleanup_unused_rels_and_media()
+        base, ext = os.path.splitext(self.filein)
+        output_pptx = f"{base} finalized{ext}"
+        uzo.rezip(output_pptx)
+        import shutil
+        shutil.rmtree(uzo.temp_dir)
+        if os.path.exists(tempdir+'.lock'):
+            os.remove(tempdir+'.lock')
+        self.prints(os.path.basename(self.filein) + ": Finalization complete", flush=True)
 
     PTH_COMMANDS = list("MLHVCSQTAZmlhvcsqtaz")
 
     @staticmethod
-    def thinline_dehancement(svg, mode="split"):
+    def thinline_dehancement(svg, mode="split",duplabels=[]):
         """
         Prevents thin-line enhancement in certain bad PDF renderers
         'bezier' mode converts h,v,l path commands to trivial Beziers
@@ -1379,7 +1391,7 @@ class Exporter():
 
         command_chars = {"h", "v", "l", "H", "V", "L"}
         split = mode == "split"
-        for elem in svg.descendants2():
+        for elem in (v for v in svg.descendants2() if v.get_id() not in duplabels):
             if elem.tag in otp_support_tags and not elem.tag == peltag:
                 elem.object_to_path()
 
@@ -1643,9 +1655,9 @@ class Exporter():
                             # pylint: enable=import-outside-toplevel
 
                             newstr = ih.ImagePIL_to_str(ImagePIL.fromarray(nda))
-                            elem.set("xlink:href", newstr)
+                            elem.set_link("xlink:href", newstr)
                             mask.delete()
-                            elem.set("mask", None)
+                            elem.set_link("mask", None)
 
     @staticmethod
     def standardize_image(elem):
@@ -1671,9 +1683,9 @@ class Exporter():
         # Correct by putting transform/clip/mask on a new parent group, then
         # fix location, then ungroup
         grp = dh.group([elem], moveTCM=True)
-        grp.set("clip-path", None)
+        grp.set_link("clip-path", None)
         # conversion to bitmap already includes clips
-        grp.set("mask", None)  # conversion to bitmap already includes masks
+        grp.set_link("mask", None)  # conversion to bitmap already includes masks
 
         # Calculate what transform is needed to preserve the image's location
         ctf = elem.ccomposed_transform
@@ -1695,10 +1707,10 @@ class Exporter():
         newel.set("y", 0)
         myy = 0
         newel.set("width", 1)
-        myw = dh.ipx(newel.get("width"))
+        myw = newel.xywh("width")
         newel.set("height", 1)
-        myh = dh.ipx(newel.get("height"))
-        newel.set("xlink:href", elem.get("xlink:href"))
+        myh = newel.xywh("height")
+        newel.set_link("xlink:href", elem.get("xlink:href"))
 
         # Inkscape inappropriately clips non-'optimizeQuality' images
         # when generating PDFs
@@ -1912,7 +1924,15 @@ def joinmod(dirc, fname):
 def get_svg(fin):
     """Load an SVG file and return the root svg element."""
     try:
-        svg = inkex.load_svg(fin).getroot()
+        for _ in range(3):
+            try:
+                svg = inkex.load_svg(fin).getroot()
+                break
+            except OSError:  # seems to happen rarely
+                time.sleep(1)
+        else:
+            # Final attempt to raise the original error if all retries failed
+            svg = inkex.load_svg(fin).getroot()
     except lxml.etree.XMLSyntaxError:
         # Try removing problematic bytes
         with open(fin, "rb") as file:

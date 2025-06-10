@@ -1186,9 +1186,9 @@ class ParsedText:
                     )
 
     def flow_to_text(self):
-        """Converts flowed text into normal text, returning the text els."""
+        """Converts flowed text into normal text, returning the grouped text els."""
         if self.isflow:
-            newtxts = []
+            g = inkex.Group()
             for line in reversed(self.lns):
                 nany = any(math.isnan(yvl) for yvl in line.y)
 
@@ -1226,16 +1226,22 @@ class ParsedText:
                         and len(npt.lns[0].chrs) > 0
                     ):
                         npt.reparse()
-                        newx = [
-                            xvl + origx - npt.lns[0].chrs[0].pts_ut[0][0]
-                            for xvl in npt.lns[0].x
-                        ]
-                        npt.lns[0].write_xy(newx)
-                    newtxts.append(newtxt)
+                        if len(npt.lns)>0:
+                            newx = [
+                                xvl + origx - npt.lns[0].chrs[0].pts_ut[0][0]
+                                for xvl in npt.lns[0].x
+                            ]
+                            npt.lns[0].write_xy(newx)
+                    g.append(newtxt)
 
+
+            textid = self.textel.get_id()
+            myi = list(self.textel.getparent()).index(self.textel)
+            self.textel.getparent().insert(myi + 1, g)
             self.textel.delete()
-            return newtxts
-        return []
+            g.set_id(textid)
+            return g
+        return None
 
     # For debugging: make a rectange at all of the line's chunks' nominal extents
     HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
