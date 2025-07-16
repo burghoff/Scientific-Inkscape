@@ -1484,10 +1484,10 @@ class Exporter():
         ):
             strf = dh.get_strokefill(elem)  # fuses opacity and
             # stroke-opacity/fill-opacity
-            if strf.stroke is not None and strf.fill is None:
+            if strf.stroke is not None and not strf.strk_isurl and strf.fill is None:
                 elem.cstyle["stroke-opacity"] = strf.stroke.alpha
                 elem.cstyle["opacity"] = 1
-            elif strf.fill is not None and strf.stroke is None:
+            elif strf.fill is not None and not strf.fill_isurl and strf.stroke is None:
                 elem.cstyle["fill-opacity"] = strf.fill.alpha
                 elem.cstyle["opacity"] = 1
 
