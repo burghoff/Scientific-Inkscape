@@ -854,7 +854,7 @@ class Exporter():
                     actts.append(Act('imgt',elem))
                     actos.append(Act('imgo',elem,overlaps=overlaps))
                 
-                allacts += (actos + actts) if ih.hasPIL else actts
+                allacts += actos + actts
                 # export-id-onlys need to go last
                 
         imgs_trnp = {act.fname:act.els[0].get_id() for act in actts}
