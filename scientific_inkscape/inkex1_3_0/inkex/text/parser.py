@@ -47,6 +47,7 @@ which draws rectangles that tell you where the extents / bboxes are. For example
 """
 
 import itertools
+import re
 import math
 from copy import copy
 import threading
@@ -289,6 +290,7 @@ class ParsedText:
         self.achange = False
         if DEPATHOLOGIZE:
             remove_position_overflows(elem)
+            remove_nonpreserved(elem)
         if self.isflow:
             self.parse_lines_flow()
         else:
@@ -4096,6 +4098,25 @@ def wrap_string(src,typ):
         src.text = None
         src.insert(0, t)
     return t
+
+def remove_nonpreserved(elem):
+    '''
+    For text without xml:space set to preserve, coalesce multiple whitespace
+    characters into one space, strip leading/trailing whitespace
+    '''
+    if elem.get('xml:space')!='preserve':
+        for ddi, typ, src, sel, txt in TextTree(elem).dgenerator():
+            if txt is not None and len(txt)>1:
+                # Leave singleton spaces alone 
+                if typ==TYP_TEXT:
+                    src.text = re.sub(r'[ \t\r\n\f\v]+', ' ', txt).strip(' \t\r\n\f\v')
+                else:
+                    # For tails, a single leading space may be rendered
+                    collapsed = re.sub(r'[ \t\r\n\f\v]+', ' ', txt)
+                    if txt[:1] in ' \t\r\n\f\v':
+                        src.tail = ' ' + collapsed.lstrip(' \t\r\n\f\v').rstrip(' \t\r\n\f\v')
+                    else:
+                        src.tail = collapsed.lstrip(' \t\r\n\f\v').rstrip(' \t\r\n\f\v')
 
 def trim_list(lst,val):
     """ Trims any values from the end of a list equal to val """
