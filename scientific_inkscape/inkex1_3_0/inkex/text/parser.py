@@ -118,8 +118,8 @@ class ParsedTextList(list):
         nchrs = sum(chk.ncs for chk in tws)
 
         # Preallocate arrays
-        dadv, cwd, dxeff, dy, bshft, caph, unsp, anfr = np.zeros(
-            (8, nchrs), dtype=float
+        dadv, cwd, dx, dxlsp, dy, bshft, caph, unsp, anfr = np.zeros(
+            (9, nchrs), dtype=float
         )
         fidx, lidx, widx = np.zeros((3, nchrs)).astype(int)
 
@@ -134,16 +134,17 @@ class ParsedTextList(list):
         )
         lx2, rx2, by2, ty2 = np.zeros((4, len(tws))).astype(float)
 
-        # Collect values for dadv, cwd, dxeff, dy, bshft, and caph
+        # Collect values for dadv, cwd, dx, dy, bshft, and caph
         idx = 0
         for j, chk in enumerate(tws):
             if DIFF_ADVANCES:
                 for i in range(1, chk.ncs):
-                    dadv[idx + i] = chk.chrs[i].dadvs(chk.chrs[i - 1].c, chk.chrs[i].c)*(chk.dxeff[i]==0)
+                    dadv[idx + i] = chk.chrs[i].dadvs(chk.chrs[i - 1].c, chk.chrs[i].c)*(chk.dx[i]==0)
 
             for i in range(chk.ncs):
                 cwd[idx + i] = chk.cwd[i]
-                dxeff[idx + i] = chk.dxeff[i]
+                dx[idx + i] = chk.dx[i]
+                dxlsp[idx + i] = chk.dxlsp[i]
                 dy[idx + i] = chk.dy[i]
                 bshft[idx + i] = chk.bshft[i]
                 caph[idx + i] = chk.caph[i]
@@ -153,7 +154,7 @@ class ParsedTextList(list):
             idx += chk.ncs
 
         # Calculate wds, cstop, and cstrt
-        wds = cwd + dxeff + dadv
+        wds = cwd + dx + dxlsp + dadv
         cstop = np.array(list(itertools.accumulate(wds)), dtype=float)
         cstop += wds[fidx] - cstop[fidx]
         cstrt = cstop - cwd
@@ -172,8 +173,8 @@ class ParsedTextList(list):
         idx_ncs = np.cumsum([0] + [chk.ncs for chk in tws])
         starts = idx_ncs[:-1]
         subtract_ufunc = np.frompyfunc(lambda a, b: a - b, 2, 1)
-        lx_minus_dxeff = subtract_ufunc(lftx, dxeff)
-        lx2 = np.minimum.reduceat(lx_minus_dxeff, starts)
+        lx_minus_dx = subtract_ufunc(lftx, dx+dxlsp)
+        lx2 = np.minimum.reduceat(lx_minus_dx, starts)
         rx2 = lx2 + cstop[idx_ncs[1:] - 1]
         by2 = np.maximum.reduceat(btmy, starts)
         ty2 = np.minimum.reduceat(topy, starts)
@@ -2476,13 +2477,12 @@ class TChunk:
         "_pts_ut",
         "_pts_t",
         "_bb",
-        "_dxeff",
         "_charpos",
         "_cpts_ut",
         "_cpts_t",
         "txt",
         "lsp",
-        "dxeff",
+        "dx","dxlsp",
         "cwd",
         "dy",
         "caph",
@@ -2511,16 +2511,19 @@ class TChunk:
         c.chk = self
         self.nextw = self.prevw = self.prevsametspan = None
         self._pts_ut = self._pts_t = self._bb = None
-        self._dxeff = self._charpos = None
+        self._charpos = None
         self._cpts_ut = None
         self._cpts_t = None
 
         # Character attribute lists
         self.txt = c.c
         self.lsp = [c.lsp]
-        self.dxeff = [c.dx, c.lsp]
+        self.dx = [c.dx, 0]
         # Effective dx (with letter-spacing). Note that letter-spacing adds space
-        # after the char, so dxeff ends up being longer than the number of chars by 1
+        # after the char, so dx ends up being longer than the number of chars by 1
+        self.dxlsp = [0, c.lsp]
+        # Effective letter-spacing dx (with letter-spacing). Note that letter-spacing adds space
+        # after the char, so it is longer than the number of chars by 1
         self.cwd = [c.cwd]
         self.dy = [c.dy]
         self.caph = [c.caph]
@@ -2542,13 +2545,13 @@ class TChunk:
         ret._pts_ut = self._pts_ut
         ret._pts_t = self._pts_t
         ret._bb = self._bb
-        ret._dxeff = self._dxeff
         ret._charpos = self._charpos
         ret._cpts_ut = self._cpts_ut
         ret._cpts_t = self._cpts_t
         ret.txt = self.txt
         ret.lsp = self.lsp[:]
-        ret.dxeff = self.dxeff[:]
+        ret.dx = self.dx[:]
+        ret.dxlsp = self.dxlsp[:]
         ret.cwd = self.cwd[:]
         ret.dy = self.dy[:]
         ret.caph = self.caph[:]
@@ -2576,8 +2579,9 @@ class TChunk:
 
         self.txt += c.c
         self.lsp.append(c.lsp)
-        self.dxeff[-1] += c.dx
-        self.dxeff.append(c.lsp)
+        self.dx[-1] += c.dx
+        self.dx.append(0)
+        self.dxlsp.append(c.lsp)
         self.cwd.append(c.cwd)
         self.dy.append(c.dy)
         self.caph.append(c.caph)
@@ -2598,8 +2602,10 @@ class TChunk:
 
         self.txt = del2(self.txt, i)
         self.lsp.pop(i)
-        self.dxeff.pop(i)
-        self.dxeff[i] = (self.chrs[i].dx if i < self.ncs else 0) + (
+        self.dx.pop(i)
+        self.dx[i] = (self.chrs[i].dx if i < self.ncs else 0)
+        self.dxlsp.pop(i)
+        self.dxlsp[i] = (
             self.chrs[i - 1].lsp if i > 0 else 0
         )
         self.cwd.pop(i)
@@ -2932,11 +2938,11 @@ class TChunk:
             dadv = [0] * self.ncs
             if DIFF_ADVANCES:
                 for i in range(1, self.ncs):
-                    dadv[i] = self.chrs[i].dadvs(self.chrs[i - 1].c, self.chrs[i].c)*(self.dxeff[i]==0)
+                    dadv[i] = self.chrs[i].dadvs(self.chrs[i - 1].c, self.chrs[i].c)*(self.dx[i]==0)
                     # default to 0 for chars of different style
                     # any dx value overrides differential advances
 
-            chks = [self.cwd[i] + self.dxeff[i] + dadv[i] for i in range(self.ncs)]
+            chks = [self.cwd[i] + self.dx[i] + self.dxlsp[i] + dadv[i] for i in range(self.ncs)]
             cstop = list(itertools.accumulate(chks))
             # cumulative width up to and including the ith char
             cstrt = [cstop[i] - self.cwd[i] for i in range(self.ncs)]
@@ -2967,7 +2973,7 @@ class TChunk:
                 dtype=float,
             )[:, np.newaxis]
 
-            lx2 = float(min(lftx - self.dxeff[0]).squeeze())
+            lx2 = float(min(lftx - self.dx[0] - self.dxlsp[0]).squeeze())
             rx2 = float(lx2 + chkw)
             by2 = float(max(btmy).squeeze())
             ty2 = float(min(topy).squeeze())
@@ -3174,7 +3180,8 @@ class TChar:
                 self.chk.charpos = None  # invalidate
                 i = self.windex
                 chk = self.chk
-                chk.dxeff[i] = (chk.chrs[i].dx if i < chk.ncs else 0) + (
+                chk.dx[i] = (chk.chrs[i].dx if i < chk.ncs else 0)
+                chk.dxlsp[i] = (
                     chk.chrs[i - 1].lsp if i > 0 else 0
                 )
             self.line.ptxt.dchange = True
@@ -3264,7 +3271,8 @@ class TChar:
                 i = self.windex
                 chk = self.chk
                 chk.lsp[i] = sval
-                chk.dxeff[i + 1] = (chk.chrs[i + 1].dx if i < chk.ncs - 1 else 0) + (
+                chk.dx[i + 1] = (chk.chrs[i + 1].dx if i < chk.ncs - 1 else 0)
+                chk.dxlsp[i + 1] = (
                     chk.chrs[i].lsp if i < chk.ncs else 0
                 )
 
