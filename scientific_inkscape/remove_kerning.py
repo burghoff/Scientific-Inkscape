@@ -47,6 +47,8 @@ SUBSUPER_THR = 0.99
 SUBSUPER_YTHR = 1 / 3
 # superscripts must be at least 1/3 of the way above the baseline to merge
 # (1/3 below cap for sub)
+FONTSIZE_THR = 0.01
+# how close font sizes need to be to merge
 
 import inkex
 import inkex.text.parser as tp
@@ -416,7 +418,7 @@ def External_Merges(els, mergenearby, mergesupersub):
             mtype = None
             if (
                 abs(bl2[1] - br1[1]) < ytol
-                and abs(w1fs[0] - w2fs[0]) < 0.01*w1fs[0] and abs(w1fs[1] - w2fs[1]) < 0.01*w1fs[1]
+                and abs(w1fs[0] - w2fs[0]) < FONTSIZE_THR*w1fs[0] and abs(w1fs[1] - w2fs[1]) < FONTSIZE_THR*w1fs[1]
                 and mergenearby
             ):
                 if isnumeric(w.line.txt()) and isnumeric(w2.line.txt(), True):
@@ -481,7 +483,7 @@ def External_Merges(els, mergenearby, mergesupersub):
                 if mtype is None:
                     if not (abs(bl2[1] - br1[1]) < ytol):
                         dh.idebug("Aborted, y pen too far: " + str([bl2[1], br1[1]]))
-                    elif not (abs(w1fs[0] - w2fs[0]) < 0.01*w1fs[0] and abs(w1fs[1] - w2fs[1]) < 0.01*w1fs[1]):
+                    elif not (abs(w1fs[0] - w2fs[0]) < FONTSIZE_THR*w1fs[0] and abs(w1fs[1] - w2fs[1]) < FONTSIZE_THR*w1fs[1]):
                         dh.idebug(
                             "Aborted, fonts too different: " + str([w1fs, w2fs])
                         )
