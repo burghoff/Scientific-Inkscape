@@ -74,6 +74,7 @@ patmap = {
     "mask": re.compile(r"url\(#([^)]+)\)"),
     xlinkhref: re.compile(r"^#([A-Za-z_][\w\-]*)$"),
 }
+xmlspace = inkex.addNS("space", "xml")
 
 
 # pylint:disable=attribute-defined-outside-init
@@ -550,6 +551,25 @@ class BaseElementCache(BaseElement):
         self._croot = svi
 
     croot = property(get_croot, set_croot)
+    
+    def get_cxmlspace(self):
+        try:
+            return self._cxmlspace
+        except AttributeError:
+            self._cxmlspace = EBget(self,xmlspace)
+            if self._cxmlspace is None:
+                try:
+                    self._cxmlspace = self.getparent().cxmlspace
+                except AttributeError: # parent is None
+                    self._cxmlspace = None
+            return self._cxmlspace
+    
+    
+    def set_cxmlspace(self, svi):
+        self._cxmlspace = svi
+    
+    cxmlspace = property(get_cxmlspace, set_cxmlspace)
+                
 
     # Version of set_random_id that uses cached root
     def set_random_id(

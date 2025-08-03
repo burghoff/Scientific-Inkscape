@@ -289,6 +289,7 @@ unungroupable = tags((inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.Foreign
 ctag = lxml.etree.Comment("").tag
 unungroupable.add(ctag)
 
+xmlspace = inkex.addNS("space", "xml")
 
 def ungroup(g, removetextclip=False):
     # Ungroup a group, preserving style, clipping, and masking
@@ -302,6 +303,7 @@ def ungroup(g, removetextclip=False):
         gclip = g.get_link("clip-path", llget=True)
         gmask = g.get_link("mask", llget=True)
         gstyle = g.ccascaded_style
+        gxmlspace = EBget(g,xmlspace)
 
         for el in reversed(list(g)):
             if el.tag == ctag:  # remove comments
@@ -310,6 +312,8 @@ def ungroup(g, removetextclip=False):
                 clippedout = compose_all(
                     el, gclip, gmask, gtransform, gstyle, removetextclip=removetextclip
                 )
+                if gxmlspace is not None and EBget(el,xmlspace) is None:
+                    el.set('xml:space',gxmlspace)
                 if clippedout:
                     el.delete()
                 else:

@@ -4165,7 +4165,7 @@ def remove_nonpreserved(elem):
     For text without xml:space set to preserve, coalesce multiple whitespace
     characters into one space, strip leading/trailing whitespace
     '''
-    if elem.get('xml:space')!='preserve':
+    if elem.cxmlspace!='preserve':
         for ddi, typ, src, sel, txt in TextTree(elem).dgenerator():
             if txt is not None and len(txt)>1:
                 # Leave singleton spaces alone 
