@@ -400,7 +400,7 @@ def External_Merges(els, mergenearby, mergesupersub):
                 w.utfs *math.sqrt(w.transform.c**2 +w.transform.d**2))
         w2fs = (w2.utfs*math.sqrt(w2.transform.a**2+w2.transform.b**2),
                 w2.utfs*math.sqrt(w2.transform.c**2+w2.transform.d**2))
-        # x stretch and y stretch (not including angle)
+        # (x size, y size) (not including angle)
 
         # calculate 2's coords in 1's system
         tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
@@ -416,7 +416,7 @@ def External_Merges(els, mergenearby, mergesupersub):
             mtype = None
             if (
                 abs(bl2[1] - br1[1]) < ytol
-                and abs(w1fs[0] - w2fs[0]) < 0.01 and abs(w1fs[1] - w2fs[1]) < 0.01
+                and abs(w1fs[0] - w2fs[0]) < 0.01*w1fs[0] and abs(w1fs[1] - w2fs[1]) < 0.01*w1fs[1]
                 and mergenearby
             ):
                 if isnumeric(w.line.txt()) and isnumeric(w2.line.txt(), True):
@@ -481,9 +481,9 @@ def External_Merges(els, mergenearby, mergesupersub):
                 if mtype is None:
                     if not (abs(bl2[1] - br1[1]) < ytol):
                         dh.idebug("Aborted, y pen too far: " + str([bl2[1], br1[1]]))
-                    elif not (abs(w.tfs - w2.tfs) < 0.001):
+                    elif not (abs(w1fs[0] - w2fs[0]) < 0.01*w1fs[0] and abs(w1fs[1] - w2fs[1]) < 0.01*w1fs[1]):
                         dh.idebug(
-                            "Aborted, fonts too different: " + str([w.tfs, w2.tfs])
+                            "Aborted, fonts too different: " + str([w1fs, w2fs])
                         )
                     elif not (
                         not (isnumeric(w.line.txt())) or not (isnumeric(w2.line.txt()))
