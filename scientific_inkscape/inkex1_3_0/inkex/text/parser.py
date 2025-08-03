@@ -640,6 +640,60 @@ class ParsedText:
                 if len(line.chrs) == 0:
                     self.lns.remove(line)
                     # prune empty lines
+            
+            
+            self.textLengthAdjust = None
+            tlg = self.textel.get("textLength")
+            if tlg is not None:
+                textLength = ipx(tlg)
+                self.spacingAndGlyphs = False
+                if self.textel.get("lengthAdjust")=="spacingAndGlyphs":
+                    self.spacingAndGlyphs = True
+                wds = [chk.pts_ut[3][0]-chk.pts_ut[0][0] for ln in self.lns for chk in ln.chks]
+                cwd = sum(wds)
+                
+                cs = [c for ln in self.lns for c in ln.chrs]
+                chks = [chk2 for ln in self.lns for chk2 in ln.chks]
+                if self.spacingAndGlyphs:
+                    adj = textLength/cwd if cwd!=0 else 1
+                    for c in cs:
+                        c.cwd = c.cwd*adj
+                    for chk in chks:
+                        chk.cwd = [c.cwd for c in chk.chrs]
+                        chk.charpos = None
+                else:
+                    adj = (textLength - cwd)/(len(cs)-len(chks)) if len(cs)>1 else 0
+                    for c in cs:
+                        c.lsp = c.lsp+adj
+                self.textLengthAdjust = adj
+                    
+    def remove_textlength(self):
+        if self.textLengthAdjust is not None:   
+            cs = [c for ln in self.lns for c in ln.chrs]
+            chks = [chk2 for ln in self.lns for chk2 in ln.chks]
+            if self.spacingAndGlyphs:
+                withtl = self.get_full_extent()
+                for c in cs:
+                    c.cwd = c.cwd/self.textLengthAdjust
+                for chk in chks:
+                    chk.cwd = [c.cwd for c in chk.chrs]
+                    chk.charpos = None
+                withotl = self.get_full_extent()
+                if not withtl.isnull:
+                    tfm = Transform(f'translate({withtl.xc},0) scale({self.textLengthAdjust},1) translate({-withotl.xc},0)')
+                    self.textel.ctransform = self.textel.ctransform @ tfm
+                    ctf = self.textel.ccomposed_transform
+                    for ln in self.lns:
+                        ln.transform = ctf
+                        for chk in ln.chks:
+                            chk.transform = ctf
+            else:
+                for c in cs:
+                    if c.loc.sel.cspecified_style.get("letter-spacing") != str(c.lsp):
+                        c.loc.sel.cstyle["letter-spacing"] = str(c.lsp)
+                    c.sty = c.loc.sel.cspecified_style
+            self.textel.set("textLength",None)
+            self.textel.set("lengthAdjust",None)
 
     def make_next_chain(self):
         """ For manual kerning removal, assign next and previous chunks """
@@ -813,7 +867,7 @@ class ParsedText:
             
     def write_axay(self):
         """
-        After dx/dy has changed, call this to write them to the text element
+        After absolute x/y has changed, call this to write them to the text element
         For simplicity, this is best done at the ParsedText level all at once
         """
         if self.achange:
@@ -2824,6 +2878,13 @@ class TChunk:
         return maxnone([c.tfs for c in self.chrs])
 
     tfs = property(get_fs)
+
+
+    def get_utfs(self):
+        """Returns the font size of the chunk."""
+        return maxnone([c.utfs for c in self.chrs])
+
+    utfs = property(get_utfs)
 
     @property
     def spw(self):

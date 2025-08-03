@@ -51,7 +51,7 @@ SUBSUPER_YTHR = 1 / 3
 import inkex
 import inkex.text.parser as tp
 
-import os, sys, re
+import os, sys, re, math
 
 sys.path.append(
     os.path.dirname(os.path.realpath(sys.argv[0]))
@@ -78,6 +78,10 @@ def remove_kerning(
         # Do merges first (deciding based on original position)
         tels = [el for el in els if isinstance(el, (inkex.TextElement,))]
         ptl = tp.ParsedTextList(tels)
+        if removemanual:
+            for pt in ptl:
+                pt.remove_textlength()
+                # Do before parsed points assigned, since transform changes
         ptl.precalcs()
         ptl.make_next_chain()
         if removemanual:
@@ -87,8 +91,8 @@ def remove_kerning(
             tels = Remove_Manual_Kerning(tels, mergesupersub)
         if mergenearby or mergesupersub:
             tels = External_Merges(tels, mergenearby, mergesupersub)
-        # # Then do splits (deciding based on current position, not original position,
-        # # since merges intentionally change position)
+        # Then do splits (deciding based on current position, not original position,
+        # since merges intentionally change position)
         if splitdistant:
             tels = Split_Distant_Chunks(tels)
         if splitdistant:
@@ -102,6 +106,8 @@ def remove_kerning(
             tels = Fix_Merge_Positions(tels)
         tels = Make_All_Editable(tels)
         tels = Final_Cleanup(tels)
+        # for el in tels:
+        #     el.parsed_text.make_highlights("char")
     return dh.unique(els + tels)
 
 
@@ -388,6 +394,13 @@ def External_Merges(els, mergenearby, mergesupersub):
         dx = w.spw * (NUM_SPACES - trl_spcs - ldg_spcs)
         xtol = XTOLEXT * w.spw
         ytol = YTOLEXT * w.mch
+        
+        
+        w1fs = (w.utfs *math.sqrt(w.transform.a**2 +w.transform.b**2),
+                w.utfs *math.sqrt(w.transform.c**2 +w.transform.d**2))
+        w2fs = (w2.utfs*math.sqrt(w2.transform.a**2+w2.transform.b**2),
+                w2.utfs*math.sqrt(w2.transform.c**2+w2.transform.d**2))
+        # x stretch and y stretch (not including angle)
 
         # calculate 2's coords in 1's system
         tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
@@ -403,7 +416,7 @@ def External_Merges(els, mergenearby, mergesupersub):
             mtype = None
             if (
                 abs(bl2[1] - br1[1]) < ytol
-                and abs(w.tfs - w2.tfs) < 0.001
+                and abs(w1fs[0] - w2fs[0]) < 0.01 and abs(w1fs[1] - w2fs[1]) < 0.01
                 and mergenearby
             ):
                 if isnumeric(w.line.txt()) and isnumeric(w2.line.txt(), True):
