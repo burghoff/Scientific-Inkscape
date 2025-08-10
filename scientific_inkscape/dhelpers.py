@@ -294,21 +294,17 @@ xmlspace = inkex.addNS("space", "xml")
 def ungroup(g, removetextclip=False):
     # Ungroup a group, preserving style, clipping, and masking
     # Remove any comments
-
     if g.croot is not None:
-        gparent = g.getparent()
-        gindex = gparent.index(g)  # group's location in parent
-
-        gtransform = g.ctransform
-        gclip = g.get_link("clip-path", llget=True)
-        gmask = g.get_link("mask", llget=True)
-        gstyle = g.ccascaded_style
-        gxmlspace = EBget(g,xmlspace)
-
         for el in reversed(list(g)):
             if el.tag == ctag:  # remove comments
                 g.remove(el)
             if el.tag not in unungroupable:
+                gtransform = g.ctransform
+                gclip = g.get_link("clip-path", llget=True)
+                gmask = g.get_link("mask", llget=True)
+                gstyle = g.ccascaded_style
+                gxmlspace = EBget(g,xmlspace)
+                
                 clippedout = compose_all(
                     el, gclip, gmask, gtransform, gstyle, removetextclip=removetextclip
                 )
@@ -317,7 +313,7 @@ def ungroup(g, removetextclip=False):
                 if clippedout:
                     el.delete()
                 else:
-                    gparent.insert(gindex + 1, el)  # places above
+                    g.addnext(el)
         if len(g) == 0:
             g.delete()
 
@@ -464,19 +460,18 @@ def merge_clipmask(node, newclip, mask=False):
                 if not (hasattr(svg, "newclips")):
                     svg.newclips = []
                 svg.newclips.append(d)  # for later cleanup
-                for k in list(d):
+                for k in d:
                     compose_all(k, None, None, -node.ctransform, None)
-                # newclipurl = d.get_id(2)
                 newclip = d
 
         if newclip is not None:
-            for k in list(newclip):
+            for k in newclip:
                 if k.tag == usetag:
                     k = unlink2(k)
         oldclip = node.get_link(cmstr, llget=True)
         if oldclip is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
-            for k in list(oldclip):
+            for k in oldclip:
                 if k.tag == usetag:
                     k = unlink2(k)
 
@@ -488,16 +483,16 @@ def merge_clipmask(node, newclip, mask=False):
 
             newclipisrect = False
             if newclip is not None and len(newclip) == 1:
-                newclipisrect = isrectangle(list(newclip)[0])
+                newclipisrect = isrectangle(newclip[0])
 
             couts = []
-            for k in reversed(list(d)):  # may be deleting, so reverse
+            for k in reversed(d):  # may be deleting, so reverse
                 oldclipisrect = isrectangle(k)
                 if newclipisrect and oldclipisrect and mask == False:
                     # For rectangular clips, we can compose them easily
                     # Since most clips are rectangles this semi-fixes the PDF clip export bug
-                    newclippth = list(newclip)[0].cpath.transform(
-                        list(newclip)[0].ctransform
+                    newclippth = newclip[0].cpath.transform(
+                        newclip[0].ctransform
                     )
                     oldclippth = k.cpath.transform(k.ctransform)
                     cout = compose_clips(k, newclippth, oldclippth)
@@ -1593,13 +1588,13 @@ def Run_SI_Extension(effext, name):
         if cprofile:
             ctic()
         if lprofile:
-            try:
+            # try:
                 from line_profiler import LineProfiler
 
                 lp = LineProfiler()
                 from inkex.text import parser
                 from inkex.text import font_properties
-                from inkex.text import speedups  # noqa
+                import speedups  # noqa
                 from inkex.text import cache
                 import remove_kerning
                 from inspect import getmembers, isfunction, isclass, getmodule
@@ -1661,8 +1656,8 @@ def Run_SI_Extension(effext, name):
                 shutil.copy2(ppath, dst_path)
 
                 alreadyran = True
-            except ImportError:
-                pass
+            # except ImportError:
+            #     pass
 
     if not (alreadyran):
         try:

@@ -506,7 +506,8 @@ comment_tag = lxml.etree.Comment("").tag
 
 def list2(elem):
     """Returns non-comment children of an element."""
-    return [k for k in list(elem) if not (k.tag == comment_tag)]
+    # return [k for k in list(elem) if not (k.tag == comment_tag)]
+    return [k for k in elem.iterchildren('*')]
 
 
 conv2 = {k: v / CONVERSIONS["px"] for k, v in CONVERSIONS.items()}

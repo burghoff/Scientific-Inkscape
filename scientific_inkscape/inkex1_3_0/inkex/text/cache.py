@@ -199,12 +199,9 @@ class BaseElementCache(BaseElement):
     def set_cspecified_style(self, svi):
         """Invalidates the cached specified style."""
         if svi is None:
-            try:
-                delattr(self, "_cspecified_style")
-                for k in list(self):
-                    k.cspecified_style = None  # invalidate children
-            except AttributeError:
-                pass
+            if hasattr(self, "_cspecified_style"):
+                for d in self.iter('*'):
+                    d.__dict__.pop("_cspecified_style", None)
         else:
             # Set the specified style by setting the local style
             self.cstyle = svi
@@ -360,10 +357,7 @@ class BaseElementCache(BaseElement):
     def set_ccascaded_style(self, svi):
         """Invalidates the cached cascaded style."""
         if svi is None:
-            try:
-                delattr(self, "_ccascaded_style")
-            except AttributeError:
-                pass
+            self.__dict__.pop("_ccascaded_style", None)
 
     ccascaded_style = property(get_cascaded_style, set_ccascaded_style)
 
@@ -479,8 +473,8 @@ class BaseElementCache(BaseElement):
 
     def set_cpath_fcn(self, svi):
         """Invalidates the cached path."""
-        if svi is None and hasattr(self, "_cpath"):
-            delattr(self, "_cpath")  # invalidate
+        if svi is None:
+            self.__dict__.pop("_cpath",None)
 
     cpath = property(get_path2, set_cpath_fcn)
     cpath_support = (
@@ -617,11 +611,8 @@ class BaseElementCache(BaseElement):
         precede each element. (This is helpful for parsing text.)
         """
         if not return_tails:
-            return [self] + [
-                d
-                for d in self.iterdescendants()
-                if d.tag != BaseElementCache.comment_tag
-            ]
+            return list(self.iter("*"))
+            # starts with self, gets Elements only (excludes comments)
         descendants = [self]
         precedingtails = [[]]
         endsat = [(self, None)]
@@ -696,7 +687,6 @@ class BaseElementCache(BaseElement):
             BaseElementCache.BE_delete(self)
 
     # Insertion
-    # BE_insert = inkex.BaseElement.insert
     BE_insert = lxml.etree.ElementBase.insert
 
     def insert(self, index, elem):
@@ -731,9 +721,8 @@ class BaseElementCache(BaseElement):
                 elem.append(k)  # update children
 
     # Appending
-    # BE_append = inkex.BaseElement.append
     BE_append = lxml.etree.ElementBase.append
-
+    
     def append(self, elem):
         """Appends an element, managing caching and ID conflicts."""
         oldroot = elem.croot
@@ -744,61 +733,84 @@ class BaseElementCache(BaseElement):
         elem.cspecified_style = None
         elem.ccomposed_transform = None
 
-        if EBget(elem, "id") is None:
-            # Make sure all elements have an ID (most assigned here)
-            elem.croot = newroot
-            if newroot is not None:
-                newroot.iddict.add(elem)  # generates an ID if needed
-            for k in list2(elem):
-                elem.append(k)  # update children
-        elif oldroot != newroot:
-            # When the root is changing, remove from old dicts and add to new
-            css = None
-            if oldroot is not None:
-                oldroot.iddict.remove(elem)
-                css = oldroot.cssdict.pop(elem.get_id(), None)
-            elem.croot = newroot
-            if newroot is not None:
-                newroot.iddict.add(elem)  # generates an ID if needed
-                if css is not None:
-                    newroot.cssdict[elem.get_id()] = css
-            for k in list2(elem):
-                elem.append(k)  # update children
+        for d in elem.iter('*'):  # includes elem itself
+            if EBget(d, "id") is None:
+                d.croot = newroot
+                if newroot is not None:
+                    newroot.iddict.add(d)  # generates an ID if needed
+            elif oldroot != newroot:
+                css = None
+                if oldroot is not None:
+                    oldroot.iddict.remove(d)
+                    css = oldroot.cssdict.pop(d.get_id(), None)
+                d.croot = newroot
+                if newroot is not None:
+                    newroot.iddict.add(d)
+                    if css is not None:
+                        newroot.cssdict[d.get_id()] = css
 
     # addnext
-    # BE_addnext = inkex.BaseElement.addnext
     BE_addnext = lxml.etree.ElementBase.addnext
-
+    
     def addnext(self, elem):
-        """Adds an element next to the specified element, managing caching."""
+        """Adds an element next to the specified element, managing caching (non-recursive)."""
         oldroot = elem.croot
         newroot = self.croot
-
+    
         BaseElementCache.BE_addnext(self, elem)
         elem.ccascaded_style = None
         elem.cspecified_style = None
         elem.ccomposed_transform = None
+    
+        for d in elem.iter('*'):  # includes elem itself
+            if EBget(d, "id") is None:
+                d.croot = newroot
+                if newroot is not None:
+                    newroot.iddict.add(d)  # generates an ID if needed
+            elif oldroot != newroot:
+                css = None
+                if oldroot is not None:
+                    oldroot.iddict.remove(d)
+                    css = oldroot.cssdict.pop(d.get_id(), None)
+                d.croot = newroot
+                if newroot is not None:
+                    newroot.iddict.add(d)
+                    if css is not None:
+                        newroot.cssdict[d.get_id()] = css
 
-        if EBget(elem, "id") is None:
-            # Make sure all elements have an ID (most assigned here)
-            elem.croot = newroot
-            if newroot is not None:
-                newroot.iddict.add(elem)  # generates an ID if needed
-            for k in list2(elem):
-                elem.append(k)  # update children
-        elif oldroot != newroot:
-            # When the root is changing, remove from old dicts and add to new
-            css = None
-            if oldroot is not None:
-                oldroot.iddict.remove(elem)
-                css = oldroot.cssdict.pop(elem.get_id(), None)
-            elem.croot = newroot
-            if newroot is not None:
-                newroot.iddict.add(elem)  # generates an ID if needed
-                if css is not None:
-                    newroot.cssdict[elem.get_id()] = css
-            for k in list2(elem):
-                elem.append(k)  # update children
+       
+    BE_extend = lxml.etree.ElementBase.extend
+    def extend(self, elems):
+        """Appends multiple elements, managing caching and ID conflicts."""
+        oldroots = [elem.croot for elem in elems]
+        newroot = self.croot
+
+        BaseElementCache.BE_extend(self, elems)
+        for elem, oldroot in zip(elems,oldroots):
+            elem.ccascaded_style = None
+            elem.cspecified_style = None
+            elem.ccomposed_transform = None
+    
+            if EBget(elem, "id") is None:
+                # Make sure all elements have an ID (most assigned here)
+                elem.croot = newroot
+                if newroot is not None:
+                    newroot.iddict.add(elem)  # generates an ID if needed
+                for k in list2(elem):
+                    elem.append(k)  # update children
+            elif oldroot != newroot:
+                # When the root is changing, remove from old dicts and add to new
+                css = None
+                if oldroot is not None:
+                    oldroot.iddict.remove(elem)
+                    css = oldroot.cssdict.pop(elem.get_id(), None)
+                elem.croot = newroot
+                if newroot is not None:
+                    newroot.iddict.add(elem)  # generates an ID if needed
+                    if css is not None:
+                        newroot.cssdict[elem.get_id()] = css
+                for k in list2(elem):
+                    elem.append(k)  # update children
 
     # Duplication
     clipmasktags = {inkex.addNS("mask", "svg"), inkex.ClipPath.ctag}
@@ -812,7 +824,7 @@ class BaseElementCache(BaseElement):
 
         # After copying, duplicates have the original ID. Remove prior to insertion
         origids = dict()
-        for dupd in dup.descendants2():
+        for dupd in dup.iter('*'):
             origids[dupd] = dupd.pop("id", None)
             dupd.croot = self.croot  # set now for speed
 
@@ -824,7 +836,7 @@ class BaseElementCache(BaseElement):
         css = self.croot.cssdict
         newids = {
             EBget(k, "id"): css.get(origids[k])
-            for k in dup.descendants2()
+            for k in dup.iter('*')
             if origids[k] in css
         }
         dup.croot.cssdict.update(newids)
@@ -933,7 +945,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
             self.masks = dict()
             self.linked_by = dict()
             toassign = []
-            for elem in svg.descendants2():
+            for elem in svg.iter('*'):
                 if "id" in elem.attrib:
                     self[EBget(elem, "id")] = elem
                 else:
