@@ -44,7 +44,7 @@ import inkex
 from inkex import Style
 from inkex import BaseElement, SvgDocumentElement
 from inkex.text.parser import ParsedText, CharacterTable
-from text.utils import shapetags, tags, ipx, list2  # pylint: disable=import-error
+from text.utils import shapetags, tags, ipx, list2, default_style_atts  # pylint: disable=import-error
 import lxml
 
 EBget = lxml.etree.ElementBase.get
@@ -166,21 +166,15 @@ class BaseElementCache(BaseElement):
 
         def __set__(self, elem, value):
             if value:
-                vstr = str(value)
-                EBset(elem, "style", vstr)
+                EBset(elem, "style", str(value))
             else:
                 if "style" in elem.attrib:
                     del elem.attrib["style"]
 
-            if not isinstance(value, BaseElementCache.CStyle):
-                if isinstance(value, Style):
-                    # Cast to CStyle without reinitializing
-                    value.__class__ = BaseElementCache.CStyle
-                    value.elem = elem
-                    value.init = False
-                else:
-                    value = BaseElementCache.CStyle(value, elem)
-            elem._cstyle = value
+            try:
+                elem._cstyle = BaseElementCache.CStyle(value.copy(), elem)
+            except AttributeError: # strings
+                elem._cstyle = BaseElementCache.CStyle(value, elem)
             elem.ccascaded_style = None
             elem.cspecified_style = None
 
@@ -211,6 +205,16 @@ class BaseElementCache(BaseElement):
                     k.cspecified_style = None  # invalidate children
             except AttributeError:
                 pass
+        else:
+            # Set the specified style by setting the local style
+            self.cstyle = svi
+            for att in self.cspecified_style:
+                # If there are attributes in the new specified style not in
+                # the one we just applied, we are inheriting something we don't
+                # want and need to set using the default
+                if att not in svi:
+                    self.cstyle[att] = default_style_atts.get(att)
+            # self.cstyle.update({k: default_style_atts.get(k) for k in self.cspecified_style if k not in svi})
 
     cspecified_style = property(get_cspecified_style, set_cspecified_style)
 

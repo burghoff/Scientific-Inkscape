@@ -68,7 +68,6 @@ from inkex.text.utils import (
     uniquetol,
     composed_width,
     composed_lineheight,
-    default_style_atts,
     isrectangle,
     ipx,
     bbox,
@@ -899,8 +898,8 @@ class ParsedText:
                     # they have internal Nones the string must be split
                     if (axset is not None and None in axset) or (ayset is not None and None in ayset):
                         span = inkex.Tspan if d.tag in TEtags else inkex.FlowSpan
-                        sx = [i+1 for i,v in enumerate(axset[:-1]) if v is None and axset[i+1] is not None]
-                        sy = [i+1 for i,v in enumerate(ayset[:-1]) if v is None and ayset[i+1] is not None]
+                        sx = [i+1 for i,v in enumerate(axset[:-1]) if v is None and axset[i+1] is not None] if axset is not None else []
+                        sy = [i+1 for i,v in enumerate(ayset[:-1]) if v is None and ayset[i+1] is not None] if ayset is not None else []
                         sidx = sorted(sx+sy)
                         ranges = [(sidx[i-1] if i > 0 else 0, sidx[i] if i < len(sidx) else len(cd)) for i in range(len(sidx) + 1)]
                         txt = d.text
@@ -910,8 +909,8 @@ class ParsedText:
                             t.text = txt[r1:r2]
                             if k<len(ranges)-1:
                                 d.insert(0,t)
-                            xyset(t,"x",trim_list(axset[r1:r2],None))
-                            xyset(t,"y",trim_list(ayset[r1:r2],None))
+                            xyset(t,"x",trim_list(axset[r1:r2],None) if axset is not None else None)
+                            xyset(t,"y",trim_list(ayset[r1:r2],None) if ayset is not None else None)
                             for j,c in enumerate(cd[r1:r2]):
                                 c.loc = CLoc(t,TYP_TEXT,j)
                     else:                    
@@ -2074,6 +2073,114 @@ class ParsedText:
                 self.fparaafter = any(isinstance(ddv, FlowPara) for ddv in dds[j + 1 :])
         self.lns = blns
 
+    def make_clean_textelement(self):
+        '''
+        Makes a clean copy of my text element that is easily edited in Inkscape.
+        Consists of a single TextElement with top-level tspans corresponding to each chunk.
+        All positioning is done in these tspans. Style modifications are made through
+        another level of nested tspans, that may have a relative baseline-shift or font-size.
+        Deletes this element
+        '''
+        te = inkex.TextElement()
+        te.set("xml:space", "preserve")
+        self.textel.addnext(te)
+        
+                
+        for k, v in self.textel.attrib.items():
+            if k not in {'baseline-shift','shape-inside','direction','style'}:
+                te.attrib[k] = v
+        te.cstyle = self.textel.cstyle
+        te.cstyle -= {'baseline-shift','shape-inside','direction'}
+        
+        xs = []; ys = []; fszs = []
+        for ln in self.lns:
+            algn = {"start": "start", "middle": "center", "end": "end"}[ln.anchor]
+            for chk in ln.chks:
+                if chk.y==chk.y: # ignore nans (unrendered floats)
+                    ts = inkex.Tspan()
+                    te.append(ts)
+                    xyset(ts,'x',[chk.x])
+                    xyset(ts,'y',[chk.y])
+                    xyset(ts,'dx', trim_list(chk.dx,0))
+                    xyset(ts,'dy', trim_list(chk.dy,0))
+                    
+                    xs.append(chk.x)
+                    ys.append(chk.y)
+                    fszs.append(chk.utfs)
+                    
+                    # Turn each different style into a different Tspan
+                    c0 = chk.chrs[0]
+                    ts.cstyle = c0.sty
+                    csty = ts.cstyle; cfs = c0.utfs; cbs= c0.bshft
+                    tsn=ts; ctxt=''; 
+                    nested_tss = []
+                    for ii,c in enumerate(chk.chrs):
+                        if c.sty!=csty or c.utfs!=cfs or c.bshft!=cbs:
+                            if len(ts)==0:
+                                tsn = inkex.Tspan()
+                                ts.append(tsn)
+                                nested_tss.append((tsn,c0.sty,c0.utfs,c0.bshft))
+                            tsn.text = ctxt
+                            
+                            tsn = inkex.Tspan()
+                            ts.append(tsn)
+                            nested_tss.append((tsn,c.sty,c.utfs,c.bshft))
+                            ctxt = ''
+                            csty = c.sty; cfs = c.utfs; cbs = c.bshft
+                        ctxt += c.c
+                    tsn.text = ctxt
+                    
+                    ts.cstyle.update({'font-size':str(chk.utfs),"text-align":algn,"text-anchor":ln.anchor})
+                    ts.cstyle -= {'line-height','direction','baseline-shift','shape-inside'}
+                    for tsn, nsty, fs, bs in nested_tss:
+                        tsn.cspecified_style = nsty
+                                
+                        if abs(fs-chk.utfs)>0.001:
+                            tsn.cstyle['font-size']=f'{round(fs/chk.utfs*100, 3)}%'
+                        else:
+                            tsn.cstyle.pop('font-size', None)
+                        if abs(bs)>0.001:
+                            if abs(bs/chk.utfs - 0.4)<.001:
+                                tsn.cstyle['baseline-shift'] = 'super'
+                            elif abs(bs/chk.utfs + 0.2)<.001:
+                                tsn.cstyle['baseline-shift'] = 'sub'
+                            else:
+                                tsn.cstyle['baseline-shift']= f'{round(bs/chk.utfs*100, 3)}%'
+                        else:
+                            tsn.cstyle.pop('baseline-shift', None)
+
+                        tsn.cstyle -= {att for att in tsn.cstyle if tsn.cstyle.get(att)==ts.cspecified_style.get(att)}
+                        tsn.cstyle -= {"text-align","text-anchor","direction",'shape-inside'}
+
+                
+        eid = self.textel.get_id()
+        self.textel.delete()
+        te.set_id(eid)
+        te._parsed_text = self
+        self.textel = te         
+        
+        # If possible, set sodipodi:role to line
+        # Requires that all x coordinates match, and all y coords differ
+        # by the same multiple of the font-size (line-height)
+        if len(xs)>0:
+            tefsz = min(fszs)
+            if all(abs(x-xs[0])<0.001 for x in xs) and all(abs((ys[i+1]-ys[i])/max(fszs[i+1],tefsz) - (ys[1]-ys[0])/max(fszs[1],tefsz))<0.001 for i in range(len(ys)-1)):
+                # dh.idebug((xs,ys,fszs))
+                lh = (ys[1]-ys[0])/max(fszs[1],tefsz) if len(ys)>1 else 1.25
+                te.cstyle['font-size']=str(tefsz)
+                te.cstyle['line-height']=str(lh)
+                xyset(te,'x',[xs[0]])
+                xyset(te,'y',[ys[0]])
+                for ts in te:
+                    ts.set('sodipodi:role','line')
+                    ts.set('line-height',None)
+                    
+                # for d in te.descendants2():
+                #     s = inkex.Style(d.cstyle)
+                #     s['fill'] = '#00ff00'
+                #     d.cstyle = s
+        
+        return te
 
 TYP_TEXT = 1
 TYP_TAIL = 0
@@ -3471,12 +3578,13 @@ class TChar:
         # When the specified style has something new span doesn't, are inheriting and
         # need to explicitly assign the default value
         styset = Style(sty)
-        newspfd = t.cspecified_style
-        for att in newspfd:
-            if att not in styset and setdefault:
-                styset[att] = default_style_atts.get(att)
-
-        t.cstyle = styset
+        # newspfd = t.cspecified_style
+        # for att in newspfd:
+        #     if att not in styset and setdefault:
+        #         styset[att] = default_style_atts.get(att)
+        # t.cstyle = styset
+        t.cspecified_style = styset
+        
         self.sty = styset
         if newfs:
             fsz, scf, _ = composed_width(self.loc.sel, "font-size")

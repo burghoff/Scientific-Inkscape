@@ -106,12 +106,20 @@ def remove_kerning(
         tels, removedspc = Remove_Trailing_Leading_Spaces(tels)
         if removemanual or mergenearby or mergesupersub or removedspc:
             tels = Fix_Merge_Positions(tels)
-        tels = Make_All_Editable(tels)
-        tels = Final_Cleanup(tels)
+            
+        # import time
+        # tic = time.time()
+        # tels = Make_All_Editable(tels)
+        # tels = Final_Cleanup(tels)
+        tels = make_clean_textelements(tels)
+        # dh.idebug(time.time()-tic)
+        
         # for el in tels:
         #     el.parsed_text.make_highlights("char")
     return dh.unique(els + tels)
 
+def make_clean_textelements(els):
+    return [el.parsed_text.make_clean_textelement() for el in els]
 
 def Final_Cleanup(els):
     for el in els:
