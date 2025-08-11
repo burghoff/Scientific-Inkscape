@@ -183,7 +183,7 @@ class FlattenPlots(inkex.EffectExtension):
         reversions = self.options.reversions and self.options.fixtext
         removetextclips = self.options.removetextclips and self.options.fixtext
 
-        sel = [el for el in self.svg.descendants2() if el in sel]  # doc order
+        sel = [el for el in self.svg.iter('*') if el in sel]  # doc order
         if self.options.tab == "Exclusions":
             self.options.markexc = {1: True, 2: False}[self.options.markexc]
             for el in sel:
@@ -195,7 +195,7 @@ class FlattenPlots(inkex.EffectExtension):
         for el in sel:
             if el.get("inkscape-scientific-flattenexclude"):
                 sel.remove(el)
-        seld = [v for el in sel for v in el.descendants2()]
+        seld = [v for el in sel for v in el.iter('*')]
         for el in seld:
             if el.get("inkscape-scientific-flattenexclude"):
                 seld.remove(el)
@@ -207,13 +207,13 @@ class FlattenPlots(inkex.EffectExtension):
             seldefs = [el for el in seld if el.tag == defstag]
             for el in seldefs:
                 self.svg.cdefs.append(el)
-                for d in el.descendants2():
+                for d in el.iter('*'):
                     if d in seld:
                         seld.remove(d)  # no longer selected
             selcm = [el for el in seld if el.tag in clipmask]
             for el in selcm:
                 self.svg.cdefs.append(el)
-                for d in el.descendants2():
+                for d in el.iter('*'):
                     if d in seld:
                         seld.remove(d)  # no longer selected
 
@@ -238,7 +238,7 @@ class FlattenPlots(inkex.EffectExtension):
                         nels.append(ul)
                         oels.append(el)
             for nel in nels:
-                seld += nel.descendants2()
+                seld += list(nel.iter('*'))
             for oel in oels:
                 seld.remove(oel)
             gs = [el for el in seld if el.tag == gtag]
@@ -416,14 +416,14 @@ class FlattenPlots(inkex.EffectExtension):
         if self.options.removerectw or self.options.removeduppaths:
             ngset = set(ngs)
             ngs2 = [
-                el for el in self.svg.descendants2() if el in ngset and dh.isdrawn(el)
+                el for el in self.svg.iter('*') if el in ngset and dh.isdrawn(el)
             ]
             bbs = dh.BB2(self.svg, ngs2, roughpath=True, parsed=True)
             
             if self.options.removeduppaths:
                 # Prune identical overlapping paths
                 bbsp = {el:bbs[el.get_id()] for el in ngs2 if el.get_id() in bbs}
-                txts = [el for el in self.svg.descendants2() if el.tag==TE_TAG and 'shape-inside' in el.cspecified_style]
+                txts = [el for el in self.svg.iter('*') if el.tag==TE_TAG and 'shape-inside' in el.cspecified_style]
                 txt_inside = [el.cspecified_style.get_link("shape-inside",el.croot) for el in txts]
                 bbsp = {el:v for el,v in bbsp.items() if el.tag in prltag and el not in txt_inside}
                 
@@ -515,7 +515,7 @@ class FlattenPlots(inkex.EffectExtension):
                     if po in self.svg.newclips and (
                         (po.tag == ctag and po.get_id() not in self.svg.iddict.clips) or 
                         (po.tag == mtag and po.get_id() not in self.svg.iddict.masks)):
-                        oldcms = [ddv.get_link(cm) for ddv in po.descendants2() for cm in ['clip-path','mask']]
+                        oldcms = [ddv.get_link(cm) for ddv in po.iter('*') for cm in ['clip-path','mask']]
                         deleted_cms.update({v for v in oldcms if v is not None and v in self.svg.newclips})
                         po.delete(deleteup=True)
                 potential_orphans = deleted_cms

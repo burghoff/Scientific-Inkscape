@@ -269,7 +269,7 @@ def unlink2(el):
             )
             replace_element(el, d)
             d.set("unlinked_clone", True)
-            for k in d.descendants2()[1:]:
+            for k in d.iterdescendants('*'):  # iterdescendants skips self
                 unlink2(k)
 
             # To match Unlink Clone behavior, convert Symbol to Group
@@ -672,7 +672,7 @@ def BB2(svg, els=None, forceupdate=False, roughpath=False, parsed=False):
         allds = set()
         for el in els:
             if el not in allds:  # so we're not re-descendants2ing
-                allds.update(el.descendants2())
+                allds.update(el.iter('*'))
         tels = [
             d
             for d in unique(allds)
@@ -723,7 +723,7 @@ def BB2(svg, els=None, forceupdate=False, roughpath=False, parsed=False):
 def Check_BB2(svg):
     bb2 = BB2(svg)
     HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
-    for el in svg.descendants2():
+    for el in svg.iter('*'):
         if el.get_id() in bb2 and not el.tag in grouplike_tags:
             bb = bbox(bb2[el.get_id()])
             # bb = bbox(bb2[el.get_id()])*(1/slf.svg.cscale);
@@ -778,7 +778,7 @@ def bb_intersects(bbs, bb2s=None):
 
 # Return list of objects on top of other objects
 def overlapping_els(svg, tocheck):
-    els = [el for el in svg.descendants2() if isdrawn(el)]
+    els = [el for el in svg.iter('*') if isdrawn(el)]
     bbs = BB2(svg, els, roughpath=True, parsed=True)
     bbs = [bbox(bbs.get(el.get_id())) for el in els]
 
@@ -1238,7 +1238,7 @@ def get_script_path():
 # Return a document's visible descendants not in Defs/Metadata/etc
 def visible_descendants(svg):
     ndefs = [el for el in list(svg) if not (el.tag in unungroupable)]
-    return [v for el in ndefs for v in el.descendants2()]
+    return [v for el in ndefs for v in el.iter('*')]
 
 
 # Get document location or prompt
@@ -1896,7 +1896,7 @@ def replace_non_ascii_font(elem, newfont, *args):
     # Inkscape automatically prunes empty text/tails
     # Do the same so future parsing is not affected
     if elem.tag == TEtag:
-        for ddv in elem.descendants2():
+        for ddv in elem.iter('*'):
             if ddv.text is not None and ddv.text == "":
                 ddv.text = None
             if ddv.tail is not None and ddv.tail == "":

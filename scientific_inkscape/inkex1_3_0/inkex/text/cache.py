@@ -168,8 +168,7 @@ class BaseElementCache(BaseElement):
             if value:
                 EBset(elem, "style", str(value))
             else:
-                if "style" in elem.attrib:
-                    del elem.attrib["style"]
+                elem.attrib.pop("style", None)
 
             try:
                 elem._cstyle = BaseElementCache.CStyle(value.copy(), elem)
@@ -616,17 +615,16 @@ class BaseElementCache(BaseElement):
         descendants = [self]
         precedingtails = [[]]
         endsat = [(self, None)]
-        for ddv in self.iterdescendants():
-            if not (ddv.tag == BaseElementCache.comment_tag):
-                precedingtails.append([])
-                while endsat[-1][1] == ddv:
-                    precedingtails[-1].append(endsat.pop()[0])
-                nsib = ddv.getnext()
-                if nsib is None:
-                    endsat.append((ddv, endsat[-1][1]))
-                else:
-                    endsat.append((ddv, nsib))
-                descendants.append(ddv)
+        for ddv in self.iterdescendants('*'):
+            precedingtails.append([])
+            while endsat[-1][1] == ddv:
+                precedingtails[-1].append(endsat.pop()[0])
+            nsib = ddv.getnext()
+            if nsib is None:
+                endsat.append((ddv, endsat[-1][1]))
+            else:
+                endsat.append((ddv, nsib))
+            descendants.append(ddv)
 
         precedingtails.append([])
         while len(endsat) > 0:
@@ -655,7 +653,7 @@ class BaseElementCache(BaseElement):
     def delete(self, deleteup=False):
         """Deletes the element and optionally cleans up empty parent groups."""
         svg = self.croot
-        for ddv in reversed(self.descendants2()):
+        for ddv in reversed(list(self.iter('*'))):
             did = ddv.get_id()
             if svg is not None:
                 try:

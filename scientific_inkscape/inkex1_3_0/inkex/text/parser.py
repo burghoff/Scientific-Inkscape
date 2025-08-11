@@ -835,7 +835,7 @@ class ParsedText:
         """
         if self.dchange:
             # Group characters by location
-            cs_loc = {(d,typ):[] for d in self.textel.descendants2() for typ in [TYP_TEXT,TYP_TAIL]}
+            cs_loc = {(d,typ):[] for d in self.textel.iter('*') for typ in [TYP_TEXT,TYP_TAIL]}
             for ln in self.lns:
                 for c in ln.chrs:
                     cs_loc[c.loc.elem,c.loc.typ].append(c)
@@ -872,7 +872,7 @@ class ParsedText:
         """
         if self.achange:
             # Group characters by location
-            cs_loc = {(d,typ):[] for d in self.textel.descendants2() for typ in [TYP_TEXT,TYP_TAIL]}
+            cs_loc = {(d,typ):[] for d in self.textel.iter('*') for typ in [TYP_TEXT,TYP_TAIL]}
             for ln in self.lns:
                 for c in ln.chrs:
                     cs_loc[c.loc.elem,c.loc.typ].append(c)
@@ -959,7 +959,7 @@ class ParsedText:
         # For single lines, reset line-height to default
         changed_styles = dict()
         if len(self.lns) == 1:
-            for ddv in elem.descendants2():
+            for ddv in elem.iter('*'):
                 if "line-height" in ddv.cstyle:
                     changed_styles[ddv] = ddv.cstyle
                     del changed_styles[ddv]["line-height"]
@@ -967,7 +967,7 @@ class ParsedText:
         if len(self.chrs) > 0:
             # Clear all fonts and only apply to relevant Tspans
 
-            for ddv in elem.descendants2():
+            for ddv in elem.iter('*'):
                 sty = changed_styles.get(ddv, ddv.cstyle)
                 for key in [
                     "font-family",
@@ -1257,7 +1257,7 @@ class ParsedText:
 
                 newtxt = self.split_off_characters(line.chrs)
                 if newtxt.tag == FRtag:
-                    for ddv in newtxt.descendants2():
+                    for ddv in newtxt.iter('*'):
                         if ddv.tag == FRtag:
                             ddv.tag = TextElement.ctag
                         elif isinstance(ddv, (FlowPara, FlowSpan)):
@@ -1528,9 +1528,9 @@ class ParsedText:
             region = dfr
         # Find the bbox of the FlowRegion
         elif isflowroot:
-            for ddv in self.textel.descendants2():
+            for ddv in self.textel.iter('*'):
                 if isinstance(ddv, FlowRegion):
-                    pths = [p for p in ddv.descendants2() if p.tag in otp_support]
+                    pths = [p for p in ddv.iter('*') if p.tag in otp_support]
                     if len(pths) > 0:
                         region = pths[0]
         elif isinlinesz:
@@ -2067,7 +2067,7 @@ class ParsedText:
         # Determine if any FlowParas follow the last character
         # (Needed for unrenderedspace determination)
         if lchr is not None:
-            dds = self.textel.descendants2()
+            dds = list(self.textel.iter('*'))
             j = dds.index(lchr.loc.elem)
             if j < len(dds) - 1:
                 self.fparaafter = any(isinstance(ddv, FlowPara) for ddv in dds[j + 1 :])
@@ -2175,7 +2175,7 @@ class ParsedText:
                     ts.set('sodipodi:role','line')
                     ts.set('line-height',None)
                     
-                # for d in te.descendants2():
+                # for d in te.iter('*'):
                 #     s = inkex.Style(d.cstyle)
                 #     s['fill'] = '#00ff00'
                 #     d.cstyle = s
@@ -4156,7 +4156,7 @@ def deleteempty(elem):
         if all(
             (dcsndt.text is None or len(wstrip(dcsndt.text)) == 0)
             and (dcsndt.tail is None or len(wstrip(dcsndt.tail)) == 0)
-            for dcsndt in elem.descendants2()
+            for dcsndt in elem.iter('*')
         ):
             elem.delete()
             anydeleted = True
@@ -4188,7 +4188,7 @@ def remove_position_overflows(el):
     but that is a somewhat pathological case that makes editing difficult.
     Removing this prior to parsing simplifies the logic needed.
     """
-    xyvs = {(d, patt) : ParsedText.get_xy(d, patt) for d in el.descendants2() for patt in ['x','y','dx','dy']}
+    xyvs = {(d, patt) : ParsedText.get_xy(d, patt) for d in el.iter('*') for patt in ['x','y','dx','dy']}
     anyoverflow = False
     ttree = [v for v in TextTree(el).dgenerator()]
     for ddi0, typ0, src0, sel0, txt0 in ttree:

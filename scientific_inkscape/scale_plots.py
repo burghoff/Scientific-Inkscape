@@ -257,7 +257,7 @@ class ScalePlots(inkex.EffectExtension):
         dsfels = []  # designated scale-free els, whether or not they're selected
 
         # full visual bbs
-        fbbs = dh.BB2(self.svg, dh.unique([d for el in sel for d in el.descendants2()]))
+        fbbs = dh.BB2(self.svg, dh.unique([d for el in sel for d in el.iter('*')]))
         firstsel = sel[0]
         if self.options.tab == "matching":
             sel = sel[1:]
