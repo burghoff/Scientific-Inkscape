@@ -290,7 +290,8 @@ class ParsedText:
         self.achange = False
         if DEPATHOLOGIZE:
             remove_position_overflows(elem)
-            remove_nonpreserved(elem)
+            cleanup_whitespace(elem,self.isflow)
+            condense_comments(elem)
         if self.isflow:
             self.parse_lines_flow()
         else:
@@ -2109,27 +2110,22 @@ class ParsedText:
                     fszs.append(chk.utfs)
                     
                     # Turn each different style into a different Tspan
-                    c0 = chk.chrs[0]
-                    ts.cstyle = c0.sty
-                    csty = ts.cstyle; cfs = c0.utfs; cbs= c0.bshft
-                    tsn=ts; ctxt=''; 
                     nested_tss = []
-                    for ii,c in enumerate(chk.chrs):
-                        if c.sty!=csty or c.utfs!=cfs or c.bshft!=cbs:
-                            if len(ts)==0:
-                                tsn = inkex.Tspan()
-                                ts.append(tsn)
-                                nested_tss.append((tsn,c0.sty,c0.utfs,c0.bshft))
-                            tsn.text = ctxt
-                            
+                    newidx = [0]+[ii+1 for ii,c in enumerate(chk.chrs[1:]) if 
+                              c.sty!=chk.chrs[ii].sty or c.utfs!=chk.chrs[ii].utfs 
+                              or c.bshft!=chk.chrs[ii].bshft]+[len(chk.chrs)]
+                    # style boundaries, plus endpoints
+                    txt = chk.txt
+                    if len(newidx)>2 or chk.chrs[0].bshft != 0:
+                        for j,ni in enumerate(newidx[:-1]):
                             tsn = inkex.Tspan()
                             ts.append(tsn)
-                            nested_tss.append((tsn,c.sty,c.utfs,c.bshft))
-                            ctxt = ''
-                            csty = c.sty; cfs = c.utfs; cbs = c.bshft
-                        ctxt += c.c
-                    tsn.text = ctxt
+                            tsn.text = txt[newidx[j]:newidx[j+1]]
+                            nested_tss.append((tsn,chk.chrs[ni].sty,chk.chrs[ni].utfs,chk.chrs[ni].bshft))
+                    else:
+                        ts.text = txt
                     
+                    ts.cstyle = chk.chrs[0].sty
                     ts.cstyle.update({'font-size':str(chk.utfs),"text-align":algn,"text-anchor":ln.anchor})
                     ts.cstyle -= {'line-height','direction','baseline-shift','shape-inside'}
                     for tsn, nsty, fs, bs in nested_tss:
@@ -2200,7 +2196,9 @@ class TextTree:
 
     def __init__(self, elem):
         """Initializes the text tree of an element."""
-        dds, pts = elem.descendants2(True)
+        dds, pts = elem.descendants2(True,tag=None)
+        # We allow it to yield comments since comment tails can be valid
+        # text inside tspans
         self.dds = dds
         self.ptails = pts
         self.pdict = {ddv: ddv.getparent() for ddv in dds}
@@ -2226,6 +2224,9 @@ class TextTree:
                 sel = (
                     self.pdict[src] if typ == TYP_TAIL else src
                 )  # tails get style from parent
+                if typ==TYP_TEXT and src.tag==comment_tag:
+                    continue
+                    # Skip text inside comments, but allow tails
                 yield ddi, typ, src, sel, txt
 
     @staticmethod
@@ -2397,11 +2398,12 @@ class TLine:
             return [0]
         i = self.ptxt.lns.index(self)
         if i > 0 and len(self.ptxt.lns[i - 1].chks) > 0:
-            anfr = self.anchfrac
-            yanch = (1 + anfr) * self.ptxt.lns[i - 1].chks[-1].pts_ut[3][
-                1
-            ] - anfr * self.ptxt.lns[i - 1].chks[-1].pts_ut[0][1]
-            return [yanch]
+            # anfr = self.anchfrac
+            # yanch = (1 + anfr) * self.ptxt.lns[i - 1].chks[-1].pts_ut[3][
+            #     1
+            # ] - anfr * self.ptxt.lns[i - 1].chks[-1].pts_ut[0][1]
+            # return [yanch]
+            return self.ptxt.lns[i - 1].y[-1:]
         return [0]
 
     def set_y(self, yvi):
@@ -3399,8 +3401,8 @@ class TChar:
             # from the last block of text)
             relbs = []
             for att in reversed(bsancs):
-                if "baseline-shift" in att.cstyle:
-                    relbs.append(TChar.get_baseline(att.cstyle, att.getparent()))
+                if "baseline-shift" in att.ccascaded_style:
+                    relbs.append(TChar.get_baseline(att.ccascaded_style, att.getparent()))
                 else:
                     # When an element has a baseline-shift from inheritance
                     # but no baseline-shift is specified, implicitly gets the
@@ -4197,7 +4199,6 @@ def remove_position_overflows(el):
                 anyoverflow |= (len(xyvs[src0,patt])>1 and 
                                 ((txt0 is not None and len(xyvs[src0,patt])>len(txt0)) 
                                  or (txt0 is None)))
-                # inkex.utils.debug((anyoverflow, patt,src0.get_id(),typ0))
     
     
     if anyoverflow:       
@@ -4276,10 +4277,11 @@ def wrap_string(src,typ):
         src.insert(0, t)
     return t
 
-def remove_nonpreserved(elem):
+def cleanup_whitespace(elem,isflow):
     '''
     For text without xml:space set to preserve, coalesce multiple whitespace
-    characters into one space, strip leading/trailing whitespace
+    characters into one space, strip leading/trailing whitespace.
+    For non-flows, replace runs of whitespace with multiple newlines with a space
     '''
     if elem.cxmlspace!='preserve':
         for ddi, typ, src, sel, txt in TextTree(elem).dgenerator():
@@ -4294,6 +4296,60 @@ def remove_nonpreserved(elem):
                         src.tail = ' ' + collapsed.lstrip(' \t\r\n\f\v').rstrip(' \t\r\n\f\v')
                     else:
                         src.tail = collapsed.lstrip(' \t\r\n\f\v').rstrip(' \t\r\n\f\v')
+    if not isflow:
+        for el in elem.iter():
+            if el.text is not None:
+                el.text = cleanup_returns(el.text, last_span=(len(el) == 0))
+            if el.tail is not None:
+                el.tail = cleanup_returns(el.tail, last_span=(el==el.getparent()[-1]))
+
+comment_tag = lxml.etree.Comment("").tag
+
+
+
+# Regex: match any maximal run of common whitespace chars
+_WHITESPACE_RUN = re.compile(r"[ \t\n\r\f\v\u00A0]+")
+def first_newline_to_space(s: str) -> str:
+    def repl(m: re.Match) -> str:
+        chunk = m.group(0)
+        if "\n" in chunk or "\r" in chunk:
+            out = []
+            first_done = False
+            for ch in chunk:
+                if ch in ("\n", "\r"):
+                    if not first_done:
+                        out.append(" ")  # first newline -> space
+                        first_done = True
+                    # subsequent newlines are dropped
+                else:
+                    out.append(ch)      # all other whitespace preserved
+            return "".join(out)
+        return chunk
+    return _WHITESPACE_RUN.sub(repl, s)
+
+def cleanup_returns(s: str, last_span: bool) -> str:
+    if last_span:
+        return first_newline_to_space(s+"\n")[:-1]
+    else:
+        return first_newline_to_space(s)
+
+def condense_comments(elem):
+    for el in elem.iter():
+        if el.tag == comment_tag and el.tail is not None:
+            prev = el.getprevious()
+            if prev is None:
+                if el.getparent() is not None:
+                    if el.getparent().text is None:
+                        el.getparent().text = el.tail
+                    else:
+                        el.getparent().text += el.tail
+                    el.tail = None
+            else:
+                if prev.tail is None:
+                    prev.tail = el.tail
+                else:
+                    prev.tail += el.tail
+                el.tail = None
 
 def trim_list(lst,val):
     """ Trims any values from the end of a list equal to val """

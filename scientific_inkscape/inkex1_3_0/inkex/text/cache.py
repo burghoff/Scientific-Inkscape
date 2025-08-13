@@ -604,18 +604,18 @@ class BaseElementCache(BaseElement):
 
     comment_tag = lxml.etree.Comment("").tag
 
-    def descendants2(self, return_tails=False):
+    def descendants2(self, return_tails=False, tag='*'):
         """
         A version of descendants that also returns a list of elements whose tails
         precede each element. (This is helpful for parsing text.)
         """
         if not return_tails:
-            return list(self.iter("*"))
+            return list(self.iter(tag))
             # starts with self, gets Elements only (excludes comments)
         descendants = [self]
         precedingtails = [[]]
         endsat = [(self, None)]
-        for ddv in self.iterdescendants('*'):
+        for ddv in self.iterdescendants(tag):
             precedingtails.append([])
             while endsat[-1][1] == ddv:
                 precedingtails[-1].append(endsat.pop()[0])
