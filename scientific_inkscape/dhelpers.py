@@ -279,7 +279,9 @@ def unlink2(el):
                 d = g
             return d
         else:
-            return el
+            # Clone of missing object, delete
+            el.delete()
+            return None
     else:
         return el
 
@@ -433,24 +435,22 @@ def intersect_paths(ptha, pthb):
 
 usetag = inkex.Use.ctag
 
+def compose_clips(el, ptha, pthb):
+    newpath = intersect_paths(ptha, pthb)
+    isempty = str(newpath) == ""
+
+    if not (isempty):
+        p = PathElement()
+        el.getparent().append(p)
+        p.set("d", newpath)
+    el.delete()
+    return isempty  # if clipped out, safe to delete element
 
 def merge_clipmask(node, newclip, mask=False):
     # Modified from Deep Ungroup
-    def compose_clips(el, ptha, pthb):
-        newpath = intersect_paths(ptha, pthb)
-        isempty = str(newpath) == ""
-
-        if not (isempty):
-            p = PathElement()
-            el.getparent().append(p)
-            p.set("d", newpath)
-        el.delete()
-        return isempty  # if clipped out, safe to delete element
-
     if newclip is not None:
         svg = node.croot
         cmstr = "mask" if mask else "clip-path"
-
         if node.ctransform is not None:
             # Clip-paths on nodes with a transform have the transform
             # applied to the clipPath as well, which we don't want.
@@ -467,13 +467,13 @@ def merge_clipmask(node, newclip, mask=False):
         if newclip is not None:
             for k in newclip:
                 if k.tag == usetag:
-                    k = unlink2(k)
+                    unlink2(k)
         oldclip = node.get_link(cmstr, llget=True)
         if oldclip is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
             for k in oldclip:
                 if k.tag == usetag:
-                    k = unlink2(k)
+                    unlink2(k)
 
             d = oldclip.duplicate()
             if not (hasattr(svg, "newclips")):

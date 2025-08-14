@@ -563,10 +563,11 @@ class Exporter():
             # Unlink any clones for the PDF image and marker fixes
             if isinstance(elem, (inkex.Use)) and not (isinstance(elem, (inkex.Symbol))):
                 newel = dh.unlink2(elem)
-                myi = vds.index(elem)
-                vds[myi] = newel
-                for ddv in newel.descendants2()[1:]:
-                    vds.append(ddv)
+                if newel is not None:
+                    myi = vds.index(elem)
+                    vds[myi] = newel
+                    for ddv in newel.descendants2()[1:]:
+                        vds.append(ddv)
 
             # Remove trivial groups inside masks/transparent objects or clipped groups
             if isinstance(elem, (inkex.Group)):
