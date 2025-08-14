@@ -469,12 +469,12 @@ class FlattenPlots(inkex.EffectExtension):
                             if mysf.stroke is None and mysf.fill is None:
                                 continue
                             if mysf.stroke is not None:
-                                if mysf.stroke.alpha != 1.0 or othsf.stroke is None:
+                                if mysf.strk_isurl or mysf.stroke.alpha != 1.0 or othsf.stroke is None:
                                     continue
                                 if not mysf.stroke == othsf.stroke:
                                     continue
                             if mysf.fill is not None:
-                                if mysf.fill.alpha != 1.0 or othsf.fill is None:
+                                if mysf.fill_isurl or mysf.fill.alpha != 1.0 or othsf.fill is None:
                                     continue
                                 if not mysf.fill == othsf.fill:
                                     continue
