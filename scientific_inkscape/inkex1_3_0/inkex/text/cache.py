@@ -78,6 +78,7 @@ xmlspace = inkex.addNS("space", "xml")
 
 
 # pylint:disable=attribute-defined-outside-init
+hrefs = {"xlink:href","href"}
 class BaseElementCache(BaseElement):
     """Adds caching of style and transformation properties of base elements."""
 
@@ -97,7 +98,7 @@ class BaseElementCache(BaseElement):
                 svg = self.croot  # need to specify svg for Styles but not BaseElements
                 if svg is None:
                     return None
-            if typestr == "xlink:href":
+            if typestr in hrefs:
                 urlel = svg.getElementById(urlv[1:])
             elif urlv.startswith("url"):
                 urlel = svg.getElementById(urlv[5:-1])
@@ -505,7 +506,7 @@ class BaseElementCache(BaseElement):
             self.tag = BaseElementCache.ptag
 
     # Cached root property
-    svgtag = SvgDocumentElement.ctag
+    svgtags = {SvgDocumentElement.ctag,'svg'}
 
     def xywh(self, att=None):
         """
@@ -537,8 +538,9 @@ class BaseElementCache(BaseElement):
         except AttributeError:
             if self.getparent() is not None:
                 self._croot = self.getparent().croot
-            elif self.tag == BaseElementCache.svgtag:
+            elif self.tag in BaseElementCache.svgtags:
                 self._croot = self
+                self.tag = SvgDocumentElement.ctag
             else:
                 self._croot = None
             return self._croot
@@ -588,7 +590,25 @@ class BaseElementCache(BaseElement):
         Version of get_id that uses the low-level get
         """
         if "id" not in self.attrib:
-            self.set_random_id(self.TAG)
+            if hasattr(self.croot,'_iddict'):
+                # Inline version of self.set_random_id(self.TAG)
+                # Includes set_random_id → get_unique_id → set_id
+                new_id = None
+                cnt = self.croot.iddict.prefixcounter.get(self.TAG, 0)
+                while (
+                    new_id is None
+                    or new_id in self.croot.iddict
+                    or new_id in self.croot.iddict.clips
+                    or new_id in self.croot.iddict.masks
+                ):
+                    new_id = self.TAG + str(cnt)
+                    cnt += 1
+                self.croot.iddict.prefixcounter[self.TAG] = cnt
+                self.croot.iddict[new_id] = self
+                EBset(self, "id", new_id)
+            else:
+                # iddict initialization sets ID (prevents double assignment)
+                self.croot.iddict
         eid = EBget(self, "id")
         if as_url > 0:
             eid = "#" + eid
@@ -949,6 +969,9 @@ class SvgDocumentElementCache(SvgDocumentElement):
                 else:
                     toassign.append(elem)
                 elem.croot = svg  # do now to speed up later
+                if '{' not in elem.tag:
+                    # Make sure tags have a namespace
+                    elem.tag = elem.ctag
 
                 # While we're iterating, we gather clips/masks/links
                 self.add_to_linkdict(elem, "clip-path")

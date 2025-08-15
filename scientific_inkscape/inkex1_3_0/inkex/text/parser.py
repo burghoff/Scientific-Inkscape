@@ -1530,6 +1530,7 @@ class ParsedText:
         # Find the bbox of the FlowRegion
         elif isflowroot:
             for ddv in self.textel.iter('*'):
+                ddv = deref_use(ddv)
                 if isinstance(ddv, FlowRegion):
                     pths = [p for p in ddv.iter('*') if p.tag in otp_support]
                     if len(pths) > 0:
@@ -1611,8 +1612,10 @@ class ParsedText:
         # Group characters into lines
         lns = []
         fparas = [
-            k for k in list(self.textel) if isinstance(k, FlowPara)
+            deref_use(k) for k in list(self.textel) if isinstance(deref_use(k), (inkex.FlowDiv,FlowPara,))
         ]  # top-level FlowParas
+        fparas[:] = sum(([c for c in el] if isinstance(el,inkex.FlowDiv) else [el] for el in fparas), [])
+
         for ddi, typ, tel, sel, txt in self.tree.dgenerator():
             if txt is not None and len(txt) > 0:
                 if isflowroot:
@@ -4355,3 +4358,10 @@ def trim_list(lst,val):
     """ Trims any values from the end of a list equal to val """
     trim = lst[:len(lst) - next((i for i, x in enumerate(reversed(lst)) if x != val), len(lst))]
     return trim if len(trim)>0 else None
+
+def deref_use(elem):
+    if isinstance(elem,inkex.Use): 
+        deref = elem.get_link('href')
+        if deref is not None:
+            return deref
+    return elem
