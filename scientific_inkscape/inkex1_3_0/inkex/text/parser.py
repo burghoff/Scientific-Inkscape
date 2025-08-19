@@ -3265,6 +3265,17 @@ class TChunk:
 
 class TChar:
     """Represents a single character and its style."""
+    __slots__ = (
+        "c", "tfs", "utfs", "prop", "cwd",
+        "_sty", "tsty", "fsty",
+        "loc", "caph", "spw",
+        "line", "lnindex", "chk", "windex",
+        "_dx", "_dy", "_ax", "_ay",
+        "dadvs",
+        "parsed_pts_t", "parsed_pts_ut",
+        "_lsp", "_bshft",
+        "lhs"
+    )
 
     def __init__(self, c, tfs, utfs, prop, sty, tsty, loc, line, dx, dy):
         """Initializes TChar with given parameters."""
@@ -3312,16 +3323,43 @@ class TChar:
         # flow line-heights
 
     def copy(self, memo=None):
-        """Creates a copy of the TChar instance."""
+        """Creates a copy of the TChar instance (manual slots)."""
         if memo is None:
             memo = dict()
         ret = TChar.__new__(TChar)
         memo[self] = ret
-        ret.__dict__.update(self.__dict__)
+
+        ret.c = self.c
+        ret.tfs = self.tfs
+        ret.utfs = self.utfs
+        ret.prop = self.prop
+        ret.cwd = self.cwd
+        ret._sty = self._sty
+        ret.tsty = self.tsty
+        ret.fsty = self.fsty
+
         ret.loc = CLoc(
-            memo.get(self.loc.elem, self.loc.elem), self.loc.typ, self.loc.ind
+            memo.get(self.loc.elem, self.loc.elem),
+            self.loc.typ,
+            self.loc.ind,
         )
+        ret.caph = self.caph
+        ret.spw = self.spw
         ret.line = memo.get(self.line, self.line)
+        ret.lnindex = self.lnindex
+        ret.chk = self.chk
+        ret.windex = self.windex
+        ret._dx = self._dx
+        ret._dy = self._dy
+        ret._ax = self._ax
+        ret._ay = self._ay
+        ret.dadvs = self.dadvs
+        ret.parsed_pts_t = self.parsed_pts_t
+        ret.parsed_pts_ut = self.parsed_pts_ut
+        ret._lsp = self._lsp
+        ret._bshft = self._bshft
+        ret.lhs = self.lhs
+
         return ret
 
     @property
