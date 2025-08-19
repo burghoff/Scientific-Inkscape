@@ -119,7 +119,9 @@ def remove_kerning(
     return dh.unique(els + tels)
 
 def make_clean_textelements(els):
-    return [el.parsed_text.make_clean_textelement() for el in els]
+    tels = [el.parsed_text.make_clean_textelement() for el in els]
+    return [el for el in tels if el is not None]
+    
 
 def Final_Cleanup(els):
     for el in els:

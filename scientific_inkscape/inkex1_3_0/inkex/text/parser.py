@@ -2117,6 +2117,9 @@ class ParsedText:
         another level of nested tspans, that may have a relative baseline-shift or font-size.
         Deletes this element
         '''
+        if len(self.chrs)==0:
+            self.textel.delete()
+            return None
         te = inkex.TextElement()
         te.set("xml:space", "preserve")
         self.textel.addnext(te)
@@ -2495,6 +2498,17 @@ class TLine:
                     c.loc.elem.tail[: c.loc.ind] + c.loc.elem.tail[c.loc.ind + 1 :]
                 )
         self.ptxt.write_dxdy()
+        
+        # When deleting the first line, if the second inherits position its
+        # position must be set
+        lns = self.ptxt.lns
+        if len(lns)>1 and lns[0]==self:
+            if lns[1].continuex:
+                lns[1].x = lns[0].x[:1]
+                lns[1].continuex = False
+            if lns[1].continuey:
+                lns[1].y = lns[0].y[:1]
+                lns[1].continuey = False
 
         if self in self.ptxt.lns:
             self.ptxt.lns.remove(self)
