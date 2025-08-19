@@ -230,10 +230,11 @@ class FlattenPlots(inkex.EffectExtension):
             # Unlink all clones
             nels = []
             oels = []
+            usetag, symboltag = inkex.Use.ctag, inkex.Symbol.ctag
             for el in seld:
-                if isinstance(el, inkex.Use):
+                if el.tag == usetag:
                     useel = el.get_link("xlink:href")
-                    if useel is not None and not (isinstance(useel, (inkex.Symbol))):
+                    if useel is not None and useel.tag != symboltag:
                         ul = dh.unlink2(el)
                         nels.append(ul)
                         oels.append(el)
@@ -265,7 +266,7 @@ class FlattenPlots(inkex.EffectExtension):
                         ]
                     )
                     g.set("mpl_comment", cmnt)
-                    [g.remove(k) for k in ks if isinstance(k, lxml.etree._Comment)]
+                    [g.remove(k) for k in ks if k.tag==commenttag]
                     # remove comment, but leave grouped
                 elif dh.EBget(g, "mpl_comment") is not None:
                     pass

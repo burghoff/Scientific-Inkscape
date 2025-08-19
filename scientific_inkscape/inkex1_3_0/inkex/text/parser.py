@@ -337,9 +337,10 @@ class ParsedText:
                 ret_w.prevsametspan = cmemo.get(ret_w.prevsametspan)
         return ret
 
+    @property
     def txt(self):
         """Returns the text content of the parsed lines."""
-        return [line.txt() for line in self.lns]
+        return "".join([c.c for c in self.chrs])
 
     def reparse(self):
         """Reparses the text element."""
@@ -349,6 +350,11 @@ class ParsedText:
     def chrs(self):
         """Returns a list of characters in the parsed lines."""
         return [c for line in self.lns for c in line.chrs]
+    
+    @property
+    def chks(self):
+        """Returns a list of chunks in the parsed lines."""
+        return [chk for line in self.lns for chk in line.chks]
 
     def parse_lines(self, srcsonly=False):
         """
@@ -650,11 +656,11 @@ class ParsedText:
                 self.spacingAndGlyphs = False
                 if self.textel.get("lengthAdjust")=="spacingAndGlyphs":
                     self.spacingAndGlyphs = True
-                wds = [chk.pts_ut[3][0]-chk.pts_ut[0][0] for ln in self.lns for chk in ln.chks]
+                wds = [chk.pts_ut[3][0]-chk.pts_ut[0][0] for chk in self.chks]
                 cwd = sum(wds)
                 
-                cs = [c for ln in self.lns for c in ln.chrs]
-                chks = [chk2 for ln in self.lns for chk2 in ln.chks]
+                cs = self.chrs
+                chks = self.chks
                 if self.spacingAndGlyphs:
                     adj = textLength/cwd if cwd!=0 else 1
                     for c in cs:
@@ -670,8 +676,8 @@ class ParsedText:
                     
     def remove_textlength(self):
         if self.textLengthAdjust is not None:   
-            cs = [c for ln in self.lns for c in ln.chrs]
-            chks = [chk2 for ln in self.lns for chk2 in ln.chks]
+            cs = self.chrs
+            chks = self.chks
             if self.spacingAndGlyphs:
                 withtl = self.get_full_extent()
                 for c in cs:
@@ -758,26 +764,23 @@ class ParsedText:
         positions"""
         if any(ddv.get("sodipodi:role") == "line" for ddv in self.tree.dds):
             # Store old positions
-            oxs = [c.pts_ut[0][0] for line in self.lns for c in line.chrs]
-            oys = [c.pts_ut[0][1] for line in self.lns for c in line.chrs]
-            odxs = [c.dx for line in self.lns for c in line.chrs]
-            odys = [c.dy for line in self.lns for c in line.chrs]
+            oxs = [c.pts_ut[0][0] for c in self.chrs]
+            oys = [c.pts_ut[0][1] for c in self.chrs]
+            odxs = [c.dx for c in self.chrs]
+            odys = [c.dy for c in self.chrs]
             _ = [ddv.set("sodipodi:role", None) for ddv in self.tree.dds]
             
-            pput = [c.parsed_pts_ut for line in self.lns for c in line.chrs]
-            ppt  = [c.parsed_pts_t  for line in self.lns for c in line.chrs]
+            pput = [c.parsed_pts_ut for c in self.chrs]
+            ppt  = [c.parsed_pts_t  for c in self.chrs]
             
             deleteempty(self.textel)
             self.reparse()
-            ii = 0;
-            for line in self.lns:
-                for c in line.chrs:
-                    c.parsed_pts_ut = pput[ii]
-                    c.parsed_pts_t  = ppt[ii]
-                    ii += 1
+            for ii, c in enumerate(self.chrs):
+                c.parsed_pts_ut = pput[ii]
+                c.parsed_pts_t  = ppt[ii]
 
             # Correct the position of the first character
-            chrs = [c for line in self.lns for c in line.chrs]
+            chrs = [c for c in self.chrs]
             for i, line in enumerate(self.lns):
                 myi = chrs.index(line.chrs[0])
                 dx = oxs[myi] - chrs[myi].pts_ut[0][0]
@@ -798,8 +801,8 @@ class ParsedText:
                     line.write_xy(newx=newxv, newy=newyv)
 
             # Fix non-first dxs
-            ndxs = [c.dx for line in self.lns for c in line.chrs]
-            ndys = [c.dy for line in self.lns for c in line.chrs]
+            ndxs = [c.dx for c in self.chrs]
+            ndys = [c.dy for c in self.chrs]
             for i, c in enumerate(chrs):
                 if c.lnindex > 0:
                     if abs(odxs[i] - ndxs[i]) > 0.001 or abs(odys[i] - ndys[i]) > 0.001:
@@ -837,9 +840,8 @@ class ParsedText:
         if self.dchange:
             # Group characters by location
             cs_loc = {(d,typ):[] for d in self.textel.iter('*') for typ in [TYP_TEXT,TYP_TAIL]}
-            for ln in self.lns:
-                for c in ln.chrs:
-                    cs_loc[c.loc.elem,c.loc.typ].append(c)
+            for c in self.chrs:
+                cs_loc[c.loc.elem,c.loc.typ].append(c)
 
             for (d, typ), cd in cs_loc.items():
                 dx = [c.dx for c in cd]
@@ -859,7 +861,7 @@ class ParsedText:
                     xyset(d,"dx",dxset)
                     xyset(d,"dy",dyset)
             
-            for chk in [chk for line in self.lns for chk in line.chks]:
+            for chk in self.chks:
                 chk.charpos = None
 
             self.writtendx = any(c.dx != 0 for c in self.chrs)
@@ -874,9 +876,8 @@ class ParsedText:
         if self.achange:
             # Group characters by location
             cs_loc = {(d,typ):[] for d in self.textel.iter('*') for typ in [TYP_TEXT,TYP_TAIL]}
-            for ln in self.lns:
-                for c in ln.chrs:
-                    cs_loc[c.loc.elem,c.loc.typ].append(c)
+            for c in self.chrs:
+                cs_loc[c.loc.elem,c.loc.typ].append(c)
 
             for (d, typ), cd in cs_loc.items():
                 ax = [c.ax for c in cd]
@@ -957,7 +958,7 @@ class ParsedText:
                 ln.chrs = ln.chrs[:split_idx[0]]
             self.finish_lines()
 
-            for chk in [chk for line in self.lns for chk in line.chks]:
+            for chk in self.chks:
                 chk.charpos = None
             self.achange = False
 
@@ -974,8 +975,8 @@ class ParsedText:
             and not (self.lns[0].sprl)
         ):  # only one line that is a top-level tspan
             line = self.lns[0]
-            olddx = [c.dx for line in self.lns for c in line.chrs]
-            olddy = [c.dy for line in self.lns for c in line.chrs]
+            olddx = [c.dx for c in self.chrs]
+            olddy = [c.dy for c in self.chrs]
 
             if len(line.chrs) > 0:
                 cel = line.chrs[0].loc.elem
@@ -1066,8 +1067,8 @@ class ParsedText:
         newtxt = npt.textel
         
         # Record position
-        cs1 = [c for ln in self.lns for c in ln.chrs]
-        cs2 = [c for ln in  npt.lns for c in ln.chrs]
+        cs1 = self.chrs
+        cs2 = npt.chrs
         dmemo = dict(zip(cs1,cs2))
         
         ps1 = {c:c.pts_ut[0] for c in cs1}
@@ -1120,10 +1121,9 @@ class ParsedText:
             ds[fc] = (ds[fc][0],0)
 
 
-        for ln in npt.lns:
-            for c in ln.chrs:
-                c.dx = ds[c][0]
-                c.dy = ds[c][1]
+        for c in npt.chrs:
+            c.dx = ds[c][0]
+            c.dy = ds[c][1]
         npt.write_dxdy()
 
         # In case there are some errors, correct with deltas
@@ -1166,7 +1166,7 @@ class ParsedText:
             self.tree = None
             self.reparse()
             # Correct the position of the first character
-            chrs = [c for line in self.lns for c in line.chrs]
+            chrs = [c for c in self.chrs]
             for i, line in enumerate(self.lns):
                 myi = chrs.index(line.chrs[0])
                 dxt = ocs_pts[myi][0][0] - chrs[myi].pts_t[0][0]
@@ -1192,17 +1192,16 @@ class ParsedText:
                     line.write_xy(newx=newxv, newy=newyv)
 
             # Fix non-first dxs
-            ndxs = [c.dx for line in self.lns for c in line.chrs]
-            ndys = [c.dy for line in self.lns for c in line.chrs]
+            ndxs = [c.dx for c in self.chrs]
+            ndys = [c.dy for c in self.chrs]
             for i, c in enumerate(chrs):
                 if c.lnindex > 0:
                     if abs(ocs_dx[i] - ndxs[i]) > 0.001 or abs(ocs_dy[i] - ndys[i]) > 0.001:
                         c.dx = ocs_dx[i]
                         c.dy = ocs_dy[i]
             self.write_dxdy()
-            for line in self.lns:
-                for chk in line.chks:
-                    chk.charpos = None
+            for chk in self.chks:
+                chk.charpos = None
 
     def fuse_fonts(self):
         """
@@ -2513,6 +2512,7 @@ class TLine:
         if self in self.ptxt.lns:
             self.ptxt.lns.remove(self)
 
+    @property
     def txt(self):
         """Returns the concatenated text of all characters."""
         return "".join([c.c for c in self.chrs])

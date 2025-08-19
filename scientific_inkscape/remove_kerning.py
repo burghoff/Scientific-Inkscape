@@ -131,9 +131,8 @@ def Final_Cleanup(els):
 
 def Fix_Merge_Positions(els):
     for el in els:
-        for line in el.parsed_text.lns:
-            for w in line.chks:
-                w.fix_merged_position()
+        for w in el.parsed_text.chks:
+            w.fix_merged_position()
     return els
 
 
@@ -144,14 +143,14 @@ def Remove_Trailing_Leading_Spaces(els):
             el.parsed_text.isflow
         ):  # skip Inkscape-generated text
             for line in el.parsed_text.lns:
-                mtxt = line.txt()
+                mtxt = line.txt
                 ii = len(mtxt) - 1
                 while ii >= 0 and mtxt[ii] == " ":
                     line.chrs[ii].delc()
                     ii -= 1
                     removed = True
 
-                mtxt = line.txt()
+                mtxt = line.txt
                 ii = 0
                 while ii < len(mtxt) and mtxt[ii] == " ":
                     line.chrs[0].delc()
@@ -242,59 +241,58 @@ def Split_Distant_Chunks(els):
 def Split_Distant_Intrachunk(els):
     for ptxt in [el.parsed_text for el in els]:
         if ptxt.lns is not None and not (ptxt.ismlinkscape) and not (ptxt.isflow):
-            for line in ptxt.lns:
-                for w in line.chks:
-                    if len(w.chrs) > 0:
-                        chrs = sorted(w.chrs, key=lambda chr: chr.pts_ut[0][0])
-                        lastnspc = None
-                        splitiis = []
-                        prevsplit = 0
-                        if chrs[0].c not in [" ", "\u00a0"]:
-                            lastnspc = chrs[0]
-                        for ii in range(1, len(chrs)):
-                            if lastnspc is not None:
-                                c = lastnspc
-                                c2 = chrs[ii]
+            for w in ptxt.chks:
+                if len(w.chrs) > 0:
+                    chrs = sorted(w.chrs, key=lambda chr: chr.pts_ut[0][0])
+                    lastnspc = None
+                    splitiis = []
+                    prevsplit = 0
+                    if chrs[0].c not in [" ", "\u00a0"]:
+                        lastnspc = chrs[0]
+                    for ii in range(1, len(chrs)):
+                        if lastnspc is not None:
+                            c = lastnspc
+                            c2 = chrs[ii]
 
-                                bl2 = c2.pts_ut[0]
-                                br1 = c.pts_ut[3]
+                            bl2 = c2.pts_ut[0]
+                            br1 = c.pts_ut[3]
 
-                                dx = w.spw * (NUM_SPACES)
-                                xtol = XTOLSPLIT * w.spw
+                            dx = w.spw * (NUM_SPACES)
+                            xtol = XTOLSPLIT * w.spw
 
-                                # If this character is splitting two numbers,
-                                # should always split in case they are ticks
-                                import re
+                            # If this character is splitting two numbers,
+                            # should always split in case they are ticks
+                            import re
 
-                                remainingnumeric = False
-                                numbersplits = [" ", "-", "−"]
-                                # chars that may separate numbers
-                                splrest = re.split("|".join(numbersplits), w.txt[ii:])
-                                splrest = [v for v in splrest if v != ""]
-                                if len(splrest) > 0:
-                                    remainingnumeric = isnumeric(splrest[0])
-                                numbersplit = (
-                                    isnumeric(w.txt[prevsplit:ii])
-                                    and (c2.c in numbersplits and remainingnumeric)
-                                    and c.loc.elem == c2.loc.elem
-                                )
+                            remainingnumeric = False
+                            numbersplits = [" ", "-", "−"]
+                            # chars that may separate numbers
+                            splrest = re.split("|".join(numbersplits), w.txt[ii:])
+                            splrest = [v for v in splrest if v != ""]
+                            if len(splrest) > 0:
+                                remainingnumeric = isnumeric(splrest[0])
+                            numbersplit = (
+                                isnumeric(w.txt[prevsplit:ii])
+                                and (c2.c in numbersplits and remainingnumeric)
+                                and c.loc.elem == c2.loc.elem
+                            )
 
-                                if bl2[0] > br1[0] + dx + xtol or numbersplit:
-                                    splitiis.append(ii)
-                                    prevsplit = ii
-                            if chrs[ii].c not in [" ", "\u00a0"]:
-                                lastnspc = chrs[ii]
+                            if bl2[0] > br1[0] + dx + xtol or numbersplit:
+                                splitiis.append(ii)
+                                prevsplit = ii
+                        if chrs[ii].c not in [" ", "\u00a0"]:
+                            lastnspc = chrs[ii]
 
-                        if len(splitiis) > 0:
-                            for ii in reversed(range(len(splitiis))):
-                                sstart = splitiis[ii]
-                                if ii != len(splitiis) - 1:
-                                    sstop = splitiis[ii + 1]
-                                else:
-                                    sstop = len(chrs)
-                                split_chrs = [chr for chr in w.chrs if chr in chrs[sstart:sstop]]
-                                newtxt = ptxt.split_off_characters(split_chrs)
-                                els.append(newtxt)
+                    if len(splitiis) > 0:
+                        for ii in reversed(range(len(splitiis))):
+                            sstart = splitiis[ii]
+                            if ii != len(splitiis) - 1:
+                                sstop = splitiis[ii + 1]
+                            else:
+                                sstop = len(chrs)
+                            split_chrs = [chr for chr in w.chrs if chr in chrs[sstart:sstop]]
+                            newtxt = ptxt.split_off_characters(split_chrs)
+                            els.append(newtxt)
     return els
 
 
@@ -304,7 +302,7 @@ def Remove_Manual_Kerning(els, mergesupersub):
     ptxts = [el.parsed_text for el in els]
     for ptxt in ptxts:
         if ptxt.lns is not None:
-            chks += [w for line in ptxt.lns for w in line.chks]
+            chks += ptxt.chks
     for w in chks:
         mw = []
         w2 = w.nextw
@@ -360,7 +358,7 @@ def External_Merges(els, mergenearby, mergesupersub):
     chks = []
     for ptxt in [el.parsed_text for el in els]:
         if ptxt.lns is not None:
-            chks += [w for line in ptxt.lns for w in line.chks]
+            chks += ptxt.chks
 
     pbbs = [None]*len(chks)
     for ii, w in enumerate(chks):
@@ -431,7 +429,7 @@ def External_Merges(els, mergenearby, mergesupersub):
                 and abs(w1fs[0] - w2fs[0]) < FONTSIZE_THR*w1fs[0] and abs(w1fs[1] - w2fs[1]) < FONTSIZE_THR*w1fs[1]
                 and mergenearby
             ):
-                if isnumeric(w.line.txt()) and isnumeric(w2.line.txt(), True):
+                if isnumeric(w.line.txt) and isnumeric(w2.line.txt, True):
                     numsp = (bl2[0] - br1[0]) / (w.spw)
                     if abs(numsp) < 0.25:
                         # only merge numbers if very close (could be x ticks)
@@ -453,7 +451,7 @@ def External_Merges(els, mergenearby, mergesupersub):
                     mtype = "subreturn"
                 elif SUBSUPER_THR == 1:
                     if aboveline:
-                        if len(w2.line.txt()) > 2:  # long text, probably not super
+                        if len(w2.line.txt) > 2:  # long text, probably not super
                             mtype = "subreturn"
                         else:
                             mtype = "superorsubreturn"
@@ -472,7 +470,7 @@ def External_Merges(els, mergenearby, mergesupersub):
                     mtype = "superreturn"
                 elif SUBSUPER_THR == 1:
                     if belowline:
-                        if len(w2.line.txt()) > 2:  # long text, probably not sub
+                        if len(w2.line.txt) > 2:  # long text, probably not sub
                             mtype = "superreturn"
                         else:
                             mtype = "suborsuperreturn"
@@ -498,7 +496,7 @@ def External_Merges(els, mergenearby, mergesupersub):
                             "Aborted, fonts too different: " + str([w1fs, w2fs])
                         )
                     elif not (
-                        not (isnumeric(w.line.txt())) or not (isnumeric(w2.line.txt()))
+                        not (isnumeric(w.line.txt)) or not (isnumeric(w2.line.txt))
                     ):
                         dh.idebug("Aborted, both numbers")
                 else:
