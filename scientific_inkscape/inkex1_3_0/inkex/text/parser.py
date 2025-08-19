@@ -138,7 +138,7 @@ class ParsedTextList(list):
         for j, chk in enumerate(tws):
             if DIFF_ADVANCES:
                 for i in range(1, chk.ncs):
-                    dadv[idx + i] = chk.chrs[i].dadvs(chk.chrs[i - 1].c, chk.chrs[i].c)*(chk.dx[i]==0)
+                    dadv[idx + i] = chk.chrs[i].dadvs(chk.chrs[i - 1], chk.chrs[i])*(chk.dx[i]==0)
 
             for i in range(chk.ncs):
                 cwd[idx + i] = chk.cwd[i]
@@ -889,7 +889,6 @@ class ParsedText:
 
                 if typ==TYP_TAIL and (axset is not None or ayset is not None):
                     d = wrap_string(d,typ)
-                    self.tree = None  # invalidate
                     typ = TYP_TEXT
                     for c in cd:
                         c.loc = CLoc(d,TYP_TEXT,c.loc.ind)
@@ -910,14 +909,54 @@ class ParsedText:
                             t.text = txt[r1:r2]
                             if k<len(ranges)-1:
                                 d.insert(0,t)
-                            xyset(t,"x",trim_list(axset[r1:r2],None) if axset is not None else None)
-                            xyset(t,"y",trim_list(ayset[r1:r2],None) if ayset is not None else None)
+                            xv = trim_list(axset[r1:r2],None) if axset is not None else None
+                            yv = trim_list(ayset[r1:r2],None) if ayset is not None else None
+                            xyset(t,"x",xv)
+                            xyset(t,"y",yv)
                             for j,c in enumerate(cd[r1:r2]):
                                 c.loc = CLoc(t,TYP_TEXT,j)
-                    else:                    
+                    else:
                         xyset(d,"x",axset) 
                         xyset(d,"y",ayset)
             
+            # Since some characters may have changed positions, new lines may
+            # need to be generated
+            self.tree = None
+            for ln in reversed(self.lns):
+                ax = [c.ax for c in ln.chrs]
+                ay = [c.ay for c in ln.chrs]
+                for c in ln.chrs:
+                    c.ax = None
+                    c.ay = None
+                split_idx = [i+1 for i,(xv,yv) in enumerate(zip(ax[1:],ay[1:])) if (ax[i] is None and xv is not None) or (ay[i] is None and yv is not None)]
+                split_idx += [len(ln.chrs)]
+                
+                ln.x = trim_list(ax[:split_idx[0]],None)
+                ln.y = trim_list(ay[:split_idx[0]],None)
+                lns = [ln]
+                for i, si in enumerate(split_idx[:-1]):
+                    r1, r2 = split_idx[i], split_idx[i+1]
+                    xv = trim_list(ax[r1:r2],None)
+                    yv = trim_list(ay[r1:r2],None)
+                    nln = TLine(
+                        self,
+                        xv if xv is not None else lns[-1].x[:],
+                        yv if yv is not None else lns[-1].y[:],
+                        ln.chrs[r1].loc.elem if xv is not None else ln.xsrc,
+                        ln.chrs[r1].loc.elem if yv is not None else ln.ysrc,
+                        ln.sprl,ln.sprlabove,ln.anchor,ln.transform,
+                        ln.tlvlno,ln.chrs[r1].sty,xv is None,yv is None,
+                    )
+                    self.lns = self.lns[:-1] # TInit appends line to end
+                    self.lns.insert(self.lns.index(ln) + 1+i, nln)
+                    nln.chrs = ln.chrs[r1:r2]
+                    for j, c in enumerate(nln.chrs):
+                        c.line = nln
+                        c.lnindex = j
+                    lns.append(nln)
+                ln.chrs = ln.chrs[:split_idx[0]]
+            self.finish_lines()
+
             for chk in [chk for line in self.lns for chk in line.chks]:
                 chk.charpos = None
             self.achange = False
@@ -1359,13 +1398,6 @@ class ParsedText:
                             c.ay = w.y if j==0 else None
             self.write_dxdy()
             self.write_axay()
-            
-            ptsut = [c.parsed_pts_ut for c in self.chrs]
-            ptst = [c.parsed_pts_t for c in self.chrs]
-            self.reparse()
-            for i, c in enumerate(self.chrs):
-                c.parsed_pts_ut = ptsut[i]
-                c.parsed_pts_t = ptst[i]
 
     # Bounding box functions
     def get_char_inkbbox(self):
@@ -3050,7 +3082,7 @@ class TChunk:
             dadv = [0] * self.ncs
             if DIFF_ADVANCES:
                 for i in range(1, self.ncs):
-                    dadv[i] = self.chrs[i].dadvs(self.chrs[i - 1].c, self.chrs[i].c)*(self.dx[i]==0)
+                    dadv[i] = self.chrs[i].dadvs(self.chrs[i - 1], self.chrs[i])*(self.dx[i]==0)
                     # default to 0 for chars of different style
                     # any dx value overrides differential advances
 
@@ -3255,7 +3287,7 @@ class TChar:
         self._dy = dy
         self._ax = None
         self._ay = None
-        self.dadvs = lambda cL, cR: prop.dadvs.get((cL, cR), 0) * utfs
+        self.dadvs = lambda cL, cR: prop.dadvs.get((cL.c, cR.c), 0) * utfs * (cL.loc.elem==cR.loc.elem and cL.loc.typ==cR.loc.typ)
         self.parsed_pts_t = None
         self.parsed_pts_ut = None
         # for merging later
@@ -3464,11 +3496,11 @@ class TChar:
         # Differential kerning affect on character width
         dko1 = dko2 = dkn = 0
         if myi < len(lncs) - 1:
-            dko2 = self.dadvs(lncs[myi].c, lncs[myi + 1].c)  # old from right
+            dko2 = self.dadvs(lncs[myi], lncs[myi + 1])  # old from right
             if myi > 0:
-                dkn = self.dadvs(lncs[myi - 1].c, lncs[myi + 1].c)  # new
+                dkn = self.dadvs(lncs[myi - 1], lncs[myi + 1])  # new
         if myi > 0:
-            dko1 = self.dadvs(lncs[myi - 1].c, lncs[myi].c)  # old from left
+            dko1 = self.dadvs(lncs[myi - 1], lncs[myi])  # old from left
         tdk = dko1 + dko2 - dkn
 
         cwo = self.cwd + tdk + self._dx + self.lsp * (self.windex != 0)
