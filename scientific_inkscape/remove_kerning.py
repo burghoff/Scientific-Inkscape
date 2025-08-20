@@ -635,11 +635,8 @@ def Perform_Merges(chks, mk=False):
                     mels[0].set_link("clip-path", dc.get_id(2))
 
 
-# Check if text represents a number
-ncs = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "e", "E", "-", "−", ","]
-
-
 def isnumeric(s, countminus=False):
+    '''  Check if text represents a number '''
     s = (
         s.strip().replace("−", "-").replace(",", "")
     )  # strip whitespaces, replace minus signs with -, remove commas
@@ -652,31 +649,21 @@ def isnumeric(s, countminus=False):
         return False
 
 
-# Strip whitespaces
+
 def wstrip(txt):
+    # Strip whitespaces
     return txt.translate({ord(c): None for c in " \n\t\r"})
 
 
 def twospaces(w1txt, w2txt):
-    if (
-        (w1txt is not None and len(w1txt) > 1 and w1txt[-2:] == "  ")
-        or (
-            w1txt is not None
-            and len(w1txt) > 0
-            and w1txt[-1:] == " "
-            and w2txt is not None
-            and len(w2txt) > 0
-            and w2txt[0] == " "
-        )
-        or (w2txt is not None and len(w2txt) > 1 and w2txt[:1] == "  ")
-    ):
-        return True  # resultant chunk has two spaces
-    return False
-
+    ''' Check if merging two chunks would create two spaces in a row in the middle'''
+    return (
+        w1txt.endswith("  ") or
+        (w1txt.endswith(" ") and w2txt.startswith(" ")) or
+        w2txt.startswith("  ")
+    )
 
 def trailing_leading(wtxt, w2txt):
-    trl_spcs = sum([all([c == " " for c in wtxt[ii:]]) for ii in range(len(wtxt))])
-    ldg_spcs = sum(
-        [all([c == " " for c in w2txt[: ii + 1]]) for ii in range(len(w2txt))]
-    )
+    trl_spcs = len(wtxt) - len(wtxt.rstrip(' '))
+    ldg_spcs = len(w2txt) - len(w2txt.lstrip(' '))
     return trl_spcs, ldg_spcs
