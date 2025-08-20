@@ -41,7 +41,7 @@ from inkex.units import CONVERSIONS, BOTH_MATCH
 # any styles/transforms/document scaling
 flookup = {"small": "10px", "medium": "12px", "large": "14px"}
 
-
+RELATIVE_UNIT_RE = re.compile(r'(?:%|em)$')
 def composed_width(elem, comp):
     """
     Gets the transformed size of a style component and the scale factor representing
@@ -64,14 +64,14 @@ def composed_width(elem, comp):
     if satt is None:
         satt = default_style_atts[comp]
 
-    if "%" in satt:  # relative width, get ancestor width
+    if RELATIVE_UNIT_RE.search(satt):  # relative width, get ancestor width
         cel = elem
-        while satt != cel.cstyle.get(comp) and satt != cel.get(comp):
+        while cel is not None and satt != cel.ccascaded_style.get(comp) and satt != cel.get(comp):
             cel = cel.getparent()
             # figure out ancestor where % is coming from
-
-        satt = float(satt.strip("%")) / 100
-        tsz, scf, utsz = composed_width(cel.getparent(), comp)
+        par = cel.getparent() if cel is not None else elem.croot
+        satt = float(satt.strip("%")) / 100 if "%" in satt else float(satt.strip("em"))
+        tsz, scf, utsz = composed_width(par, comp)
 
         # Since relative widths have no untransformed width, we assign
         # it to be a scaled version of the ancestor's ut width
