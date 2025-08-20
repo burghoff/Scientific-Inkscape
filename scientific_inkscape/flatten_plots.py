@@ -23,6 +23,10 @@ import inkex
 
 from inkex import (
     TextElement,
+    FlowRoot,
+    FlowPara,
+    FlowRegion,
+    FlowSpan,
     Tspan,
     TextPath,
     Rectangle,
@@ -40,9 +44,6 @@ from inkex.text.utils import isrectangle
 import lxml
 from remove_kerning import remove_kerning
 
-EXCLUDE_KEY = "inkscape-scientific-flattenexclude"
-MINUS_PATH = "M 106,355 H 732 V 272 H 106 Z" # Matplotlib minus sign
-RECT_THRESHOLD = 2.49  # threshold ratio for rectangle reversion
 
 class FlattenPlots(inkex.EffectExtension):
     def add_arguments(self, pars):
@@ -187,12 +188,17 @@ class FlattenPlots(inkex.EffectExtension):
             self.options.markexc = {1: True, 2: False}[self.options.markexc]
             for el in sel:
                 if self.options.markexc:
-                    el.set(EXCLUDE_KEY, self.options.markexc)
+                    el.set("inkscape-scientific-flattenexclude", self.options.markexc)
                 else:
-                    el.set(EXCLUDE_KEY, None)
+                    el.set("inkscape-scientific-flattenexclude", None)
             return
-        sel = [el for el in sel if not el.get(EXCLUDE_KEY)]
-        seld = [v for el in sel for v in el.iter('*') if not v.get(EXCLUDE_KEY)]
+        for el in sel:
+            if el.get("inkscape-scientific-flattenexclude"):
+                sel.remove(el)
+        seld = [v for el in sel for v in el.iter('*')]
+        for el in seld:
+            if el.get("inkscape-scientific-flattenexclude"):
+                seld.remove(el)
 
         # Move selected defs/clips/mask into global defs
         defstag = inkex.Defs.ctag
@@ -201,13 +207,15 @@ class FlattenPlots(inkex.EffectExtension):
             seldefs = [el for el in seld if el.tag == defstag]
             for el in seldefs:
                 self.svg.cdefs.append(el)
-                seld = [d for d in seld if d not in set(el.iter('*'))]
-                # no longer selected
+                for d in el.iter('*'):
+                    if d in seld:
+                        seld.remove(d)  # no longer selected
             selcm = [el for el in seld if el.tag in clipmask]
             for el in selcm:
                 self.svg.cdefs.append(el)
-                seld = [d for d in seld if d not in set(el.iter('*'))]
-                # no longer selected
+                for d in el.iter('*'):
+                    if d in seld:
+                        seld.remove(d)  # no longer selected
 
         gtag = inkex.Group.ctag
         gigtags = dh.tags((NamedView, Defs, Metadata, ForeignObject) + (Group,))
@@ -220,7 +228,8 @@ class FlattenPlots(inkex.EffectExtension):
 
         if self.options.deepungroup:
             # Unlink all clones
-            nels, oels = [] , []
+            nels = []
+            oels = []
             usetag, symboltag = inkex.Use.ctag, inkex.Symbol.ctag
             for el in seld:
                 if el.tag == usetag:
@@ -229,8 +238,10 @@ class FlattenPlots(inkex.EffectExtension):
                         ul = dh.unlink2(el)
                         nels.append(ul)
                         oels.append(el)
-            seld += [d for nel in nels for d in nel.iter('*')]
-            seld = [el for el in seld if el not in oels]
+            for nel in nels:
+                seld += list(nel.iter('*'))
+            for oel in oels:
+                seld.remove(oel)
             gs = [el for el in seld if el.tag == gtag]
             ngs = [el for el in seld if el.tag not in gigtags]
 
@@ -239,10 +250,12 @@ class FlattenPlots(inkex.EffectExtension):
             sorted_gs = sorted(gs, key=lambda group: len(list(group)))
             # ascending order of size to reduce number of calls
             for g in sorted_gs:
-                ks = list(g)
+                ks = g.getchildren()
                 if any([k.tag == commenttag for k in ks]) and all(
+                    [
                         k.tag in commentdefs or dh.EBget(k, "unlinked_clone") == "True"
                         for k in ks
+                    ]
                 ):
                     # Leave Matplotlib text glyphs grouped together
                     cmnt = ";".join(
@@ -259,16 +272,20 @@ class FlattenPlots(inkex.EffectExtension):
                     pass
                 else:
                     dh.ungroup(g, removetextclips)
+            # dh.flush_stylesheet_entries(self.svg)
 
         prltag = dh.tags((PathElement, Rectangle, Line))
         if self.options.removerectw or reversions or self.options.revertpaths:
             from inkex.text.utils import default_style_atts as dsa
 
-            fltag = dh.tags((inkex.FlowPara, inkex.FlowRegion, inkex.FlowRoot))
+            fltag = dh.tags((FlowPara, FlowRegion, FlowRoot))
             nones = {None, "none"}
             wrects = []
 
-            minusp = inkex.Path(MINUS_PATH) 
+            minusp = inkex.Path(
+                "M 106,355 H 732 V 272 H 106 Z"
+            )  # Matplotlib minus sign
+            RECT_THRESHOLD = 2.49  # threshold ratio for rectangle reversion
             for ii, el in enumerate(ngs):
                 if el.tag in prltag:
                     myp = el.getparent()
@@ -292,7 +309,10 @@ class FlattenPlots(inkex.EffectExtension):
 
                             if reversions:
                                 dv = el.get("d")
-                                if dv is not None and el.cpath[0:3] == minusp[0:3]:
+                                if (
+                                    dv is not None
+                                    and inkex.Path(dv)[0:3] == minusp[0:3]
+                                ):
                                     t0 = el.ccomposed_transform
                                     if t0.a * t0.d - t0.b * t0.c < 0:
                                         bb = dh.bounding_box2(
@@ -396,7 +416,9 @@ class FlattenPlots(inkex.EffectExtension):
 
         if self.options.removerectw or self.options.removeduppaths:
             ngset = set(ngs)
-            ngs2 = [el for el in self.svg.iter('*') if el in ngset and dh.isdrawn(el)]
+            ngs2 = [
+                el for el in self.svg.iter('*') if el in ngset and dh.isdrawn(el)
+            ]
             bbs = dh.BB2(self.svg, ngs2, roughpath=True, parsed=True)
             
             if self.options.removeduppaths:
@@ -437,37 +459,44 @@ class FlattenPlots(inkex.EffectExtension):
                 else:
                     equal = np.zeros((0, 0), dtype=bool)
                         
-                for jj in reversed(range(len(els))):
-                    for ii in range(jj):
-                        if equal[ii,jj]:
-                            for kk in [ii,jj]:
-                                if sfs[kk] is None:
-                                    sfs[kk] = dh.get_strokefill(els[kk])
-                            mysf  = sfs[jj]
-                            othsf = sfs[ii]
-                            if mysf.stroke is None and mysf.fill is None:
-                                continue
-                            if mysf.stroke is not None:
-                                if mysf.strk_isurl or mysf.stroke.alpha != 1.0 or othsf.stroke is None:
-                                    continue
-                                if not mysf.stroke == othsf.stroke:
-                                    continue
-                            if mysf.fill is not None:
-                                if mysf.fill_isurl or mysf.fill.alpha != 1.0 or othsf.fill is None:
-                                    continue
-                                if not mysf.fill == othsf.fill:
-                                    continue
-                            if not els[jj].cspecified_style == els[ii].cspecified_style:
-                                continue
-                                
-                            mypth = els[jj].cpath.transform(els[jj].ccomposed_transform).to_absolute();
-                            othpth= els[ii].cpath.transform(els[ii].ccomposed_transform).to_absolute();
-                            if mypth!=othpth and mypth!=othpth.reverse():
-                                continue
-                            # dh.idebug(els[ii].get_id())
-                            els[ii].delete(deleteup=True)
-                            equal[ii,:] = False
-                            ngs2.remove(els[ii])
+                # for jj in reversed(range(len(els))):
+                #     for ii in range(jj):
+                #         if equal[ii,jj]:
+                iis, jjs = np.nonzero(np.triu(equal, k=1))  # strict upper triangle
+                order = np.lexsort((iis, -jjs))  # sort by -jj, then ii
+                iis, jjs = iis[order], jjs[order]
+                removed = set()
+                for ii, jj in zip(iis, jjs):
+                    if ii in removed:
+                        continue
+                    for kk in [ii,jj]:
+                        if sfs[kk] is None:
+                            sfs[kk] = dh.get_strokefill(els[kk])
+                    mysf  = sfs[jj]
+                    othsf = sfs[ii]
+                    if mysf.stroke is None and mysf.fill is None:
+                        continue
+                    if mysf.stroke is not None:
+                        if mysf.strk_isurl or mysf.stroke.alpha != 1.0 or othsf.stroke is None:
+                            continue
+                        if not mysf.stroke == othsf.stroke:
+                            continue
+                    if mysf.fill is not None:
+                        if mysf.fill_isurl or mysf.fill.alpha != 1.0 or othsf.fill is None:
+                            continue
+                        if not mysf.fill == othsf.fill:
+                            continue
+                    if not els[jj].cspecified_style == els[ii].cspecified_style:
+                        continue
+                        
+                    mypth = els[jj].cpath.transform(els[jj].ccomposed_transform).to_absolute();
+                    othpth= els[ii].cpath.transform(els[ii].ccomposed_transform).to_absolute();
+                    if mypth!=othpth and mypth!=othpth.reverse():
+                        continue
+                    els[ii].delete(deleteup=True)
+                    equal[ii,:] = False
+                    if els[ii] in ngs2:
+                        ngs2.remove(els[ii])
             
             if self.options.removerectw:
                 ngs3 = [el for el in ngs2 if el.get_id() in bbs]
@@ -499,7 +528,7 @@ class FlattenPlots(inkex.EffectExtension):
                         po.delete(deleteup=True)
                 potential_orphans = deleted_cms
 
-        ttags = dh.tags((Tspan, TextPath, inkex.FlowPara, inkex.FlowRegion, inkex.FlowSpan))
+        ttags = dh.tags((Tspan, TextPath, FlowPara, FlowRegion, FlowSpan))
         ttags2 = dh.tags(
             (
                 StyleElement,
