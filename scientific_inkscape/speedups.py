@@ -400,6 +400,24 @@ def cached_parse_string(path_d):
 
 """ transforms.py """
 
+def tinit_mod(
+        self,
+        matrix=None,  # type: Optional[MatrixLike]
+        callback=None,  # type: Optional[Callable[[Transform], Transform]]
+        **extra,
+    ):
+        # type: (...) -> None
+        self.callback = None
+        self.matrix = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+        if matrix is not None:
+            self._set_matrix(matrix)
+
+        if extra:
+            self.add_kwargs(**extra)
+        # Set callback last, so it doesn't kick off just setting up the internal value
+        self.callback = callback
+
+inkex.Transform.__init__ = tinit_mod  # type: ignore
 
 # Faster apply_to_point that gets rid of property calls
 def apply_to_point_mod(obj, pt):
