@@ -92,9 +92,7 @@ TEtag, TStag, FRtag = TextElement.ctag, Tspan.ctag, FlowRoot.ctag
 TEFRtags = {TEtag, FRtag}
 TEtags = {TEtag, TStag}
 FRtags = {FRtag, FlowRegion.ctag, FlowPara.ctag, FlowSpan.ctag}
-
-LOCK = threading.Lock()
-
+SPR = inkex.addNS("role", "sodipodi")
 
 class ParsedTextList(list):
     """
@@ -373,11 +371,8 @@ class ParsedText:
         ptail = [[tel.tail for tel in ptv] for ptv in pts]  # preceding tails
 
         # Next we find the top-level sodipodi:role lines
-        xvs = [ParsedText.get_xy(ddv, "x") for ddv in dds]
-        yvs = [ParsedText.get_xy(ddv, "y") for ddv in dds]
-        dxvs = [ParsedText.get_xy(ddv, "dx") for ddv in dds]
-        dyvs = [ParsedText.get_xy(ddv, "dy") for ddv in dds]
-        nsprl = {ddv:ddv.get("sodipodi:role")=='line' for ddv in dds}
+        xvs, yvs, dxvs, dyvs = ([ParsedText.get_xy(ddv, key) for ddv in dds] for key in ("x","y","dx","dy"))
+        nsprl = {ddv:EBget(ddv,SPR)=='line' for ddv in dds}
 
         # Find effective sprls (ones that are not disabled)
         esprl = [False]*len(dds)
@@ -473,12 +468,12 @@ class ParsedText:
         if not srcsonly:
             self.lns = []
         sprl_inherits = None
+        ctf = elem.ccomposed_transform
         for ddi, typ, tel, sel, txt in self.tree.dgenerator():
             newsprl = typ == TYP_TEXT and types[ddi] == TLVLSPRL
             
-            if (txt is not None and len(txt) > 0) or newsprl:
+            if txt or newsprl:
                 sty = sel.cspecified_style
-                ctf = sel.ccomposed_transform
                 fsz, scf, utfs = composed_width(sel, "font-size")
 
                 if newsprl:
@@ -593,43 +588,46 @@ class ParsedText:
 
                 fsty = font_style(sty)
                 tsty = true_style(fsty)
-                if txt is not None:
-                    if typ==TYP_TEXT:
-                        dxv = dxvs[ddi]
-                        dyv = dyvs[ddi]
-                        if dxv[0] is None:
-                            dxv = [0]*len(txt)
-                        else:
-                            dxv = dxv + [0]*(len(txt)-len(dxv))
-                        if dyv[0] is None:
-                            dyv = [0]*len(txt)
-                        else:
-                            dyv = dyv + [0]*(len(txt)-len(dyv))
-                    else:
-                        dxv = [0]*len(txt)
-                        dyv = [0]*len(txt)
-                    
-                    
-                    for j, c in enumerate(txt):
-                        csty = self.font_picker(txt, j, fsty, tsty)
-                        prop = self.ctable.get_prop(c, csty)
-                        _ = TChar(
-                            c,
-                            fsz,
-                            utfs,
-                            prop,
-                            sty,
-                            csty,
-                            CLoc(tel, typ, j),
-                            lns[-1], dxv[j], dyv[j]
-                        )
 
-                        if j == 0:
-                            lsp0 = lns[-1].chrs[-1].lsp
-                            bshft0 = lns[-1].chrs[-1].bshft
-                        else:
-                            lns[-1].chrs[-1].lsp = lsp0
-                            lns[-1].chrs[-1].bshft = bshft0
+                if txt is None:
+                    continue
+                ntxt = len(txt)
+                if typ==TYP_TEXT:
+                    dxv = dxvs[ddi]
+                    dyv = dyvs[ddi]
+                    if dxv[0] is None:
+                        dxv = [0]*ntxt
+                    else:
+                        dxv = dxv + [0]*(ntxt-len(dxv))
+                    if dyv[0] is None:
+                        dyv = [0]*ntxt
+                    else:
+                        dyv = dyv + [0]*(ntxt-len(dyv))
+                else:
+                    dxv = [0]*ntxt
+                    dyv = [0]*ntxt
+                
+                
+                for j, c in enumerate(txt):
+                    csty = self.font_picker(txt, j, fsty, tsty)
+                    prop = self.ctable.get_prop(c, csty)
+                    _ = TChar(
+                        c,
+                        fsz,
+                        utfs,
+                        prop,
+                        sty,
+                        csty,
+                        CLoc(tel, typ, j),
+                        lns[-1], dxv[j], dyv[j]
+                    )
+
+                    if j == 0:
+                        lsp0 = lns[-1].chrs[-1].lsp
+                        bshft0 = lns[-1].chrs[-1].bshft
+                    else:
+                        lns[-1].chrs[-1].lsp = lsp0
+                        lns[-1].chrs[-1].bshft = bshft0
                                 
         self.lns = lns
 
@@ -644,7 +642,7 @@ class ParsedText:
                 line.parse_chunks()
 
             for line in reversed(self.lns):
-                if len(line.chrs) == 0:
+                if not line.chrs:
                     self.lns.remove(line)
                     # prune empty lines
             
@@ -704,9 +702,7 @@ class ParsedText:
 
     def make_next_chain(self):
         """ For manual kerning removal, assign next and previous chunks """
-        yvs = [
-            line.y[0] for line in self.lns if line.y is not None and len(line.y) > 0
-        ]
+        yvs = [line.y[0] for line in self.lns if line.y]
         tol = 0.001
         for unqy in uniquetol(yvs, tol):
             samey = [
@@ -1403,25 +1399,21 @@ class ParsedText:
         """Gets the untransformed bounding boxes of all characters' ink."""
         exts = []
         if self.lns is not None and len(self.lns) > 0 and self.lns[0].xsrc is not None:
-            for line in self.lns:
-                for chk in line.chks:
-                    for c in chk.chrs:
-                        pt1 = c.pts_ut_ink[0]
-                        pt2 = c.pts_ut_ink[2]
-                        if not math.isnan(pt1[1]):
-                            exts.append(bbox((pt1, pt2)))
+            for c in self.chrs:
+                pt1 = c.pts_ut_ink[0]
+                pt2 = c.pts_ut_ink[2]
+                if not math.isnan(pt1[1]):
+                    exts.append(bbox((pt1, pt2)))
         return exts
 
     def get_full_inkbbox(self):
         """Gets the untransformed bounding box of the whole element."""
         ext = bbox(None)
         if self.lns is not None and len(self.lns) > 0 and self.lns[0].xsrc is not None:
-            for line in self.lns:
-                for chk in line.chks:
-                    for c in chk.chrs:
-                        pt1 = c.pts_ut_ink[0]
-                        pt2 = c.pts_ut_ink[2]
-                        ext = ext.union(bbox((pt1, pt2)))
+            for c in self.chrs:
+                pt1 = c.pts_ut_ink[0]
+                pt2 = c.pts_ut_ink[2]
+                ext = ext.union(bbox((pt1, pt2)))
         return ext
 
     # Extent functions
@@ -1429,13 +1421,11 @@ class ParsedText:
         """Gets the untransformed extent of each character."""
         exts = []
         if self.lns is not None and len(self.lns) > 0 and self.lns[0].xsrc is not None:
-            for line in self.lns:
-                for chk in line.chks:
-                    for c in chk.chrs:
-                        pt1 = c.pts_ut[0]
-                        pt2 = c.pts_ut[2]
-                        if not math.isnan(pt1[1]):
-                            exts.append(bbox((pt1, pt2)))
+            for c in self.chrs:
+                pt1 = c.pts_ut[0]
+                pt2 = c.pts_ut[2]
+                if not math.isnan(pt1[1]):
+                    exts.append(bbox((pt1, pt2)))
         return exts
 
     def get_chunk_extents(self):
@@ -1469,14 +1459,13 @@ class ParsedText:
         """Gets the untransformed extent of each chunk's ink."""
         exts = []
         if self.lns is not None and len(self.lns) > 0 and self.lns[0].xsrc is not None:
-            for line in self.lns:
-                for chk in line.chks:
-                    ext = bbox(None)
-                    for c in chk.chrs:
-                        pt1 = c.pts_ut_ink[0]
-                        pt2 = c.pts_ut_ink[2]
-                        ext = ext.union(bbox((pt1, pt2)))
-                    exts.append(ext)
+            for chk in self.chks:
+                ext = bbox(None)
+                for c in chk.chrs:
+                    pt1 = c.pts_ut_ink[0]
+                    pt2 = c.pts_ut_ink[2]
+                    ext = ext.union(bbox((pt1, pt2)))
+                exts.append(ext)
         return exts
 
     def get_line_ink(self):
@@ -1499,18 +1488,16 @@ class ParsedText:
         """
         ext = bbox(None)
         if self.lns is not None and len(self.lns) > 0 and self.lns[0].xsrc is not None:
-            for line in self.lns:
-                for chk in line.chks:
-                    for c in chk.chrs:
-                        pts = (
-                            c.parsed_pts_ut
-                            if parsed and c.parsed_pts_ut is not None
-                            else c.pts_ut
-                        )
-                        pt1 = pts[0]
-                        pt2 = pts[2]
-                        if not math.isnan(pt1[1]):
-                            ext = ext.union(bbox((pt1, pt2)))
+            for c in self.chrs:
+                pts = (
+                    c.parsed_pts_ut
+                    if parsed and c.parsed_pts_ut is not None
+                    else c.pts_ut
+                )
+                pt1 = pts[0]
+                pt2 = pts[2]
+                if not math.isnan(pt1[1]):
+                    ext = ext.union(bbox((pt1, pt2)))
         return ext
 
     @property
@@ -1604,12 +1591,7 @@ class ParsedText:
         bbx = region.cpath.bounding_box()
         bbx = [bbx.left, bbx.top, bbx.width, bbx.height]
         if not padding == 0:
-            bbx = [
-                bbx[0] + padding,
-                bbx[1] + padding,
-                bbx[2] - 2 * padding,
-                bbx[3] - 2 * padding,
-            ]
+            bbx = [v + d*padding for v, d in zip(bbx, (1, 1, -2, -2))]
 
         # Delete duplicate
         if isshapeins:
@@ -2855,7 +2837,7 @@ class TChunk:
 
         # Add to line
         myi = lchr.lnindex + 1  # insert after last character
-        if len(self.line.x) > 0:
+        if self.line.x:
             newx = self.line.x[0:myi] + [None] + self.line.x[myi:]
             newx = newx[0 : len(self.line.chrs) + 1]
             self.line.write_xy(newx)
@@ -3039,25 +3021,25 @@ class TChunk:
 
     def get_fs(self):
         """Returns the font size of the chunk."""
-        return maxnone([c.tfs for c in self.chrs])
+        return max([c.tfs for c in self.chrs],default=None)
 
     tfs = property(get_fs)
 
 
     def get_utfs(self):
         """Returns the font size of the chunk."""
-        return maxnone([c.utfs for c in self.chrs])
+        return max([c.utfs for c in self.chrs],default=None)
 
     utfs = property(get_utfs)
 
     @property
     def spw(self):
         """Returns the space width of the chunk."""
-        return maxnone([c.spw for c in self.chrs])
+        return max([c.spw for c in self.chrs],default=None)
 
     def get_mch(self):
         """Returns the maximum character height of the chunk."""
-        return maxnone(self.caph)
+        return max(self.caph,default=None)
 
     mch = property(get_mch)
 
@@ -3619,7 +3601,7 @@ class TChar:
         lncs[myi].lnindex = None
         self.line.chrs = lncs[:myi] + lncs[myi + 1 :]
 
-        if len(self.line.chrs) == 0:  # line now empty, can delete
+        if not self.line.chrs:  # line now empty, can delete
             self.line.dell()
 
         # Remove from chunk
@@ -3667,11 +3649,6 @@ class TChar:
         # When the specified style has something new span doesn't, are inheriting and
         # need to explicitly assign the default value
         styset = Style(sty)
-        # newspfd = t.cspecified_style
-        # for att in newspfd:
-        #     if att not in styset and setdefault:
-        #         styset[att] = default_style_atts.get(att)
-        # t.cstyle = styset
         t.cspecified_style = styset
         
         self.sty = styset
@@ -3867,7 +3844,7 @@ class CharacterTable:
         for elem in els:
             tree = TextTree(elem)
             for _, _, _, sel, txt in tree.dgenerator():
-                if txt is not None and len(txt) > 0:
+                if txt:
                     sty = sel.cspecified_style
                     fsty = font_style(sty)
                     fstyset.setdefault(fsty, set()).update(txt + " ")
@@ -4252,14 +4229,6 @@ def deleteempty(elem):
             # delete any text elements that are just white space
     return anydeleted
 
-
-def maxnone(x):
-    """Returns the maximum value of a list, or None if the list is empty."""
-    if len(x) > 0:
-        return max(x)
-    return None
-
-
 def xyset(elem, xyt, val):
     """
     A fast setter for 'x', 'y', 'dx', and 'dy' that uses lxml's set directly and
@@ -4308,7 +4277,7 @@ def remove_position_overflows(el):
                         for _, typ, src, _, txt in TextTree(el).dgenerator(subel=src0):
                             if (
                                 typ == TYP_TAIL
-                                and src.get("sodipodi:role") == "line"
+                                and EBget(src,SPR) == "line"
                                 and src in toplevels
                             ):
                                 cntd += 1
