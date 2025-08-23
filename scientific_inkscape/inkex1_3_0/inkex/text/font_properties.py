@@ -356,7 +356,7 @@ def font_style(sty):
     sty2 = Style(dfltatt)
     sty2.update({k: v for k, v in sty.items() if k in fontatt})
     sty2["font-family"] = ",".join(
-        ["'" + v.strip('"').strip("'") + "'" for v in sty2["font-family"].split(",")]
+        ["'" + v.strip('\'" ') + "'" for v in sty2["font-family"].split(",")]
     )
     return sty2
 

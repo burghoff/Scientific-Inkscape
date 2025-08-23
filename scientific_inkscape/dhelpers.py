@@ -1158,6 +1158,19 @@ from inkex.text.utils import default_style_atts as dsa
 
 NONES = [None, "none"]
 
+class StrokeFill:
+    def __init__(self, *args):
+        (
+            self.stroke,
+            self.fill,
+            self.strokewidth,
+            self.strokedasharray,
+            self.markerstart,
+            self.markermid,
+            self.markerend,
+            self.strk_isurl,
+            self.fill_isurl,
+        ) = args
 
 def get_strokefill(el):
     sty = el.cspecified_style
@@ -1212,20 +1225,6 @@ def get_strokefill(el):
     ms = sty.get("marker-start", None)
     mm = sty.get("marker-mid", None)
     me = sty.get("marker-end", None)
-
-    class StrokeFill:
-        def __init__(self, *args):
-            (
-                self.stroke,
-                self.fill,
-                self.strokewidth,
-                self.strokedasharray,
-                self.markerstart,
-                self.markermid,
-                self.markerend,
-                self.strk_isurl,
-                self.fill_isurl,
-            ) = args
 
     return StrokeFill(strk, fill, sw, sd, ms, mm, me, strk_isurl, fill_isurl)
 

@@ -188,19 +188,20 @@ def isrectangle(elem, includingtransform=True):
             determination.
 
     Returns:
-        tuple: A tuple containing a boolean indicating if the element is a rectangle and
-        the path if it is.
+        tuple: A tuple containing a boolean indicating if the element is a rectangle
     """
 
     ret = True
     if not includingtransform and elem.tag == rect_tag:
-        pth = elem.cpath
+        pass
     elif elem.tag in rectlike_tags:
         if elem.tag == pel_tag and not (1 <= cnt_pth_cmds(elem.get("d", "")) <= 6):
         # Allow up to 6 (initial M + 4 lines + redundant close path)
             return False
-        pth = elem.cpath
-        pts = list(pth.end_points)
+        if len(elem.cpath)<4:
+            return False
+        pts = list(elem.cpath.end_points)
+
         if includingtransform:
             tmat = elem.ctransform.matrix
             x, y = list(
@@ -219,13 +220,12 @@ def isrectangle(elem, includingtransform=True):
 
         maxsz = max(max(x) - min(x), max(y) - min(y))
         tol = 1e-3 * maxsz
-        if len(pts)<4 or len(uniquetol(x, tol)) != 2 or len(uniquetol(y, tol)) != 2:
-            ret = False
+        if len(uniquetol(x, tol)) != 2 or len(uniquetol(y, tol)) != 2:
+            return False
     elif elem.tag == usetag:
         useel = elem.get_link("xlink:href")
         if useel is not None:
-            return isrectangle(useel)
-        ret = True
+            ret = isrectangle(useel)
     else:
         ret = False
 

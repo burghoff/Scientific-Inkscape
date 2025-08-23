@@ -197,7 +197,7 @@ class FlattenPlots(inkex.EffectExtension):
                 sel.remove(el)
         seld = [v for el in sel for v in el.iter('*')]
         for el in seld:
-            if el.get("inkscape-scientific-flattenexclude"):
+            if dh.EBget(el,"inkscape-scientific-flattenexclude"):
                 seld.remove(el)
 
         # Move selected defs/clips/mask into global defs
@@ -382,9 +382,7 @@ class FlattenPlots(inkex.EffectExtension):
                         elif ff == repl:
                             pass
                         else:
-                            ff = [
-                                x.strip("'").strip('"').strip() for x in ff.split(",")
-                            ]
+                            ff = [x.strip('\'" ') for x in ff.split(",")]
                             if not (ff[-1].lower() == repl.lower()):
                                 ff.append(repl)
                             el.cstyle["font-family"] = ",".join(ff)
