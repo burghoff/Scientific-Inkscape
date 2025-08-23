@@ -84,6 +84,7 @@ from inkex.utils import debug
 DIFF_ADVANCES = True  # generate a differential advances table for each font?
 TEXTSIZE = 100  # size of rendered text
 DEPATHOLOGIZE = True  # clean up pathological atts not normally made by Inkscape
+XY_TOL = 1e-4
 
 EBget = lxml.etree.ElementBase.get
 EBset = lxml.etree.ElementBase.set
@@ -321,7 +322,7 @@ class ParsedText:
 
         ret.lns = []
         for line in self.lns:
-            if len(line.chrs) == 0:
+            if not line.chrs:
                 continue
             ret_ln = line.copy(cmemo)
             ret_ln.ptxt = ret
@@ -392,7 +393,7 @@ class ParsedText:
             # Prune any sodipodi:roles that are inactive
             for ii, d in enumerate(dds):
                 if not esprl[ii] and nsprl[d]:
-                    d.set('sodipodi:role',None)
+                    d.attrib.pop(SPR,None)
                     nsprl[d] = False
 
         # Figure out which effective sprls are top-level
@@ -482,14 +483,7 @@ class ParsedText:
                     )
 
                 # Make a new line if we're sprl or if we have a new x or y
-                makeline = len(lns) == 0
-                makeline |= typ == TYP_TEXT and (
-                    newsprl
-                    or (
-                        types[ddi] == NORMAL
-                        and (ixs[ddi][0] is not None or iys[ddi][0] is not None)
-                    )
-                )
+                makeline = not lns or (typ == TYP_TEXT and (newsprl or (types[ddi] == NORMAL and (ixs[ddi][0] is not None or iys[ddi][0] is not None))))
                 if makeline:
                     edi = ddi
                     if typ == TYP_TAIL:
@@ -499,7 +493,7 @@ class ParsedText:
                     yvl = iys[edi]
                     ysrc = ysrcs[edi]
                     if newsprl:
-                        if len(lns) == 0:
+                        if not lns:
                             xvl = [ixs[0][0]]
                             xsrc = xsrcs[0]
                             yvl = [iys[0][0]]
@@ -516,7 +510,7 @@ class ParsedText:
                         continuex = False
                         issprl = False
                         if xvl[0] is None:
-                            if len(lns) > 0:
+                            if lns:
                                 xvl = lns[-1].x[:]
                                 xsrc = lns[-1].xsrc
                             else:
@@ -525,7 +519,7 @@ class ParsedText:
                             continuex = True
                         continuey = False
                         if yvl[0] is None:
-                            if len(lns) > 0:
+                            if lns:
                                 yvl = lns[-1].y[:]
                                 ysrc = lns[-1].ysrc
                             else:
@@ -543,7 +537,7 @@ class ParsedText:
                         tlvlno = 0
 
                     anch = sty.get("text-anchor")
-                    if len(lns) > 0 and not nsprl[sel] and edi>0:
+                    if lns and not nsprl[sel] and edi>0:
                         if lns[-1].anchor is not None:
                             anch = lns[
                                 -1
@@ -812,7 +806,7 @@ class ParsedText:
     def strip_text_baseline_shift(self):
         """Remove baseline-shift if applied to the whole element"""
         if "baseline-shift" in self.textel.cspecified_style:
-            if len(self.lns) > 0 and len(self.lns[0].chrs) > 0:
+            if self.lns and self.lns[0].chrs:
                 lny = self.lns[0].y[:]
                 bsv = self.lns[0].chrs[0].bshft
                 self.textel.cstyle["baseline-shift"] = None
@@ -1001,7 +995,7 @@ class ParsedText:
                     changed_styles[ddv] = ddv.cstyle
                     del changed_styles[ddv]["line-height"]
 
-        if len(self.chrs) > 0:
+        if self.chrs:
             # Clear all fonts and only apply to relevant Tspans
 
             for ddv in elem.iter('*'):
@@ -1067,8 +1061,9 @@ class ParsedText:
         cs2 = npt.chrs
         dmemo = dict(zip(cs1,cs2))
         
-        ps1 = {c:c.pts_ut[0] for c in cs1}
-        ps2 = {c:c.pts_ut[0] for c in cs2}
+        pv = [c.pts_ut[0] for c in cs1]
+        ps1 = dict(zip(cs1, pv))
+        ps2 = dict(zip(cs2, pv))
         ds = {c:(c.dx,c.dy) for c in cs2}
         fc = dmemo[chrs[0]]
         
@@ -1103,7 +1098,7 @@ class ParsedText:
         nln.xsrc, nln.ysrc = npt.parse_lines(srcsonly=True)
         nln.write_xy(newx=nln.x, newy=nln.y)
         nln.disablesodipodi(force=True)
-        if len(self.lns) > 0:
+        if self.lns:
             self.lns[0].xsrc, self.lns[0].ysrc = self.parse_lines(srcsonly=True)
             self.lns[0].write_xy(newx=self.lns[0].x, newy=self.lns[0].y)
 
@@ -1313,11 +1308,11 @@ class ParsedText:
                     npt = newtxt.parsed_text
                     if (
                         origx is not None
-                        and len(npt.lns) > 0
-                        and len(npt.lns[0].chrs) > 0
+                        and npt.lns
+                        and npt.lns[0].chrs
                     ):
                         npt.reparse()
-                        if len(npt.lns)>0:
+                        if npt.lns:
                             newx = [
                                 xvl + origx - npt.lns[0].chrs[0].pts_ut[0][0]
                                 for xvl in npt.lns[0].x
@@ -1398,7 +1393,7 @@ class ParsedText:
     def get_char_inkbbox(self):
         """Gets the untransformed bounding boxes of all characters' ink."""
         exts = []
-        if self.lns is not None and len(self.lns) > 0 and self.lns[0].xsrc is not None:
+        if self.lns is not None and self.lns and self.lns[0].xsrc is not None:
             for c in self.chrs:
                 pt1 = c.pts_ut_ink[0]
                 pt2 = c.pts_ut_ink[2]
@@ -1409,7 +1404,7 @@ class ParsedText:
     def get_full_inkbbox(self):
         """Gets the untransformed bounding box of the whole element."""
         ext = bbox(None)
-        if self.lns is not None and len(self.lns) > 0 and self.lns[0].xsrc is not None:
+        if self.lns is not None and self.lns and self.lns[0].xsrc is not None:
             for c in self.chrs:
                 pt1 = c.pts_ut_ink[0]
                 pt2 = c.pts_ut_ink[2]
@@ -1420,7 +1415,7 @@ class ParsedText:
     def get_char_extents(self):
         """Gets the untransformed extent of each character."""
         exts = []
-        if self.lns is not None and len(self.lns) > 0 and self.lns[0].xsrc is not None:
+        if self.lns is not None and self.lns and self.lns[0].xsrc is not None:
             for c in self.chrs:
                 pt1 = c.pts_ut[0]
                 pt2 = c.pts_ut[2]
@@ -1431,7 +1426,7 @@ class ParsedText:
     def get_chunk_extents(self):
         """Gets the untransformed extent of each chunk."""
         exts = []
-        if self.lns is not None and len(self.lns) > 0 and self.lns[0].xsrc is not None:
+        if self.lns is not None and self.lns and self.lns[0].xsrc is not None:
             for line in self.lns:
                 for chk in line.chks:
                     pt1 = chk.pts_ut[0]
@@ -1443,7 +1438,7 @@ class ParsedText:
     def get_line_extents(self):
         """Gets the untransformed extent of each line."""
         exts = []
-        if self.lns is not None and len(self.lns) > 0 and self.lns[0].xsrc is not None:
+        if self.lns is not None and self.lns and self.lns[0].xsrc is not None:
             for line in self.lns:
                 extln = bbox(None)
                 for chk in line.chks:
@@ -1458,7 +1453,7 @@ class ParsedText:
     def get_chunk_ink(self):
         """Gets the untransformed extent of each chunk's ink."""
         exts = []
-        if self.lns is not None and len(self.lns) > 0 and self.lns[0].xsrc is not None:
+        if self.lns is not None and self.lns and self.lns[0].xsrc is not None:
             for chk in self.chks:
                 ext = bbox(None)
                 for c in chk.chrs:
@@ -1471,7 +1466,7 @@ class ParsedText:
     def get_line_ink(self):
         """Gets the untransformed extent of each line's ink."""
         exts = []
-        if self.lns is not None and len(self.lns) > 0 and self.lns[0].xsrc is not None:
+        if self.lns is not None and self.lns and self.lns[0].xsrc is not None:
             for line in self.lns:
                 ext = bbox(None)
                 for c in line.chrs:
@@ -1487,7 +1482,7 @@ class ParsedText:
         parsed=True gets original prior to any mods
         """
         ext = bbox(None)
-        if self.lns is not None and len(self.lns) > 0 and self.lns[0].xsrc is not None:
+        if self.lns is not None and self.lns and self.lns[0].xsrc is not None:
             for c in self.chrs:
                 pts = (
                     c.parsed_pts_ut
@@ -2098,7 +2093,7 @@ class ParsedText:
         another level of nested tspans, that may have a relative baseline-shift or font-size.
         Deletes this element
         '''
-        if len(self.chrs)==0:
+        if not self.chrs:
             self.textel.delete()
             return None
         te = inkex.TextElement()
@@ -2395,7 +2390,7 @@ class TLine:
         if self.ptxt is None:
             return [0]
         i = self.ptxt.lns.index(self)
-        if i > 0 and len(self.ptxt.lns[i - 1].chks) > 0:
+        if i > 0 and self.ptxt.lns[i - 1].chks:
             anfr = self.anchfrac
             xanch = (1 + anfr) * self.ptxt.lns[i - 1].chks[-1].pts_ut[3][
                 0
@@ -2416,7 +2411,7 @@ class TLine:
         if self.ptxt is None:
             return [0]
         i = self.ptxt.lns.index(self)
-        if i > 0 and len(self.ptxt.lns[i - 1].chks) > 0:
+        if i > 0 and self.ptxt.lns[i - 1].chks:
             # anfr = self.anchfrac
             # yanch = (1 + anfr) * self.ptxt.lns[i - 1].chks[-1].pts_ut[3][
             #     1
@@ -2539,12 +2534,12 @@ class TLine:
 
     def disablesodipodi(self, force=False):
         """Disables sodipodi:role=line."""
-        if len(self.sprlabove) > 0 or force:
-            if len(self.chrs) > 0:
+        if self.sprlabove or force:
+            if self.chrs:
                 newsrc = self.chrs[0].loc.elem  # disabling snaps src to first char
                 if self.chrs[0].loc.typ == TYP_TAIL:
                     newsrc = self.chrs[0].loc.elem.getparent()
-                newsrc.set("sodipodi:role", None)
+                newsrc.attrib.pop(SPR, None)
 
                 self.sprlabove = []
                 self.xsrc = newsrc
@@ -2560,38 +2555,38 @@ class TLine:
         Never change x/y directly, always call this function
         """
         if newx is not None:
-            sibsrc = [line for line in self.ptxt.lns if line.xsrc == self.xsrc]
-            if len(sibsrc) > 1:
-                for line in reversed(sibsrc):
-                    line.disablesodipodi()  # Disable sprl when lines share an xsrc
-
-            while len(newx) > 1 and newx[-1] is None:
-                newx.pop()
             oldx = self._xv if not self.continuex else self.x
-            self._xv = newx
-            xyset(self.xsrc, "x", newx)
-
-            if (
-                len(oldx) > 1 and len(newx) == 1 and len(self.sprlabove) > 0
-            ):  # would re-enable sprl
-                self.disablesodipodi()
+            if not fuzzy_equal(oldx,newx):
+                sibsrc = [line for line in self.ptxt.lns if line.xsrc == self.xsrc]
+                if len(sibsrc) > 1:
+                    for line in reversed(sibsrc):
+                        line.disablesodipodi()
+                        # Disable sprl when lines share an xsrc
+    
+                while len(newx) > 1 and newx[-1] is None:
+                    newx.pop()
+                self._xv = newx
+                xyset(self.xsrc, "x", newx)
+                if len(oldx) > 1 and len(newx) == 1 and self.sprlabove:
+                    # would re-enable sprl
+                    self.disablesodipodi()
 
         if newy is not None:
-            sibsrc = [line for line in self.ptxt.lns if line.ysrc == self.ysrc]
-            if len(sibsrc) > 1:
-                for line in reversed(sibsrc):
-                    line.disablesodipodi()  # Disable sprl when lines share a ysrc
-
-            while len(newy) > 1 and newy[-1] is None:
-                newx.pop()
             oldy = self._yv if not self.continuey else self.y
-            self._yv = newy
-            xyset(self.ysrc, "y", newy)
-
-            if (
-                len(oldy) > 1 and len(newy) == 1 and len(self.sprlabove) > 0
-            ):  # would re-enable sprl
-                self.disablesodipodi()
+            if not fuzzy_equal(oldy,newy):
+                sibsrc = [line for line in self.ptxt.lns if line.ysrc == self.ysrc]
+                if len(sibsrc) > 1:
+                    for line in reversed(sibsrc):
+                        line.disablesodipodi()
+                        # Disable sprl when lines share a ysrc
+                while len(newy) > 1 and newy[-1] is None:
+                    newx.pop()
+                self._yv = newy
+                xyset(self.ysrc, "y", newy)
+                if (
+                    len(oldy) > 1 and len(newy) == 1 and self.sprlabove
+                ):  # would re-enable sprl
+                    self.disablesodipodi()
                 
     def split(self,i):
         if i>=len(self.chrs):
@@ -2753,7 +2748,7 @@ class TChunk:
         self.caph.pop(i)
         self.bshft.pop(i)
 
-        if len(self.chrs) == 0:  # chunk now empty
+        if not self.chrs:  # chunk now empty
             self.del_chk()
 
     def cchange(self):
@@ -3012,7 +3007,7 @@ class TChunk:
                 ominx * (1 - anfr) + omaxx * anfr
             )
             # how much the final anchor moved
-            if deltaanch != 0:
+            if abs(deltaanch)>XY_TOL:
                 newx = self.line.x
                 newx[self.chrs[0].lnindex] -= deltaanch
                 self.line.write_xy(newx)
@@ -4418,3 +4413,13 @@ def deref_use(elem):
         if deref is not None:
             return deref
     return elem
+
+def fuzzy_equal(a, b, tol=1e-4):
+    if len(a) != len(b):
+        return False
+    la = len(a)
+    for i in range(la):
+        x = a[i]; y = b[i]
+        if x is not None and y is not None and abs(x - y) > XY_TOL:
+            return False
+    return True

@@ -647,7 +647,7 @@ class BaseElementCache(BaseElement):
             descendants.append(ddv)
 
         precedingtails.append([])
-        while len(endsat) > 0:
+        while endsat:
             precedingtails[-1].append(endsat.pop()[0])
         return descendants, precedingtails
 

@@ -71,7 +71,7 @@ def remove_kerning(
     debugparser=False,
 ):
     tels = [el for el in els if isinstance(el, (inkex.TextElement, inkex.FlowRoot))]
-    if len(tels) > 0:
+    if tels:
         tels[0].croot.make_char_table(tels)
     if DEBUG_PARSER or debugparser:
         for el in tels:
@@ -242,7 +242,7 @@ def Split_Distant_Intrachunk(els):
     for ptxt in [el.parsed_text for el in els]:
         if ptxt.lns is not None and not (ptxt.ismlinkscape) and not (ptxt.isflow):
             for w in ptxt.chks:
-                if len(w.chrs) > 0:
+                if w.chrs:
                     chrs = sorted(w.chrs, key=lambda chr: chr.pts_ut[0][0])
                     lastnspc = None
                     splitiis = []
@@ -269,7 +269,7 @@ def Split_Distant_Intrachunk(els):
                             # chars that may separate numbers
                             splrest = re.split("|".join(numbersplits), w.txt[ii:])
                             splrest = [v for v in splrest if v != ""]
-                            if len(splrest) > 0:
+                            if splrest:
                                 remainingnumeric = isnumeric(splrest[0])
                             numbersplit = (
                                 isnumeric(w.txt[prevsplit:ii])
@@ -283,10 +283,11 @@ def Split_Distant_Intrachunk(els):
                         if chrs[ii].c not in [" ", "\u00a0"]:
                             lastnspc = chrs[ii]
 
-                    if len(splitiis) > 0:
-                        for ii in reversed(range(len(splitiis))):
+                    if splitiis:
+                        lensplitiis = len(splitiis)
+                        for ii in reversed(range(lensplitiis)):
                             sstart = splitiis[ii]
-                            if ii != len(splitiis) - 1:
+                            if ii != lensplitiis - 1:
                                 sstop = splitiis[ii + 1]
                             else:
                                 sstop = len(chrs)
@@ -522,7 +523,7 @@ def Perform_Merges(chks, mk=False):
         w.merges = []
         w.mergetypes = []
         w.merged = False
-        if len(mw) > 0:
+        if mw:
             w2 = mw[mi][0]
             mtype = mw[mi][1]
             br1 = mw[mi][2]
@@ -533,7 +534,7 @@ def Perform_Merges(chks, mk=False):
     # Generate chains of merges
     for w in chks:
         # if w.txt=='T':
-        if not (w.merged) and len(w.merges) > 0:
+        if not (w.merged) and w.merges:
             w.merges[-1].merged = True
             nextmerge = w.merges[-1].merges
             nextmerget = w.merges[-1].mergetypes
@@ -546,7 +547,7 @@ def Perform_Merges(chks, mk=False):
 
     # Create a merge plan
     for w in chks:
-        if len(w.merges) > 0:
+        if w.merges:
             ctype = "normal"
             w.wtypes = [ctype]
             bail = False
@@ -594,26 +595,25 @@ def Perform_Merges(chks, mk=False):
 
     # Execute the merge plan
     for w in chks:
-        if len(w.merges) > 0 and not (w.merged):
-            maxii = len(w.merges)
+        if w.merges and not (w.merged):
             alltxt = "".join([w.txt] + [w2.txt for w2 in w.merges])
             hasspaces = " " in alltxt
 
             mels = []
-            for ii in range(maxii):
+            for ii,mrg in enumerate(w.merges):
                 maxspaces = None
-                if mk and hasspaces and w.merges[ii].prevsametspan:
+                if mk and hasspaces and mrg.prevsametspan:
                     maxspaces = 0
                 if (
-                    w.txt is not None and len(w.txt) > 0 and w.txt[-1] == " "
+                    w.txt and w.txt[-1] == " "
                 ) or w.wtypes[ii + 1] in [
                     "super",
                     "sub",
                 ]:  # no extra spaces for sub/supers or if there's already one
                     maxspaces = 0
 
-                mels.append(w.merges[ii].line.ptxt.textel)
-                w.append_chk(w.merges[ii], w.wtypes[ii + 1], maxspaces)
+                mels.append(mrg.line.ptxt.textel)
+                w.append_chk(mrg, w.wtypes[ii + 1], maxspaces)
 
             # Union clips if necessary
             mels = dh.unique([w.line.ptxt.textel] + mels)
