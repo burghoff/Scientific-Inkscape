@@ -905,7 +905,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
             rootstys = [
                 sty for sty in list(self) if sty.tag == SvgDocumentElementCache.styletag
             ]
-            if len(rootstys) == 0:
+            if not rootstys:
                 self._crootsty = inkex.StyleElement()
                 self.insert(0, self._crootsty)
             else:

@@ -224,7 +224,7 @@ def Split_Distant_Chunks(els):
                 line.splits = splits
                 line.sws = sws
 
-                if len(splits) > 0:
+                if splits:
                     for ii in reversed(range(len(splits))):
                         sstart = splits[ii]
                         if ii != len(splits) - 1:
@@ -416,7 +416,7 @@ def External_Merges(els, mergenearby, mergesupersub):
         # calculate 2's coords in 1's system
         tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
         xpenmatch = br1[0] - xtol <= bl2[0] <= br1[0] + dx + xtol
-        neitherempty = len(wstrip(w.txt)) > 0 and len(wstrip(w2.txt)) > 0
+        neitherempty = wstrip(w.txt) and wstrip(w2.txt)
         if xpenmatch and neitherempty and not twospaces(w.txt, w2.txt):
             weight_match = w.chrs[-1].tsty['font-weight'] == w2.chrs[0].tsty['font-weight']
             # Don't sub/super merge when differences in font-weight
@@ -511,11 +511,11 @@ def Perform_Merges(chks, mk=False):
     for w in chks:
         mw = w.mw
         minx = float("inf")
-        for ii in range(len(mw)):
-            w2 = mw[ii][0]
-            mtype = mw[ii][1]
-            br1 = mw[ii][2]
-            bl2 = mw[ii][3]
+        for ii, mwv in enumerate(mw):
+            w2 = mwv[0]
+            mtype = mwv[1]
+            br1 = mwv[2]
+            bl2 = mwv[3]
             if abs(bl2[0] - br1[0]) < minx:
                 minx = abs(bl2[0] - br1[0])
                 # starting pen best matches the stop of the previous one
@@ -538,7 +538,7 @@ def Perform_Merges(chks, mk=False):
             w.merges[-1].merged = True
             nextmerge = w.merges[-1].merges
             nextmerget = w.merges[-1].mergetypes
-            while len(nextmerge) > 0:
+            while nextmerge:
                 w.merges += nextmerge
                 w.mergetypes += nextmerget
                 w.merges[-1].merged = True

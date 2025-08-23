@@ -537,7 +537,7 @@ def IV2d_init(self, *args, fallback=None):
         self._x, self._y = map(float, args)
     except:
         try:
-            if len(args) == 0:
+            if not args:
                 x, y = 0.0, 0.0
             elif len(args) == 1:
                 try:

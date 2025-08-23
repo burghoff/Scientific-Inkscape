@@ -84,7 +84,7 @@ from inkex.utils import debug
 DIFF_ADVANCES = True  # generate a differential advances table for each font?
 TEXTSIZE = 100  # size of rendered text
 DEPATHOLOGIZE = True  # clean up pathological atts not normally made by Inkscape
-XY_TOL = 1e-4
+XY_TOL = 1e-6
 
 EBget = lxml.etree.ElementBase.get
 EBset = lxml.etree.ElementBase.set
@@ -303,7 +303,7 @@ class ParsedText:
         # top-level lines after 1st
         self.isinkscape = (
             all(line.sprl for line in tlvllns)
-            and len(tlvllns) > 0
+            and tlvllns
             and all(
                 line.style.get("-inkscape-font-specification") is not None
                 for line in self.lns
@@ -376,7 +376,7 @@ class ParsedText:
         nsprl = {ddv:EBget(ddv,SPR)=='line' for ddv in dds}
 
         # Find effective sprls (ones that are not disabled)
-        esprl = [False]*len(dds)
+        esprl = [False]*numd
         for i, ddv in enumerate(dds):
             esprl[i] = nsprl[ddv] and len(xvs[i]) == 1 and len(yvs[i]) == 1 and dds[i] in kids
             
@@ -397,11 +397,11 @@ class ParsedText:
                     nsprl[d] = False
 
         # Figure out which effective sprls are top-level
-        types = [None] * len(dds)
+        types = [None] * numd
         for i,ddv in enumerate(dds):
             if not esprl[i]:
                 types[i] = NORMAL
-            elif len(ptail[i]) > 0 and ptail[i][-1] is not None:
+            elif ptail[i] and ptail[i][-1] is not None:
                 types[i] = PRECEDEDSPRL
             elif dds[i] == kids[0] and text[0] is not None:  # and len(text[0])>0:
                 # 2022.08.17: I am not sure if the len(text[0])==0 condition
@@ -441,7 +441,7 @@ class ParsedText:
             if xyt[iin][0] is None:
                 imin, imax = inherits_from(iin)
                 vld = [i for i in range(imin, imax + 1) if xyt[i][0] is not None]
-                if len(vld) > 0:
+                if vld:
                     if any(i <= iin for i in vld):
                         vld = [i for i in vld if i <= iin]
                         # inherit up if possible
@@ -454,9 +454,9 @@ class ParsedText:
         ixs, iys = xvs[:], yvs[:]
         xsrcs, ysrcs = dds[:], dds[:]
 
-        for i in [i for i in range(0, len(dds)) if ixs[i][0] is None]:
+        for i in [i for i in range(0, numd) if ixs[i][0] is None]:
             ixs[i], xsrcs[i] = inherit_none(i, xvs)
-        for i in [i for i in range(0, len(dds)) if iys[i][0] is None]:
+        for i in [i for i in range(0, numd) if iys[i][0] is None]:
             iys[i], ysrcs[i] = inherit_none(i, yvs)
 
         if ixs[0][0] is None:
@@ -628,8 +628,8 @@ class ParsedText:
     def finish_lines(self):
         """Finalizes the parsed lines by calculating deltas and chunks."""
         if self.lns is not None:
-            self.writtendx = any(c.dx != 0 for c in self.chrs)
-            self.writtendy = any(c.dy != 0 for c in self.chrs)
+            self.writtendx = any(abs(c.dx)>XY_TOL for c in self.chrs)
+            self.writtendy = any(abs(c.dy)>XY_TOL for c in self.chrs)
 
             for line in self.lns:
                 line.ptxt = self
@@ -854,8 +854,8 @@ class ParsedText:
             for chk in self.chks:
                 chk.charpos = None
 
-            self.writtendx = any(c.dx != 0 for c in self.chrs)
-            self.writtendy = any(c.dy != 0 for c in self.chrs)
+            self.writtendx = any(abs(c.dx)>XY_TOL for c in self.chrs)
+            self.writtendy = any(abs(c.dy)>XY_TOL for c in self.chrs)
             self.dchange = False
             
     def write_axay(self):
@@ -968,7 +968,7 @@ class ParsedText:
             olddx = [c.dx for c in self.chrs]
             olddy = [c.dy for c in self.chrs]
 
-            if len(line.chrs) > 0:
+            if line.chrs:
                 cel = line.chrs[0].loc.elem
                 while cel != elem and cel.getparent() != elem:
                     cel = cel.getparent()
@@ -1072,8 +1072,8 @@ class ParsedText:
         iln = self.lns.index(chrs[0].line)
         ciis = [c.lnindex for c in chrs]  # indexs of charsin line
 
-        fusex = self.lns[iln].continuex or ciis[0] > 0 or ds[fc][0] != 0
-        fusey = self.lns[iln].continuey or ciis[0] > 0 or ds[fc][1] != 0
+        fusex = self.lns[iln].continuex or ciis[0] > 0 or abs(ds[fc][0])>XY_TOL
+        fusey = self.lns[iln].continuey or ciis[0] > 0 or abs(ds[fc][1])>XY_TOL
         if fusex:
             anfr = self.lns[iln].anchfrac
             oldx = chrs[0].pts_ut[0][0] * (1 - anfr) + chrs[-1].pts_ut[3][0] * anfr
@@ -1373,7 +1373,7 @@ class ParsedText:
                 for i,w in enumerate(ln.chks):                    
                     pts = [c.pts_ut for c in w.chrs]
                     for j, c in enumerate(w.chrs):
-                        if c.dx != 0:
+                        if abs(c.dx)>XY_TOL:
                             # Get last char in chunk without a dx
                             lc = next((j + idx for idx, c in enumerate(w.chrs[j+1:]) if c.dx != 0), len(w.chrs) - 1)
                             c.ax = pts[j][0][0] * (1 - ln.anchfrac) + pts[lc][3][0] * ln.anchfrac
@@ -1381,7 +1381,7 @@ class ParsedText:
                         else:
                             c.ax = w.x if j==0 else None
                             
-                        if c.dy !=0:
+                        if abs(c.dy)>XY_TOL:
                             c.ay = pts[j][0][1]
                             c.dy = 0
                         else:
@@ -2130,7 +2130,7 @@ class ParsedText:
                               or c.bshft!=chk.chrs[ii].bshft]+[len(chk.chrs)]
                     # style boundaries, plus endpoints
                     txt = chk.txt
-                    if len(newidx)>2 or chk.chrs[0].bshft != 0:
+                    if len(newidx)>2 or abs(chk.chrs[0].bshft)>XY_TOL:
                         for j,ni in enumerate(newidx[:-1]):
                             tsn = inkex.Tspan()
                             ts.append(tsn)
@@ -2566,7 +2566,9 @@ class TLine:
                 while len(newx) > 1 and newx[-1] is None:
                     newx.pop()
                 self._xv = newx
-                xyset(self.xsrc, "x", newx)
+                if None not in newx:
+                    # Shouldn't write Nones to SVG, even if in TLine for now
+                    xyset(self.xsrc, "x", newx)
                 if len(oldx) > 1 and len(newx) == 1 and self.sprlabove:
                     # would re-enable sprl
                     self.disablesodipodi()
@@ -2582,7 +2584,9 @@ class TLine:
                 while len(newy) > 1 and newy[-1] is None:
                     newx.pop()
                 self._yv = newy
-                xyset(self.ysrc, "y", newy)
+                if None not in newy:
+                    # Shouldn't write Nones to SVG, even if in TLine for now
+                    xyset(self.ysrc, "y", newy)
                 if (
                     len(oldy) > 1 and len(newy) == 1 and self.sprlabove
                 ):  # would re-enable sprl
@@ -2851,7 +2855,7 @@ class TChunk:
         # Adding a character causes the chunk to move if it's center- or right-justified
         # Need to fix this by adjusting position
         deltax = -self.line.anchfrac * self.line.chrs[myi].cwd
-        if deltax != 0:
+        if abs(deltax)>XY_TOL:
             newx = self.line.x
             newx[self.chrs[0].lnindex] -= deltax
             self.line.write_xy(newx)
@@ -2863,7 +2867,7 @@ class TChunk:
         Adds a new chunk (possibly from another line) into the current one.
         Equivalent to typing it in
         """
-        if len(nchk.chrs) > 0:
+        if nchk.chrs:
             # Calculate the number of spaces we need to keep the position constant
             # (still need to adjust for anchors)
             _, br1, _, bl2 = self.get_ut_pts(nchk)
@@ -3546,7 +3550,7 @@ class TChar:
 
         lnx = self.line.x
         changedx = False
-        if deltax != 0:
+        if abs(deltax)>XY_TOL:
             chkidx = self.line.chks.index(self.chk)
             if chkidx < len(lnx) and lnx[chkidx] is not None:
                 lnx[chkidx] -= deltax
@@ -4232,7 +4236,7 @@ def xyset(elem, xyt, val):
     if not (val):
         elem.attrib.pop(xyt, None)  # pylint: disable=no-member
     else:
-        EBset(elem, xyt, ' '.join('%s' % v for v in val))
+        EBset(elem, xyt, ' '.join('%s' % (round(v / XY_TOL) * XY_TOL) for v in val))
 
 def remove_position_overflows(el):
     """
@@ -4405,7 +4409,7 @@ def condense_comments(elem):
 def trim_list(lst,val):
     """ Trims any values from the end of a list equal to val """
     trim = lst[:len(lst) - next((i for i, x in enumerate(reversed(lst)) if x != val), len(lst))]
-    return trim if len(trim)>0 else None
+    return trim if trim else None
 
 def deref_use(elem):
     if isinstance(elem,inkex.Use): 
@@ -4414,7 +4418,7 @@ def deref_use(elem):
             return deref
     return elem
 
-def fuzzy_equal(a, b, tol=1e-4):
+def fuzzy_equal(a, b, tol=XY_TOL):
     if len(a) != len(b):
         return False
     la = len(a)
