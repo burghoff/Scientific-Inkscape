@@ -595,6 +595,8 @@ def Perform_Merges(chks, mk=False):
             mels = []
             tomerge = []
             for ii,mrg in enumerate(w.merges):
+                if mrg not in mrg.line.chks:
+                    continue # skip deleted
                 maxspaces = None
                 if mk and hasspaces and mrg.prevsametspan:
                     maxspaces = 0
