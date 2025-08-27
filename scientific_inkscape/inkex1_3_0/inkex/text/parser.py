@@ -2922,12 +2922,13 @@ class TChunk:
         
         # delete text from old location in line
         by_node = {}
-        newxy = {}
+        newxy = {}; clines=set()
         for c in nchrs0:
             key = (c.loc.elem, c.loc.typ)
             by_node.setdefault(key, set()).add(c)
         for (elem, typ), cs in by_node.items():
             ln = next(iter(cs)).line # line we're removing from
+            clines.add(ln)
             # indices in line to keep
             keep     = [i for i,c in enumerate(ln.chrs) if c not in cs] 
             # indices in line to keep that share a node location
@@ -2951,6 +2952,7 @@ class TChunk:
         
         # add removed text to new line
         ln = self.line
+        clines.add(ln)
         # chars sharing node location with lchr
         share = [i for i,c in enumerate(ln.chrs) if c.loc.elem==lchr.loc.elem and c.loc.typ==lchr.loc.typ]
         i = lchr.lnindex
@@ -2980,10 +2982,6 @@ class TChunk:
             [setattr(c,'lnindex',i) for i,c in enumerate(ln.chrs)]
             [setattr(c,'line',ln) for c in ln.chrs]
 
-        # remove chks from old lines
-        for chk in nchks:
-            chk.line.chks.remove(chk)
-
         # add new chars to me
         self.chrs.extend(nchrs)
         for i, c in enumerate(nchrs):
@@ -2996,13 +2994,17 @@ class TChunk:
             self.dy.append(c.dy)
             self.caph.append(c.caph)
             self.bshft.append(c.bshft)
-        # update chks in this line
-        for chk in self.line.chks:
-            chk.txt = ''.join([c.c for c in chk.chrs])
-            chk.iis = [c.lnindex for c in chk.chrs]
-            chk.ncs = len(chk.iis)
-            for i,c in enumerate(chk.chrs):
-                c.windex = i
+        
+        # update chks in changed lines
+        for chk in nchks:
+            chk.line.chks.remove(chk)
+        for line in clines:
+            for chk in line.chks:
+                chk.txt = ''.join([c.c for c in chk.chrs])
+                chk.iis = [c.lnindex for c in chk.chrs]
+                chk.ncs = len(chk.iis)
+                for i,c in enumerate(chk.chrs):
+                    c.windex = i
                 
         
         # Update moved character styles
