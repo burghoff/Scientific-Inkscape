@@ -115,7 +115,7 @@ def remove_kerning(
         # dh.idebug(time.time()-tic)
         
         # for el in tels:
-        #     el.parsed_text.make_highlights("char")
+        #     el.parsed_text.make_highlights("charink")
     return dh.unique(els + tels)
 
 def make_clean_textelements(els):
@@ -512,10 +512,7 @@ def Perform_Merges(chks, mk=False):
         mw = w.mw
         minx = float("inf")
         for ii, mwv in enumerate(mw):
-            w2 = mwv[0]
-            mtype = mwv[1]
-            br1 = mwv[2]
-            bl2 = mwv[3]
+            w2, mtype, br1, bl2 = mwv
             if abs(bl2[0] - br1[0]) < minx:
                 minx = abs(bl2[0] - br1[0])
                 # starting pen best matches the stop of the previous one
@@ -524,16 +521,12 @@ def Perform_Merges(chks, mk=False):
         w.mergetypes = []
         w.merged = False
         if mw:
-            w2 = mw[mi][0]
-            mtype = mw[mi][1]
-            br1 = mw[mi][2]
-            bl2 = mw[mi][3]
+            w2, mtype, br1, bl2 = mw[mi]
             w.merges = [w2]
             w.mergetypes = [mtype]
 
     # Generate chains of merges
     for w in chks:
-        # if w.txt=='T':
         if not (w.merged) and w.merges:
             w.merges[-1].merged = True
             nextmerge = w.merges[-1].merges
@@ -600,6 +593,7 @@ def Perform_Merges(chks, mk=False):
             hasspaces = " " in alltxt
 
             mels = []
+            tomerge = []
             for ii,mrg in enumerate(w.merges):
                 maxspaces = None
                 if mk and hasspaces and mrg.prevsametspan:
@@ -611,14 +605,14 @@ def Perform_Merges(chks, mk=False):
                     "sub",
                 ]:  # no extra spaces for sub/supers or if there's already one
                     maxspaces = 0
-
                 mels.append(mrg.line.ptxt.textel)
-                w.append_chk(mrg, w.wtypes[ii + 1], maxspaces)
+                tomerge.append((mrg, w.wtypes[ii + 1], maxspaces))
+            w.append_chks(tomerge)
 
             # Union clips if necessary
             mels = dh.unique([w.line.ptxt.textel] + mels)
             if len(mels) > 1:
-                clips = [el.get_link("clip-path") for el in mels]
+                clips = [el.get_link("clip-path",llget=True) for el in mels]
                 if any([c is None for c in clips]):
                     w.line.ptxt.textel.set_link("clip-path", None)
                 else:

@@ -285,7 +285,7 @@ class ParsedText:
             or ipx(sty.get("inline-size"))
         )
         self._tree = None
-        self.dchange, self.writtendx, self.writtendy = [None] * 3
+        self.dchange, self.anydx, self.anydy = [None] * 3
         self.achange = False
         if DEPATHOLOGIZE:
             remove_position_overflows(elem)
@@ -628,8 +628,8 @@ class ParsedText:
     def finish_lines(self):
         """Finalizes the parsed lines by calculating deltas and chunks."""
         if self.lns is not None:
-            self.writtendx = any(abs(c.dx)>XY_TOL for c in self.chrs)
-            self.writtendy = any(abs(c.dy)>XY_TOL for c in self.chrs)
+            self.anydx = any(abs(c.dx)>XY_TOL for c in self.chrs)
+            self.anydy = any(abs(c.dy)>XY_TOL for c in self.chrs)
 
             for line in self.lns:
                 line.ptxt = self
@@ -854,8 +854,8 @@ class ParsedText:
             for chk in self.chks:
                 chk.charpos = None
 
-            self.writtendx = any(abs(c.dx)>XY_TOL for c in self.chrs)
-            self.writtendy = any(abs(c.dy)>XY_TOL for c in self.chrs)
+            self.anydx = any(abs(c.dx)>XY_TOL for c in self.chrs)
+            self.anydy = any(abs(c.dy)>XY_TOL for c in self.chrs)
             self.dchange = False
             
     def write_axay(self):
@@ -980,7 +980,7 @@ class ParsedText:
                 tlvl.set("sodipodi:role", "line")
                 # reenable sodipodi so we can insert returns
 
-                if self.writtendx or self.writtendy:
+                if self.anydx or self.anydy:
                     for i, chrv in enumerate(self.lns[0].chrs):
                         chrv.dx = olddx[i]
                         chrv.dy = olddy[i]
@@ -2175,7 +2175,6 @@ class ParsedText:
         if len(xs)>0:
             tefsz = min(fszs)
             if all(abs(x-xs[0])<0.001 for x in xs) and all(abs((ys[i+1]-ys[i])/max(fszs[i+1],tefsz) - (ys[1]-ys[0])/max(fszs[1],tefsz))<0.001 for i in range(len(ys)-1)):
-                # dh.idebug((xs,ys,fszs))
                 lh = (ys[1]-ys[0])/max(fszs[1],tefsz) if len(ys)>1 else 1.25
                 te.cstyle['font-size']=str(tefsz)
                 te.cstyle['line-height']=str(lh)
@@ -2411,7 +2410,7 @@ class TLine:
         if self.ptxt is None:
             return [0]
         i = self.ptxt.lns.index(self)
-        if i > 0 and self.ptxt.lns[i - 1].chks:
+        if i > 0:
             # anfr = self.anchfrac
             # yanch = (1 + anfr) * self.ptxt.lns[i - 1].chks[-1].pts_ut[3][
             #     1
@@ -2582,7 +2581,7 @@ class TLine:
                         line.disablesodipodi()
                         # Disable sprl when lines share a ysrc
                 while len(newy) > 1 and newy[-1] is None:
-                    newx.pop()
+                    newy.pop()
                 self._yv = newy
                 if None not in newy:
                     # Shouldn't write Nones to SVG, even if in TLine for now
@@ -2762,7 +2761,7 @@ class TChunk:
         """
         self.charpos = None
 
-        if self.line.ptxt.writtendx or self.line.ptxt.writtendy:
+        if self.line.ptxt.anydx or self.line.ptxt.anydy:
             self.line.ptxt.dchange = True
 
     @property
@@ -2820,7 +2819,7 @@ class TChunk:
                 totail.tail = ncv + totail.tail
 
         # Make new character as a copy of the last one of the current chunk
-        c = copy(lchr)
+        c = lchr.copy()
         c.chk = None # so we don't have problems during style setting
         c.c = ncv
         c.prop = ncprop
@@ -2861,6 +2860,212 @@ class TChunk:
             self.line.write_xy(newx)
         
         self.line.ptxt.write_dxdy()
+        
+    def append_chks(self, chk_type_maxsps):
+        """
+        Adds new chunks (possibly from another line) into the current one.
+        Equivalent to typing it in
+        """
+        
+        
+        # vectorized inverse-transform of all parsed_pts_t for nchk.chrs
+        cs = [c for nchk, _, _ in chk_type_maxsps for c in nchk.chrs if c.parsed_pts_t is not None]
+        calc_parsed_pts_ut(cs,self.transform)
+        
+        lchr = self.chrs[-1]
+        nsps = []; lbr2x = None
+        ntxt = ""; locs = []; nchrs = []; spcs = set(); nchrs0 = []; types=[]
+        nchks = []; fchrs=[]
+        for i, (nchk, stype, maxspaces) in enumerate(chk_type_maxsps):
+            bl2x = min(c.parsed_pts_ut[0][0] for c in nchk.chrs if c.parsed_pts_ut)
+            br2x = max(c.parsed_pts_ut[3][0] for c in nchk.chrs if c.parsed_pts_ut)
+            
+            if i==0:
+                br1x = max([c.parsed_pts_ut[3][0] for c in self.chrs if c.parsed_pts_ut])
+            else:
+                br1x = lbr2x
+            numsp = (bl2x - br1x) / (lchr.spw)
+            numsp = max(0, round(numsp))
+            numsp = min(numsp, maxspaces) if maxspaces is not None else numsp
+            nsps.append(numsp)
+            lbr2x = br2x
+            
+            ntxt += " " * numsp + nchk.txt
+            locs += [(c.loc.elem, c.loc.typ, c.loc.ind, c.line) for c in nchk.chrs]
+            
+            nspcs = [lchr.copy() for _ in range(numsp)]
+            for sp in nspcs:
+                sp.chk = None # so we don't have problems during style setting
+                sp.c = ' '
+                sp.prop = lchr.line.ptxt.ctable.get_prop(" ", lchr.tsty) 
+                sp.cwd = sp.prop.charw * sp.utfs
+                sp.dx = 0
+                sp.dy = 0
+            
+            spcs.update(nspcs)
+            nchrs0 += nchk.chrs  # without new spaces
+            nchrs += nspcs + nchk.chrs # with new spaces
+            types += [stype]*len(nspcs + nchk.chrs)
+            nchks.append(nchk)
+            fchrs.append((nspcs + nchk.chrs)[0])
+        
+        totail = None
+        if lchr.loc.sel != self.chrs[0].loc.sel:
+            cel = lchr.loc.sel
+            while (
+                cel is not None
+                and cel.getparent() != self.chrs[0].loc.sel
+                and cel.getparent() != self.line.ptxt.textel
+            ):
+                cel = cel.getparent()
+            totail = cel
+        
+        # delete text from old location in line
+        by_node = {}
+        newxy = {}
+        for c in nchrs0:
+            key = (c.loc.elem, c.loc.typ)
+            by_node.setdefault(key, set()).add(c)
+        for (elem, typ), cs in by_node.items():
+            ln = next(iter(cs)).line # line we're removing from
+            # indices in line to keep
+            keep     = [i for i,c in enumerate(ln.chrs) if c not in cs] 
+            # indices in line to keep that share a node location
+            keepnode = [i for i,c in enumerate(ln.chrs) if c not in cs and c.loc.elem==elem and c.loc.typ==typ]
+            newx, newy = newxy[ln] if ln in newxy else (ln.x,ln.y)
+            newx = [newx[i] for i in keep if 0 <= i < len(newx)] or newx[:1]
+            newy = [newy[i] for i in keep if 0 <= i < len(newy)] or newy[:1]
+            newxy[ln] = (newx,newy)
+            oths    = [ln.chrs[i] for i in keepnode if 0 <= i < len(ln.chrs)]
+            new = ''.join(c.c for c in oths)
+            field = 'text' if typ == TYP_TEXT else 'tail'
+            s = getattr(elem, field)
+            if new != s:
+                setattr(elem, field, new or None)  # None removes empty text/tail nodes
+            [setattr(c.loc,'ind',i) for i,c in enumerate(oths)]
+
+            ln.chrs = [ln.chrs[i] for i in keep if 0 <= i < len(ln.chrs)]
+            [setattr(c,'lnindex',i) for i,c in enumerate(ln.chrs)]
+            [setattr(c,'line',None) for c in cs]
+            [setattr(c,'lnindex',None) for c in cs]
+        
+        # add removed text to new line
+        ln = self.line
+        # chars sharing node location with lchr
+        share = [i for i,c in enumerate(ln.chrs) if c.loc.elem==lchr.loc.elem and c.loc.typ==lchr.loc.typ]
+        i = lchr.lnindex
+        newx, newy = newxy[ln] if ln in newxy else (ln.x[:],ln.y[:])
+        newx[i:i+1] = newx[i:i+1]+[None]*(len(ntxt))
+        newy[i:i+1] = newy[i:i+1]+[None]*(len(ntxt))
+        newxy[ln] = (newx,newy)
+        if totail is None:
+            oths    = [ln.chrs[i] for i in share if 0 <= i < len(ln.chrs)]
+            allc    = oths[:lchr.loc.ind+1] + nchrs + oths[lchr.loc.ind+1:]
+            new = ''.join(c.c for c in allc)
+            field = 'text' if lchr.loc.typ == TYP_TEXT else 'tail'
+            setattr(lchr.loc.elem, field, new)
+            [setattr(c,'loc',CLoc(lchr.loc.elem,lchr.loc.typ,i)) for i,c in enumerate(allc)]
+            
+            ln.chrs = ln.chrs[:lchr.lnindex+1] + nchrs + ln.chrs[lchr.lnindex+1:]
+            [setattr(c,'lnindex',i) for i,c in enumerate(ln.chrs)]
+            [setattr(c,'line',ln) for c in ln.chrs]
+        else:
+            allc    = nchrs
+            new = ''.join(c.c for c in allc)
+            field = 'tail'
+            setattr(totail, field, new)
+            [setattr(c,'loc',CLoc(totail,TYP_TAIL,i)) for i,c in enumerate(allc)]
+            
+            ln.chrs = ln.chrs[:lchr.lnindex+1] + nchrs + ln.chrs[lchr.lnindex+1:]
+            [setattr(c,'lnindex',i) for i,c in enumerate(ln.chrs)]
+            [setattr(c,'line',ln) for c in ln.chrs]
+
+        # remove chks from old lines
+        for chk in nchks:
+            chk.line.chks.remove(chk)
+
+        # add new chars to me
+        self.chrs.extend(nchrs)
+        for i, c in enumerate(nchrs):
+            c.chk = self
+            self.lsp.append(c.lsp)
+            self.dx[-1] += c.dx     # accumulate into the previous trailing dx
+            self.dx.append(0)       # leave trailing slot for next char
+            self.dxlsp.append(c.lsp)
+            self.cwd.append(c.cwd)
+            self.dy.append(c.dy)
+            self.caph.append(c.caph)
+            self.bshft.append(c.bshft)
+        # update chks in this line
+        for chk in self.line.chks:
+            chk.txt = ''.join([c.c for c in chk.chrs])
+            chk.iis = [c.lnindex for c in chk.chrs]
+            chk.ncs = len(chk.iis)
+            for i,c in enumerate(chk.chrs):
+                c.windex = i
+                
+        
+        # Update moved character styles
+        sels = {c.loc.sel for (c,stype) in zip(nchrs,types)}
+        fszs = {sel: composed_width(sel, "font-size")[0] for sel in sels}
+        for (c,stype) in zip(nchrs,types):
+            otype = c.sty.get("baseline-shift")
+            ntype = otype if (otype in {"super", "sub"} and stype == "normal") else stype
+            fsz = fszs[c.loc.sel]
+            sizechanged = abs(c.tfs - fsz)>1e-4
+            newsty = {}
+            if c.sty != c.loc.sel.cspecified_style or ntype in ["super", "sub"] or sizechanged:
+                newsty = c.sty.copy()
+                if ntype in ["super", "sub"]:
+                    # Nativize super/subscripts
+                    newsty["baseline-shift"] = (
+                        "super" if ntype == "super" else "sub"
+                    )
+                    newsty["font-size"] = "65%"
+                elif sizechanged:
+                    # Prevent accidental font size changes when differently
+                    # transformed
+                    nsz = round(c.tfs / fsz * 100)
+                    newsty["font-size"] = (
+                        f"{format(nsz, '.2f').rstrip('0').rstrip('.')}%"
+                    )
+                else:
+                    newsty["font-size"] = "100%"
+            if newsty:
+                c.add_style(newsty, newfs=True)
+                
+        
+        # Correct positions
+        for i, c in enumerate(nchrs):
+            prevc = lchr if i==0 else nchrs[i-1]
+            c.dx = (c not in fchrs) * c.dx - prevc.lsp * (c in fchrs)
+        if ln.anchfrac:
+            newx, newy = newxy[ln] if ln in newxy else (ln.x[:],ln.y[:])
+            myi = min(self.chrs[0].lnindex,len(newx)-1)
+            newx[myi] += ln.anchfrac * sum([c.cwd + c.dx for c in nchrs])
+            
+        # Write new xy values to doc
+        for ln, (newx, newy) in newxy.items():
+            ln.write_xy(trim_list(newx,None), trim_list(newy,None))
+        self.line.ptxt.write_dxdy()
+        self.charpos = None
+        
+        # Prune empty lines
+        for chk in nchks:
+            if not chk.line.chrs:
+                lns = chk.line.ptxt.lns
+                if chk.line in lns:
+                    idx = lns.index(chk.line)
+                    if idx<len(lns)-1:
+                        nextx = lns[idx+1].x
+                        if lns[idx+1].continuex:
+                            lns[idx+1].continuex = False
+                            ln.write_xy(newx=nextx)
+                        nexty = lns[idx+1].y
+                        if lns[idx+1].continuey:
+                            lns[idx+1].continuey = False
+                            ln.write_xy(newy=nexty)
+                    lns.pop(idx)
 
     def append_chk(self, nchk, stype, maxspaces=None):
         """
@@ -2890,10 +3095,8 @@ class TChunk:
                 # use dx to remove lsp from the previous c
                 c.delc()
 
-                ntype = copy(stype)
                 otype = c.sty.get("baseline-shift")
-                if otype in ["super", "sub"] and stype == "normal":
-                    ntype = otype
+                ntype = otype if (otype in {"super", "sub"} and stype == "normal") else stype
 
                 # Nested tspans should be appended to the end of tails
                 totail = None
@@ -3297,7 +3500,7 @@ class TChar:
         self.parsed_pts_t = None
         self.parsed_pts_ut = None
         # for merging later
-        self._lsp = TChar.lspfunc(self.sty)
+        self._lsp = TChar.lspfunc(self.sty, self.loc.sel)
         self._bshft = TChar.bshftfunc(self.sty, self.loc.sel)
         # letter spacing
         self.lhs = None
@@ -3411,22 +3614,20 @@ class TChar:
     def sty(self, styi):
         """Sets the style of the character and updates dependent properties."""
         self._sty = styi
-        self.lsp = TChar.lspfunc(self._sty)
+        self.lsp = TChar.lspfunc(self._sty, self.loc.sel)
         self.bshft = TChar.bshftfunc(self._sty, self.loc.sel)
 
         self.fsty = font_style(styi)
         self.tsty = true_style(styi)
 
     @staticmethod
-    def lspfunc(styv):
+    def lspfunc(styv,el):
         """Returns the letter spacing for the given style."""
         if "letter-spacing" in styv:
             lspv = styv.get("letter-spacing")
             if "em" in lspv:  # em is basically the font size
-                fs2 = styv.get("font-size")
-                if fs2 is None:
-                    fs2 = "12px"
-                lspv = float(lspv.strip("em")) * ipx(fs2)
+                _, _, fs2 = composed_width(el, "font-size")
+                lspv = float(lspv.strip("em")) * fs2
             else:
                 lspv = ipx(lspv) or 0
         else:
@@ -4424,6 +4625,33 @@ def fuzzy_equal(a, b, tol=XY_TOL):
     la = len(a)
     for i in range(la):
         x = a[i]; y = b[i]
+        if (x is None) != (y is None):   # one None, other not
+            return False
         if x is not None and y is not None and abs(x - y) > XY_TOL:
             return False
     return True
+
+def calc_parsed_pts_ut(cs,transform):
+    '''
+    Compute parsed_pts_ut for a character reexpressed in the coord
+    system of another transform
+    '''
+    pts = []; idx = []
+    for c in cs:
+        idx.append((c, len(c.parsed_pts_t)))
+        pts.extend(c.parsed_pts_t)
+    if pts:
+        M = transform.matrix
+        a00, a01, a02 = M[0]; a10, a11, a12 = M[1]
+        det = a00 * a11 - a01 * a10
+        inv_det = 1.0 / det
+        P = np.asarray(pts, dtype=float)             # (K,2)
+        sxv = P[:, 0] - a02
+        syv = P[:, 1] - a12
+        Ux = (a11 * sxv - a01 * syv) * inv_det
+        Uy = (a00 * syv - a10 * sxv) * inv_det
+        U  = np.column_stack((Ux, Uy))               # (K,2)
+        k = 0
+        for c, n in idx:
+            c.parsed_pts_ut = [tuple(p) for p in U[k:k+n]]
+            k += n
