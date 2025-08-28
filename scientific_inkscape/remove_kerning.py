@@ -191,7 +191,7 @@ def Split_Lines(els, ignoreinkscape=True):
             and not (ptxt.isflow)
         ):
             for il in reversed(range(1, len(ptxt.lns))):
-                newtxt = ptxt.split_off_characters(ptxt.lns[il].chrs)
+                newtxt = ptxt.split_off_characters([ptxt.lns[il].chrs])[0]
                 els.append(newtxt)
     return els
 
@@ -285,15 +285,16 @@ def Split_Distant_Intrachunk(els):
 
                     if splitiis:
                         lensplitiis = len(splitiis)
+                        split_lists = []
                         for ii in reversed(range(lensplitiis)):
                             sstart = splitiis[ii]
                             if ii != lensplitiis - 1:
                                 sstop = splitiis[ii + 1]
                             else:
                                 sstop = len(chrs)
-                            split_chrs = [chr for chr in w.chrs if chr in chrs[sstart:sstop]]
-                            newtxt = ptxt.split_off_characters(split_chrs)
-                            els.append(newtxt)
+                            split_lists.append([c for c in w.chrs if c in chrs[sstart:sstop]])
+                        newtxts = ptxt.split_off_characters(split_lists)
+                        els.extend(newtxts)
     return els
 
 
