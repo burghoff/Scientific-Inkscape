@@ -135,9 +135,9 @@ class ParsedTextList(list):
         # Collect values for dadv, cwd, dx, dy, bshft, and caph
         idx = 0
         for j, chk in enumerate(tws):
-            if DIFF_ADVANCES:
-                for i in range(1, chk.ncs):
-                    dadv[idx + i] = chk.chrs[i].dadvs(chk.chrs[i - 1], chk.chrs[i])*(chk.dx[i]==0)
+            # if DIFF_ADVANCES:
+            #     for i in range(1, chk.ncs):
+            #         dadv[idx + i] = chk.chrs[i].dadvs(chk.chrs[i - 1], chk.chrs[i])
 
             for i in range(chk.ncs):
                 cwd[idx + i] = chk.cwd[i]
@@ -146,13 +146,14 @@ class ParsedTextList(list):
                 dy[idx + i] = chk.dy[i]
                 bshft[idx + i] = chk.bshft[i]
                 caph[idx + i] = chk.caph[i]
+                dadv[idx + i] = chk.dadv[i]
             fidx[idx : idx + chk.ncs] = idx
             lidx[idx : idx + chk.ncs] = idx + chk.ncs - 1
             widx[idx : idx + chk.ncs] = j
             idx += chk.ncs
 
         # Calculate wds, cstop, and cstrt
-        wds = cwd + dx + dxlsp + dadv
+        wds = cwd + dx + dxlsp + dadv*(dx==0)
         cstop = np.array(list(itertools.accumulate(wds)), dtype=float)
         cstop += wds[fidx] - cstop[fidx]
         cstrt = cstop - cwd
@@ -1149,6 +1150,57 @@ class ParsedText:
             newtxt._parsed_text = npt
             newtxts.append(newtxt)
         return newtxts
+    
+    def split_off_characters2(self, chr_lists):
+        # delete text from old location in line
+        by_node = {}
+        newxy = {}; clines=set()
+        dchrs = [c for clst in chr_lists for c in clst] # deleted chars
+        achks = {c.chk for c in dchrs} # affected chunks
+        for c in dchrs:
+            key = (c.loc.elem, c.loc.typ)
+            by_node.setdefault(key, set()).add(c)
+        for (elem, typ), cs in by_node.items():
+            ln = next(iter(cs)).line # line we're removing from
+            clines.add(ln)
+            # indices in line to keep
+            keep     = [i for i,c in enumerate(ln.chrs) if c not in cs] 
+            # indices in line to keep that share a node location
+            keepnode = [i for i,c in enumerate(ln.chrs) if c not in cs and c.loc.elem==elem and c.loc.typ==typ]
+            newx, newy = newxy[ln] if ln in newxy else (ln.x,ln.y)
+            newx = [newx[i] for i in keep if 0 <= i < len(newx)] or newx[:1]
+            newy = [newy[i] for i in keep if 0 <= i < len(newy)] or newy[:1]
+            newxy[ln] = (newx,newy)
+            oths    = [ln.chrs[i] for i in keepnode if 0 <= i < len(ln.chrs)]
+            new = ''.join(c.c for c in oths)
+            field = 'text' if typ == TYP_TEXT else 'tail'
+            s = getattr(elem, field)
+            if new != s:
+                setattr(elem, field, new or None)  # None removes empty text/tail nodes
+            [setattr(c.loc,'ind',i) for i,c in enumerate(oths)]
+
+            ln.chrs = [ln.chrs[i] for i in keep if 0 <= i < len(ln.chrs)]
+            [setattr(c,'lnindex',i) for i,c in enumerate(ln.chrs)]
+            [setattr(c,'line',None) for c in cs]
+            [setattr(c,'lnindex',None) for c in cs]
+            
+            
+        # Correct positions
+        # for i, c in enumerate(dchrs):
+        #     prevc = lchr if i==0 else nchrs[i-1]
+        #     c.dx = (c not in fchrs) * c.dx - prevc.lsp * (c in fchrs)
+        # if ln.anchfrac:
+        #     newx, newy = newxy[ln] if ln in newxy else (ln.x[:],ln.y[:])
+        #     myi = min(self.chrs[0].lnindex,len(newx)-1)
+        #     newx[myi] += ln.anchfrac * sum([c.cwd + c.dx for c in nchrs])
+            
+        # Write new xy values to doc
+        for ln, (newx, newy) in newxy.items():
+            ln.write_xy(trim_list(newx,None), trim_list(newy,None))
+        # self.line.ptxt.write_dxdy()
+        
+        for chk in achks:
+            chk.charpos = None
 
     def delete_empty(self):
         """Deletes empty elements from the doc. Generally this is done last"""
@@ -2112,59 +2164,12 @@ class ParsedText:
         
         xs = []; ys = []; fszs = []
         for ln in self.lns:
-            algn = {"start": "start", "middle": "center", "end": "end"}[ln.anchor]
             for chk in ln.chks:
                 if chk.y==chk.y: # ignore nans (unrendered floats)
-                    ts = inkex.Tspan()
-                    te.append(ts)
-                    xyset(ts,'x',[chk.x])
-                    xyset(ts,'y',[chk.y])
-                    xyset(ts,'dx', trim_list(chk.dx,0))
-                    xyset(ts,'dy', trim_list(chk.dy,0))
-                    
                     xs.append(chk.x)
                     ys.append(chk.y)
                     fszs.append(chk.utfs)
-                    
-                    # Turn each different style into a different Tspan
-                    nested_tss = []
-                    newidx = [0]+[ii+1 for ii,c in enumerate(chk.chrs[1:]) if 
-                              c.sty!=chk.chrs[ii].sty or c.utfs!=chk.chrs[ii].utfs 
-                              or c.bshft!=chk.chrs[ii].bshft]+[len(chk.chrs)]
-                    # style boundaries, plus endpoints
-                    txt = chk.txt
-                    if len(newidx)>2 or abs(chk.chrs[0].bshft)>XY_TOL:
-                        for j,ni in enumerate(newidx[:-1]):
-                            tsn = inkex.Tspan()
-                            ts.append(tsn)
-                            tsn.text = txt[newidx[j]:newidx[j+1]]
-                            nested_tss.append((tsn,chk.chrs[ni].sty,chk.chrs[ni].utfs,chk.chrs[ni].bshft))
-                    else:
-                        ts.text = txt
-                    
-                    ts.cstyle = chk.chrs[0].sty
-                    ts.cstyle.update({'font-size':str(chk.utfs),"text-align":algn,"text-anchor":ln.anchor})
-                    ts.cstyle -= {'line-height','direction','baseline-shift','shape-inside'}
-                    for tsn, nsty, fs, bs in nested_tss:
-                        tsn.cspecified_style = nsty
-                                
-                        if abs(fs-chk.utfs)>0.001:
-                            tsn.cstyle['font-size']=f'{round(fs/chk.utfs*100, 3)}%'
-                        else:
-                            tsn.cstyle.pop('font-size', None)
-                        if abs(bs)>0.001:
-                            if abs(bs/chk.utfs - 0.4)<.001:
-                                tsn.cstyle['baseline-shift'] = 'super'
-                            elif abs(bs/chk.utfs + 0.2)<.001:
-                                tsn.cstyle['baseline-shift'] = 'sub'
-                            else:
-                                tsn.cstyle['baseline-shift']= f'{round(bs/chk.utfs*100, 3)}%'
-                        else:
-                            tsn.cstyle.pop('baseline-shift', None)
-
-                        tsn.cstyle -= {att for att in tsn.cstyle if tsn.cstyle.get(att)==ts.cspecified_style.get(att)}
-                        tsn.cstyle -= {"text-align","text-anchor","direction",'shape-inside'}
-
+                    chk.make_tspan(te)
                 
         eid = self.textel.get_id()
         self.textel.delete()
@@ -2622,7 +2627,7 @@ class TChunk:
         "cwd",
         "dy",
         "caph",
-        "bshft",
+        "bshft","dadv",
         "mw",
         "merges",
         "mergetypes",
@@ -2655,15 +2660,16 @@ class TChunk:
         self.txt = c.c
         self.lsp = [c.lsp]
         self.dx = [c.dx, 0]
-        # Effective dx (with letter-spacing). Note that letter-spacing adds space
-        # after the char, so dx ends up being longer than the number of chars by 1
+        # Effective dx. Note that letter-spacing adds space
+        # after the char, so we make dx longer than the number of chars by 1
         self.dxlsp = [0, c.lsp]
-        # Effective letter-spacing dx (with letter-spacing). Note that letter-spacing adds space
+        # Effective letter-spacing dx. Note that letter-spacing adds space
         # after the char, so it is longer than the number of chars by 1
         self.cwd = [c.cwd]
         self.dy = [c.dy]
         self.caph = [c.caph]
         self.bshft = [c.bshft]
+        self.dadv = [0]
 
     def copy(self, memo):
         """Creates a copy of the TChunk instance."""
@@ -2692,6 +2698,7 @@ class TChunk:
         ret.dy = self.dy[:]
         ret.caph = self.caph[:]
         ret.bshft = self.bshft[:]
+        ret.dadv = self.dadv[:]
         # pylint:enable=protected-access
 
         ret.chrs = list(
@@ -2722,6 +2729,7 @@ class TChunk:
         self.dy.append(c.dy)
         self.caph.append(c.caph)
         self.bshft.append(c.bshft)
+        self.dadv.append(c.dadvs(self.chrs[-2], c))
         c.chk = self
 
     def removec(self, c):
@@ -2748,6 +2756,9 @@ class TChunk:
         self.dy.pop(i)
         self.caph.pop(i)
         self.bshft.pop(i)
+        self.dadv.pop(i)
+        if i<self.ncs: # recompute dadv on next char
+            self.dadv[i] = self.chrs[i].dadvs(self.chrs[i-1], self.chrs[i]) 
 
         if not self.chrs:  # chunk now empty
             self.del_chk()
@@ -2865,14 +2876,14 @@ class TChunk:
         Equivalent to typing it in
         """
         
-        
         # vectorized inverse-transform of all parsed_pts_t for nchk.chrs
         cs = [c for nchk, _, _ in chk_type_maxsps for c in nchk.chrs if c.parsed_pts_t is not None]
         calc_parsed_pts_ut(cs,self.transform)
         
+        # collect info about new chunks and chars, computing spaces
         lchr = self.chrs[-1]
         nsps = []; lbr2x = None
-        ntxt = ""; locs = []; nchrs = []; spcs = set(); nchrs0 = []; types=[]
+        ntxt = ""; nchrs = []; spcs = set(); nchrs0 = []; types=[]
         nchks = []; fchrs=[]
         for i, (nchk, stype, maxspaces) in enumerate(chk_type_maxsps):
             bl2x = min(c.parsed_pts_ut[0][0] for c in nchk.chrs if c.parsed_pts_ut)
@@ -2889,8 +2900,6 @@ class TChunk:
             lbr2x = br2x
             
             ntxt += " " * numsp + nchk.txt
-            locs += [(c.loc.elem, c.loc.typ, c.loc.ind, c.line) for c in nchk.chrs]
-            
             nspcs = [lchr.copy() for _ in range(numsp)]
             for sp in nspcs:
                 sp.chk = None # so we don't have problems during style setting
@@ -2907,6 +2916,7 @@ class TChunk:
             nchks.append(nchk)
             fchrs.append((nspcs + nchk.chrs)[0])
         
+        # decide if we need to put the new text on a tail
         totail = None
         if lchr.loc.sel != self.chrs[0].loc.sel:
             cel = lchr.loc.sel
@@ -2922,8 +2932,7 @@ class TChunk:
         by_node = {}
         newxy = {}; clines=set()
         for c in nchrs0:
-            key = (c.loc.elem, c.loc.typ)
-            by_node.setdefault(key, set()).add(c)
+            by_node.setdefault((c.loc.elem, c.loc.typ), set()).add(c)
         for (elem, typ), cs in by_node.items():
             ln = next(iter(cs)).line # line we're removing from
             clines.add(ln)
@@ -2982,6 +2991,7 @@ class TChunk:
 
         # add new chars to me
         self.chrs.extend(nchrs)
+        lc = lchr
         for i, c in enumerate(nchrs):
             c.chk = self
             self.lsp.append(c.lsp)
@@ -2992,6 +3002,7 @@ class TChunk:
             self.dy.append(c.dy)
             self.caph.append(c.caph)
             self.bshft.append(c.bshft)
+            self.dadv.append(c.dadvs(lc, c)); lc=c
         
         # update chks in changed lines
         for chk in nchks:
@@ -3194,6 +3205,55 @@ class TChunk:
         tr1 = c1uts[chri][2]
         br1 = c1uts[chri][3]
         return tr1, br1, tl2, bl2
+    
+    def make_tspan(self,te):
+        ''' Make a clean tspan that represents this chunk '''
+        ts = inkex.Tspan()
+        te.append(ts)
+        xyset(ts,'x',[self.x])
+        xyset(ts,'y',[self.y])
+        xyset(ts,'dx', trim_list(self.dx,0))
+        xyset(ts,'dy', trim_list(self.dy,0))
+        
+        # Turn each different style into a different Tspan
+        nested_tss = []
+        newidx = [0]+[ii+1 for ii,c in enumerate(self.chrs[1:]) if 
+                  c.sty!=self.chrs[ii].sty or c.utfs!=self.chrs[ii].utfs 
+                  or c.bshft!=self.chrs[ii].bshft]+[len(self.chrs)]
+        # style boundaries, plus endpoints
+        txt = self.txt
+        if len(newidx)>2 or abs(self.chrs[0].bshft)>XY_TOL:
+            for j,ni in enumerate(newidx[:-1]):
+                tsn = inkex.Tspan()
+                ts.append(tsn)
+                tsn.text = txt[newidx[j]:newidx[j+1]]
+                nested_tss.append((tsn,self.chrs[ni].sty,self.chrs[ni].utfs,self.chrs[ni].bshft))
+        else:
+            ts.text = txt
+        
+        ts.cstyle = self.chrs[0].sty
+        algn = {"start": "start", "middle": "center", "end": "end"}[self.line.anchor]
+        ts.cstyle.update({'font-size':str(self.utfs),"text-align":algn,"text-anchor":self.line.anchor})
+        ts.cstyle -= {'line-height','direction','baseline-shift','shape-inside'}
+        for tsn, nsty, fs, bs in nested_tss:
+            tsn.cspecified_style = nsty
+                    
+            if abs(fs-self.utfs)>0.001:
+                tsn.cstyle['font-size']=f'{round(fs/self.utfs*100, 3)}%'
+            else:
+                tsn.cstyle.pop('font-size', None)
+            if abs(bs)>0.001:
+                if abs(bs/self.utfs - 0.4)<.001:
+                    tsn.cstyle['baseline-shift'] = 'super'
+                elif abs(bs/self.utfs + 0.2)<.001:
+                    tsn.cstyle['baseline-shift'] = 'sub'
+                else:
+                    tsn.cstyle['baseline-shift']= f'{round(bs/self.utfs*100, 3)}%'
+            else:
+                tsn.cstyle.pop('baseline-shift', None)
+
+            tsn.cstyle -= {att for att in tsn.cstyle if tsn.cstyle.get(att)==ts.cspecified_style.get(att)}
+            tsn.cstyle -= {"text-align","text-anchor","direction",'shape-inside'}
 
     def fix_merged_position(self):
         """
@@ -3277,14 +3337,14 @@ class TChunk:
         Returns the character positions relative to the left side of the chunk.
         """
         if self._charpos is None:
-            dadv = [0] * self.ncs
-            if DIFF_ADVANCES:
-                for i in range(1, self.ncs):
-                    dadv[i] = self.chrs[i].dadvs(self.chrs[i - 1], self.chrs[i])*(self.dx[i]==0)
-                    # default to 0 for chars of different style
-                    # any dx value overrides differential advances
+            # dadv = [0] * self.ncs
+            # if DIFF_ADVANCES:
+            #     for i in range(1, self.ncs):
+            #         dadv[i] = self.chrs[i].dadvs(self.chrs[i - 1], self.chrs[i])
+            #         # default to 0 for chars of different style
 
-            chks = [self.cwd[i] + self.dx[i] + self.dxlsp[i] + dadv[i] for i in range(self.ncs)]
+            chks = [self.cwd[i] + self.dx[i] + self.dxlsp[i] + self.dadv[i]*(self.dx[i]==0) for i in range(self.ncs)]
+            # any dx value overrides differential advances
             cstop = list(itertools.accumulate(chks))
             # cumulative width up to and including the ith char
             cstrt = [cstop[i] - self.cwd[i] for i in range(self.ncs)]
@@ -3497,6 +3557,7 @@ class TChar:
         self._ax = None
         self._ay = None
         self.dadvs = lambda cL, cR: prop.dadvs.get((cL.c, cR.c), 0) * utfs * (cL.loc.elem==cR.loc.elem and cL.loc.typ==cR.loc.typ)
+        # default to 0 for chars of different style
         self.parsed_pts_t = None
         self.parsed_pts_ut = None
         # for merging later
