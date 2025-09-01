@@ -872,10 +872,11 @@ class Exporter():
             imgs = imgs_opqe | imgs_trnp
             missing_images = [t for t in imgs if not os.path.exists(os.path.join(tempdir, t)) and imgs[t] in bbs]
             if missing_images:
-                raise TimeoutError(
+                warnings.warn(
                     "\nThe Inkscape binary could not generate the temporary images "
                     + ", ".join(missing_images) + ' in ' + tempdir + '.\n\n'
-                    + "This may be a temporary issue; try running the extension again."
+                    + "Please check your output to ensure integrity.",
+                    category=UserWarning
                 )
             if do_stroketopaths:
                 cfile = tmpstp

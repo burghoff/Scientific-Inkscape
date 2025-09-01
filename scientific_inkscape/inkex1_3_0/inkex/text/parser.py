@@ -1381,24 +1381,25 @@ class ParsedText:
         news = []
         for rlst in run_lists:
             for run in rlst:
-                te,ts, xv, yv = run_els[id(run)]
-                ln = run[0].line
-                new = ParsedText.__new__(ParsedText)
-                for k,v in self.__dict__.items():
-                    setattr(new,k,v)
-                new.lns = []
-                new.textel = te
-                te._parsed_text = new
-                new.tree = None
-                TLine(new,[xv],[yv],ts,ts,
-                    False,[],ln.anchor,ln.transform,ln.tlvlno,
-                    ts.cspecified_style,False, False)
-                new.lns[0].chrs = run
-                for i, c in enumerate(run):
-                    c.line = new.lns[0]
-                    c.lnindex = i
-                new.finish_lines()
-                news.append(new)
+                if id(run) in run_els:
+                    te,ts, xv, yv = run_els[id(run)]
+                    ln = run[0].line
+                    new = ParsedText.__new__(ParsedText)
+                    for k,v in self.__dict__.items():
+                        setattr(new,k,v)
+                    new.lns = []
+                    new.textel = te
+                    te._parsed_text = new
+                    new.tree = None
+                    TLine(new,[xv],[yv],ts,ts,
+                        False,[],ln.anchor,ln.transform,ln.tlvlno,
+                        ts.cspecified_style,False, False)
+                    new.lns[0].chrs = run
+                    for i, c in enumerate(run):
+                        c.line = new.lns[0]
+                        c.lnindex = i
+                    new.finish_lines()
+                    news.append(new)
             
         # Correct positions of existing and new chunks
         newxy = {}
@@ -1418,7 +1419,7 @@ class ParsedText:
                         c.dy += delta_y[i]
                 fc_dx = (1-chk.line.anchfrac)*delta_x[0] - chk.line.anchfrac*sum(delta_x[1:])
                 need_shiftx = round((needed_x - fc_dx)/XY_TOL)*XY_TOL
-                need_shifty = round(needed_y/XY_TOL)*XY_TOL
+                need_shifty = round(needed_y/XY_TOL)*XY_TOL if needed_y==needed_y else 0
                 if need_shiftx or need_shifty:
                     ln = chk.line
                     newx, newy = newxy[ln] if ln in newxy else (ln.x[:],ln.y[:])
@@ -1577,25 +1578,23 @@ class ParsedText:
                 if len(line.chrs) > 0:
                     origx = line.chrs[0].pts_ut[0][0]
 
-                newtxt = self.split_off_characters([line.chrs])[0]
-                if newtxt.tag == FRtag:
-                    for ddv in newtxt.iter('*'):
-                        if ddv.tag == FRtag:
-                            ddv.tag = TextElement.ctag
-                        elif isinstance(ddv, (FlowPara, FlowSpan)):
-                            ddv.tag = TStag
-                        elif isinstance(ddv, inkex.FlowRegion):
-                            ddv.delete()
-                else:
-                    newtxt.cstyle["shape-inside"] = None
-                    newtxt.cstyle["inline-size"] = None
-                    for k in list(newtxt):
-                        k.cstyle["text-align"] = algn
-                        k.cstyle["text-anchor"] = anch
-
-                if nany:
-                    newtxt.delete()
-                else:
+                if not nany:
+                    newtxt = self.split_off_characters([line.chrs])[0]
+                    if newtxt.tag == FRtag:
+                        for ddv in newtxt.iter('*'):
+                            if ddv.tag == FRtag:
+                                ddv.tag = TextElement.ctag
+                            elif isinstance(ddv, (FlowPara, FlowSpan)):
+                                ddv.tag = TStag
+                            elif isinstance(ddv, inkex.FlowRegion):
+                                ddv.delete()
+                    else:
+                        newtxt.cstyle["shape-inside"] = None
+                        newtxt.cstyle["inline-size"] = None
+                        for k in list(newtxt):
+                            k.cstyle["text-align"] = algn
+                            k.cstyle["text-anchor"] = anch
+                            
                     deleteempty(newtxt)
                     npt = newtxt.parsed_text
                     if (
@@ -2590,7 +2589,7 @@ class TLine:
         # when enabled, y of a line is the endpoint of the previous line
         self.ptxt = ptxt
         # Flow-specific
-        self.broken = None  # text is broken
+        self.broken = False  # text is broken
         self.effabsp = None  # above-baseline space
         self.effbbsp = None  # below-baseline space
         self.rtl = {'rtl': True}.get(sty.get("direction"),False)
@@ -4855,7 +4854,7 @@ def cleanup_whitespace(elem,isflow):
             if el.text is not None:
                 el.text = cleanup_returns(el.text, last_span=(len(el) == 0))
             if el.tail is not None:
-                el.tail = cleanup_returns(el.tail, last_span=(el==el.getparent()[-1]))
+                el.tail = cleanup_returns(el.tail, last_span=(el==el.getparent()[-1]) if el.getparent() is not None else False)
 
 comment_tag = lxml.etree.Comment("").tag
 
