@@ -190,9 +190,14 @@ def Split_Lines(els, ignoreinkscape=True):
             and (not (ptxt.ismlinkscape) or not (ignoreinkscape))
             and not (ptxt.isflow)
         ):
+            # for il in reversed(range(1, len(ptxt.lns))):
+            #     newtxt = ptxt.split_off_characters([ptxt.lns[il].chrs])[0]
+            #     els.append(newtxt)
+            chr_lists = []
             for il in reversed(range(1, len(ptxt.lns))):
-                newtxt = ptxt.split_off_characters([ptxt.lns[il].chrs])[0]
-                els.append(newtxt)
+                chr_lists.append(ptxt.lns[il].chrs)
+            newtxts = ptxt.split_off_characters(chr_lists)
+            els.extend(newtxts)
     return els
 
 
@@ -225,15 +230,26 @@ def Split_Distant_Chunks(els):
                 line.sws = sws
 
                 if splits:
+                    # for ii in reversed(range(len(splits))):
+                    #     sstart = splits[ii]
+                    #     if ii != len(splits) - 1:
+                    #         sstop = splits[ii + 1]
+                    #     else:
+                    #         sstop = len(line.chks)
+
+                    #     newtxt = ptxt.split_off_chunks(sws[sstart:sstop])
+                    #     els.append(newtxt)
+                    
+                    chr_lists = []
                     for ii in reversed(range(len(splits))):
                         sstart = splits[ii]
                         if ii != len(splits) - 1:
                             sstop = splits[ii + 1]
                         else:
                             sstop = len(line.chks)
-
-                        newtxt = ptxt.split_off_chunks(sws[sstart:sstop])
-                        els.append(newtxt)
+                        chr_lists.append([c for w in sws[sstart:sstop] for c in w.chrs])   
+                    newtxts = ptxt.split_off_characters(chr_lists)
+                    els.extend(newtxts)
     return els
 
 
@@ -243,7 +259,8 @@ def Split_Distant_Intrachunk(els):
         if ptxt.lns is not None and not (ptxt.ismlinkscape) and not (ptxt.isflow):
             for w in ptxt.chks:
                 if w.chrs:
-                    chrs = sorted(w.chrs, key=lambda chr: chr.pts_ut[0][0])
+                    chrs = sorted(w.chrs, key=lambda c: c.chk.charpos[0][c.windex][0])
+                    # chrs = sorted(w.chrs, key=lambda chr: chr.pts_ut[0][0])
                     lastnspc = None
                     splitiis = []
                     prevsplit = 0
@@ -344,11 +361,18 @@ def Remove_Manual_Kerning(els, mergesupersub):
     # need to be split out into new text els
     newptxts = []
     for ptxt in ptxts:
+        # for line in ptxt.lns:
+        #     while len(line.chks) > 1:
+        #         newtxt = ptxt.split_off_chunks([line.chks[-1]])
+        #         els.append(newtxt)
+        #         newptxts.append(newtxt.parsed_text)
+        chr_lists = []
         for line in ptxt.lns:
-            while len(line.chks) > 1:
-                newtxt = ptxt.split_off_chunks([line.chks[-1]])
-                els.append(newtxt)
-                newptxts.append(newtxt.parsed_text)
+            for chk in reversed(line.chks[1:]):
+                chr_lists.append(chk.chrs)
+        newtxts = ptxt.split_off_characters(chr_lists)
+        els.extend(newtxts)
+        newptxts.extend([nt.parsed_text for nt in newtxts])
     return els
 
 
