@@ -600,7 +600,7 @@ class Exporter():
 
             # Preserve duplicates of text to be converted to paths, as well as paths
             if (((self.thinline or self.stroketopath) and elem.tag in BaseElementCache.otp_support_tags)
-                ) and elem.get("display") != "none" and elem.croot is not None:
+                ) and elem.get("display") != "none" and elem.croot is not None and not any(anc.tag==frtag for anc in elem.ancestors2()):
                 dup = elem.duplicate()
                 self.duplicatelabels[dup.get_id()] = None
                 grp = dh.group([dup])
