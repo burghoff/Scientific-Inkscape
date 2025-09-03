@@ -620,7 +620,10 @@ class BaseElementCache(BaseElement):
         """Set the id and update backlinks to xlink and style urls if needed"""
         if self.croot is not None:
             self.croot.iddict[new_id] = self
-        BE_set_id(self, new_id, backlinks=backlinks)
+        if backlinks:
+            BE_set_id(self, new_id, backlinks=backlinks)
+        else:
+            EBset(self,'id',new_id)
 
     comment_tag = lxml.etree.Comment("").tag
 
@@ -990,7 +993,8 @@ class SvgDocumentElementCache(SvgDocumentElement):
                 self.prefixcounter[prefix] = cnt
                 # Reduced version of set_id
                 self[new_id] = elem
-                BE_set_id(elem, new_id)
+                # BE_set_id(elem, new_id)
+                EBset(elem,'id',new_id) # can use low-level here
 
         def add(self, elem):
             """Add an element to the ID dict"""

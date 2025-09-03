@@ -378,7 +378,7 @@ def fast_parse_string(cls, path_d):
 inkex.paths.Path.parse_string = fast_parse_string  # type: ignore
 
 
-@lru_cache(maxsize=None)
+# @lru_cache(maxsize=None) # faster to not cache
 def cached_parse_string(path_d):
     ret = []
     for cmd, numbers in LEX_REX.findall(path_d):
@@ -392,7 +392,7 @@ def cached_parse_string(path_d):
                 return ret
             seg = cmd(*args[i : i + cmd_nargs])
             i += cmd_nargs
-            cmd = next_command_cache[type(seg)]
+            cmd = next_command_cache[cmd]
             cmd_nargs = nargs_cache[cmd]
             ret.append(seg)
     return ret
