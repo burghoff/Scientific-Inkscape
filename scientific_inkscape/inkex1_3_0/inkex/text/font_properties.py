@@ -422,7 +422,14 @@ with warnings.catch_warnings():
 
             import gi
 
-            gi.require_version("Gtk", "3.0")
+            try:
+                gi.require_version("Gtk", "3.0")
+            except ValueError as e:
+                if "Namespace Gtk not available for version 3.0" in str(e):
+                    gi.require_version("Gtk", "4.0")
+                else:
+                    raise e
+                    
             from gi.repository import Pango
 
             try:
@@ -444,7 +451,6 @@ with warnings.catch_warnings():
             except ValueError:
                 HASPANGOFT2 = False
                 from gi.repository import Gdk
-
 if pangoenv in ["True", "False"]:
     os.environ["HASPANGO"] = str(HASPANGO)
     os.environ["HASPANGOFT2"] = str(HASPANGOFT2)

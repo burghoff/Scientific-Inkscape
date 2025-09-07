@@ -243,10 +243,24 @@ class AutoExporter(inkex.EffectExtension):
                     # pylint: disable=import-outside-toplevel, unused-import
                     import gi
 
-                    gi.require_version("Gtk", "3.0")
+                    current = getattr(gi, "_versions", {}).get("Gtk")
+                    if not current:
+                        try:
+                            gi.require_version("Gtk", "3.0")
+                        except ValueError as e:
+                            msg = str(e)
+                            if "not available for version 3.0" in msg:
+                                gi.require_version("Gtk", "4.0")
+                            elif "already requires version" in msg:
+                                # Someone already picked (likely 4.0); just continue.
+                                pass
+                            else:
+                                raise
+                    
                     from gi.repository import Gtk  # noqa
                     # pylint: enable=import-outside-toplevel, unused-import
-                guitype = "gtk"
+                current = getattr(gi, "_versions", {}).get("Gtk")
+                guitype = "gtk"+current
             except ImportError:
                 guitype = "terminal"
             if USE_TERMINAL:
@@ -261,7 +275,7 @@ class AutoExporter(inkex.EffectExtension):
             warnings.simplefilter("ignore", ResourceWarning)
             # prevent warning that process is open
 
-            if guitype == "gtk":
+            if guitype.startswith("gtk"):
                 AutoExporter._gtk_call(pybin, aepy)
             else:
                 AutoExporter._terminal_call(pybin, aepy, pyloc)
