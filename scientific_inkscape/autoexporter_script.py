@@ -29,16 +29,9 @@ import inkex.text.parser  # noqa # needed to prevent GTK crashing
 import autoexporter
 from autoexporter import Exporter
 
-
+global mprint
 def mprint(*args, **kwargs):
-    if guitype=='gtk3.0':
-        global win
-        GLib.idle_add(win.print_text, args[0])
-    elif guitype=='gtk4.0':
-        global app
-        GLib.idle_add(app.print_text, args[0])
-    else:
-        print(*args, **kwargs)
+    print(*args, **kwargs)
 
 
 # Get svg files in directory
@@ -323,6 +316,8 @@ import image_helpers as ih
 init_prints.append("Python does not have PIL, images will not be cropped"
        " or converted to JPG\n" if not ih.hasPIL else "Python has PIL\n")
 
+fc = FileCheckerThread(input_options.watchdir,input_options.writedir)
+
 if guitype == 'gtk3.0':  
     with warnings.catch_warnings():
         # Ignore ImportWarning for Gtk
@@ -575,6 +570,16 @@ if guitype == 'gtk3.0':
             self.omit_text_check.connect("toggled", self.on_omit_text_toggled)
         
             self.ct = ct
+            self.connect("destroy", self.quit_and_close)
+                            
+            def print_fn(*args, **kwargs):
+                GLib.idle_add(self.print_text, args[0])
+            global mprint
+            mprint = print_fn
+            for p in init_prints:
+                mprint(p)
+            
+        
             
         def on_finalizer_changed(self, widget):
             input_options.finalizermode = int(widget.get_active_id())
@@ -608,19 +613,12 @@ if guitype == 'gtk3.0':
         def print_text(self, text):
             lns = text.split("\n")
             tor = []
-            exception = text.startswith("Exception")
             for ln in lns:
-                if "Export formats: " in ln or "Rasterization DPI: " in ln or exception:
+                if text.startswith("Exception") or "  : " not in ln:
                     continue
-                if (
-                    ":" in ln
-                    and len(ln.split(":")) == 2
-                    and "Inkscape binary" not in ln
-                    and "Python interpreter" not in ln
-                ):
-                    ln2 = [v.strip(" ") for v in ln.split(":")]
-                    self.filelogstore.append(ln2)
-                    tor.append(ln)
+                ln2 = [v.strip(" ") for v in ln.split(":")]
+                self.filelogstore.append(ln2)
+                tor.append(ln)
             lns = [item for item in lns if item not in tor]
             text = "\n".join(lns)
 
@@ -724,24 +722,17 @@ if guitype == 'gtk3.0':
                 "Omit text in PDF and create LaTeX file option toggled:",
                 widget.get_active(),
             )
+        def quit_and_close(self, *args):   # or (self, widget)
+            self.ct.stopped = True
+            Gtk.main_quit()
 
-    fc = FileCheckerThread(input_options.watchdir,input_options.writedir)
-    global win
     win = AutoexporterWindow(fc)
     win.set_keep_above(True)
-    
-    for p in init_prints:
-        mprint(p)
     fc.start()
-
-    def quit_and_close(self):
-        fc.stopped = True
-        Gtk.main_quit()
-
-    win.connect("destroy", quit_and_close)
     win.show_all()
     win.set_keep_above(False)
     Gtk.main()
+    
 elif guitype=='gtk4.0':
     import gi
     gi.require_version("Gtk", "4.0") # Lock to GTK 4
@@ -752,247 +743,222 @@ elif guitype=='gtk4.0':
             super().__init__(application_id="org.scientific_inkscape.AutoExporter")
             self._win = None
             self.ct = ct
+            self.watch_dir_path = None
+            self.write_dir_path = None
 
         def do_activate(self):
             if not self._win:
-                self._win = Gtk.ApplicationWindow(application=self)
-                self._win.set_title("Autoexporter (GTK 4.0)")
-                self._win.set_default_size(WINDOW_WIDTH, -1)
-                
-                self.notebook = Gtk.Notebook()
-                self.notebook.set_margin_start(MARGIN)
-                self.notebook.set_margin_end(MARGIN)
-                self.notebook.set_margin_top(MARGIN)
-                self.notebook.set_margin_bottom(MARGIN)
-                self._win.set_child(self.notebook)
-                
-                # Tab 1: Controls
-                tab1_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-                self.notebook.append_page(tab1_box, Gtk.Label(label="Controls"))
-                
-                # Top message window
-                self.selected_file_label = Gtk.TextView()
-                self.selected_file_label.set_editable(False)
-                self.selected_file_label.set_wrap_mode(Gtk.WrapMode.CHAR)
-                self.selected_file_label.get_buffer().set_text("No file selected.")
-                self.selected_file_label.set_hexpand(True)
-                self.selected_file_label.set_vexpand(True)  # so it can grow inside the scroller
-                self.message_scrolled_window = Gtk.ScrolledWindow()
-                # In GTK4 prefer min-content height over a fixed size request for scrollers:
-                self.message_scrolled_window.set_min_content_height(150)
-                # If you really want a size request, it still exists:
-                # self.message_scrolled_window.set_size_request(WINDOW_WIDTH - 2*MARGIN, 150)
-                self.message_scrolled_window.set_hexpand(True)
-                self.message_scrolled_window.set_vexpand(True)
-                self.message_scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-                self.message_scrolled_window.set_child(self.selected_file_label)  # (no .add in GTK4)
-                tab1_box.append(self.message_scrolled_window)
-                
-                
-                # Bottom file log window (GTK4 ColumnView)
-                class LogEntry(GObject.GObject):
-                    filename = GObject.Property(type=str, default="")
-                    message  = GObject.Property(type=str, default="")
-                    def __init__(self, filename="", message=""):
-                        super().__init__(); self.filename, self.message = filename, message
-                def _text_col(title, getter, *, fixed_width=None, wrap=False):
-                    fac = Gtk.SignalListItemFactory()
-                    fac.connect("setup", lambda f, li: li.set_child(Gtk.Label(xalign=0)))
-                    def bind(f, li):
-                        lbl = li.get_child(); it = li.get_item()
-                        txt = "" if it is None else getter(it)
-                        lbl.set_text(txt)
-                        if wrap:
-                            lbl.set_wrap(True); lbl.set_wrap_mode(Pango.WrapMode.WORD_CHAR); lbl.set_ellipsize(Pango.EllipsizeMode.NONE); lbl.set_hexpand(True)
-                        else:
-                            lbl.set_wrap(False); lbl.set_ellipsize(Pango.EllipsizeMode.END)
-                    fac.connect("bind", bind)
-                    col = Gtk.ColumnViewColumn(title=title, factory=fac); col.set_resizable(True)
-                    if fixed_width is not None: col.set_fixed_width(int(fixed_width))
-                    return col
-                self.LogEntry = LogEntry
-                self.filelogstore = Gio.ListStore(item_type=LogEntry)
-                selection = Gtk.SingleSelection(model=self.filelogstore)
-                self.treeview = Gtk.ColumnView(model=selection)
-                fn_col = _text_col("Filename", lambda it: it.filename, wrap=False)
-                msg_col = _text_col("Message",  lambda it: it.message,  wrap=True)
-                self.treeview.append_column(fn_col)
-                self.treeview.append_column(msg_col)
-                fn_col.set_expand(True)
-                msg_col.set_expand(True)
-                self.file_log_scrolled_window = Gtk.ScrolledWindow()
-                self.file_log_scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-                self.file_log_scrolled_window.set_min_content_height(350)
-                self.file_log_scrolled_window.set_hexpand(True); self.file_log_scrolled_window.set_vexpand(True)
-                self.file_log_scrolled_window.set_child(self.treeview)
-                self.maxlsrows = 100
-                def _on_items_changed(model, pos, removed, added):
-                    n = model.get_n_items()
-                    if n > self.maxlsrows:
-                        for _ in range(n - self.maxlsrows): model.remove(0)
-                    vadj = self.file_log_scrolled_window.get_vadjustment()
-                    if vadj: vadj.set_value(vadj.get_upper() - vadj.get_page_size())
-                self.filelogstore.connect("items-changed", _on_items_changed)
-                tab1_box.append(self.file_log_scrolled_window)
-
-                # Separator
-                separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-                tab1_box.append(separator)
-                
-                # Watch directory
-                watch_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-                watch_file_chooser_label = Gtk.Label(label="Watch directory", xalign=10)
-                watch_file_chooser_label.set_width_chars(LABEL_WIDTH)
-                self.watch_dir_button = Gtk.Button()
-                self.watch_dir_button.set_hexpand(True)
-                self.watch_dir_button.set_halign(Gtk.Align.FILL)
-                self.watch_dir_button.add_css_class("path-button")  # CSS class for min-width override
-                self._watch_dir_lbl = Gtk.Label(xalign=0.0)
-                self._watch_dir_lbl.set_single_line_mode(True)
-                self._watch_dir_lbl.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
-                self._watch_dir_lbl.set_wrap(False)
-                self._watch_dir_lbl.set_width_chars(12)       # minimum hint
-                self._watch_dir_lbl.set_max_width_chars(60)   # natural width cap
-                self.watch_dir_button.set_child(self._watch_dir_lbl)
-                self.watch_dir_path = input_options.watchdir
-                def _update_watch_dir_label(path: str | None):
-                    self._watch_dir_lbl.set_text(path or "Choose watch directory")
-                _update_watch_dir_label(self.watch_dir_path)
-                def _set_watch_dir(path: str):
-                    self.watch_dir_path = path
-                    _update_watch_dir_label(path)
-                    # call your existing handler for side effects
-                    if hasattr(self, "watch_folder_button_clicked"):
-                        try:
-                            self.watch_folder_button_clicked(path)
-                        except TypeError:
-                            self.watch_folder_button_clicked(self, path)
-                def _on_pick_watch_dir(_btn):
-                    dlg = Gtk.FileDialog(title="Choose watch directory")
-                    if self.watch_dir_path:
-                        try:
-                            dlg.set_initial_folder(Gio.File.new_for_path(self.watch_dir_path))
-                        except Exception:
-                            pass
-                    def _on_done(dialog, result):
-                        try:
-                            folder = dialog.select_folder_finish(result)
-                        except GLib.Error:
-                            return  # cancelled
-                        if folder:
-                            _set_watch_dir(folder.get_path())
-                    dlg.select_folder(self._win, None, _on_done)
-                self.watch_dir_button.connect("clicked", _on_pick_watch_dir)
-                watch_file_chooser_box.append(watch_file_chooser_label)
-                watch_file_chooser_box.append(self.watch_dir_button)
-                tab1_box.append(watch_file_chooser_box)
-
-                
-                # Write directory
-                write_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-                write_file_chooser_label = Gtk.Label(label="Write directory", xalign=10.0)
-                write_file_chooser_label.set_width_chars(LABEL_WIDTH)
-                self.write_dir_button = Gtk.Button()               # no 'label=' here
-                self.write_dir_button.set_hexpand(True)
-                self.write_dir_button.set_halign(Gtk.Align.FILL)
-                self.write_dir_button.add_css_class("path-button") # we'll use CSS below
-                self._write_dir_lbl = Gtk.Label(xalign=0.0)
-                self._write_dir_lbl.set_single_line_mode(True)
-                self._write_dir_lbl.set_ellipsize(Pango.EllipsizeMode.MIDDLE)  # better for long paths
-                self._write_dir_lbl.set_wrap(False)
-                self._write_dir_lbl.set_width_chars(12)    # minimum it should try to keep
-                self._write_dir_lbl.set_max_width_chars(60) # cap natural width
-                self.write_dir_button.set_child(self._write_dir_lbl)
-                self.write_dir_path = input_options.writedir
-                def _update_write_dir_label(path: str | None):
-                    self._write_dir_lbl.set_text(path or "Choose write directory")
-                _update_write_dir_label(self.write_dir_path)
-                def _set_write_dir(path: str):
-                    self.write_dir_path = path
-                    _update_write_dir_label(path)
-                    if hasattr(self, "write_folder_button_clicked"):
-                        try:
-                            self.write_folder_button_clicked(path)
-                        except TypeError:
-                            self.write_folder_button_clicked(self, path)
-                def _on_pick_write_dir(_btn):
-                    dlg = Gtk.FileDialog(title="Choose write directory")
-                    if self.write_dir_path:
-                        try:
-                            dlg.set_initial_folder(Gio.File.new_for_path(self.write_dir_path))
-                        except Exception:
-                            pass
-                    def _on_done(dialog, result):
-                        try:
-                            folder = dialog.select_folder_finish(result)
-                        except GLib.Error:
-                            return  # cancelled
-                        if folder:
-                            _set_write_dir(folder.get_path())
-                    dlg.select_folder(self._win, None, _on_done)
-                self.write_dir_button.connect("clicked", _on_pick_write_dir)
-                write_file_chooser_box.append(write_file_chooser_label)
-                write_file_chooser_box.append(self.write_dir_button)
-                tab1_box.append(write_file_chooser_box)
-                
-                # Export all button
-                self.ea_button = Gtk.Button(label="Export all")
-                self.ea_button.connect("clicked", self.export_all_clicked)
-                tab1_box.append(self.ea_button)
-                
-                # Export file button
-                self.ef_button = Gtk.Button(label="Export file")
-                self.ef_button.connect("clicked", self.export_file_clicked)
-                tab1_box.append(self.ef_button)
-                
-                # Exit button
-                self.exit_button = Gtk.Button(label="Exit")
-                self.exit_button.connect("clicked", self._on_exit_clicked)
-                tab1_box.append(self.exit_button)
-                self._win.connect("close-request", self._on_close_request)
-
+                self.make_win()
             self._win.present()
+            
+        def make_win(self):
+            self._win = Gtk.ApplicationWindow(application=self)
+            self._win.set_title("Autoexporter (GTK 4.0)")
+            self._win.set_default_size(WINDOW_WIDTH, -1)
+            
+            self.notebook = Gtk.Notebook()
+            self.notebook.set_margin_start(MARGIN)
+            self.notebook.set_margin_end(MARGIN)
+            self.notebook.set_margin_top(MARGIN)
+            self.notebook.set_margin_bottom(MARGIN)
+            self._win.set_child(self.notebook)
+            
+            # Tab 1: Controls
+            tab1_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            self.notebook.append_page(tab1_box, Gtk.Label(label="Controls"))
+            
+            # Top message window
+            self.selected_file_label = Gtk.TextView()
+            self.selected_file_label.set_editable(False)
+            self.selected_file_label.set_wrap_mode(Gtk.WrapMode.CHAR)
+            self.selected_file_label.get_buffer().set_text("No file selected.")
+            self.selected_file_label.set_hexpand(True)
+            self.selected_file_label.set_vexpand(True)  # so it can grow inside the scroller
+            self.message_scrolled_window = Gtk.ScrolledWindow()
+            self.message_scrolled_window.set_min_content_height(150)
+            self.message_scrolled_window.set_hexpand(True)
+            self.message_scrolled_window.set_vexpand(True)
+            self.message_scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+            self.message_scrolled_window.set_child(self.selected_file_label)  # (no .add in GTK4)
+            tab1_box.append(self.message_scrolled_window)
+            
+            # Bottom file log window (GTK4 ColumnView)
+            class LogEntry(GObject.GObject):
+                filename = GObject.Property(type=str, default="")
+                message  = GObject.Property(type=str, default="")
+                def __init__(self, filename="", message=""):
+                    super().__init__(); self.filename, self.message = filename, message
+            def _text_col(title, getter, *, fixed_width=None, wrap=False):
+                fac = Gtk.SignalListItemFactory()
+                fac.connect("setup", lambda f, li: li.set_child(Gtk.Label(xalign=0)))
+                def bind(f, li):
+                    lbl = li.get_child(); it = li.get_item()
+                    txt = "" if it is None else getter(it)
+                    lbl.set_text(txt)
+                    if wrap:
+                        lbl.set_wrap(True); lbl.set_wrap_mode(Pango.WrapMode.WORD_CHAR); lbl.set_ellipsize(Pango.EllipsizeMode.NONE); lbl.set_hexpand(True)
+                    else:
+                        lbl.set_wrap(False); lbl.set_ellipsize(Pango.EllipsizeMode.END)
+                fac.connect("bind", bind)
+                col = Gtk.ColumnViewColumn(title=title, factory=fac); col.set_resizable(True)
+                if fixed_width is not None: col.set_fixed_width(int(fixed_width))
+                return col
+            self.LogEntry = LogEntry
+            self.filelogstore = Gio.ListStore(item_type=LogEntry)
+            selection = Gtk.SingleSelection(model=self.filelogstore)
+            self.treeview = Gtk.ColumnView(model=selection)
+            fn_col = _text_col("Filename", lambda it: it.filename, wrap=False)
+            msg_col = _text_col("Message",  lambda it: it.message,  wrap=True)
+            self.treeview.append_column(fn_col)
+            self.treeview.append_column(msg_col)
+            fn_col.set_expand(True)
+            msg_col.set_expand(True)
+            self.file_log_scrolled_window = Gtk.ScrolledWindow()
+            self.file_log_scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+            self.file_log_scrolled_window.set_min_content_height(350)
+            self.file_log_scrolled_window.set_hexpand(True); self.file_log_scrolled_window.set_vexpand(True)
+            self.file_log_scrolled_window.set_child(self.treeview)
+            self.maxlsrows = 100
+            def _on_items_changed(model, pos, removed, added):
+                n = model.get_n_items()
+                if n > self.maxlsrows:
+                    for _ in range(n - self.maxlsrows): model.remove(0)
+                vadj = self.file_log_scrolled_window.get_vadjustment()
+                if vadj: vadj.set_value(vadj.get_upper() - vadj.get_page_size())
+            self.filelogstore.connect("items-changed", _on_items_changed)
+            tab1_box.append(self.file_log_scrolled_window)
 
-        def _on_exit_clicked(self, *_args):
-            self._on_close_request()
-            self._win.close()             # actually closes the window
+            # Separator
+            separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            tab1_box.append(separator)
+            
+            # Watch directory
+            watch_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+            watch_file_chooser_label = Gtk.Label(label="Watch directory", xalign=10)
+            watch_file_chooser_label.set_width_chars(LABEL_WIDTH)
+            self.watch_dir_button = Gtk.Button()
+            self.watch_dir_button.set_hexpand(True)
+            self.watch_dir_button.set_halign(Gtk.Align.FILL)
+            self.watch_dir_button.add_css_class("path-button")  # CSS class for min-width override
+            self._watch_dir_lbl = Gtk.Label(xalign=0.0)
+            self._watch_dir_lbl.set_single_line_mode(True)
+            self._watch_dir_lbl.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
+            self._watch_dir_lbl.set_wrap(False)
+            self._watch_dir_lbl.set_width_chars(12)       # minimum hint
+            self._watch_dir_lbl.set_max_width_chars(60)   # natural width cap
+            self.watch_dir_button.set_child(self._watch_dir_lbl)
+            self.watch_dir_path = input_options.watchdir
+            self._watch_dir_lbl.set_text(self.watch_dir_path or "Choose watch directory")
+            self.watch_dir_button.connect("clicked", self.watch_dir_clicked)
+            watch_file_chooser_box.append(watch_file_chooser_label)
+            watch_file_chooser_box.append(self.watch_dir_button)
+            tab1_box.append(watch_file_chooser_box)
+
+
+            # Write directory
+            write_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+            write_file_chooser_label = Gtk.Label(label="Write directory", xalign=10.0)
+            write_file_chooser_label.set_width_chars(LABEL_WIDTH)
+            self.write_dir_button = Gtk.Button()               # no 'label=' here
+            self.write_dir_button.set_hexpand(True)
+            self.write_dir_button.set_halign(Gtk.Align.FILL)
+            self.write_dir_button.add_css_class("path-button") # we'll use CSS below
+            self._write_dir_lbl = Gtk.Label(xalign=0.0)
+            self._write_dir_lbl.set_single_line_mode(True)
+            self._write_dir_lbl.set_ellipsize(Pango.EllipsizeMode.MIDDLE)  # better for long paths
+            self._write_dir_lbl.set_wrap(False)
+            self._write_dir_lbl.set_width_chars(12)    # minimum it should try to keep
+            self._write_dir_lbl.set_max_width_chars(60) # cap natural width
+            self.write_dir_button.set_child(self._write_dir_lbl)
+            self.write_dir_path = input_options.writedir
+            self._write_dir_lbl.set_text(self.write_dir_path or "Choose write directory")
+            self.write_dir_button.connect("clicked", self.write_dir_clicked)
+            write_file_chooser_box.append(write_file_chooser_label)
+            write_file_chooser_box.append(self.write_dir_button)
+            tab1_box.append(write_file_chooser_box)
+            
+            # Export all button
+            self.ea_button = Gtk.Button(label="Export all")
+            self.ea_button.connect("clicked", self.export_all_clicked)
+            tab1_box.append(self.ea_button)
+            
+            # Export file button
+            self.ef_button = Gtk.Button(label="Export file")
+            self.ef_button.connect("clicked", self.export_file_clicked)
+            tab1_box.append(self.ef_button)
+            
+            # Exit button
+            self.exit_button = Gtk.Button(label="Exit")
+            self.exit_button.connect("clicked", self.exit_clicked)
+            tab1_box.append(self.exit_button)
+            self._win.connect("close-request", self.close_requested)
+            
+            # Tab 2: Options (GTK 4)
+            tab2_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            tab2_box.set_margin_start(10)
+            tab2_box.set_margin_end(10)
+            tab2_box.set_margin_top(10)
+            tab2_box.set_margin_bottom(10)
+            self.notebook.append_page(tab2_box, Gtk.Label(label="Options"))
+            self._build_options_tab(tab2_box)
+            
+            def print_fn(*args, **kwargs):
+                self.print_text(args[0])
+            global mprint
+            mprint = print_fn
+            for p in init_prints:
+                mprint(p)
+
+        def exit_clicked(self, *_args):
+            self.close_requested()
+            self._win.close()             # closes the window
         
-        def _on_close_request(self, *args):
+        def close_requested(self, *args):
             self.ct.stopped = True
             return False
-        
-        def watch_folder_button_clicked(self, *args):
-            """
-            Compat handler for old/new call sites.
-            - New path-first calls: watch_folder_button_clicked("/path")
-            - Old widget,path calls: watch_folder_button_clicked(widget, "/path")
-            - Fallback to self.watch_dir_path
-            """
-            path = None
-            for a in args:
-                if isinstance(a, str):
-                    path = a
-                    break
-            if path is None:
-                path = getattr(self, "watch_dir_path", None)
-            if path:
-                self.ct.watchdir = path
-                self.ct.nf = True  # notify flags as before
-        
-        def write_folder_button_clicked(self, *args):
-            """
-            Compat handler for old/new call sites.
-            """
-            path = None
-            for a in args:
-                if isinstance(a, str):
-                    path = a
-                    break
-            if path is None:
-                path = getattr(self, "write_dir_path", None)
-            if path:
-                self.ct.writedir = path
+
+        def watch_dir_clicked(self, _btn):
+            dlg = Gtk.FileDialog(title="Choose watch directory")
+            if self.watch_dir_path:
+                try:
+                    dlg.set_initial_folder(Gio.File.new_for_path(self.watch_dir_path))
+                except Exception:
+                    pass
+            def _done(dialog, result):
+                try:
+                    folder = dialog.select_folder_finish(result)
+                except GLib.Error:
+                    return
+                if not folder:
+                    return
+                self.watch_dir_path = folder.get_path()
+                if getattr(self, "_watch_dir_lbl", None):
+                    self._watch_dir_lbl.set_text(self.watch_dir_path or "Choose watch directory")
+                # inline apply
+                self.ct.watchdir = self.watch_dir_path
                 self.ct.nf = True
+            dlg.select_folder(self._win, None, _done)
+    
+        def write_dir_clicked(self, _btn):
+            dlg = Gtk.FileDialog(title="Choose write directory")
+            if self.write_dir_path:
+                try:
+                    dlg.set_initial_folder(Gio.File.new_for_path(self.write_dir_path))
+                except Exception:
+                    pass
+            def _done(dialog, result):
+                try:
+                    folder = dialog.select_folder_finish(result)
+                except GLib.Error:
+                    return
+                if not folder:
+                    return
+                self.write_dir_path = folder.get_path()
+                if getattr(self, "_write_dir_lbl", None):
+                    self._write_dir_lbl.set_text(self.write_dir_path or "Choose write directory")
+                self.ct.writedir = self.write_dir_path
+                self.ct.nf = True
+            dlg.select_folder(self._win, None, _done)
         
         def export_all_clicked(self, _btn):
             self.ct.ea = True
@@ -1000,7 +966,6 @@ elif guitype=='gtk4.0':
         def export_file_clicked(self, _btn):
             # GTK 4: use FileDialog (async) instead of FileChooserNative
             dlg = Gtk.FileDialog(title="Please choose a file")
-        
             start_dir = getattr(self, "watch_dir_path", None)
             if start_dir:
                 try:
@@ -1028,21 +993,15 @@ elif guitype=='gtk4.0':
         def print_text(self, text):
             def _do():
                 lns = text.splitlines()
-                tor = []
-                exception = text.startswith("Exception")
+                tor = [] 
                 for ln in lns:
-                    if ("Export formats: " in ln) or ("Rasterization DPI: " in ln) or exception:
+                    if text.startswith("Exception") or "  : " not in ln:
                         continue
-                    if (":" in ln) and ("Inkscape binary" not in ln) and ("Python interpreter" not in ln):
-                        key, val = [v.strip() for v in ln.split(":", 1)]
-                        if key or val:
-                            # Append to GTK4 model (Gio.ListStore of LogEntry)
-                            if hasattr(self, "LogEntry"):
-                                self.filelogstore.append(self.LogEntry(filename=key, message=val))
-                            else:
-                                # Fallback if you didn't stash LogEntry on self
-                                self.filelogstore.append(GObject.new(type(self.filelogstore).props.item_type.value_nick, filename=key, message=val))
-                            tor.append(ln)
+                    key, val = [v.strip() for v in ln.split(":", 1)]
+                    if key or val:
+                        # Append to GTK4 model (Gio.ListStore of LogEntry)
+                        self.filelogstore.append(self.LogEntry(filename=key, message=val))
+                        tor.append(ln)
                 # Remaining text goes to the top TextView
                 rem = [item for item in lns if item not in tor]
                 txt = "\n".join(rem)
@@ -1053,18 +1012,150 @@ elif guitype=='gtk4.0':
                         buf.set_text("")
                     buf.insert(buf.get_end_iter(), txt + "\n")
                 return False  # stop idle
-        
-            # Ensure we modify GTK widgets on the main loop
             GLib.idle_add(_do)
+            
+        def _build_options_tab(self, parent: Gtk.Box):
+            css = Gtk.CssProvider()
+            css.load_from_data(b".label-bold { font-weight: bold; }")
+            Gtk.StyleContext.add_provider_for_display(
+                Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            )
+        
+            def _hdr(text):
+                lbl = Gtk.Label(label=text, xalign=0.0)
+                lbl.add_css_class("label-bold")
+                return lbl
+        
+            # Generic binders to consolidate callbacks
+            def _bind_check(btn: Gtk.CheckButton, attr: str):
+                btn.set_active(bool(getattr(input_options, attr)))
+                btn.connect("toggled", lambda b: setattr(input_options, attr, b.get_active()))
+        
+            def _bind_spin(spin: Gtk.SpinButton, attr: str, *, as_int: bool = False):
+                # initialize from model
+                val = getattr(input_options, attr)
+                spin.set_value(float(val))
+                def _on_change(s):
+                    v = s.get_value_as_int() if as_int else s.get_value()
+                    setattr(input_options, attr, v)
+                spin.connect("value-changed", _on_change)
+        
+            def _bind_combo_active_id(combo: Gtk.ComboBoxText, attr: str, *, to_int: bool = True):
+                # assumes IDs are strings like "1", "2", ...
+                cur = getattr(input_options, attr, 1)
+                try:
+                    combo.set_active_id(str(int(cur)))
+                except Exception:
+                    combo.set_active(0)
+                def _on_change(c):
+                    val = c.get_active_id()
+                    if val is None:
+                        return
+                    setattr(input_options, attr, int(val) if to_int else val)
+                combo.connect("changed", _on_change)
+        
+            # --- Formats to export ---
+            parent.append(_hdr("Formats to export"))
+            export_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            parent.append(export_row)
+        
+            # left column: format checkboxes
+            fmt_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+            export_row.append(fmt_col)
+        
+            self.pdf_check = Gtk.CheckButton(label="PDF")
+            self.png_check = Gtk.CheckButton(label="PNG")
+            self.emf_check = Gtk.CheckButton(label="EMF")
+            self.eps_check = Gtk.CheckButton(label="EPS")
+            self.svg_check = Gtk.CheckButton(label="Plain SVG")
+        
+            for w in (self.pdf_check, self.png_check, self.emf_check, self.eps_check, self.svg_check):
+                fmt_col.append(w)
+        
+            _bind_check(self.pdf_check, "usepdf")
+            _bind_check(self.png_check, "usepng")
+            _bind_check(self.emf_check, "useemf")
+            _bind_check(self.eps_check, "useeps")
+            _bind_check(self.svg_check, "usepsvg")
+        
+            # right column: DPI
+            dpi_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+            export_row.append(dpi_col)
+            dpi_col.append(Gtk.Label(label="Rasterization DPI", xalign=0.0))
+        
+            dpi_adj = Gtk.Adjustment(
+                value=float(getattr(input_options, "dpi", 300)),
+                lower=1, upper=10000, step_increment=1, page_increment=10, page_size=0
+            )
+            self.dpi_spin = Gtk.SpinButton(adjustment=dpi_adj, digits=0)
+            dpi_col.append(self.dpi_spin)
+            _bind_spin(self.dpi_spin, "dpi", as_int=True)
+        
+            # --- Embedded image handling ---
+            parent.append(_hdr("Embedded image handling"))
+            self.crop_check = Gtk.CheckButton(label="Crop and resample images?")
+            parent.append(self.crop_check)
+            _bind_check(self.crop_check, "imagemode2")
+        
+            # --- Other options ---
+            parent.append(_hdr("Other options"))
+            other_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            parent.append(other_row)
+        
+            left_other = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+            other_row.append(left_other)
+        
+            self.convert_text_check = Gtk.CheckButton(label="Convert text to paths")
+            self.prevent_thin_lines_check = Gtk.CheckButton(label="Prevent thin line enhancement")
+            self.convert_strokes_check = Gtk.CheckButton(label="Convert all strokes to paths")
+            self.transparent_back_check = Gtk.CheckButton(label="Add transparent backing rectangle")
+        
+            for w in (
+                self.convert_text_check,
+                self.prevent_thin_lines_check,
+                self.convert_strokes_check,
+                self.transparent_back_check,
+            ):
+                left_other.append(w)
+        
+            _bind_check(self.convert_text_check, "texttopath")
+            _bind_check(self.prevent_thin_lines_check, "thinline")
+            _bind_check(self.convert_strokes_check, "stroketopath")
+            _bind_check(self.transparent_back_check, "backingrect")
+        
+            right_other = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+            other_row.append(right_other)
+            right_other.append(Gtk.Label(label="Extra margin (mm)", xalign=0.0))
+        
+            margin_adj = Gtk.Adjustment(
+                value=float(getattr(input_options, "margin", 0.0)),
+                lower=0.0, upper=10.0, step_increment=0.1, page_increment=1.0, page_size=0
+            )
+            self.extra_margin_spin = Gtk.SpinButton(adjustment=margin_adj, digits=1)
+            right_other.append(self.extra_margin_spin)
+            _bind_spin(self.extra_margin_spin, "margin", as_int=False)
+        
+            # --- PDF options ---
+            parent.append(_hdr("PDF options"))
+            self.omit_text_check = Gtk.CheckButton(label="Omit text in PDF and create LaTeX file")
+            parent.append(self.omit_text_check)
+            _bind_check(self.omit_text_check, "latexpdf")
+        
+            # --- Finalizer options ---
+            parent.append(_hdr("Document finalizer"))
+            self.finalizer_combo = Gtk.ComboBoxText()
+            # IDs match stored int values for simple binding
+            self.finalizer_combo.append("1", "Do not finalize")
+            self.finalizer_combo.append("2", "Embed linked images")
+            self.finalizer_combo.append("3", "Embed and convert SVGs to PNGs")
+            self.finalizer_combo.append("4", "Embed and delete backup PNGs")
+            _bind_combo_active_id(self.finalizer_combo, "finalizermode", to_int=True)
+            parent.append(self.finalizer_combo)
 
-    fc = FileCheckerThread(input_options.watchdir,input_options.writedir)
-    global app
     app = AutoExporterApp(fc)
-    for p in init_prints:
-        mprint(p)
     fc.start()
     app.run()
-    
+
 else:
     try:
         import tkinter
@@ -1151,11 +1242,9 @@ else:
         selectedfile.close()
         return selectedfile.name
 
-    # Main loop
-    fc = FileCheckerThread(input_options.watchdir,input_options.writedir)
+
     if fc.watchdir is None or fc.writedir is None:
         fc.watchdir, fc.writedir = Get_Directories()
-
     fc.start()
     while fc.nf:  # wait until it's done initializing
         pass
