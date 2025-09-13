@@ -3282,7 +3282,7 @@ class TChunk:
                 else:
                     newsty["font-size"] = "100%"
             if newsty:
-                c.add_style(newsty, newfs=True)
+                c.add_style(newsty)
                 
         
         # Correct positions
@@ -3407,7 +3407,7 @@ class TChunk:
                         )
 
                 if newsty is not None:
-                    newc.add_style(newsty, newfs=True)
+                    newc.add_style(newsty)
                 prevc = newc
 
     def get_ut_pts(self, chk2, current_pts=False):
@@ -4108,7 +4108,7 @@ class TChar:
         if updatedelta:
             self.line.ptxt.write_dxdy()
 
-    def add_style(self, sty, setspecified=True, newfs=False):
+    def add_style(self, sty, setspecified=True):
         """
         Adds a style to the character by wrapping it in a new Tspan.
         When setspecified, set the specified (composed) style. Otherwise, just
@@ -4154,10 +4154,10 @@ class TChar:
             t.cstyle = styset
         
         self.sty = styset
-        if newfs:
-            fsz, scf, _ = composed_width(self.loc.sel, "font-size")
-            self.utfs = fsz / scf
-            self.tfs = fsz
+        tfsz, _, utfsz = composed_width(self.loc.sel, "font-size")
+        if abs(utfsz-self.utfs)>0.001:
+            self.utfs = utfsz
+            self.tfs = tfsz
             self.cwd = self.prop.charw * self.utfs
             self.chk.cwd[self.windex] = self.cwd
             self.caph = self.prop.caph * self.utfs
