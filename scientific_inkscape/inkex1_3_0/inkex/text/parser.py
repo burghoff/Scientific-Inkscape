@@ -787,7 +787,7 @@ class ParsedText:
                         if line.chrs[0].loc.typ == TYP_TAIL:
                             # wrap in a trivial Tspan so we can set x and y
                             line.chrs[0].add_style(
-                                {"baseline-shift": "0%"}, setdefault=False
+                                {"baseline-shift": "0%"}, setspecified=False
                             )
                         line.xsrc = line.chrs[0].loc.elem
                         line.ysrc = line.chrs[0].loc.elem
@@ -1467,7 +1467,7 @@ class ParsedText:
                         if line.chrs[0].loc.typ == TYP_TAIL:
                             # wrap in a trivial Tspan so we can set x and y
                             line.chrs[0].add_style(
-                                {"baseline-shift": "0%"}, setdefault=False
+                                {"baseline-shift": "0%"}, setspecified=False
                             )
                         line.xsrc = line.chrs[0].loc.elem
                         line.ysrc = line.chrs[0].loc.elem
@@ -1561,7 +1561,7 @@ class ParsedText:
                             "font-stretch": r[0]["font-stretch"],
                             "baseline-shift": "0%",
                         },
-                        setdefault=False,
+                        setspecified=False,
                     )
 
     def flow_to_text(self):
@@ -4108,8 +4108,12 @@ class TChar:
         if updatedelta:
             self.line.ptxt.write_dxdy()
 
-    def add_style(self, sty, setdefault=True, newfs=False):
-        """Adds a style to the character by wrapping it in a new Tspan."""
+    def add_style(self, sty, setspecified=True, newfs=False):
+        """
+        Adds a style to the character by wrapping it in a new Tspan.
+        When setspecified, set the specified (composed) style. Otherwise, just
+        sets the local style.
+        """
         span = Tspan if self.line.ptxt.textel.tag == TEtag else inkex.FlowSpan
         t = span()
         t.text = self.c
@@ -4143,10 +4147,11 @@ class TChar:
                 cha.loc = CLoc(t, TYP_TAIL, i - myi - 1)
         self.loc = CLoc(t, TYP_TEXT, 0)  # update my own location
 
-        # When the specified style has something new span doesn't, are inheriting and
-        # need to explicitly assign the default value
         styset = Style(sty)
-        t.cspecified_style = styset
+        if setspecified:
+            t.cspecified_style = styset
+        else:
+            t.cstyle = styset
         
         self.sty = styset
         if newfs:
