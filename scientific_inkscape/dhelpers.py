@@ -150,7 +150,8 @@ if (
     and inkex.installed_ivp[0:2] == [1, 1]
     or (inkex.installed_ivp[0:2] == [1, 2] and inkex.installed_ivp[2] < 2)
 ):
-    if inkex.text.font_properties.HASPANGOFT2:
+    from inkex.text.font_properties import PangoRenderer
+    if PangoRenderer().HASPANGOFT2:
         from gi.repository import GLib
 
         def custom_log_writer(log_domain, log_level, message, user_data):

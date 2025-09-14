@@ -74,7 +74,6 @@ from inkex.text.utils import (
 )
 from inkex.text.font_properties import (
     PangoRenderer,
-    HASPANGO,
     fcfg,
     font_style,
     true_style,
@@ -4328,7 +4327,7 @@ class CharacterTable:
         )
 
         # HASPANGO = False; os.environ["HASPANGO"]='False'
-        if HASPANGO:
+        if PangoRenderer().HASPANGO:
             # Prefer to measure with Pango if we have it (faster, more accurate)
             self.ctable = self.measure_characters()
         else:

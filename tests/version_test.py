@@ -43,11 +43,14 @@ for version, pyexec in vpy.items():
     lines = stdout.split('\n')
     
     for line in lines:
-        if line.startswith('test_main.py'):
-            pline = line.strip('test_main.py')
+        if line.endswith('%]'):
+            if line.startswith('test_main.py '):
+                pline = line[len('test_main.py '):]
+            else:
+                pline = line
             pversion = version.ljust(version_col_width)
             pango_info = f"{'Yes' if env.get('HASPANGO', 'N/A') == 'True' else 'No'}".ljust(pango_col_width - 1)
-            print(f"{pversion} : {pango_info} :{pline}")
+            print(f"{pversion} : {pango_info} : {pline}")
 
 # Delete the environment variable
 if 'TESTMAINVERSION' in os.environ:

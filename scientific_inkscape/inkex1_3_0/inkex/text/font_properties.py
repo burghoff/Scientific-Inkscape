@@ -375,114 +375,231 @@ def nearest_val(dictv, inputval):
     return dictv[min(dictv.keys(), key=lambda x: abs(x - inputval))]
 
 
-# Attempt to import the Pango bindings for the gi repository
-with warnings.catch_warnings():
-    # Ignore ImportWarning for Gtk/Pango
-    warnings.simplefilter("ignore")
-
-    HASPANGO = False
-    HASPANGOFT2 = False
-    pangoenv = os.environ.get("USEPANGO", "")
-    if pangoenv != "False":
-        try:
-            if sys.platform == "win32":
-                # Windows may not have all of the typelibs needed for PangoFT2
-                # Add the typelibs subdirectory as a fallback option
-                bloc = inkex.inkscape_system_info.binary_location  # type: ignore
-                girepo = os.path.join(
-                    os.path.dirname(os.path.dirname(bloc)),
-                    "lib",
-                    "girepository-1.0",
-                )  # Inkscape's GI repository
-                if os.path.isdir(girepo):
-                    tlibs = [
-                        "fontconfig-2.0.typelib",
-                        "PangoFc-1.0.typelib",
-                        "PangoFT2-1.0.typelib",
-                        "freetype2-2.0.typelib",
-                    ]
-                    # If any typelibs are missing, try adding the typelibs subdirectory
-                    if any(
-                        not (os.path.exists(os.path.join(girepo, t))) for t in tlibs
-                    ):
-                        tlibsub = os.path.join(
-                            os.path.dirname(os.path.abspath(__file__)), "typelibs"
-                        )
-                        for newpath in [girepo, tlibsub]:
-                            # gi looks in the order specified in GI_TYPELIB_PATH
-                            cval = os.environ.get("GI_TYPELIB_PATH", "")
-                            if cval == "":
-                                os.environ["GI_TYPELIB_PATH"] = newpath
-                            elif newpath not in cval:
-                                os.environ["GI_TYPELIB_PATH"] = (
-                                    cval + os.pathsep + newpath
-                                )
-
-            import gi
-
-            try:
-                gi.require_version("Gtk", "3.0")
-            except ValueError as e:
-                if "Namespace Gtk not available for version 3.0" in str(e):
-                    gi.require_version("Gtk", "4.0")
-                else:
-                    raise e
-                    
-            from gi.repository import Pango
-
-            try:
-                HASPANGO = hasattr(Pango, "Variant") and hasattr(
-                    Pango.Variant, "NORMAL"
-                )
-            except ValueError:
-                HASPANGO = False
-        except ImportError:
-            HASPANGO = False
-
-        if HASPANGO:
-            try:
-                # May require some typelibs we do not have
-                gi.require_version("PangoFT2", "1.0")
-                from gi.repository import PangoFT2
-
-                HASPANGOFT2 = True
-            except ValueError:
-                HASPANGOFT2 = False
-                from gi.repository import Gdk
-if pangoenv in ["True", "False"]:
-    os.environ["HASPANGO"] = str(HASPANGO)
-    os.environ["HASPANGOFT2"] = str(HASPANGOFT2)
-    with open("env_vars.txt", "w") as f:
-        f.write(f"HASPANGO={os.environ['HASPANGO']}")
-        f.write(f"\nHASPANGOFT2={os.environ['HASPANGOFT2']}")
 
 
-class PangoRenderer:
+class PR:
     """
     Class to handle Pango rendering functionalities.
     """
+    
+    _instance = None
+    def __new__(cls, *args, **kwargs):
+        ''' Make a singleton class that imports Pango at the first construction'''
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls.import_pango()
+            if cls.HASPANGO:
+                cls.conversions()
+                cls._instance.init_func()
+        return cls._instance
 
-    def __init__(self):
+    def init_func(self):
         self.pangosize = 1024 * 4
         # size of text to render. 1024 is good
 
         with warnings.catch_warnings():
             # Ignore ImportWarning
             warnings.filterwarnings("ignore", category=ImportWarning)
-            if HASPANGOFT2:
-                self.ctx = Pango.Context.new()
-                self.ctx.set_font_map(PangoFT2.FontMap.new())
+            if PR.HASPANGOFT2:
+                self.ctx = PR.P.Context.new()
+                self.ctx.set_font_map(PR.PangoFT2.FontMap.new())
             else:
-                self.ctx = Gdk.pango_context_get()
-        self.pangolayout = Pango.Layout(self.ctx)
-        self.pufd = Pango.units_from_double
-        self.putd = Pango.units_to_double
-        self.scale = Pango.SCALE
+                self.ctx = PR.Gdk.pango_context_get()
+        self.pangolayout = PR.P.Layout(self.ctx)
+        self.pufd = PR.P.units_from_double
+        self.putd = PR.P.units_to_double
+        self.scale = PR.P.SCALE
         self._families = None
         self._faces = None
         self._face_descriptions = None
         self._face_strings = None
         self._face_css = None
+
+    @classmethod
+    def conversions(cls, *args, **kwargs):
+        P = cls.P
+        # Pango to fontconfig
+        cls.PWGT_FCWGT = {
+            P.Weight.THIN: FC.WEIGHT_THIN,
+            P.Weight.ULTRALIGHT: FC.WEIGHT_ULTRALIGHT,
+            P.Weight.ULTRALIGHT: FC.WEIGHT_EXTRALIGHT,
+            P.Weight.LIGHT: FC.WEIGHT_LIGHT,
+            P.Weight.SEMILIGHT: FC.WEIGHT_DEMILIGHT,
+            P.Weight.SEMILIGHT: FC.WEIGHT_SEMILIGHT,
+            P.Weight.BOOK: FC.WEIGHT_BOOK,
+            P.Weight.NORMAL: FC.WEIGHT_REGULAR,
+            P.Weight.NORMAL: FC.WEIGHT_NORMAL,
+            P.Weight.MEDIUM: FC.WEIGHT_MEDIUM,
+            P.Weight.SEMIBOLD: FC.WEIGHT_DEMIBOLD,
+            P.Weight.SEMIBOLD: FC.WEIGHT_SEMIBOLD,
+            P.Weight.BOLD: FC.WEIGHT_BOLD,
+            P.Weight.ULTRABOLD: FC.WEIGHT_EXTRABOLD,
+            P.Weight.ULTRABOLD: FC.WEIGHT_ULTRABOLD,
+            P.Weight.HEAVY: FC.WEIGHT_BLACK,
+            P.Weight.HEAVY: FC.WEIGHT_HEAVY,
+            P.Weight.ULTRAHEAVY: FC.WEIGHT_EXTRABLACK,
+            P.Weight.ULTRAHEAVY: FC.WEIGHT_ULTRABLACK,
+        }
+
+        cls.PSTY_FCSLN = {
+            P.Style.NORMAL: FC.SLANT_ROMAN,
+            P.Style.ITALIC: FC.SLANT_ITALIC,
+            P.Style.OBLIQUE: FC.SLANT_OBLIQUE,
+        }
+
+        cls.PSTR_FCWDT = {
+            P.Stretch.ULTRA_CONDENSED: FC.WIDTH_ULTRACONDENSED,
+            P.Stretch.EXTRA_CONDENSED: FC.WIDTH_EXTRACONDENSED,
+            P.Stretch.CONDENSED: FC.WIDTH_CONDENSED,
+            P.Stretch.SEMI_CONDENSED: FC.WIDTH_SEMICONDENSED,
+            P.Stretch.NORMAL: FC.WIDTH_NORMAL,
+            P.Stretch.SEMI_EXPANDED: FC.WIDTH_SEMIEXPANDED,
+            P.Stretch.EXPANDED: FC.WIDTH_EXPANDED,
+            P.Stretch.EXTRA_EXPANDED: FC.WIDTH_EXTRAEXPANDED,
+            P.Stretch.ULTRA_EXPANDED: FC.WIDTH_ULTRAEXPANDED,
+        }
+
+        # CSS to Pango
+        cls.CSSVAR_PVAR = {
+            "normal": P.Variant.NORMAL,
+            "small-caps": P.Variant.SMALL_CAPS,
+        }
+
+        cls.CSSSTY_PSTY = {
+            "normal": P.Style.NORMAL,
+            "italic": P.Style.ITALIC,
+            "oblique": P.Style.OBLIQUE,
+        }
+        # For weights, Inkscape ignores anything commented out below
+        # See ink_font_description_from_style in libnrtype/font-factory.cpp
+        cls.CSSWGT_PWGT = {
+            # 'thin'       : P.Weight.THIN,
+            # 'ultralight' : P.Weight.ULTRALIGHT,
+            # 'light'      : P.Weight.LIGHT,
+            "semilight": P.Weight.SEMILIGHT,
+            # 'book'       : P.Weight.BOOK,
+            "normal": P.Weight.NORMAL,
+            # 'medium'     : P.Weight.MEDIUM,
+            # 'semibold'   : P.Weight.SEMIBOLD,
+            "bold": P.Weight.BOLD,
+            # 'ultrabold'  : P.Weight.ULTRABOLD,
+            # 'heavy'      : P.Weight.HEAVY,
+            # 'ultraheavy' : P.Weight.ULTRAHEAVY,
+            "100": P.Weight.THIN,
+            "200": P.Weight.ULTRALIGHT,
+            "300": P.Weight.LIGHT,
+            "350": P.Weight.SEMILIGHT,
+            # '380'        : P.Weight.BOOK,
+            "400": P.Weight.NORMAL,
+            "500": P.Weight.MEDIUM,
+            "600": P.Weight.SEMIBOLD,
+            "700": P.Weight.BOLD,
+            "800": P.Weight.ULTRABOLD,
+            "900": P.Weight.HEAVY,
+            # '1000'       : P.Weight.ULTRAHEAVY
+        }
+        cls.CSSSTR_PSTR = {
+            "ultra-condensed": P.Stretch.ULTRA_CONDENSED,
+            "extra-condensed": P.Stretch.EXTRA_CONDENSED,
+            "condensed": P.Stretch.CONDENSED,
+            "semi-condensed": P.Stretch.SEMI_CONDENSED,
+            "normal": P.Stretch.NORMAL,
+            "semi-expanded": P.Stretch.SEMI_EXPANDED,
+            "expanded": P.Stretch.EXPANDED,
+            "extra-expanded": P.Stretch.EXTRA_EXPANDED,
+            "ultra-expanded": P.Stretch.ULTRA_EXPANDED,
+        }
+
+    @classmethod
+    def import_pango(cls, *args, **kwargs):
+        # Attempt to import the Pango bindings for the gi repository
+        with warnings.catch_warnings():
+            # Ignore ImportWarning for Gtk/Pango
+            warnings.simplefilter("ignore")
+        
+            HASPANGO = False
+            HASPANGOFT2 = False
+            pangoenv = os.environ.get("USEPANGO", "")
+            if pangoenv != "False":
+                try:
+                    if sys.platform == "win32":
+                        # Windows may not have all of the typelibs needed for PangoFT2
+                        # Add the typelibs subdirectory as a fallback option
+                        bloc = inkex.inkscape_system_info.binary_location  # type: ignore
+                        girepo = os.path.join(
+                            os.path.dirname(os.path.dirname(bloc)),
+                            "lib",
+                            "girepository-1.0",
+                        )  # Inkscape's GI repository
+                        if os.path.isdir(girepo):
+                            tlibs = [
+                                "fontconfig-2.0.typelib",
+                                "PangoFc-1.0.typelib",
+                                "PangoFT2-1.0.typelib",
+                                "freetype2-2.0.typelib",
+                            ]
+                            # If any typelibs are missing, try adding the typelibs subdirectory
+                            if any(
+                                not (os.path.exists(os.path.join(girepo, t))) for t in tlibs
+                            ):
+                                tlibsub = os.path.join(
+                                    os.path.dirname(os.path.abspath(__file__)), "typelibs"
+                                )
+                                for newpath in [girepo, tlibsub]:
+                                    # gi looks in the order specified in GI_TYPELIB_PATH
+                                    cval = os.environ.get("GI_TYPELIB_PATH", "")
+                                    if cval == "":
+                                        os.environ["GI_TYPELIB_PATH"] = newpath
+                                    elif newpath not in cval:
+                                        os.environ["GI_TYPELIB_PATH"] = (
+                                            cval + os.pathsep + newpath
+                                        )
+        
+                    import gi
+        
+                    try:
+                        gi.require_version("Gtk", "3.0")
+                    except ValueError as e:
+                        if "Namespace Gtk not available for version 3.0" in str(e):
+                            gi.require_version("Gtk", "4.0")
+                        else:
+                            raise e
+                            
+                    from gi.repository import Pango
+        
+                    try:
+                        HASPANGO = hasattr(Pango, "Variant") and hasattr(
+                            Pango.Variant, "NORMAL"
+                        )
+                    except ValueError:
+                        HASPANGO = False
+                except ImportError:
+                    HASPANGO = False
+        
+                if HASPANGO:
+                    cls.P = Pango
+                    try:
+                        # May require some typelibs we do not have
+                        gi.require_version("PangoFT2", "1.0")
+                        from gi.repository import PangoFT2
+        
+                        HASPANGOFT2 = True
+                        cls.PangoFT2 = PangoFT2
+                    except ValueError:
+                        HASPANGOFT2 = False
+                        from gi.repository import Gdk
+                        cls.Gdk = Gdk
+                cls.HASPANGO = HASPANGO
+                cls.HASPANGOFT2 = HASPANGOFT2
+        if pangoenv in ["True", "False"]:
+            os.environ["HASPANGO"] = str(HASPANGO)
+            os.environ["HASPANGOFT2"] = str(HASPANGOFT2)
+            with open("env_vars.txt", "w") as f:
+                f.write(f"HASPANGO={os.environ['HASPANGO']}")
+                f.write(f"\nHASPANGOFT2={os.environ['HASPANGOFT2']}")
+        
+        
+        
 
     @staticmethod
     def css_attribute_to_pango(sty, key):
@@ -491,13 +608,13 @@ class PangoRenderer:
         """
         val = sty.get(key)
         if key == "font-weight":
-            return C.CSSWGT_PWGT.get(val, Pango.Weight.NORMAL)
+            return PR.CSSWGT_PWGT.get(val, PR.P.Weight.NORMAL)
         if key == "font-style":
-            return C.CSSSTY_PSTY.get(val, Pango.Style.NORMAL)
+            return PR.CSSSTY_PSTY.get(val, PR.P.Style.NORMAL)
         if key == "font-stretch":
-            return C.CSSSTR_PSTR.get(val, Pango.Stretch.NORMAL)
+            return PR.CSSSTR_PSTR.get(val, PR.P.Stretch.NORMAL)
         if key == "font-variant":
-            return C.CSSVAR_PVAR.get(val, Pango.Variant.NORMAL)
+            return PR.CSSVAR_PVAR.get(val, PR.P.Variant.NORMAL)
         return None
 
     @staticmethod
@@ -505,19 +622,19 @@ class PangoRenderer:
         """
         Convert CSS style to Pango FontDescription.
         """
-        fdesc = Pango.FontDescription(sty["font-family"].strip("'").strip('"') + ",")
+        fdesc = PR.P.FontDescription(sty["font-family"].strip("'").strip('"') + ",")
         # The comma above is very important for font-families like Rockwell Condensed.
         # Without it, Pango will interpret it as the Condensed font-stretch of the
         # Rockwell font-family, rather than the Rockwell Condensed font-family.
         fdesc.set_weight(
-            interpolate_dict(C.CSSWGT_PWGT, sty.get("font-weight"), Pango.Weight.NORMAL)
+            interpolate_dict(PR.CSSWGT_PWGT, sty.get("font-weight"), PR.P.Weight.NORMAL)
         )
         fdesc.set_variant(
-            C.CSSVAR_PVAR.get(sty.get("font-variant"), Pango.Variant.NORMAL)
+            PR.CSSVAR_PVAR.get(sty.get("font-variant"), PR.P.Variant.NORMAL)
         )
-        fdesc.set_style(C.CSSSTY_PSTY.get(sty.get("font-style"), Pango.Style.NORMAL))
+        fdesc.set_style(PR.CSSSTY_PSTY.get(sty.get("font-style"), PR.P.Style.NORMAL))
         fdesc.set_stretch(
-            C.CSSSTR_PSTR.get(sty.get("font-stretch"), Pango.Stretch.NORMAL)
+            PR.CSSSTR_PSTR.get(sty.get("font-stretch"), PR.P.Stretch.NORMAL)
         )
         return fdesc
 
@@ -526,9 +643,9 @@ class PangoRenderer:
         """
         Convert Pango attributes to FontConfig attributes.
         """
-        fcwidth = C.PSTR_FCWDT[pstretch]
-        fcweight = C.PWGT_FCWGT[pweight]
-        fcslant = C.PSTY_FCSLN[pstyle]
+        fcwidth = PR.PSTR_FCWDT[pstretch]
+        fcweight = PR.PWGT_FCWGT[pweight]
+        fcslant = PR.PSTY_FCSLN[pstyle]
         return fcwidth, fcweight, fcslant
 
     @staticmethod
@@ -537,17 +654,17 @@ class PangoRenderer:
         Convert Pango FontDescription to CSS Style.
         """
         fdesc = pdescription
-        cstr = [k for k, v in C.CSSSTR_PSTR.items() if v == fdesc.get_stretch()]
+        cstr = [k for k, v in PR.CSSSTR_PSTR.items() if v == fdesc.get_stretch()]
         fwgt = fdesc.get_weight()
-        if fwgt not in C.CSSWGT_PWGT.values():
+        if fwgt not in PR.CSSWGT_PWGT.values():
             cwgt = [str(int(fwgt))]
         else:
             cwgt = [
                 k
-                for k, v in C.CSSWGT_PWGT.items()
+                for k, v in PR.CSSWGT_PWGT.items()
                 if v == fdesc.get_weight() and isnumeric(k)
             ]
-        csty = [k for k, v in C.CSSSTY_PSTY.items() if v == fdesc.get_style()]
+        csty = [k for k, v in PR.CSSSTY_PSTY.items() if v == fdesc.get_style()]
 
         sty = (("font-family", fdesc.get_family()),)
         if len(cwgt) > 0:
@@ -594,7 +711,7 @@ class PangoRenderer:
         """List all font face CSS styles available in Pango context."""
         if self._face_css is None:
             self._face_css = [
-                PangoRenderer.pango_to_css(fd) for fd in self.face_descriptions
+                PR.pango_to_css(fd) for fd in self.face_descriptions
             ]
         return self._face_css
 
@@ -602,7 +719,7 @@ class PangoRenderer:
     def fc_match_pango(family, pstretch, pweight, pstyle):
         """Look up a font by its Pango properties"""
         pat = fc.Pattern.name_parse(re.escape(family.replace("'", "").replace('"', "")))
-        fcwidth, fcweight, fcslant = PangoRenderer.pango_to_fc(
+        fcwidth, fcweight, fcslant = PR.pango_to_fc(
             pstretch, pweight, pstyle
         )
         pat.add(fc.PROP.WIDTH, fcwidth)
@@ -616,7 +733,7 @@ class PangoRenderer:
 
     def set_text_style(self, sty):
         """Set the text style for rendering based on the provided style"""
-        fdesc = PangoRenderer.css_to_pango_description(sty)
+        fdesc = PR.css_to_pango_description(sty)
         fdesc.set_absolute_size(self.pufd(self.pangosize))
         fnt = self.ctx.get_font_map().load_font(self.ctx, fdesc)
 
@@ -688,7 +805,7 @@ class PangoRenderer:
 
         numunknown = self.pangolayout.get_unknown_glyphs_count()
         return wds, numunknown
-
+PangoRenderer = PR
 
 # pylint:disable=import-outside-toplevel
 class FontToolsFontInstance:
@@ -1143,98 +1260,7 @@ class Conversions:
         1000: FC.WEIGHT_ULTRABLACK,
     }
 
-    if HASPANGO:
-        # Pango to fontconfig
-        PWGT_FCWGT = {
-            Pango.Weight.THIN: FC.WEIGHT_THIN,
-            Pango.Weight.ULTRALIGHT: FC.WEIGHT_ULTRALIGHT,
-            Pango.Weight.ULTRALIGHT: FC.WEIGHT_EXTRALIGHT,
-            Pango.Weight.LIGHT: FC.WEIGHT_LIGHT,
-            Pango.Weight.SEMILIGHT: FC.WEIGHT_DEMILIGHT,
-            Pango.Weight.SEMILIGHT: FC.WEIGHT_SEMILIGHT,
-            Pango.Weight.BOOK: FC.WEIGHT_BOOK,
-            Pango.Weight.NORMAL: FC.WEIGHT_REGULAR,
-            Pango.Weight.NORMAL: FC.WEIGHT_NORMAL,
-            Pango.Weight.MEDIUM: FC.WEIGHT_MEDIUM,
-            Pango.Weight.SEMIBOLD: FC.WEIGHT_DEMIBOLD,
-            Pango.Weight.SEMIBOLD: FC.WEIGHT_SEMIBOLD,
-            Pango.Weight.BOLD: FC.WEIGHT_BOLD,
-            Pango.Weight.ULTRABOLD: FC.WEIGHT_EXTRABOLD,
-            Pango.Weight.ULTRABOLD: FC.WEIGHT_ULTRABOLD,
-            Pango.Weight.HEAVY: FC.WEIGHT_BLACK,
-            Pango.Weight.HEAVY: FC.WEIGHT_HEAVY,
-            Pango.Weight.ULTRAHEAVY: FC.WEIGHT_EXTRABLACK,
-            Pango.Weight.ULTRAHEAVY: FC.WEIGHT_ULTRABLACK,
-        }
 
-        PSTY_FCSLN = {
-            Pango.Style.NORMAL: FC.SLANT_ROMAN,
-            Pango.Style.ITALIC: FC.SLANT_ITALIC,
-            Pango.Style.OBLIQUE: FC.SLANT_OBLIQUE,
-        }
-
-        PSTR_FCWDT = {
-            Pango.Stretch.ULTRA_CONDENSED: FC.WIDTH_ULTRACONDENSED,
-            Pango.Stretch.EXTRA_CONDENSED: FC.WIDTH_EXTRACONDENSED,
-            Pango.Stretch.CONDENSED: FC.WIDTH_CONDENSED,
-            Pango.Stretch.SEMI_CONDENSED: FC.WIDTH_SEMICONDENSED,
-            Pango.Stretch.NORMAL: FC.WIDTH_NORMAL,
-            Pango.Stretch.SEMI_EXPANDED: FC.WIDTH_SEMIEXPANDED,
-            Pango.Stretch.EXPANDED: FC.WIDTH_EXPANDED,
-            Pango.Stretch.EXTRA_EXPANDED: FC.WIDTH_EXTRAEXPANDED,
-            Pango.Stretch.ULTRA_EXPANDED: FC.WIDTH_ULTRAEXPANDED,
-        }
-
-        # CSS to Pango
-        CSSVAR_PVAR = {
-            "normal": Pango.Variant.NORMAL,
-            "small-caps": Pango.Variant.SMALL_CAPS,
-        }
-
-        CSSSTY_PSTY = {
-            "normal": Pango.Style.NORMAL,
-            "italic": Pango.Style.ITALIC,
-            "oblique": Pango.Style.OBLIQUE,
-        }
-        # For weights, Inkscape ignores anything commented out below
-        # See ink_font_description_from_style in libnrtype/font-factory.cpp
-        CSSWGT_PWGT = {
-            # 'thin'       : Pango.Weight.THIN,
-            # 'ultralight' : Pango.Weight.ULTRALIGHT,
-            # 'light'      : Pango.Weight.LIGHT,
-            "semilight": Pango.Weight.SEMILIGHT,
-            # 'book'       : Pango.Weight.BOOK,
-            "normal": Pango.Weight.NORMAL,
-            # 'medium'     : Pango.Weight.MEDIUM,
-            # 'semibold'   : Pango.Weight.SEMIBOLD,
-            "bold": Pango.Weight.BOLD,
-            # 'ultrabold'  : Pango.Weight.ULTRABOLD,
-            # 'heavy'      : Pango.Weight.HEAVY,
-            # 'ultraheavy' : Pango.Weight.ULTRAHEAVY,
-            "100": Pango.Weight.THIN,
-            "200": Pango.Weight.ULTRALIGHT,
-            "300": Pango.Weight.LIGHT,
-            "350": Pango.Weight.SEMILIGHT,
-            # '380'        : Pango.Weight.BOOK,
-            "400": Pango.Weight.NORMAL,
-            "500": Pango.Weight.MEDIUM,
-            "600": Pango.Weight.SEMIBOLD,
-            "700": Pango.Weight.BOLD,
-            "800": Pango.Weight.ULTRABOLD,
-            "900": Pango.Weight.HEAVY,
-            # '1000'       : Pango.Weight.ULTRAHEAVY
-        }
-        CSSSTR_PSTR = {
-            "ultra-condensed": Pango.Stretch.ULTRA_CONDENSED,
-            "extra-condensed": Pango.Stretch.EXTRA_CONDENSED,
-            "condensed": Pango.Stretch.CONDENSED,
-            "semi-condensed": Pango.Stretch.SEMI_CONDENSED,
-            "normal": Pango.Stretch.NORMAL,
-            "semi-expanded": Pango.Stretch.SEMI_EXPANDED,
-            "expanded": Pango.Stretch.EXPANDED,
-            "extra-expanded": Pango.Stretch.EXTRA_EXPANDED,
-            "ultra-expanded": Pango.Stretch.ULTRA_EXPANDED,
-        }
 
 
 C = Conversions  # pylint: disable=invalid-name
@@ -1255,8 +1281,9 @@ def inkscape_spec_to_css(fstr, usepango=False):
         return ret.strip().lower()
 
     cstr = clean_str(fstr)
-    if usepango and HASPANGO:
-        fullfams = [fm.get_name() for fm in PangoRenderer().families]
+    PR = PangoRenderer()
+    if usepango and PR.HASPANGO:
+        fullfams = [fm.get_name() for fm in PR.families]
     else:
         fullfams = [f.get("family", 0)[0] for f in fcfg.font_list]
         fullfams += ["Serif", "Sans", "System-ui", "Monospace"]  # from Inkscape
