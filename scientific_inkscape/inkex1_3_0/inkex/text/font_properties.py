@@ -377,7 +377,7 @@ def nearest_val(dictv, inputval):
 
 
 
-class PR:
+class PR: # PangoRenderer
     """
     Class to handle Pango rendering functionalities.
     """
