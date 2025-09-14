@@ -34,7 +34,6 @@ import warnings
 import sys
 import re
 import ctypes
-from unittest.mock import patch
 from functools import lru_cache
 import inkex
 from inkex.text.utils import default_style_atts
@@ -91,11 +90,10 @@ def custom_load_library(name):
         return libc
     return original_load_library(name)
 
-
-with patch("ctypes.cdll.LoadLibrary", side_effect=custom_load_library):
-    import fontconfig as fc  # pylint: disable=import-error
-
-    FC = fc.FC
+ctypes.cdll.LoadLibrary = custom_load_library
+import fontconfig as fc  # pylint: disable=import-error
+ctypes.cdll.LoadLibrary = original_load_library
+FC = fc.FC
 
 
 def isnumeric(strv):
