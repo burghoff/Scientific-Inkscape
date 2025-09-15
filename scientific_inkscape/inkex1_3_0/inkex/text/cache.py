@@ -43,7 +43,6 @@ from typing import Optional, List
 import inkex
 from inkex import Style
 from inkex import BaseElement, SvgDocumentElement
-from inkex.text.parser import ParsedText, CharacterTable
 from text.utils import shapetags, tags, ipx, list2, default_style_atts  # pylint: disable=import-error
 import lxml
 
@@ -872,6 +871,7 @@ class BaseElementCache(BaseElement):
         """Add parsed_text property to text, which is used to get the
         properties of text"""
         if not (hasattr(self, "_parsed_text")):
+            from inkex.text.parser import ParsedText
             self._parsed_text = ParsedText(self, self.croot.char_table)
         return self._parsed_text
 
@@ -1437,7 +1437,8 @@ class SvgDocumentElementCache(SvgDocumentElement):
             tels = [d for d in els if d.tag in ttags]
         if not (hasattr(self, "_char_table")) or any(
             t not in getattr(self, "_char_table").els for t in tels
-        ):
+        ): 
+            from inkex.text.parser import CharacterTable
             self._char_table = CharacterTable(tels)
 
     def get_char_table(self):

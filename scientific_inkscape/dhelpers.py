@@ -26,7 +26,6 @@
 
 # Locate the installed Inkex so we can assess the version. Do not import!
 import pkgutil
-
 installed_inkex = None
 for finder in pkgutil.iter_importers():
     if hasattr(finder, "find_spec"):
@@ -51,7 +50,6 @@ import inkex
 import styles0
 
 inkex.Style = styles0.Style0
-
 # Next we make sure we have the text submodule
 sys.path.append(
     os.path.join(si_dir, inkex_to_use, "site-packages", "python_fontconfig")
@@ -61,7 +59,6 @@ import speedups  # noqa
 
 from inkex import Style
 from inkex.text.cache import BaseElementCache
-from inkex.text.parser import TextTree, TYP_TEXT
 
 from inkex.text.utils import (
     composed_width,
@@ -72,7 +69,6 @@ from inkex.text.utils import (
     bbox,
     ipx,
 )
-
 
 from inkex import Tspan, Transform, Path, PathElement, BaseElement
 from applytransform_mod import fuseTransform
@@ -120,7 +116,6 @@ def count_callers():
         callinfo[lstr] += 1
     else:
         callinfo[lstr] = 1
-
 
 # Discover the version of Inkex installed, NOT the version packaged with SI
 if installed_inkex is not None:
@@ -1312,11 +1307,6 @@ class SI_Config:
 
 si_config = SI_Config()
 
-import threading
-
-sema_temp = threading.Semaphore(1)
-
-
 def shared_temp(headprefix=None, filename=None):
     """
     Generate a temporary file in the system temp folder or SI's location
@@ -1345,7 +1335,10 @@ def shared_temp(headprefix=None, filename=None):
         os.mkdir(tempdir)
 
     if headprefix is not None:
-        with sema_temp:
+        if not hasattr(shared_temp, "_sema"):
+            import threading
+            shared_temp._sema = threading.Semaphore(1)
+        with shared_temp._sema:
             pnum = random.randint(1, 100000)
             while any(
                 t.startswith(f"{headprefix}{pnum:05d}") for t in os.listdir(tempdir)
@@ -1771,6 +1764,7 @@ def shouldfixfont(ffam):
 
 def character_fixer(els):
     """Fixes characters in a list of elements based on their text style."""
+    from inkex.text.parser import TextTree, TYP_TEXT
     for elem in els:
         tree = TextTree(elem)
         for _, typ, tel, sel, txt in tree.dgenerator():
@@ -1910,6 +1904,7 @@ def split_text(elem):
     """
     dups = []
     dds = elem.descendants2()
+    from inkex.text.parser import TextTree
     for dgen in reversed(list(TextTree(elem).dgenerator())):
         _, _, _, sel, txt = dgen
         if txt is not None:
