@@ -192,6 +192,7 @@ class BaseElementCache(BaseElement):
                 ret = self.ccascaded_style
             if "font" in ret:
                 ret = ret + BaseElementCache.font_shorthand(ret["font"])
+                ret.pop('font',None) # once applied, don't override font atts on children
             self._cspecified_style = ret
         return self._cspecified_style
 
@@ -245,7 +246,7 @@ class BaseElementCache(BaseElement):
                 "font-weight": font_weight,
                 "font-stretch": font_stretch,
                 "font-size": font_size,
-                "line-height": line_height,
+                # "line-height": line_height, # Inkscape doesn't recognize this
                 "font-family": font_family.strip() if font_family else None,
             }
             ret = {k: v for k, v in font_data.items() if v is not None}
