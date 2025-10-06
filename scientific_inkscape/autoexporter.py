@@ -58,7 +58,7 @@ import inkex
 from inkex import TextElement, Transform, Vector2d
 from inkex.text.utils import default_style_atts
 from inkex.text.cache import BaseElementCache
-from inkex.text.parser import ParsedText, xyset
+from inkex.text.parser import ParsedText, xyset, TChar, XY_TOL
 
 import numpy as np
 import image_helpers as ih
@@ -1517,8 +1517,15 @@ class Exporter():
             bsh = dsd.ccascaded_style.get("baseline-shift")
             if bsh in ["super", "sub"]:
                 sty = dsd.ccascaded_style
-                sty["baseline-shift"] = "40%" if bsh == "super" else "-20%"
+                bsh = "40%" if bsh == "super" else "-20%"
+                sty["baseline-shift"] = bsh
                 dsd.cstyle = sty
+            if bsh and '%' in bsh and bsh.replace(" ", "") != "0%":
+                sty = dsd.ccascaded_style
+                bsv = TChar.bshftfunc(dsd.cspecified_style, dsd)
+                sty["baseline-shift"] = f'{round(bsv/XY_TOL)*XY_TOL}'
+                dsd.cstyle = sty
+                
 
         for dsd in reversed(elem.descendants2()):  # all Tspans
             bsh = dsd.ccascaded_style.get("baseline-shift")
@@ -1606,7 +1613,7 @@ class Exporter():
                 "letter-spacing",
                 "inline-size",
                 "stroke-width",
-                "stroke-dasharray",
+                "stroke-dasharray","baseline-shift"
             ]
             for oth in otherpx:
                 othv = dsd.ccascaded_style.get(oth)
@@ -1618,7 +1625,7 @@ class Exporter():
                     othv = default_style_atts[oth]
                 if othv is not None:
                     if "," not in othv:
-                        if 'em' not in othv: # scaling not needed for em sizes
+                        if 'em' not in othv and '%' not in othv: # scaling not needed for em sizes
                             dsd.cstyle[oth] = str((dh.ipx(othv) or 0) * scv)
                     else:
                         dsd.cstyle[oth] = ",".join(
