@@ -93,6 +93,7 @@ TEFRtags = {TEtag, FRtag}
 TEtags = {TEtag, TStag}
 FRtags = {FRtag, FlowRegion.ctag, FlowPara.ctag, FlowSpan.ctag}
 SPR = inkex.addNS("role", "sodipodi")
+PANGO_LOCK = threading.Lock()
 
 class ParsedTextList(list):
     """
@@ -3967,7 +3968,7 @@ class TChar:
             relbs = []
             for att in reversed(bsancs):
                 if "baseline-shift" in att.ccascaded_style:
-                    relbs.append(TChar.get_baseline(att.ccascaded_style, att.getparent()))
+                    relbs.append(TChar.local_baseline(att))
                 else:
                     # When an element has a baseline-shift from inheritance
                     # but no baseline-shift is specified, implicitly gets the
@@ -3994,14 +3995,15 @@ class TChar:
                 self.chk.bshft[self.windex] = sval
 
     @staticmethod
-    def get_baseline(styin, fsel):
-        """Gets the baseline shift value based on style and font size."""
-        bshft = styin.get("baseline-shift", "0")
+    def local_baseline(styel):
+        """Gets local baseline shift value based on style and parent font size."""
+        bshft = styel.ccascaded_style.get("baseline-shift", "0")
         if bshft == "super":
             bshft = "40%"
         elif bshft == "sub":
             bshft = "-20%"
         if "%" in bshft:  # relative to parent
+            fsel = styel.getparent()
             fs2, sf2, _ = composed_width(fsel, "font-size")
             bshft = fs2 / sf2 * float(bshft.strip("%")) / 100
         else:
@@ -4511,8 +4513,7 @@ class CharacterTable:
             ctbl[sty][empty] = StringInfo(empty, make_string(empty, sty), dict())
 
         # Pango querying doesn't multithread well
-        lock = threading.Lock()
-        lock.acquire()
+        PANGO_LOCK.acquire()
         try:
             pngr = PangoRenderer()
             nbb = dict()
@@ -4523,7 +4524,7 @@ class CharacterTable:
 
                 success, metrics = pngr.set_text_style(sty)
                 if not (success):
-                    lock.release()
+                    PANGO_LOCK.release()
                     return self.extract_characters()
                 joinedstr = joinch.join(mystrs) + joinch + prefix
 
@@ -4576,7 +4577,7 @@ class CharacterTable:
                     cnt += len(mystr) + len(joinch)
                     x += wdt
         finally:
-            lock.release()
+            PANGO_LOCK.release()
 
         dadv = dict()
         for sty, chd in ctbl.items():

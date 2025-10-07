@@ -33,6 +33,12 @@ global mprint
 def mprint(*args, **kwargs):
     print(*args, **kwargs)
 
+def ln_is_file(ln):
+    excludes = ["Scientific Inkscape Autoexporter",
+                "Python interpreter","Inkscape binary","Python"]
+    if any(ln.startswith(v) for v in excludes) or  ": " not in ln:
+        return False
+    return True
 
 # Get svg files in directory
 def get_files(dirin):
@@ -614,7 +620,7 @@ if guitype == 'gtk3.0':
             lns = text.split("\n")
             tor = []
             for ln in lns:
-                if text.startswith("Exception") or "  : " not in ln:
+                if text.startswith("Exception") or not ln_is_file(ln):
                     continue
                 ln2 = [v.strip(" ") for v in ln.split(":")]
                 self.filelogstore.append(ln2)
@@ -995,7 +1001,7 @@ elif guitype=='gtk4.0':
                 lns = text.splitlines()
                 tor = [] 
                 for ln in lns:
-                    if text.startswith("Exception") or "  : " not in ln:
+                    if text.startswith("Exception") or not ln_is_file(ln):
                         continue
                     key, val = [v.strip() for v in ln.split(":", 1)]
                     if key or val:

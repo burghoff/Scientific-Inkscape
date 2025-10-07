@@ -191,7 +191,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                         dfs, sf, utdfs = dh.composed_width(d, "font-size")
                         if dfs==0:
                             continue
-                        bshift = parser.TChar.get_baseline(sty, d.getparent())
+                        bshift = parser.TChar.bshftfunc(sty, d)
                         if bshift != 0 or "%" in sty.get("font-size", ""):
                             # Convert sub/superscripts into relative size
                             pfs, sf, _ = dh.composed_width(d.getparent(), "font-size")

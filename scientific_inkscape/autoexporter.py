@@ -1512,6 +1512,8 @@ class Exporter():
         """
         Replace super and sub with numerical values
         Collapse Tspans with 0% baseline-shift, which Office displays incorrectly
+        Convert relative baseline-shift to absolute, since LibreOffice doesn't display
+        https://bugs.documentfoundation.org/show_bug.cgi?id=152123
         """
         for dsd in elem.descendants2():
             bsh = dsd.ccascaded_style.get("baseline-shift")
@@ -1520,36 +1522,35 @@ class Exporter():
                 bsh = "40%" if bsh == "super" else "-20%"
                 sty["baseline-shift"] = bsh
                 dsd.cstyle = sty
-            if bsh and '%' in bsh and bsh.replace(" ", "") != "0%":
+            if bsh and '%' in bsh:
                 sty = dsd.ccascaded_style
-                bsv = TChar.bshftfunc(dsd.cspecified_style, dsd)
+                bsv = TChar.local_baseline(dsd)
                 sty["baseline-shift"] = f'{round(bsv/XY_TOL)*XY_TOL}'
                 dsd.cstyle = sty
-                
 
         for dsd in reversed(elem.descendants2()):  # all Tspans
             bsh = dsd.ccascaded_style.get("baseline-shift")
-            if bsh is not None and bsh.replace(" ", "") == "0%":
+            if bsh is not None and TChar.local_baseline(dsd)==0:
                 # see if any ancestors with non-zero shift
                 anysubsuper = False
                 for anc in dsd.ancestors2(stopafter=elem):
                     bsa = anc.ccascaded_style.get("baseline-shift")
-                    if bsa is not None and "%" in bsa:
-                        anysubsuper = float(bsa.replace(" ", "").strip("%")) != 0
+                    if bsa is not None:
+                        anysubsuper |= (TChar.local_baseline(anc)!=0)
 
                 # split parent
                 myp = dsd.getparent()
+                
                 if anysubsuper and myp is not None:
                     dds = dh.split_text(myp)
                     for dsd2 in reversed(dds):
                         if (
                             len(list(dsd2)) == 1
-                            and list(dsd2)[0].ccascaded_style.get("baseline-shift")
-                            == "0%"
+                            and TChar.local_baseline(list(dsd2)[0])==0
                         ):
                             sel = list(dsd2)[0]
                             mys = sel.ccascaded_style
-                            if mys.get("baseline-shift") == "0%":
+                            if TChar.local_baseline(sel)==0:
                                 mys["baseline-shift"] = dsd2.ccascaded_style.get(
                                     "baseline-shift"
                                 )
