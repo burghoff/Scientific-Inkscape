@@ -517,8 +517,8 @@ class PR: # PangoRenderer
             # Ignore ImportWarning for Gtk/Pango
             warnings.simplefilter("ignore")
         
-            HASPANGO = False
-            HASPANGOFT2 = False
+            cls.HASPANGO = False
+            cls.HASPANGOFT2 = False
             pangoenv = os.environ.get("USEPANGO", "")
             if pangoenv != "False":
                 try:
@@ -568,32 +568,30 @@ class PR: # PangoRenderer
                     from gi.repository import Pango
         
                     try:
-                        HASPANGO = hasattr(Pango, "Variant") and hasattr(
+                        cls.HASPANGO = hasattr(Pango, "Variant") and hasattr(
                             Pango.Variant, "NORMAL"
                         )
                     except ValueError:
-                        HASPANGO = False
+                        cls.HASPANGO = False
                 except ImportError:
-                    HASPANGO = False
+                    cls.HASPANGO = False
         
-                if HASPANGO:
+                if cls.HASPANGO:
                     cls.P = Pango
                     try:
                         # May require some typelibs we do not have
                         gi.require_version("PangoFT2", "1.0")
                         from gi.repository import PangoFT2
         
-                        HASPANGOFT2 = True
+                        cls.HASPANGOFT2 = True
                         cls.PangoFT2 = PangoFT2
                     except ValueError:
-                        HASPANGOFT2 = False
+                        cls.HASPANGOFT2 = False
                         from gi.repository import Gdk
                         cls.Gdk = Gdk
-                cls.HASPANGO = HASPANGO
-                cls.HASPANGOFT2 = HASPANGOFT2
         if pangoenv in ["True", "False"]:
-            os.environ["HASPANGO"] = str(HASPANGO)
-            os.environ["HASPANGOFT2"] = str(HASPANGOFT2)
+            os.environ["HASPANGO"] = str(cls.HASPANGO)
+            os.environ["HASPANGOFT2"] = str(cls.HASPANGOFT2)
             with open("env_vars.txt", "w") as f:
                 f.write(f"HASPANGO={os.environ['HASPANGO']}")
                 f.write(f"\nHASPANGOFT2={os.environ['HASPANGOFT2']}")

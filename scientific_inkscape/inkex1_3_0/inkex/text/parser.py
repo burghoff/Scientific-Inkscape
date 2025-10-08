@@ -4329,7 +4329,10 @@ class CharacterTable:
         )
 
         # HASPANGO = False; os.environ["HASPANGO"]='False'
-        if PangoRenderer().HASPANGO:
+        PANGO_LOCK.acquire()
+        hp = PangoRenderer().HASPANGO
+        PANGO_LOCK.release()
+        if hp:
             # Prefer to measure with Pango if we have it (faster, more accurate)
             self.ctable = self.measure_characters()
         else:
