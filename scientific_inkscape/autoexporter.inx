@@ -98,6 +98,7 @@
                    <option value="2">Embed linked images</option>
                    <option value="3">Embed and convert SVGs to PNGs</option>
                    <option value="4">Embed and delete backup PNGs</option>
+                   <option value="5">Convert to PDF</option>
                 </param>
         <spacer/>
         <label>Scientific Inkscape v1.4.23</label>

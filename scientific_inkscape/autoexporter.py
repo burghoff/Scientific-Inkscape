@@ -529,6 +529,8 @@ class Exporter():
                         except PermissionError:
                             time.sleep(1)
                             nattempts += 1
+                        except FileNotFoundError:
+                            continue
 
     def preprocessing(self, fin):
         """Modifications that are done prior to conversion to any vector output"""
@@ -1373,24 +1375,41 @@ class Exporter():
         dh.clean_up_document(svg)  # Clean up
         
     def finalize(self):
-        from office import Unzipped_Office
         tempdir, temphead = dh.shared_temp('aef')
         tempdir = os.path.join(tempdir, temphead)
-        uzo = Unzipped_Office(self.filein,tempdir)
-        uzo.embed_linked()
-        if self.finalizermode==3:
-            uzo.leave_fallback_png()
-        elif self.finalizermode==4:
-            uzo.delete_fallback_png()
-        uzo.cleanup_unused_rels_and_media()
-        base, ext = os.path.splitext(self.filein)
-        output_pptx = f"{base} finalized{ext}"
-        uzo.rezip(output_pptx)
-        import shutil
-        shutil.rmtree(uzo.temp_dir)
+        tic = time.time()
+        if self.finalizermode<5:
+            from office import Unzipped_Office
+            uzo = Unzipped_Office(self.filein,tempdir)
+            uzo.embed_linked()
+            if self.finalizermode==3:
+                uzo.leave_fallback_png()
+            elif self.finalizermode==4:
+                uzo.delete_fallback_png()
+            uzo.cleanup_unused_rels_and_media()
+            base, ext = os.path.splitext(self.filein)
+            output_pptx = f"{base} finalized{ext}"
+            uzo.rezip(output_pptx)
+            import shutil
+            shutil.rmtree(uzo.temp_dir)
+        else:
+            import subprocess
+            soffice = find_soffice()
+            base, ext = os.path.splitext(self.filein)
+            output_dir = os.path.split(self.filein)[0]
+            cmd = [
+                soffice,
+                "--headless",
+                "--convert-to", "pdf:writer_pdf_Export",
+                "--outdir", output_dir,
+                self.filein
+            ]
+            _ = subprocess.run(cmd, capture_output=True, text=True)
         if os.path.exists(tempdir+'.lock'):
             os.remove(tempdir+'.lock')
-        self.prints(os.path.basename(self.filein) + ": Finalization complete", flush=True)
+            
+        fstr = f": Finalization complete ({str(round(1000 * (time.time()-tic)) / 1000)} s)"
+        self.prints(os.path.basename(self.filein) + fstr, flush=True)
 
     PTH_COMMANDS = list("MLHVCSQTAZmlhvcsqtaz")
 
@@ -1589,6 +1608,14 @@ class Exporter():
 
         # Make a dummy group so we can properly compose the transform
         grp = dh.group([elem], moveTCM=True)
+        
+        xoff = 0; yoff = 0;
+        if elem.parsed_text.lns:
+            xoff = elem.parsed_text.lns[0].x[0]
+            yoff = elem.parsed_text.lns[0].y[0]
+            # dh.idebug((xoff,yoff))
+
+        newt = inkex.Transform((1 / scv, 0, 0, 1 / scv, 0, 0)) @ inkex.Transform((1, 0, 0, 1, xoff*scv, yoff*scv))
 
         for dsd in reversed(elem.descendants2()):
             x = ParsedText.get_xy(dsd, "x")
@@ -1597,9 +1624,9 @@ class Exporter():
             dyv = ParsedText.get_xy(dsd, "dy")
 
             if x[0] is not None:
-                xyset(dsd, "x", [v * scv for v in x])
+                xyset(dsd, "x", [(v-xoff) * scv for v in x])
             if y[0] is not None:
-                xyset(dsd, "y", [v * scv for v in y])
+                xyset(dsd, "y", [(v-yoff) * scv for v in y])
             if dxv[0] is not None:
                 xyset(dsd, "dx", [v * scv for v in dxv])
             if dyv[0] is not None:
@@ -1638,11 +1665,11 @@ class Exporter():
                 dup = shape.duplicate()
                 svg.cdefs.append(dup)
                 dup.ctransform = (
-                    inkex.Transform((scv, 0, 0, scv, 0, 0)) @ dup.ctransform
+                    -newt @ dup.ctransform
                 )
                 dsd.cstyle["shape-inside"] = dup.get_id(as_url=2)
 
-        elem.ctransform = inkex.Transform((1 / scv, 0, 0, 1 / scv, 0, 0))
+        elem.ctransform = newt
         dh.ungroup(grp)
 
     @staticmethod
@@ -1983,6 +2010,48 @@ def hash_file(filename):
             hashv.update(chunk)
     return hashv.hexdigest()
 
+import platform
+from shutil import which
+
+def find_soffice():
+    """
+    Return the full path to LibreOffice's soffice executable.
+    Raises FileNotFoundError if not found.
+    """
+    system = platform.system()
+
+    # First try PATH
+    soffice_path = which("soffice")
+    if soffice_path:
+        return soffice_path
+
+    possible_paths = []
+    if system == "Windows":
+        possible_paths = [
+            r"C:\Program Files\LibreOffice\program\soffice.exe",
+            r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+        ]
+    elif system == "Darwin":  # macOS
+        possible_paths = [
+            "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+            "/usr/local/bin/soffice",
+        ]
+    elif system == "Linux":
+        possible_paths = [
+            "/usr/bin/soffice",
+            "/usr/local/bin/soffice",
+            "/snap/bin/libreoffice",
+        ]
+
+    for path in possible_paths:
+        if os.path.isfile(path):
+            return path
+
+    raise FileNotFoundError(
+        "LibreOffice (soffice) executable not found. "
+        "PDF conversion relies on LibreOffice, the free and open source document creator. "
+        "Please ensure LibreOffice is installed and added to your PATH."
+    )
 
 if __name__ == "__main__":
     dh.Run_SI_Extension(AutoExporter(), "Autoexporter")

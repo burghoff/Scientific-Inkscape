@@ -1511,7 +1511,13 @@ class ParsedText:
                     csty = cstys[c.fsty][c.c]
                     fullname = fcfg.get_true_font_fullname(csty)
                     fontfam = csty["font-family"].strip("'")
-                    fusefam = "'" + fullname + "','" + fontfam + "'"
+                    if not fullname==fontfam+' Regular':
+                        fusefam = "'" + fullname + "','" + fontfam + "'"
+                    else:
+                        # LibreOffice cannot support fallbacks, so cut down 
+                        # on the number of false matches by pruning ones like
+                        # 'Avenir Next Regular' to 'Avenir Next'
+                        fusefam = "'" + fontfam + "'"
                     fusesty = Style(
                         {
                             k: v if k != "font-family" else fusefam

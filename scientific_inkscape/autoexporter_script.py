@@ -53,11 +53,11 @@ def get_files(dirin):
     
 
 def is_target_file(file_name):
-    flower = file_name.lower()
+    flower = os.path.split(file_name)[1].lower()
     excludes = ["_portable.svg", "_plain.svg"," finalized.pptx"," finalized.docx"]
-    if any(file_name.endswith(ex) for ex in excludes):
+    if any(file_name.endswith(ex) for ex in excludes) or flower.startswith('~$'):
         return False
-    if input_options.finalizermode>1 and  (flower.endswith(".pptx") or flower.endswith(".docx")) and not flower.startswith('~$'):
+    if input_options.finalizermode>1 and  (flower.endswith(".pptx") or flower.endswith(".docx")):
         return True
     pattern = r"\.(\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.\d{1,6})\.svg$"
     if re.search(pattern, file_name):
@@ -73,8 +73,71 @@ mydir = os.path.dirname(os.path.abspath(__file__))
 packages = os.path.join(mydir, "packages")
 if packages not in sys.path:
     sys.path.append(packages)
-from watchdog.observers import Observer
+import os, uuid
+from watchdog.observers import Observer as NativeObserver
+from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
+
+
+def make_observer_auto(dir_path: str):
+    """
+    Probe dir_path for reliable native filesystem events.
+    If create/modify/delete are all detected within 2.5s,
+    return a NativeObserver(); otherwise return PollingObserver(timeout=0.5).
+    """
+    class ProbeHandler(FileSystemEventHandler):
+        def __init__(self, path):
+            super().__init__()
+            self.path = os.path.abspath(path)
+            self.got_create = threading.Event()
+            self.got_modify = threading.Event()
+            self.got_delete = threading.Event()
+        def _match(self, p): return os.path.abspath(p) == self.path
+        def on_created(self, e): 
+            if not e.is_directory and self._match(e.src_path): self.got_create.set()
+        def on_modified(self, e): 
+            if not e.is_directory and self._match(e.src_path): self.got_modify.set()
+        def on_deleted(self, e): 
+            if not e.is_directory and self._match(e.src_path): self.got_delete.set()
+
+    os.makedirs(dir_path, exist_ok=True)
+    dummy = os.path.join(dir_path, f".probe_{uuid.uuid4().hex}.tmp")
+    handler = ProbeHandler(dummy)
+    obs = NativeObserver()
+    ok = False
+    try:
+        obs.schedule(handler, dir_path, recursive=False)
+        obs.start()
+        time.sleep(0.25)  # let backend initialize
+        # create → modify → delete
+        with open(dummy, "w") as f: f.write("x")
+        time.sleep(0.15)
+        with open(dummy, "a") as f: f.write("y")
+        time.sleep(0.15)
+        os.remove(dummy)
+        # wait for all three events
+        deadline = time.time() + 2.5
+        while time.time() < deadline:
+            if handler.got_create.is_set() and handler.got_modify.is_set() and handler.got_delete.is_set():
+                ok = True
+                break
+            time.sleep(0.05)
+    except Exception:
+        ok = False
+    finally:
+        try:
+            obs.stop(); obs.join(1)
+        except Exception:
+            pass
+        if os.path.exists(dummy):
+            try: os.remove(dummy)
+            except Exception: pass
+    if ok or not PollingObserver:
+        # mprint("[watcher] using native Observer")
+        return NativeObserver()
+    else:
+        # mprint("[watcher] using PollingObserver(timeout=1.0)")
+        return PollingObserver(timeout=0.5)
 
 class Watcher(FileSystemEventHandler):
     """Class that watches a folder for changes to SVGs"""
@@ -91,8 +154,9 @@ class Watcher(FileSystemEventHandler):
         self.last_event = {}
         self.file_mod_times = {}
 
-        self.observer = Observer()
+        self.observer = make_observer_auto(directory_to_watch)
         self.start()
+        self.tstart = time.time()
 
     def start(self):
         self.initialize_mod_times(self.directory_to_watch)
@@ -124,6 +188,7 @@ class Watcher(FileSystemEventHandler):
                 self.createfcn(event.src_path)
         elif event.event_type == "modified":
             if self.modfcn:
+                # mprint('Go '+str(time.time()-self.tstart))
                 self.modfcn(event.src_path)
         elif event.event_type == "deleted":
             if self.deletefcn:
@@ -135,14 +200,17 @@ class Watcher(FileSystemEventHandler):
         if is_target_file(event.src_path):
             if event.src_path in self.debounce_timers:
                 self.debounce_timers[event.src_path].cancel()
+                # mprint('Cancel')
             self.last_event[event.src_path] = event
             self.debounce_timers[event.src_path] = Timer(1.0, self.debounce, [event])
             self.debounce_timers[event.src_path].start()
 
     def on_created(self, event):
+        # mprint('Created '+event.src_path)
         self.handle_event(event)
 
     def on_modified(self, event):
+        # mprint('Modified '+event.src_path)
         if event.is_directory:
             return
         if is_target_file(event.src_path):
@@ -153,9 +221,22 @@ class Watcher(FileSystemEventHandler):
                 self.handle_event(event)
 
     def on_deleted(self, event):
+        # mprint('Deleted '+event.src_path)
         if event.src_path in self.file_mod_times:
             del self.file_mod_times[event.src_path]
         self.handle_event(event)
+        
+    def on_moved(self, event):
+        # mprint('Moved '+event.src_path)
+        if event.is_directory:
+            return
+        # Treat destination as a ‘modified’ event
+        class _E:
+            def __init__(self, p):
+                self.is_directory = False
+                self.src_path = p
+                self.event_type = "modified"
+        self.handle_event(_E(event.dest_path))
 
 
 # Threading class
@@ -533,6 +614,7 @@ if guitype == 'gtk3.0':
             self.finalizer_combo.append("2", "Embed linked images")
             self.finalizer_combo.append("3", "Embed and convert SVGs to PNGs")
             self.finalizer_combo.append("4", "Embed and delete backup PNGs")
+            self.finalizer_combo.append("5", "Convert to PDF")
             self.finalizer_combo.set_active(int(getattr(input_options, "finalizermode", 1)) - 1)
             self.finalizer_combo.connect("changed", self.on_finalizer_changed)
             tab2_box.pack_start(self.finalizer_combo, False, False, 1)
@@ -1155,6 +1237,7 @@ elif guitype=='gtk4.0':
             self.finalizer_combo.append("2", "Embed linked images")
             self.finalizer_combo.append("3", "Embed and convert SVGs to PNGs")
             self.finalizer_combo.append("4", "Embed and delete backup PNGs")
+            self.finalizer_combo.append("5", "Convert to PDF")
             _bind_combo_active_id(self.finalizer_combo, "finalizermode", to_int=True)
             parent.append(self.finalizer_combo)
 
