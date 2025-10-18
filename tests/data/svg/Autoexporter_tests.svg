@@ -990,7 +990,7 @@
      inkscape:current-layer="layer1"
      inkscape:document-units="mm"
      inkscape:cy="256.07824"
-     inkscape:cx="265.59788"
+     inkscape:cx="265.28056"
      inkscape:zoom="1.5756903"
      inkscape:pageshadow="2"
      inkscape:pageopacity="0.0"
@@ -1762,10 +1762,10 @@
        id="image90129"
        transform="matrix(0.03086251,0,0,0.03086251,107.69494,148.834)" /><image
        width="767.67999"
-       height="781.12"
+       height="781.11999"
        preserveAspectRatio="none"
        style="image-rendering:optimizeSpeed"
-       xlink:href="file:///C:%5CUsers%5Cburgh%5CBox%5CBurghoff%5CStorage%5CGithub%5CScientific-Inkscape%5Ctests%5Cdata%5Csvg/Flower.png"
+       xlink:href="file:///H:%5CMy%20Drive%5CStorage%5CGithub%5CScientific-Inkscape%5Ctests%5Cdata%5Csvg%5CFlower.png"
        id="image90166"
        transform="matrix(0.03086251,0,0,0.03086251,132.44581,148.834)" /><text
        xml:space="preserve"
@@ -2636,12 +2636,12 @@
        style="font-size:148.615px;line-height:1.25;font-family:Arial;-inkscape-font-specification:'Arial, Normal';letter-spacing:0px;word-spacing:0px;white-space:pre;shape-inside:url(#rect268397)"><tspan
          x="586"
          y="339.86562"
-         id="tspan2">Flowed </tspan><tspan
+         id="tspan17">Flowed </tspan><tspan
          x="586"
          y="559.90987"
-         id="tspan4">text <tspan
+         id="tspan19">text <tspan
    style="font-size:186.667px"
-   id="tspan3">123</tspan></tspan></text><text
+   id="tspan18">123</tspan></tspan></text><text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:2.82223px;line-height:1.25;font-family:Avenir;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.0959116"
        x="-15.073676"

@@ -358,21 +358,7 @@ class AutoExporterThread(threading.Thread):
         self.stopped = False
 
     def run(self):
-        fname = os.path.split(self.file)[1]
-        try:
-            offset = round(os.get_terminal_size().columns / 2)
-        except:
-            offset = 40
-        fname = fname + " " * max(0, offset - len(fname))
-        if self.file.lower().endswith(".svg"):
-            mprint(fname + ": Beginning export")
-        else:
-            mprint(fname + ": Beginning finalization")
         opts = copy.copy(input_options)
-        opts.debug = DEBUG
-        opts.prints = mprint
-        opts.aeThread = self
-        opts.original_file = self.file
         opts.formats = [
             fmt
             for fmt, use in zip(
@@ -381,6 +367,23 @@ class AutoExporterThread(threading.Thread):
             )
             if use
         ]
+        fname = os.path.split(self.file)[1]
+        try:
+            offset = round(os.get_terminal_size().columns / 2)
+        except:
+            offset = 40
+        fname = fname + " " * max(0, offset - len(fname))
+        if self.file.lower().endswith(".svg"):
+            if not opts.formats: # finalization only
+                return
+            mprint(fname + ": Beginning export")
+        else:
+            mprint(fname + ": Beginning finalization")
+        
+        opts.debug = DEBUG
+        opts.prints = mprint
+        opts.aeThread = self
+        opts.original_file = self.file
         opts.outtemplate = self.outtemplate
         opts.bfn = bfn
         try:

@@ -83,26 +83,57 @@ class Unzipped_Office():
     def leave_fallback_png(self):
         for slide in self.slides:
             slide.leave_fallback_png()
-        
-    def ensure_png_in_content_types(self):
+    
+    def ensure_image_in_content_types(self, filename):
+        """
+        Ensures that the correct image content type for `filename` is present
+        in [Content_Types].xml within self.temp_dir.
+    
+        Supports all common Office image formats (PNG, JPG, JPEG, GIF, BMP,
+        TIFF, EMF, WMF, SVG).
+        """
+        # --- Determine extension and MIME type ---
+        ext = os.path.splitext(filename)[1].lower().lstrip('.')
+        mime_map = {
+            'png':  'image/png',
+            'jpg':  'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'gif':  'image/gif',
+            'bmp':  'image/bmp',
+            'tif':  'image/tiff',
+            'tiff': 'image/tiff',
+            'emf':  'image/x-emf',
+            'wmf':  'image/x-wmf',
+            'svg':  'image/svg+xml',
+        }
+    
+        if ext not in mime_map:
+            raise ValueError(f"Unsupported image type: {ext}")
+    
+        content_type = mime_map[ext]
         content_types_path = os.path.join(self.temp_dir, '[Content_Types].xml')
+    
+        # --- Parse and check existing entries ---
         tree = ET.parse(content_types_path)
         root = tree.getroot()
+        ns = {'ct': 'http://schemas.openxmlformats.org/package/2006/content-types'}
     
-        png_defined = any(
-            elem.attrib.get('Extension') == 'png'
-            for elem in root.findall(".//{http://schemas.openxmlformats.org/package/2006/content-types}Default")
+        already_defined = any(
+            elem.attrib.get('Extension', '').lower() == ext
+            for elem in root.findall('ct:Default', ns)
         )
     
-        if not png_defined:
+        # --- Add entry if missing ---
+        if not already_defined:
             new_default = ET.Element(
                 '{http://schemas.openxmlformats.org/package/2006/content-types}Default',
-                Extension='png',
-                ContentType='image/png'
+                Extension=ext,
+                ContentType=content_type
             )
             root.append(new_default)
             tree.write(content_types_path, xml_declaration=True, encoding='UTF-8')
-            print("Added PNG content type to [Content_Types].xml")
+            print(f"Added {ext.upper()} content type ({content_type}) to [Content_Types].xml")
+
             
     def cleanup_unused_rels_and_media(self):
         referenced_files = set()
@@ -160,6 +191,74 @@ class Unzipped_Office():
                     zip_info.external_attr = 0
 
                     zip_write.writestr(zip_info, data)
+                    
+    def unrenderable_fonts_to_paths(self):
+        """
+        Load each SVG in self.media_dir and convert unrenderable text in
+        LibreOffice to paths using the Autoexporter flow, then overwrite in place.
+        Returns a list of processed SVG paths.
+        """
+        # Fonts to convert to paths
+        unrenderable = ['Helvetica Light']
+        
+        processed = []
+        if not os.path.exists(self.media_dir):
+            return processed
+    
+        import inkex
+        import dhelpers as dh
+        from types import SimpleNamespace
+        from autoexporter import get_svg, Exporter, Act
+    
+        bfn = inkex.inkscape_system_info.binary_location
+        for fname in os.listdir(self.media_dir):
+            fpath = os.path.join(self.media_dir, fname)
+            if not (os.path.isfile(fpath) and fname.lower().endswith('.svg')):
+                continue
+            with open(fpath, 'r', encoding='utf-8', errors='ignore') as fh:
+                raw = fh.read()
+                if not any(u in raw for u in unrenderable):
+                    # None of the target font names even appear; skip this file
+                    continue
+    
+            svg = get_svg(fpath)
+            ttags = {inkex.TextElement.ctag, inkex.FlowRoot.ctag}
+            tels = [el for el in dh.visible_descendants(svg) if el.tag in ttags]
+    
+            # Gather IDs of elements with unrenderable fonts
+            bad_ids = {
+                el.get_id()
+                for el in tels
+                for d in el.descendants2()
+                if (ff := d.cspecified_style.get('font-family'))
+                and any(bad in ff for bad in unrenderable)
+            }
+    
+            if not bad_ids:
+                continue
+    
+            # Create temporary output path
+            tempdir, temphead = dh.shared_temp('aeftf')
+            tmpout = os.path.join(tempdir, f"{temphead}_ttop.svg")
+    
+            # Minimal Exporter context (mimics autoexporter)
+            opts = SimpleNamespace(bfn=bfn)
+            exp = Exporter(fpath, opts)
+            exp.tempdir = tempdir
+            exp.stpact = "object-to-path"
+            stp_act = Act('stp', list(bad_ids), exp, tmpout)
+            exp.split_acts(fnm=fpath, acts=[stp_act], get_bbs=False)
+    
+            # Replace file if new SVG created
+            if os.path.exists(tmpout):
+                new_svg = get_svg(tmpout)
+                dh.overwrite_svg(new_svg, fpath)
+                processed.append(fpath)
+    
+        return processed
+
+
+
 
 
 class SlideTarget:
@@ -231,6 +330,7 @@ class Slide_and_Rels():
         changed_rels = False
         changed_slide = False
 
+        new_names = set()
         for rel in list(self.rels_root):
             target_mode = rel.get("TargetMode")
             raw_target = rel.get("Target")
@@ -258,6 +358,7 @@ class Slide_and_Rels():
             while new_path is None or os.path.exists(new_path):
                 new_name = f"image{self.uzo.nfiles+1}{ext}"
                 new_path = os.path.join(self.uzo.media_dir, new_name)
+                new_names.add(new_name)
                 self.uzo.nfiles += 1
                 
             shutil.copy2(abs_path, new_path)
@@ -282,6 +383,8 @@ class Slide_and_Rels():
 
         if changed_rels:
             self.rels_tree.write(self.rels_path, xml_declaration=True, encoding='UTF-8', pretty_print=False)
+            for nn in new_names:
+                self.uzo.ensure_image_in_content_types(nn)
         if changed_slide:
             self.slide_tree.write(self.slide_path, xml_declaration=True, encoding='UTF-8', pretty_print=False)
             
@@ -424,7 +527,7 @@ class Slide_and_Rels():
             self.slide_tree.write(self.slide_path, xml_declaration=True, encoding='UTF-8', method="xml")
         if changed_rels:
             self.rels_tree.write(self.rels_path, xml_declaration=True, encoding='UTF-8', method="xml")
-            self.uzo.ensure_png_in_content_types()
+            self.uzo.ensure_image_in_content_types('foo.png')
             
     def cleanup_unused_rels(self):
         # Collect all embed/link rel IDs used in the slide

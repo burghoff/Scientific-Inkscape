@@ -544,9 +544,6 @@ class Exporter():
             self.prints(fname + ": Preprocessing vector output", flush=True)
             timestart = time.time()
 
-        tempdir = self.tempdir
-        temphead = self.temphead
-
         # SVG modifications that should be done prior to any binary calls
         cfile = fin
         svg = get_svg(cfile)
@@ -748,79 +745,22 @@ class Exporter():
 
         do_rasterizations = len(raster_ids + image_ids) > 0
         do_stroketopaths = self.texttopath or self.stroketopath or len(stps) > 0 or len(ttps)>0
-
-        dpi = self.dpi
-        class Act():
-            '''
-            Represents a single binary call Action. 
-            type == 'stp' creates an action that stroke-to-path's a group of objects
-            type == 'imgt' exports a PNG copy of an image with a transparent background
-            type == 'imgo' exports a PNG copy of an image with an opaque background, and objects above hidden
-            '''
-            def __init__(self,typ,els,fname=None,overlaps=None):
-                self.type = typ
-                if isinstance(els,list):
-                    self.els = els
-                else:
-                    self.els = [els]
-                if fname is None:
-                    elid = self.els[0].get_id()
-                    if typ=='imgt':
-                        fname = temphead + "_im_" + elid + "." + imgtype
-                    else:
-                        fname = temphead + "_imbg_" + elid + "." + imgtype
-                self.fname = fname;
-                self.overlaps = overlaps
-            
-            if (
-                (self.stroketopath or len(stps) > 0)
-                and inkex.installed_ivp[0] >= 1
-                and inkex.installed_ivp[1] > 0
-            ):
-                stpact = "object-stroke-to-path"
-            else:
-                stpact = "object-to-path"
-            
-            def __str__(self):
-                if self.type == 'stp':
-                    return "select:{0}; {1}; export-filename:{2}; export-do; unselect:{0}; ".format(
-                        ",".join(self.els), Act.stpact, self.fname
-                    )
-                elif self.type == 'imgt':
-                    fmt1 = (
-                        "export-id:{0}; export-id-only; export-dpi:{1}; "
-                        "export-filename:{2}; export-background-opacity:0.0; "
-                        "export-do; "
-                    )
-                    return fmt1.format(self.els[0].get_id(), int(dpi), self.fname)
-                elif self.type == 'imgo':
-                    el = self.els[0]
-                    fmt2 = (
-                        "export-id:{0}; export-dpi:{1}; "
-                        "export-filename:{2}; export-background-opacity:1.0; "
-                        "export-do; "
-                    )
-                    actv = fmt2.format(el.get_id(), int(dpi), self.fname)
                     
-                    # For export all, hide objects on top
-                    displays = {el: el.cstyle.get('display') for el in overlaps[el]}
-                    hides = ['select:{0}; object-set-property:display,none; unselect:{0}; '.format(el.get_id()) for el in overlaps[el]]
-                    unhides = ['select:{0}; object-set-property:display,{1}; unselect:{0}; '.format(el.get_id(), \
-                                displays[el] if displays[el] is not None else '') for el in overlaps[el]]
-                    return ''.join(hides) + actv + ''.join(unhides)
-                
-            def split(self,intermediate_fn):
-                ''' Splits a STP act into two sub-acts '''
-                spl = math.ceil(len(self.els) / 2)
-                act1 = Act('stp',self.els[:spl],intermediate_fn)
-                act2 = Act('stp',self.els[spl:],self.fname)
-                return act1, act2
                     
-
+        if (
+            (self.stroketopath or len(stps) > 0)
+            and inkex.installed_ivp[0] >= 1
+            and inkex.installed_ivp[1] > 0
+        ):
+            self.stpact = "object-stroke-to-path"
+        else:
+            self.stpact = "object-to-path"
+        
         allacts = []
         if do_stroketopaths:
             svg = get_svg(cfile)
             vdd = dh.visible_descendants(svg)
+
 
             updatefile = False
             tels = []
@@ -852,7 +792,7 @@ class Exporter():
                 dh.overwrite_svg(svg, cfile)
 
             tmpstp = self.tempbase + "_stp.svg"
-            allacts += [Act('stp',tels + pels,tmpstp)]
+            allacts += [Act('stp',tels + pels,self,tmpstp)]
             
 
         # Rasterizations
@@ -863,13 +803,12 @@ class Exporter():
             vds = dh.visible_descendants(svg)
             els = [el for el in vds if el.get_id() in list(set(raster_ids + image_ids))]
             if len(els) > 0:
-                imgtype = "png"
                 
                 overlaps = dh.overlapping_els(svg,els)
                 for elem in els:
                     elid = elem.get_id()
-                    actts.append(Act('imgt',elem))
-                    actos.append(Act('imgo',elem,overlaps=overlaps))
+                    actts.append(Act('imgt',elem,self))
+                    actos.append(Act('imgo',elem,self,overlaps=overlaps))
                 
                 allacts += actos + actts
                 # export-id-onlys need to go last
@@ -886,11 +825,11 @@ class Exporter():
             bbs = self.split_acts(fnm=cfile, acts=allacts)
             
             imgs = imgs_opqe | imgs_trnp
-            missing_images = [t for t in imgs if not os.path.exists(os.path.join(tempdir, t)) and imgs[t] in bbs]
+            missing_images = [t for t in imgs if not os.path.exists(os.path.join(self.tempdir, t)) and imgs[t] in bbs]
             if missing_images:
                 warnings.warn(
                     "\nThe Inkscape binary could not generate the temporary images "
-                    + ", ".join(missing_images) + ' in ' + tempdir + '.\n\n'
+                    + ", ".join(missing_images) + ' in ' + self.tempdir + '.\n\n'
                     + "Please check your output to ensure integrity.",
                     category=UserWarning
                 )
@@ -902,8 +841,8 @@ class Exporter():
             vds = dh.visible_descendants(svg)
             els = [el for el in vds if el.get_id() in list(set(raster_ids + image_ids))]
             if len(els) > 0:
-                jimgs_trnp = [os.path.join(tempdir, t) for t in imgs_trnp]
-                jimgs_opqe = [os.path.join(tempdir, t) for t in imgs_opqe]
+                jimgs_trnp = [os.path.join(self.tempdir, t) for t in imgs_trnp]
+                jimgs_opqe = [os.path.join(self.tempdir, t) for t in imgs_opqe]
 
                 for i, elem in enumerate(els):
                     img_trnp = jimgs_trnp[i]
@@ -1378,21 +1317,24 @@ class Exporter():
         tempdir, temphead = dh.shared_temp('aef')
         tempdir = os.path.join(tempdir, temphead)
         tic = time.time()
-        if self.finalizermode<5:
-            from office import Unzipped_Office
-            uzo = Unzipped_Office(self.filein,tempdir)
-            uzo.embed_linked()
-            if self.finalizermode==3:
-                uzo.leave_fallback_png()
-            elif self.finalizermode==4:
-                uzo.delete_fallback_png()
-            uzo.cleanup_unused_rels_and_media()
-            base, ext = os.path.splitext(self.filein)
-            output_pptx = f"{base} finalized{ext}"
-            uzo.rezip(output_pptx)
-            import shutil
-            shutil.rmtree(uzo.temp_dir)
-        else:
+        
+        from office import Unzipped_Office
+        uzo = Unzipped_Office(self.filein,tempdir)
+        uzo.embed_linked()
+        if self.finalizermode==3:
+            uzo.leave_fallback_png()
+        elif self.finalizermode==4:
+            uzo.delete_fallback_png()
+        elif self.finalizermode==5:
+            uzo.unrenderable_fonts_to_paths()
+        uzo.cleanup_unused_rels_and_media()
+        base, ext = os.path.splitext(self.filein)
+        output_pptx = f"{base} finalized{ext}"
+        uzo.rezip(output_pptx)
+        import shutil
+        shutil.rmtree(uzo.temp_dir)
+        
+        if self.finalizermode==5:
             import subprocess
             soffice = find_soffice()
             base, ext = os.path.splitext(self.filein)
@@ -1402,9 +1344,15 @@ class Exporter():
                 "--headless",
                 "--convert-to", "pdf:writer_pdf_Export",
                 "--outdir", output_dir,
-                self.filein
+                output_pptx
             ]
             _ = subprocess.run(cmd, capture_output=True, text=True)
+            generated_pdf = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(output_pptx))[0]}.pdf")
+            final_pdf = f"{base}.pdf"
+            if os.path.exists(generated_pdf):
+                os.replace(generated_pdf, final_pdf)
+            if os.path.exists(output_pptx):
+                os.remove(output_pptx)
         if os.path.exists(tempdir+'.lock'):
             os.remove(tempdir+'.lock')
             
@@ -2052,6 +2000,65 @@ def find_soffice():
         "PDF conversion relies on LibreOffice, the free and open source document creator. "
         "Please ensure LibreOffice is installed and added to your PATH."
     )
+    
+class Act():
+    '''
+    Represents a single binary call Action. 
+    type == 'stp' creates an action that stroke-to-path's a group of objects
+    type == 'imgt' exports a PNG copy of an image with a transparent background
+    type == 'imgo' exports a PNG copy of an image with an opaque background, and objects above hidden
+    '''
+    def __init__(self,typ,els,exp,fname=None,overlaps=None):
+        self.type = typ
+        self.exporter = exp
+        if isinstance(els,list):
+            self.els = els
+        else:
+            self.els = [els]
+        if fname is None:
+            elid = self.els[0].get_id()
+            imgtype = "png"
+            if typ=='imgt':
+                fname = exp.temphead + "_im_" + elid + "." + imgtype
+            else:
+                fname = exp.temphead + "_imbg_" + elid + "." + imgtype
+        self.fname = fname;
+        self.overlaps = overlaps
+    
+    def __str__(self):
+        if self.type == 'stp':
+            return "select:{0}; {1}; export-filename:{2}; export-do; unselect:{0}; ".format(
+                ",".join(self.els), self.exporter.stpact, self.fname
+            )
+        elif self.type == 'imgt':
+            fmt1 = (
+                "export-id:{0}; export-id-only; export-dpi:{1}; "
+                "export-filename:{2}; export-background-opacity:0.0; "
+                "export-do; "
+            )
+            return fmt1.format(self.els[0].get_id(), int(self.exporter.dpi), self.fname)
+        elif self.type == 'imgo':
+            el = self.els[0]
+            fmt2 = (
+                "export-id:{0}; export-dpi:{1}; "
+                "export-filename:{2}; export-background-opacity:1.0; "
+                "export-do; "
+            )
+            actv = fmt2.format(el.get_id(), int(self.exporter.dpi), self.fname)
+            
+            # For export all, hide objects on top
+            displays = {el: el.cstyle.get('display') for el in self.overlaps[el]}
+            hides = ['select:{0}; object-set-property:display,none; unselect:{0}; '.format(el.get_id()) for el in self.overlaps[el]]
+            unhides = ['select:{0}; object-set-property:display,{1}; unselect:{0}; '.format(el.get_id(), \
+                        displays[el] if displays[el] is not None else '') for el in self.overlaps[el]]
+            return ''.join(hides) + actv + ''.join(unhides)
+        
+    def split(self,intermediate_fn):
+        ''' Splits a STP act into two sub-acts '''
+        spl = math.ceil(len(self.els) / 2)
+        act1 = Act('stp',self.els[:spl],self.exporter,intermediate_fn)
+        act2 = Act('stp',self.els[spl:],self.exporter,self.fname)
+        return act1, act2
 
 if __name__ == "__main__":
     dh.Run_SI_Extension(AutoExporter(), "Autoexporter")
