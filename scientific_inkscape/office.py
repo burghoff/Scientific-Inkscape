@@ -347,8 +347,10 @@ class Slide_and_Rels():
             abs_path = os.path.normpath(abs_path)
 
             if not os.path.exists(abs_path):
-                existing_ids.remove(rel.attrib["Id"])
-                continue
+                abs_path = dh.si_config.find_missing_links(abs_path)
+                if not abs_path:
+                    existing_ids.remove(rel.attrib["Id"])
+                    continue
 
             
             os.makedirs(self.uzo.media_dir, exist_ok=True)
@@ -374,7 +376,7 @@ class Slide_and_Rels():
                 link_id = elem.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}link")
         
                 if link_id:
-                    if link_id not in existing_ids:
+                    if link_id not in existing_ids and embed_id is not None:
                         elem.attrib["{http://schemas.openxmlformats.org/officeDocument/2006/relationships}link"] = embed_id
                         link_id = embed_id
                     elem.attrib["{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"] = link_id

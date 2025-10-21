@@ -1349,10 +1349,8 @@ class Exporter():
             _ = subprocess.run(cmd, capture_output=True, text=True)
             generated_pdf = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(output_pptx))[0]}.pdf")
             final_pdf = f"{base}.pdf"
-            if os.path.exists(generated_pdf):
-                os.replace(generated_pdf, final_pdf)
-            if os.path.exists(output_pptx):
-                os.remove(output_pptx)
+            repeat_replace(generated_pdf, final_pdf)
+            repeat_remove(output_pptx)
         if os.path.exists(tempdir+'.lock'):
             os.remove(tempdir+'.lock')
             
@@ -2059,6 +2057,81 @@ class Act():
         act1 = Act('stp',self.els[:spl],self.exporter,intermediate_fn)
         act2 = Act('stp',self.els[spl:],self.exporter,self.fname)
         return act1, act2
+    
+from typing import Optional
+from pathlib import Path
+
+def _with_numbered_suffix(path: str | os.PathLike, n: int) -> str:
+    """
+    Insert ' (n)' before the file extension.
+    Example: 'report.pdf' + n=2 -> 'report (2).pdf'
+    """
+    p = Path(path)
+    return str(p.with_name(f"{p.stem} ({n}){p.suffix}"))
+
+def repeat_remove(path: str | os.PathLike, retries: int = 5, delay: float = 1.0) -> bool:
+    """
+    Remove a file, retrying on PermissionError up to `retries` times with `delay` seconds.
+    Returns True if the file is gone at the end (either removed or didn't exist), False otherwise.
+    """
+    path = str(path)
+    for attempt in range(retries):
+        if not os.path.exists(path):
+            return True
+        try:
+            os.remove(path)
+            return True
+        except PermissionError:
+            time.sleep(delay)
+    # Final state check
+    return not os.path.exists(path)
+
+def repeat_replace(src: str | os.PathLike,
+                   dst: str | os.PathLike,
+                   retries: int = 5,
+                   delay: float = 1.0) -> Optional[str]:
+    """
+    Replace/move `src` to `dst` with retries on PermissionError.
+    If it still fails after `retries` attempts, create an available name by appending
+    ' (1)', ' (2)', ... before the extension to `dst` and try again (with retries).
+    
+    Returns the final destination path used on success, or None if `src` does not exist.
+    Raises on non-PermissionError exceptions (e.g., FileNotFoundError for bad directories).
+    """
+    src = str(src)
+    dst = str(dst)
+
+    if not os.path.exists(src):
+        return None  # nothing to do
+
+    # First: try to replace to the intended destination
+    for attempt in range(retries):
+        try:
+            # os.replace overwrites atomically if dst exists (Windows & POSIX)
+            os.replace(src, dst)
+            return dst
+        except PermissionError:
+            time.sleep(delay)
+
+    # Still locked: choose a numbered fallback name that doesn't exist
+    n = 1
+    alt = _with_numbered_suffix(dst, n)
+    while os.path.exists(alt):
+        n += 1
+        alt = _with_numbered_suffix(dst, n)
+
+    # Try to replace to the numbered fallback, with retries again
+    for attempt in range(retries):
+        try:
+            os.replace(src, alt)
+            return alt
+        except PermissionError:
+            time.sleep(delay)
+
+    # If we got here, it's still locked after all attempts to both names
+    # Surface the problem for upstream handling
+    raise PermissionError(f"Could not move '{src}' to '{dst}' or fallback '{alt}' after {retries*2} attempts.")
+
 
 if __name__ == "__main__":
     dh.Run_SI_Extension(AutoExporter(), "Autoexporter")

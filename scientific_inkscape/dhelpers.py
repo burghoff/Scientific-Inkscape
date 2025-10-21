@@ -1263,9 +1263,11 @@ class SI_Config:
     """
     Loads a config json file that can be used to adjust certain Scientific
     Inkscape behaviors.
-    identical_dirs_gv: A list of directories that the Gallery Viewer should treat
-                       as identical when searching for pre-export files. Useful
-                       for cloud drives.
+    identical_dirs: A list of directories that the Autoexporter / Gallery Viewer
+                    should treat as identical when searching for linked files.
+                    Useful for looking for locations in cloud drives that have
+                    different absolute paths on different machines.
+    subdirs
     """
 
     def __init__(self, filename="config.json"):
@@ -1284,25 +1286,52 @@ class SI_Config:
         self.loaded = True
 
     @property
-    def identical_dirs_gv(self):
+    def identical_dirs(self):
         if not self.loaded:
             self._load()
-        groups = self.data.get("identical_dirs_gv", [])
+        groups = self.data.get("identical_dirs", [])
         if isinstance(groups, list) and all(isinstance(g, list) for g in groups):
             return groups
         return []
 
     @property
-    def subdirs_gv(self):
+    def subdirs(self):
         if not self.loaded:
             self._load()
-        subdirs = self.data.get("subdirs_gv", [])
+        subdirs = self.data.get("subdirs", [])
         if isinstance(subdirs, list):
             return subdirs
         return []
 
     def get_option(self, section, key, default=None):
         return self.data.get(section, {}).get(key, default)
+    
+    def find_missing_links(self,missing_file):
+        '''
+        For linked files that were missing, check the identical_dirs and subdirs
+        '''
+        idir_groups = self.identical_dirs
+        ipaths = []
+        of_abs = os.path.abspath(missing_file)
+        for idirg in idir_groups:
+            for idir in idirg:
+                id_abs = os.path.abspath(idir)
+                if id_abs in of_abs:
+                    for idir2 in idirg:
+                        if not idir==idir2:
+                            ipaths.append(of_abs.replace(id_abs,os.path.abspath(idir2)))
+                            
+        subdirs = self.subdirs
+        for ipth in ipaths[:]:
+            for sd in subdirs:
+                dn = os.path.dirname(ipth)
+                bn = os.path.basename(ipth)
+                ipaths.append(os.path.join(dn,sd,bn))
+        ipaths = [of_abs] + ipaths
+        
+        if any(os.path.exists(p) for p in ipaths):
+            return [p for p in ipaths if os.path.exists(p)][0]
+        return None
 
 
 si_config = SI_Config()
