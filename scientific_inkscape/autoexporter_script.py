@@ -274,13 +274,15 @@ class FileCheckerThread(threading.Thread):
         f_abs       = os.path.abspath(f)
         watch_abs   = os.path.abspath(self.watchdir)
         rel_in_tree = os.path.relpath(f_abs, start=watch_abs)
-        if rel_in_tree.startswith(".."):
-            rel_in_tree = os.path.basename(f_abs)
-        rel_subdir   = os.path.dirname(rel_in_tree)          
-        base_name    = os.path.basename(rel_in_tree)        
-        outdir = autoexporter.joinmod(self.writedir, rel_subdir) if rel_subdir else self.writedir
-        os.makedirs(outdir, exist_ok=True)
-        fthr.outtemplate = autoexporter.joinmod(outdir, base_name)
+        if rel_in_tree.startswith("..") or os.path.isabs(rel_in_tree):
+            # f is not inside watchdir → just match f itself
+            fthr.outtemplate = f_abs
+        else:
+            rel_subdir  = os.path.dirname(rel_in_tree)
+            base_name   = os.path.basename(rel_in_tree)
+            outdir      = autoexporter.joinmod(self.writedir, rel_subdir) if rel_subdir else self.writedir
+            os.makedirs(outdir, exist_ok=True)
+            fthr.outtemplate = autoexporter.joinmod(outdir, base_name)
         
         self.thread_queue.append(fthr)
 
