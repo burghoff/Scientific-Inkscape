@@ -91,14 +91,16 @@
         <label>When enabled, the Autoexporter produces finalized versions of Office files. This may help with SVG display issues on other computers.</label>
         <label>This will act on .pptx or .docx files in the watch directory.</label>
         <spacer/>
+        <label>Document finalization options</label>
         <param name="finalizermode" type="optiongroup" appearance="combo"
-                gui-text="Document finalization options"
+                gui-text=""
                 gui-description="Embed linked images: Move a copy of linked images inside file&#13;Embed and convert SVGs to PNGs: Replaces SVGs with embedded PNGs&#13;Embed and delete backup PNGs: Embeds SVGs and removes backup PNGs for lower file sizes&#13;">
                    <option value="1">Do not finalize</option>
                    <option value="2">Embed linked images</option>
                    <option value="3">Embed and convert SVGs to PNGs</option>
                    <option value="4">Embed and delete backup PNGs</option>
-                   <option value="5">Convert to PDF</option>
+                   <option value="5">Convert to PDF using Microsoft Office</option>
+                   <option value="6">Convert to PDF using LibreOffice</option>
                 </param>
         <spacer/>
         <label>Scientific Inkscape v1.4.23</label>

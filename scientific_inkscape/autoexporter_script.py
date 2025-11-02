@@ -19,8 +19,14 @@ with open(aes, "rb") as f:
     input_options = pickle.load(f)
 os.remove(aes)
 bfn = input_options.inkscape_bfn
-sys.path += input_options.syspath
+sys.path.extend([p for p in input_options.syspath if p not in sys.path])
+bfn_dir = os.path.dirname(bfn)
+if bfn_dir not in sys.path:
+    sys.path.append(bfn_dir)
 guitype = input_options.guitype
+if sys.stderr is None:
+    sys.stdout = open(input_options.logfile, "w", encoding="utf-8", buffering=1)
+    sys.stderr = sys.stdout
 
 import dhelpers as dh  # noqa
 import inkex
@@ -617,7 +623,8 @@ if guitype == 'gtk3.0':
             self.finalizer_combo.append("2", "Embed linked images")
             self.finalizer_combo.append("3", "Embed and convert SVGs to PNGs")
             self.finalizer_combo.append("4", "Embed and delete backup PNGs")
-            self.finalizer_combo.append("5", "Convert to PDF")
+            self.finalizer_combo.append("5", "Convert to PDF using Microsoft Office")
+            self.finalizer_combo.append("6", "Convert to PDF using LibreOffice")
             self.finalizer_combo.set_active(int(getattr(input_options, "finalizermode", 1)) - 1)
             self.finalizer_combo.connect("changed", self.on_finalizer_changed)
             tab2_box.pack_start(self.finalizer_combo, False, False, 1)
@@ -749,6 +756,8 @@ if guitype == 'gtk3.0':
             filter_ppt = Gtk.FileFilter()
             filter_ppt.set_name("SVG files")
             filter_ppt.add_pattern("*.svg")
+            filter_ppt.add_pattern("*.docx")
+            filter_ppt.add_pattern("*.pptx")
             native.add_filter(filter_ppt)
             response = native.run()
             if response == Gtk.ResponseType.ACCEPT:
@@ -1073,7 +1082,7 @@ elif guitype=='gtk4.0':
                 path = gfile.get_path()
                 if not path:
                     return
-                if path.lower().endswith(".svg"):
+                if path.lower().endswith(".svg") or path.lower().endswith(".docx") or path.lower().endswith(".pptx"):
                     self.ct.selectedfile = path
                     self.ct.es = True
                 else:
@@ -1240,7 +1249,8 @@ elif guitype=='gtk4.0':
             self.finalizer_combo.append("2", "Embed linked images")
             self.finalizer_combo.append("3", "Embed and convert SVGs to PNGs")
             self.finalizer_combo.append("4", "Embed and delete backup PNGs")
-            self.finalizer_combo.append("5", "Convert to PDF")
+            self.finalizer_combo.append("5", "Convert to PDF using Microsoft Office")
+            self.finalizer_combo.append("6", "Convert to PDF using LibreOffice")
             _bind_combo_active_id(self.finalizer_combo, "finalizermode", to_int=True)
             parent.append(self.finalizer_combo)
 

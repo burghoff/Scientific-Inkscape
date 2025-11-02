@@ -266,6 +266,7 @@ class AutoExporter(inkex.EffectExtension):
             if USE_TERMINAL:
                 guitype = "terminal"
             optcopy.guitype = guitype
+            optcopy.logfile = dh.shared_temp(filename="si_ae_output.txt")
 
             aes = os.path.join(
                 os.path.abspath(tempfile.gettempdir()), "si_ae_settings.p"
@@ -279,6 +280,38 @@ class AutoExporter(inkex.EffectExtension):
                 AutoExporter._gtk_call(pybin, aepy)
             else:
                 AutoExporter._terminal_call(pybin, aepy, pyloc)
+                
+            # Create a Windows batch launcher 
+            if sys.platform.startswith("win"):
+                python_cwd = os.getcwd()
+                pickled_file_path = aes
+                with open(pickled_file_path, "rb") as f:
+                    pickled_data = f.read()
+                import base64
+                pickled_data_base64 = base64.b64encode(pickled_data).decode("utf-8")
+        
+                current_script_dir = os.path.dirname(os.path.abspath(__file__))
+                batch_file_path = os.path.join(current_script_dir, "Autoexporter.bat")
+                
+                py_for_bat = sys.executable
+                if guitype=='terminal':
+                    py_for_bat = os.path.join(os.path.dirname(py_for_bat), "python.exe")  # use console python
+        
+                escaped_path = pickled_file_path.replace("\\", "\\\\")
+                batch_content = (
+                    '@echo off\n'
+                    f'cd "{python_cwd}"\n\n'
+                    f'SET PYBIN="{py_for_bat}"\n'
+                    f'SET AEPY="{aepy}"\n'
+                    f'SET PICKLED_FILE="{escaped_path}"\n\n'
+                    'REM Recreate the pickled settings from base64\n'
+                    f'powershell -Command "[System.IO.File]::WriteAllBytes(\'%PICKLED_FILE%\', [Convert]::FromBase64String(\'{pickled_data_base64}\'))"\n\n'
+                    'REM Launch the watcher in a detached process\n'
+                    'start "" %PYBIN% %AEPY%\n'
+                )
+                with open(batch_file_path, "w") as batch_file:
+                    batch_file.write(batch_content)
+
 
         else:
             if not (self.options.testmode):
@@ -522,15 +555,18 @@ class Exporter():
                 if os.path.exists(tmp):
                     deleted = False
                     nattempts = 0
-                    while not (deleted) and nattempts < MAXATTEMPTS:
+                    while not deleted and nattempts < MAXATTEMPTS:
                         try:
-                            os.remove(tmp)
+                            if os.path.isdir(tmp):
+                                shutil.rmtree(tmp, ignore_errors=True)
+                            else:
+                                os.remove(tmp)
                             deleted = True
                         except PermissionError:
                             time.sleep(1)
                             nattempts += 1
                         except FileNotFoundError:
-                            continue
+                            break
 
     def preprocessing(self, fin):
         """Modifications that are done prior to conversion to any vector output"""
@@ -1314,47 +1350,61 @@ class Exporter():
         dh.clean_up_document(svg)  # Clean up
         
     def finalize(self):
-        tempdir, temphead = dh.shared_temp('aef')
-        tempdir = os.path.join(tempdir, temphead)
+        self.tempdir, self.temphead = dh.shared_temp('ae')
+        self.tempbase = joinmod(self.tempdir,self.temphead)
         tic = time.time()
         
+        base, ext = os.path.splitext(self.filein)
+        original = self.tempbase +  f"_original{ext}"
+        shutil.copy2(self.filein, original)
+        
+        uzo_path = self.tempbase + '_uzo'
         from office import Unzipped_Office
-        uzo = Unzipped_Office(self.filein,tempdir)
+        uzo = Unzipped_Office(original,uzo_path)
         uzo.embed_linked()
         if self.finalizermode==3:
             uzo.leave_fallback_png()
+        elif self.finalizermode==5:
+            uzo.leave_fallback_png_simple()
         elif self.finalizermode==4:
             uzo.delete_fallback_png()
-        elif self.finalizermode==5:
+        elif self.finalizermode==6:
             uzo.unrenderable_fonts_to_paths()
-        uzo.cleanup_unused_rels_and_media()
-        base, ext = os.path.splitext(self.filein)
-        output_pptx = f"{base} finalized{ext}"
-        uzo.rezip(output_pptx)
-        import shutil
-        shutil.rmtree(uzo.temp_dir)
+        if self.finalizermode!=5:
+            uzo.cleanup_unused_rels_and_media()
+
         
-        if self.finalizermode==5:
-            import subprocess
-            soffice = find_soffice()
+        doc_finalized = self.tempbase +  f"_finalized{ext}"
+        uzo.rezip(doc_finalized)
+
+        notes = ''
+        if self.finalizermode in [5,6]:
             base, ext = os.path.splitext(self.filein)
-            output_dir = os.path.split(self.filein)[0]
-            cmd = [
-                soffice,
-                "--headless",
-                "--convert-to", "pdf:writer_pdf_Export",
-                "--outdir", output_dir,
-                output_pptx
-            ]
-            _ = subprocess.run(cmd, capture_output=True, text=True)
-            generated_pdf = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(output_pptx))[0]}.pdf")
+            temppdf = self.tempbase+'_raw.pdf'
             final_pdf = f"{base}.pdf"
-            repeat_replace(generated_pdf, final_pdf)
-            repeat_remove(output_pptx)
-        if os.path.exists(tempdir+'.lock'):
-            os.remove(tempdir+'.lock')
-            
-        fstr = f": Finalization complete ({str(round(1000 * (time.time()-tic)) / 1000)} s)"
+
+            from pdf import make_pdf_libreoffice, make_pdf_word, replace_color_markers_with_svgs
+            if self.finalizermode==6:
+                make_pdf_libreoffice(doc_finalized, temppdf)
+                actual_output = repeat_move(temppdf, final_pdf)
+            else:
+                make_pdf_word(doc_finalized, temppdf)
+                temppdf2 = self.tempbase+'_replaced.pdf'
+                replace_color_markers_with_svgs(temppdf,uzo.svg_color_map,temppdf2,self)
+                if hasattr(self, "aeThread") and self.aeThread.stopped is True:
+                    self.clear_temp()
+                    sys.exit()
+                actual_output = repeat_move(temppdf2, final_pdf)
+            if actual_output != final_pdf:
+                notes = f"\r(written to {os.path.basename(actual_output)})"
+        else:
+            output_doc = f"{base} finalized{ext}"
+            actual_output = repeat_move(doc_finalized, output_doc)
+            if actual_output != output_doc:
+                notes = f"\r(written to {os.path.basename(actual_output)})"
+
+        self.clear_temp()
+        fstr = f": Finalization complete ({str(round(1000 * (time.time()-tic)) / 1000)} s)"+notes
         self.prints(os.path.basename(self.filein) + fstr, flush=True)
 
     PTH_COMMANDS = list("MLHVCSQTAZmlhvcsqtaz")
@@ -1955,49 +2005,6 @@ def hash_file(filename):
             chunk = file.read(1024)
             hashv.update(chunk)
     return hashv.hexdigest()
-
-import platform
-from shutil import which
-
-def find_soffice():
-    """
-    Return the full path to LibreOffice's soffice executable.
-    Raises FileNotFoundError if not found.
-    """
-    system = platform.system()
-
-    # First try PATH
-    soffice_path = which("soffice")
-    if soffice_path:
-        return soffice_path
-
-    possible_paths = []
-    if system == "Windows":
-        possible_paths = [
-            r"C:\Program Files\LibreOffice\program\soffice.exe",
-            r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-        ]
-    elif system == "Darwin":  # macOS
-        possible_paths = [
-            "/Applications/LibreOffice.app/Contents/MacOS/soffice",
-            "/usr/local/bin/soffice",
-        ]
-    elif system == "Linux":
-        possible_paths = [
-            "/usr/bin/soffice",
-            "/usr/local/bin/soffice",
-            "/snap/bin/libreoffice",
-        ]
-
-    for path in possible_paths:
-        if os.path.isfile(path):
-            return path
-
-    raise FileNotFoundError(
-        "LibreOffice (soffice) executable not found. "
-        "PDF conversion relies on LibreOffice, the free and open source document creator. "
-        "Please ensure LibreOffice is installed and added to your PATH."
-    )
     
 class Act():
     '''
@@ -2061,15 +2068,7 @@ class Act():
 from typing import Optional
 from pathlib import Path
 
-def _with_numbered_suffix(path: str | os.PathLike, n: int) -> str:
-    """
-    Insert ' (n)' before the file extension.
-    Example: 'report.pdf' + n=2 -> 'report (2).pdf'
-    """
-    p = Path(path)
-    return str(p.with_name(f"{p.stem} ({n}){p.suffix}"))
-
-def repeat_remove(path: str | os.PathLike, retries: int = 5, delay: float = 1.0) -> bool:
+def repeat_remove(path: str, retries: int = 5, delay: float = 1.0) -> bool:
     """
     Remove a file, retrying on PermissionError up to `retries` times with `delay` seconds.
     Returns True if the file is gone at the end (either removed or didn't exist), False otherwise.
@@ -2086,52 +2085,122 @@ def repeat_remove(path: str | os.PathLike, retries: int = 5, delay: float = 1.0)
     # Final state check
     return not os.path.exists(path)
 
-def repeat_replace(src: str | os.PathLike,
-                   dst: str | os.PathLike,
-                   retries: int = 5,
-                   delay: float = 1.0) -> Optional[str]:
+def _with_numbered_suffix(path: str, n: int) -> str:
     """
-    Replace/move `src` to `dst` with retries on PermissionError.
-    If it still fails after `retries` attempts, create an available name by appending
-    ' (1)', ' (2)', ... before the extension to `dst` and try again (with retries).
-    
-    Returns the final destination path used on success, or None if `src` does not exist.
-    Raises on non-PermissionError exceptions (e.g., FileNotFoundError for bad directories).
+    Insert ' (n)' before the file extension.
+    Example: 'report.pdf' + n=2 -> 'report (2).pdf'
     """
-    src = str(src)
-    dst = str(dst)
+    p = Path(path)
+    return str(p.with_name(f"{p.stem} ({n}){p.suffix}"))
+
+def _replace_or_copy_overwrite_once(src: str, dst: str) -> str:
+    """
+    ONE shot:
+      1) Try os.replace(src, dst).
+      2) If that raises OSError, attempt a single copy-overwrite:
+         - best-effort unlink(dst)
+         - shutil.copy2(src, dst)
+         - unlink(src)  (complete the move)
+    No retries inside. On success, returns dst. On failure, raises.
+    Leaves `src` intact on failure.
+    """
+    os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
+
+    # Attempt atomic replace first
+    try:
+        os.replace(src, dst)
+        return dst
+    except OSError:
+        pass  # fall through to copy-overwrite
+
+    # Best-effort unlink of current dst (ignore failures)
+    try:
+        if os.path.exists(dst):
+            os.unlink(dst)
+    except OSError:
+        # ignore; if it's locked, the copy2 below may still fail
+        pass
+
+    # Copy bytes to dst
+    shutil.copy2(src, dst)  # if locked, this raises (e.g., WinError 32)
+
+    # Remove source to complete "move"
+    os.unlink(src)
+
+    return dst
+
+def _delete_any_higher_numbered_suffixes(dst_base: str, current_n: int, retries: int, delay: float) -> None:
+    """
+    Delete ALL numbered siblings with a suffix number > current_n, regardless of gaps.
+    E.g., if current_n == 2, delete '(3)', '(4)', '(7)', ... if they exist.
+    """
+    p = Path(dst_base)
+    parent = p.parent
+    stem = p.stem
+    suffix = p.suffix
+
+    # Build a regex that matches "<stem> (N)<suffix>" exactly in this directory.
+    # Use re.escape to safely match literal stem and suffix.
+    pat = re.compile(rf"^{re.escape(stem)} \((\d+)\){re.escape(suffix)}$", re.IGNORECASE)
+
+    try:
+        entries = list(os.listdir(parent or "."))
+    except FileNotFoundError:
+        return
+
+    for name in entries:
+        m = pat.match(name)
+        if not m:
+            continue
+        n = int(m.group(1))
+        if n <= current_n:
+            continue
+        target = str(parent / name)
+        for _ in range(retries):
+            try:
+                os.unlink(target)
+                break
+            except PermissionError:
+                time.sleep(delay)
+            except FileNotFoundError:
+                break
+
+def repeat_move(src: str,
+                dst: str,
+                retries: int = 5,
+                delay: float = 1.0) -> Optional[str]:
+    """
+    Move `src` to `dst` with retries per candidate name.
+    For each candidate (base, then (1), (2), ...):
+      - Try `_replace_or_copy_overwrite_once` up to `retries` times.
+      - On success, delete ANY higher-numbered siblings (not just contiguous).
+    """
+    src = str(src); dst = str(dst)
 
     if not os.path.exists(src):
-        return None  # nothing to do
+        return None
 
-    # First: try to replace to the intended destination
-    for attempt in range(retries):
-        try:
-            # os.replace overwrites atomically if dst exists (Windows & POSIX)
-            os.replace(src, dst)
-            return dst
-        except PermissionError:
-            time.sleep(delay)
+    candidate = dst
+    n = 0  # 0 = base name; then 1,2,... = numbered suffix
 
-    # Still locked: choose a numbered fallback name that doesn't exist
-    n = 1
-    alt = _with_numbered_suffix(dst, n)
-    while os.path.exists(alt):
+    while True:
+        for _ in range(retries):
+            try:
+                result = _replace_or_copy_overwrite_once(src, candidate)
+                _delete_any_higher_numbered_suffixes(dst, n, retries, delay)
+                return result
+            except (PermissionError, OSError):
+                time.sleep(delay)
+                if not os.path.exists(src):
+                    # If the source vanished, assume someone else completed the move.
+                    if os.path.exists(candidate):
+                        _delete_any_higher_numbered_suffixes(dst, n, retries, delay)
+                        return candidate
+                    return None
+
+        # Exhausted retries for this candidate; advance to next numbered suffix
         n += 1
-        alt = _with_numbered_suffix(dst, n)
-
-    # Try to replace to the numbered fallback, with retries again
-    for attempt in range(retries):
-        try:
-            os.replace(src, alt)
-            return alt
-        except PermissionError:
-            time.sleep(delay)
-
-    # If we got here, it's still locked after all attempts to both names
-    # Surface the problem for upstream handling
-    raise PermissionError(f"Could not move '{src}' to '{dst}' or fallback '{alt}' after {retries*2} attempts.")
-
+        candidate = _with_numbered_suffix(dst, n)
 
 if __name__ == "__main__":
     dh.Run_SI_Extension(AutoExporter(), "Autoexporter")

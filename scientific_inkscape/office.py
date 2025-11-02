@@ -1,3 +1,22 @@
+#!/usr/bin/env python
+# coding=utf-8
+#
+# Copyright (c) 2025 David Burghoff <burghoff@utexas.edu>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
 import sys
 import dhelpers as dh
 bfn = dh.inkex.inkscape_system_info.binary_location
@@ -21,6 +40,7 @@ from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo
 from urllib.parse import unquote
 from lxml import etree as ET
 import re
+import zlib, struct, binascii
 
 def svg_to_png(svg_path, png_path):
     print(f'Exporting {svg_path}')
@@ -34,19 +54,40 @@ def normalize_and_copy(source_path, media_dir):
         shutil.copy2(source_path, target_path)
     return target_path
 
+import time
+
+def safe_extract_zip(file, temp_dir=None, retries=5, delay=0.5):
+    for attempt in range(retries):
+        try:
+            with ZipFile(file, 'r') as zip_read:
+                if temp_dir is None:
+                    temp_dir = os.path.join(
+                        os.path.dirname(os.path.abspath(__file__)),
+                        'temp_extracted_pptx'
+                    )
+
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+
+                zip_read.extractall(temp_dir)
+            return temp_dir  # success
+        except PermissionError:
+            if attempt == retries - 1:
+                raise  # re-raise after last attempt
+            time.sleep(delay * (2 ** attempt))  # exponential backoff
+
             
 class Unzipped_Office():
     def __init__(self,file,temp_dir=None):
-        with ZipFile(file, 'r') as zip_read:
-            if temp_dir is None:
-                temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp_extracted_pptx')
-                if os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
-            zip_read.extractall(temp_dir)
+        safe_extract_zip(file,temp_dir)
         
         self.temp_dir = temp_dir
         self.type = 'ppt' if os.path.isdir(os.path.join(temp_dir,"ppt")) else 'word'
         self.media_dir = os.path.join(temp_dir, self.type, "media")
+        
+        self.svg_color_map = {}          # maps '000001' -> 'figure42.svg'
+        self.svg_to_color = {}           # maps normalized full svg path -> '000001'
+        self._simple_png_next_color = 1  # next RGB code as integer (start at 1)
         
         if not os.path.exists(self.media_dir):
             self.nfiles = 0
@@ -83,6 +124,26 @@ class Unzipped_Office():
     def leave_fallback_png(self):
         for slide in self.slides:
             slide.leave_fallback_png()
+            
+    def leave_fallback_png_simple(self):
+        for slide in self.slides:
+            slide.leave_fallback_png_simple()
+
+    def _norm_path(self, p: str) -> str:
+        return os.path.normcase(os.path.abspath(os.path.normpath(p))) if p else ""
+    
+    def _lookup_color_for_svg(self, svg_path: str):
+        return self.svg_to_color.get(self._norm_path(svg_path))
+    
+    def _register_svg_color(self, svg_path: str, color_hex: str):
+        np = self._norm_path(svg_path)
+        self.svg_to_color[np] = color_hex
+        self.svg_color_map[color_hex] = np  # store full normalized path in the forward map, too
+    
+    def _hex_to_rgb(self, color_hex: str):
+        n = int(color_hex, 16)
+        return ((n >> 16) & 0xFF, (n >> 8) & 0xFF, n & 0xFF)
+
     
     def ensure_image_in_content_types(self, filename):
         """
@@ -208,7 +269,8 @@ class Unzipped_Office():
         import inkex
         import dhelpers as dh
         from types import SimpleNamespace
-        from autoexporter import get_svg, Exporter, Act
+        from autoexporter import get_svg, Exporter, Act, repeat_remove
+        tempdir = None
     
         bfn = inkex.inkscape_system_info.binary_location
         for fname in os.listdir(self.media_dir):
@@ -238,7 +300,8 @@ class Unzipped_Office():
                 continue
     
             # Create temporary output path
-            tempdir, temphead = dh.shared_temp('aeftf')
+            if tempdir is None:
+                tempdir, temphead = dh.shared_temp('aeftf')
             tmpout = os.path.join(tempdir, f"{temphead}_ttop.svg")
     
             # Minimal Exporter context (mimics autoexporter)
@@ -254,9 +317,52 @@ class Unzipped_Office():
                 new_svg = get_svg(tmpout)
                 dh.overwrite_svg(new_svg, fpath)
                 processed.append(fpath)
+                repeat_remove(tmpout)
     
+        if tempdir:
+            repeat_remove(os.path.join(tempdir, temphead+'.lock'))
         return processed
 
+    def _alloc_next_color(self):
+        """Return ('%06X' % n).lower() and (R,G,B) for next color; increment counter."""
+        n = self._simple_png_next_color
+        self._simple_png_next_color += 1
+        r = (n >> 16) & 0xFF
+        g = (n >> 8) & 0xFF
+        b = (n >> 0) & 0xFF
+        return f"{n:06x}", (r, g, b)
+    
+    def _write_solid_png_9x9(self, rgb, out_path):
+        """
+        Manually write a 9x9 opaque truecolor PNG with no alpha.
+        Uses: PNG signature, IHDR, IDAT (zlib-compressed), IEND. No libraries like PIL.
+        """
+        w, h = 9, 9
+        r, g, b = rgb
+    
+        def _chunk(typ, data=b""):
+            # PNG chunk: length(4) + type(4) + data + crc(4)
+            crc = binascii.crc32(typ)
+            crc = binascii.crc32(data, crc) & 0xFFFFFFFF
+            return struct.pack(">I", len(data)) + typ + data + struct.pack(">I", crc)
+    
+        # Signature
+        sig = b"\x89PNG\r\n\x1a\n"
+    
+        # IHDR: width, height, bit depth=8, color type=2 (truecolor), compression=0, filter=0, interlace=0
+        ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+        ch_ihdr = _chunk(b"IHDR", ihdr)
+    
+        # Raw image data: each row starts with filter byte 0, then 9 * 3 bytes (RGB)
+        one_row = bytes([0]) + bytes((r, g, b)) * w
+        raw = one_row * h
+        comp = zlib.compress(raw, level=9)
+        ch_idat = _chunk(b"IDAT", comp)
+    
+        ch_iend = _chunk(b"IEND", b"")
+    
+        with open(out_path, "wb") as f:
+            f.write(sig + ch_ihdr + ch_idat + ch_iend)
 
 
 
@@ -555,6 +661,158 @@ class Slide_and_Rels():
         if changed_rels:
             self.rels_tree.write(self.rels_path, xml_declaration=True, encoding='UTF-8')
         return referenced_files
+    
+    def leave_fallback_png_simple(self):
+        """
+        Alternate to leave_fallback_png:
+        - Ensures each SVG reference resolves to a PNG fallback that is a 9x9
+          opaque solid color (sequential RGB 000001, 000002, ...)
+        - Records color->svg_filename in self.uzo.svg_color_map
+        """
+        ns = {
+            'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
+            'p': 'http://schemas.openxmlformats.org/presentationml/2006/main',
+            'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+            'asvg': 'http://schemas.microsoft.com/office/drawing/2016/SVG/main'
+        }
+    
+        rel_id_to_target = {
+            rel.attrib["Id"]: unquote(rel.attrib.get("Target", ""))
+            for rel in self.rels_root if rel.tag.endswith("Relationship")
+        }
+    
+        changed_slide = False
+        changed_rels = False
+    
+        # Gather all svgBlips and any <a:blip> that actually points to an .svg
+        svgblips = []
+        blips_pointing_to_svg = []
+        for elem in self.slide_root.iter():
+            if elem.tag == f"{{{ns['asvg']}}}svgBlip":
+                svgblips.append(elem)
+            elif elem.tag == f"{{{ns['a']}}}blip":
+                rid = elem.attrib.get(f"{{{ns['r']}}}embed")
+                target = rel_id_to_target.get(rid, "").lower() if rid else ""
+                if target.endswith(".svg"):
+                    blips_pointing_to_svg.append(elem)
+    
+        if not svgblips and not blips_pointing_to_svg:
+            return
+    
+        # Helper: resolve source part dir (the part that owns this .rels)
+        source_part_path = self.rels_path.replace('\\_rels\\', '\\').replace('/_rels/', '/').rsplit('.rels', 1)[0]
+        source_part_dir = os.path.dirname(source_part_path)
+    
+        # Case 1: svgBlip paired with an existing PNG fallback -> overwrite that PNG file in-place
+        for svgblip in list(svgblips):
+            ext = svgblip.getparent()
+            extLst = ext.getparent() if ext is not None else None
+            blip = extLst.getparent() if extLst is not None else None
+            if not (ext is not None and ext.tag == f"{{{ns['a']}}}ext" and
+                    extLst is not None and extLst.tag == f"{{{ns['a']}}}extLst" and
+                    blip is not None and blip.tag == f"{{{ns['a']}}}blip"):
+                continue
+    
+            png_rid = blip.attrib.get(f"{{{ns['r']}}}embed")
+            png_target = rel_id_to_target.get(png_rid, "")
+            has_png = (png_rid and png_target.lower().endswith(".png"))
+    
+            # Need the associated SVG's rid/target to record its name
+            svg_rid = svgblip.attrib.get(f"{{{ns['r']}}}embed")
+            svg_target = rel_id_to_target.get(svg_rid, "")
+            # Resolve absolute svg path for record (and to check existence)
+            if svg_target:
+                svg_path = os.path.abspath(os.path.normpath(os.path.join(source_part_dir, svg_target)))
+            else:
+                svg_path = ""
+    
+            if has_png:
+                # Overwrite existing media PNG file with our 9x9 color square
+                # Target is relative to the part; we want absolute disk path:
+                png_abs = os.path.normpath(os.path.join(source_part_dir, png_target))
+                # Use existing color if we've seen this SVG before
+                if svg_path:
+                    existing = self.uzo._lookup_color_for_svg(svg_path)
+                else:
+                    existing = None
+                
+                if existing:
+                    color_hex = existing
+                    rgb = self.uzo._hex_to_rgb(existing)
+                else:
+                    color_hex, rgb = self.uzo._alloc_next_color()
+                    if svg_path:
+                        self.uzo._register_svg_color(svg_path, color_hex)
+                
+                self.uzo._write_solid_png_9x9(rgb, png_abs)
+                self.uzo.ensure_image_in_content_types('dummy.png')
+                # Also remove the <asvg:svgBlip> extension so the PNG fallback is used
+                blip.remove(extLst)
+                changed_slide = True
+    
+        # Case 2: bare svgBlip or <a:blip> that points to an .svg but has no PNG fallback
+        # Replace node with a new <a:blip> that points at a freshly minted PNG
+        residual = svgblips + blips_pointing_to_svg
+        for node in residual:
+            # Get the SVG rid/target
+            svg_rid = node.attrib.get(f"{{{ns['r']}}}embed")
+            if not svg_rid:
+                continue
+            svg_target = rel_id_to_target.get(svg_rid)
+            if not (svg_target and svg_target.lower().endswith(".svg")):
+                continue
+    
+            svg_path = os.path.abspath(os.path.normpath(os.path.join(source_part_dir, svg_target)))
+    
+            # Allocate a new media png name
+            new_png_path = None
+            while new_png_path is None or os.path.exists(new_png_path):
+                self.uzo.nfiles += 1
+                new_png_name = f"image{self.uzo.nfiles}.png"
+                new_png_path = os.path.join(self.uzo.media_dir, new_png_name)
+            new_rel_target = f"{self.uzo.media_loc}/{new_png_name}"
+    
+            # Generate or re-use color + PNG
+            existing = self.uzo._lookup_color_for_svg(svg_path) if svg_path else None
+            if existing:
+                color_hex = existing
+                rgb = self.uzo._hex_to_rgb(existing)
+            else:
+                color_hex, rgb = self.uzo._alloc_next_color()
+                if svg_path:
+                    self.uzo._register_svg_color(svg_path, color_hex)
+            
+            self.uzo._write_solid_png_9x9(rgb, new_png_path)
+    
+            # Create new relationship
+            imagenum = len(self.rels_root) + 1
+            while f"rId{imagenum}" in rel_id_to_target:
+                imagenum += 1
+            new_rid = f"rId{imagenum}"
+    
+            rels_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+            ET.SubElement(self.rels_root, f"{{{rels_ns}}}Relationship", {
+                "Id": new_rid,
+                "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+                "Target": new_rel_target
+            })
+            rel_id_to_target[new_rid] = new_rel_target
+            changed_rels = True
+    
+            # Replace the node with a fresh <a:blip> that embeds our new PNG rid
+            new_blip = ET.Element(f"{{{ns['a']}}}blip")
+            new_blip.attrib[f"{{{ns['r']}}}embed"] = new_rid
+            parent = node.getparent()
+            parent.replace(node, new_blip)
+            changed_slide = True
+    
+        if changed_slide:
+            self.slide_tree.write(self.slide_path, xml_declaration=True, encoding='UTF-8', method="xml")
+        if changed_rels:
+            self.rels_tree.write(self.rels_path, xml_declaration=True, encoding='UTF-8', method="xml")
+            # Ensure PNG content type is declared
+            self.uzo.ensure_image_in_content_types('placeholder.png')
+
     
 def get_images_onenote(target_file,outputdir):
     ''' Extracts OneNote files to the output directory '''
