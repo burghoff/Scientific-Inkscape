@@ -492,15 +492,9 @@ class Exporter():
         self.tempdir, self.temphead = dh.shared_temp('ae')
         self.tempbase = joinmod(self.tempdir,self.temphead)
         
-
         if self.debug:
             if self.prints:
                 self.prints("\n    " + joinmod(self.tempdir, ""))
-
-        # Make sure output directory exists
-        outdir = os.path.dirname(self.outtemplate)
-        if not os.path.exists(outdir):
-            os.makedirs(outdir)
 
         # Add a document margin
         cfile = self.filein # current file we're working on
@@ -567,9 +561,8 @@ class Exporter():
                             nattempts += 1
                         except FileNotFoundError:
                             break
-
-    def preprocessing(self, fin):
-        """Modifications that are done prior to conversion to any vector output"""
+                        
+    def terminal_message(self,msg):
         if self.prints:
             fname = os.path.split(self.filein)[1]
             try:
@@ -577,7 +570,18 @@ class Exporter():
             except OSError:
                 offset = 40
             fname = fname + " " * max(0, offset - len(fname))
-            self.prints(fname + ": Preprocessing vector output", flush=True)
+            
+            if self.guitype=='terminal' and '\r' in msg:
+                msgs = msg.split('\r')
+                self.prints(fname + ": "+msgs[0], flush=True)
+                self.prints(' '*(len(fname+": "))+msgs[1], flush=True)
+            else:      
+                self.prints(fname + ": "+msg, flush=True)
+
+    def preprocessing(self, fin):
+        """Modifications that are done prior to conversion to any vector output"""
+        if self.prints:
+            self.terminal_message("Preprocessing vector output")
             timestart = time.time()
 
         # SVG modifications that should be done prior to any binary calls
@@ -928,13 +932,9 @@ class Exporter():
             dh.overwrite_svg(svg, tmp)
             cfile = tmp
 
-        if self.prints:
-            self.prints(
-                fname
-                + ": Preprocessing done ("
-                + str(round(1000 * (time.time() - timestart)) / 1000)
-                + " s)"
-            )
+        self.terminal_message("Preprocessing done ("
+        + str(round(1000 * (time.time() - timestart)) / 1000)
+        + " s)")
         return cfile
     
     def check(self,func, *args, **kwargs):
@@ -1047,14 +1047,7 @@ class Exporter():
     def export_file(self, fin, fformat):
         """Use the Inkscape binary to export the file"""
         myoutput = self.outtemplate[0:-4] + "." + fformat
-        if self.prints:
-            fname = os.path.split(self.filein)[1]
-            try:
-                offset = round(os.get_terminal_size().columns / 2)
-            except OSError:
-                offset = 40
-            fname = fname + " " * max(0, offset - len(fname))
-            self.prints(fname + ": Converting to " + fformat, flush=True)
+        self.terminal_message("Converting to " + fformat)
         timestart = time.time()
 
         ispsvg = fformat == "psvg"
@@ -1237,16 +1230,12 @@ class Exporter():
                 except PermissionError:
                     pass
 
-        if self.prints:
-            toc = time.time() - timestart
-            self.prints(
-                fname
-                + ": Conversion to "
-                + fformat
-                + " done ("
-                + str(round(1000 * toc) / 1000)
-                + " s)"
-            )
+        toc = time.time() - timestart
+        self.terminal_message("Conversion to "
+        + fformat
+        + " done ("
+        + str(round(1000 * toc) / 1000)
+        + " s)")
         return True, myoutput
 
     def postprocessing(self, svg):
@@ -1379,23 +1368,20 @@ class Exporter():
 
         notes = ''
         if self.finalizermode in [5,6]:
-            base, ext = os.path.splitext(self.filein)
+            base, ext = os.path.splitext(self.outtemplate)
             temppdf = self.tempbase+'_raw.pdf'
-            final_pdf = f"{base}.pdf"
+            output_pdf = f"{base}.pdf"
 
             from pdf import make_pdf_libreoffice, make_pdf_word, replace_color_markers_with_svgs
             if self.finalizermode==6:
-                make_pdf_libreoffice(doc_finalized, temppdf)
-                actual_output = repeat_move(temppdf, final_pdf)
+                self.check(make_pdf_libreoffice,doc_finalized, temppdf)
+                actual_output = repeat_move(temppdf, output_pdf)
             else:
-                make_pdf_word(doc_finalized, temppdf)
+                self.check(make_pdf_word,doc_finalized, temppdf)
                 temppdf2 = self.tempbase+'_replaced.pdf'
-                replace_color_markers_with_svgs(temppdf,uzo.svg_color_map,temppdf2,self)
-                if hasattr(self, "aeThread") and self.aeThread.stopped is True:
-                    self.clear_temp()
-                    sys.exit()
-                actual_output = repeat_move(temppdf2, final_pdf)
-            if actual_output != final_pdf:
+                self.check(replace_color_markers_with_svgs,temppdf,uzo.svg_color_map,temppdf2,self)
+                actual_output = repeat_move(temppdf2, output_pdf)
+            if actual_output != output_pdf:
                 notes = f"\r(written to {os.path.basename(actual_output)})"
         else:
             output_doc = f"{base} finalized{ext}"
@@ -1404,8 +1390,8 @@ class Exporter():
                 notes = f"\r(written to {os.path.basename(actual_output)})"
 
         self.clear_temp()
-        fstr = f": Finalization complete ({str(round(1000 * (time.time()-tic)) / 1000)} s)"+notes
-        self.prints(os.path.basename(self.filein) + fstr, flush=True)
+        fstr = f"Finalization complete ({str(round(1000 * (time.time()-tic)) / 1000)} s)"+notes
+        self.terminal_message(fstr)
 
     PTH_COMMANDS = list("MLHVCSQTAZmlhvcsqtaz")
 
@@ -2189,7 +2175,11 @@ def repeat_move(src: str,
                 result = _replace_or_copy_overwrite_once(src, candidate)
                 _delete_any_higher_numbered_suffixes(dst, n, retries, delay)
                 return result
-            except (PermissionError, OSError):
+            except (PermissionError, OSError) as e:
+                # If we get a PermissionError and the destination file doesn't exist,
+                # this likely means the directory is not writable → re-raise
+                if isinstance(e, PermissionError) and not os.path.exists(candidate):
+                    raise
                 time.sleep(delay)
                 if not os.path.exists(src):
                     # If the source vanished, assume someone else completed the move.

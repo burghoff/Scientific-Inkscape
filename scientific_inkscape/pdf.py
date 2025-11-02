@@ -871,6 +871,10 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
     for t in threads:
         t.join()
         
+    if hasattr(exporter, "aeThread") and exporter.aeThread.stopped is True:
+        exporter.clear_temp()
+        sys.exit()
+        
     # Build hexcolor -> replacement content map (ops + size + resources)
     rep_by_color = {}
     from pypdf.generic import ContentStream

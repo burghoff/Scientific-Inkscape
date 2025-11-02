@@ -49,11 +49,12 @@ def ln_is_file(ln):
 # Get svg files in directory
 def get_files(dirin):
     try:
-        return [
-            os.path.join(os.path.abspath(dirin), f.name)
-            for f in os.scandir(dirin)
-            if is_target_file(f.name)
-        ]
+        result = []
+        for root, _, files in os.walk(dirin):
+            for name in files:
+                if is_target_file(name):
+                    result.append(os.path.join(os.path.abspath(root), name))
+        return result
     except: # (FileNotFoundError, OSError):
         return None
     
@@ -166,7 +167,7 @@ class Watcher(FileSystemEventHandler):
 
     def start(self):
         self.initialize_mod_times(self.directory_to_watch)
-        self.observer.schedule(self, self.directory_to_watch, recursive=False)
+        self.observer.schedule(self, self.directory_to_watch, recursive=True)
         self.observer.start()
 
     def stop(self):
@@ -268,7 +269,19 @@ class FileCheckerThread(threading.Thread):
                 t.stopped = True
         fthr = AutoExporterThread()
         fthr.file = f
-        fthr.outtemplate = autoexporter.joinmod(self.writedir, os.path.split(f)[1])
+        
+        # Compute output directory, making them if necessary
+        f_abs       = os.path.abspath(f)
+        watch_abs   = os.path.abspath(self.watchdir)
+        rel_in_tree = os.path.relpath(f_abs, start=watch_abs)
+        if rel_in_tree.startswith(".."):
+            rel_in_tree = os.path.basename(f_abs)
+        rel_subdir   = os.path.dirname(rel_in_tree)          
+        base_name    = os.path.basename(rel_in_tree)        
+        outdir = autoexporter.joinmod(self.writedir, rel_subdir) if rel_subdir else self.writedir
+        os.makedirs(outdir, exist_ok=True)
+        fthr.outtemplate = autoexporter.joinmod(outdir, base_name)
+        
         self.thread_queue.append(fthr)
 
     def start_watcher(self):
