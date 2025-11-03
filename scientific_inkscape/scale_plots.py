@@ -258,6 +258,8 @@ class ScalePlots(inkex.EffectExtension):
 
         # full visual bbs
         fbbs = dh.BB2(self.svg, dh.unique([d for el in sel for d in el.iter('*')]))
+        import lxml
+        comment_tag = lxml.etree.Comment("").tag
         firstsel = sel[0]
         if self.options.tab == "matching":
             sel = sel[1:]
@@ -266,7 +268,7 @@ class ScalePlots(inkex.EffectExtension):
         if all(k.tag == GROUP_TAG for k in sel):  # grouped mode
             trs = [s.ctransform for s in sel]
             # for correction mode
-            all_pels = [list(s) for s in sel]
+            all_pels = [dh.list2(s) for s in sel]
 
         for i0 in range(len(all_pels)):  # sel in asel:
             pels = [
@@ -276,7 +278,7 @@ class ScalePlots(inkex.EffectExtension):
             # Calculate geometric (tight) bounding boxes of plot elements
             gbbs = dict()
             for el in [firstsel] + pels + dsfels + list(firstsel):
-                if el.get_id() in fbbs:
+                if el.tag!=comment_tag and el.get_id() in fbbs:
                     gbbs[el.get_id()] = geometric_bbox(el, fbbs[el.get_id()]).sbb
 
             vl, hl, lvel, lhel = Find_Plot_Area(pels, gbbs)
