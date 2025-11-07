@@ -1198,6 +1198,7 @@ class ParsedText:
                 te.attrib[k] = v
         te.cstyle = self.textel.cstyle
         te.cstyle -= {'baseline-shift','shape-inside','direction'}
+        te.attrib.pop('id', None)
         
         fchr = run[0]
         ts = inkex.Tspan()
