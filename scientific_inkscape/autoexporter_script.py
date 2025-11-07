@@ -275,8 +275,14 @@ class FileCheckerThread(threading.Thread):
         # Compute output directory, making them if necessary
         f_abs       = os.path.abspath(f)
         watch_abs   = os.path.abspath(self.watchdir)
-        rel_in_tree = os.path.relpath(f_abs, start=watch_abs)
-        if rel_in_tree.startswith("..") or os.path.isabs(rel_in_tree):
+        try:
+            rel_in_tree = os.path.relpath(f_abs, start=watch_abs)
+            outside = rel_in_tree.startswith("..") or os.path.isabs(rel_in_tree)
+        except ValueError:
+            # Different drive (C: vs H: etc.) → definitely outside watchdir
+            outside = True
+            rel_in_tree = None
+        if outside:
             # f is not inside watchdir → just match f itself
             fthr.outtemplate = f_abs
         else:
