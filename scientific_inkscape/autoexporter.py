@@ -580,9 +580,8 @@ class Exporter():
 
     def preprocessing(self, fin):
         """Modifications that are done prior to conversion to any vector output"""
-        if self.prints:
-            self.terminal_message("Preprocessing vector output")
-            timestart = time.time()
+        self.terminal_message("Preprocessing vector output")
+        timestart = time.time()
 
         # SVG modifications that should be done prior to any binary calls
         cfile = fin
@@ -1377,10 +1376,15 @@ class Exporter():
                 self.check(make_pdf_libreoffice,doc_finalized, temppdf)
                 actual_output = repeat_move(temppdf, output_pdf)
             else:
-                self.check(make_pdf_word,doc_finalized, temppdf)
+                self.check(make_pdf_word,doc_finalized, temppdf,self)
                 temppdf2 = self.tempbase+'_replaced.pdf'
                 self.check(replace_color_markers_with_svgs,temppdf,uzo.svg_color_map,temppdf2,self)
+                # temppdf3 = os.path.join(os.path.split(self.tempbase)[0],'tmp.pdf')
+                # shutil.copyfile(temppdf, temppdf3)
+                # self.prints(temppdf3)
                 actual_output = repeat_move(temppdf2, output_pdf)
+            if actual_output is None:
+                raise RuntimeError(f"Conversion of {self.filein} failed.")
             if actual_output != output_pdf:
                 notes = f"\r(written to {os.path.basename(actual_output)})"
         else:

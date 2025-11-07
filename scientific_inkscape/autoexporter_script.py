@@ -139,6 +139,8 @@ def make_observer_auto(dir_path: str):
         if os.path.exists(dummy):
             try: os.remove(dummy)
             except Exception: pass
+    if sys.platform == "darwin":
+        ok = False
     if ok or not PollingObserver:
         # mprint("[watcher] using native Observer")
         return NativeObserver()
@@ -306,8 +308,13 @@ class FileCheckerThread(threading.Thread):
                     mprint("Watch directory: " + self.watchdir)
                     mprint("Write directory: " + self.writedir)
                 self.nf = False
-
-            if self.watcher.directory_to_watch != self.watchdir:
+                
+            if not os.path.exists(self.watchdir) and self.watcher is not None:
+                # Deleted, cloud drive crash, etc.
+                self.watcher.stop()
+                self.watcher = None
+            restart_needed = (self.watcher is None) or (not self.watcher.observer.is_alive()) or (self.watcher.directory_to_watch != self.watchdir)
+            if restart_needed and os.path.exists(self.watchdir):
                 self.start_watcher()
 
             if self.ea:  # export all
@@ -441,16 +448,27 @@ if guitype == 'gtk3.0':
     class AutoexporterWindow(Gtk.Window):
         def __init__(self, ct):
             Gtk.Window.__init__(self, title="Autoexporter")
-            self.set_default_size(WINDOW_WIDTH, -1)
             self.set_position(Gtk.WindowPosition.CENTER)
+            
+            # Pick a starting height based on monitor size
+            screen = self.get_screen()
+            monitor = screen.get_primary_monitor()
+            geo = screen.get_monitor_geometry(monitor)
+            target_height = min(800, int(0.85 * geo.height))   # 80% of screen, capped at 700px
+            self.set_default_size(-1, target_height)
         
             self.notebook = Gtk.Notebook()
             self.notebook.set_margin_start(MARGIN)
             self.notebook.set_margin_end(MARGIN)
             self.notebook.set_margin_top(MARGIN)
             self.notebook.set_margin_bottom(MARGIN)
-            self.add(self.notebook)
-        
+            
+            outer_scroll = Gtk.ScrolledWindow()
+            outer_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            outer_scroll.add(self.notebook)
+            self.add(outer_scroll)
+
+
             # Tab 1: Controls
             tab1_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
             self.notebook.append_page(tab1_box, Gtk.Label(label="Controls"))
@@ -869,14 +887,28 @@ elif guitype=='gtk4.0':
         def make_win(self):
             self._win = Gtk.ApplicationWindow(application=self)
             self._win.set_title("Autoexporter (GTK 4.0)")
-            self._win.set_default_size(WINDOW_WIDTH, -1)
+            display = Gdk.Display.get_default()
+            monitors = display.get_monitors()
+            if monitors.get_n_items() > 0:
+                primary = monitors.get_item(0)  # first monitor as "primary"
+                geo = primary.get_geometry()
+                target_height = min(800, int(0.85 * geo.height))
+            else:
+                target_height = 800
+            self._win.set_default_size(WINDOW_WIDTH, target_height)
             
             self.notebook = Gtk.Notebook()
             self.notebook.set_margin_start(MARGIN)
             self.notebook.set_margin_end(MARGIN)
             self.notebook.set_margin_top(MARGIN)
             self.notebook.set_margin_bottom(MARGIN)
-            self._win.set_child(self.notebook)
+            
+            outer_scroll = Gtk.ScrolledWindow()
+            outer_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            outer_scroll.set_hexpand(True)
+            outer_scroll.set_vexpand(True)
+            outer_scroll.set_child(self.notebook)
+            self._win.set_child(outer_scroll)
             
             # Tab 1: Controls
             tab1_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)

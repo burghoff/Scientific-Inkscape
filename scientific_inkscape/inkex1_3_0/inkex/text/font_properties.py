@@ -560,7 +560,7 @@ class PR: # PangoRenderer
                     try:
                         gi.require_version("Gtk", "3.0")
                     except ValueError as e:
-                        if "Namespace Gtk not available for version 3.0" in str(e):
+                        if "Namespace Gtk not available for version 3.0" in str(e) or "Namespace Gtk is already loaded with version 4.0" in str(e):
                             gi.require_version("Gtk", "4.0")
                         else:
                             raise e

@@ -20,6 +20,9 @@
 import os, platform, sys
 from shutil import which
 
+MAX_THREADS_OFFICE = 1
+MAX_THREADS_LIBREOFFICE = 1
+
 def find_soffice():
     """
     Return the full path to LibreOffice's soffice executable.
@@ -59,7 +62,12 @@ def find_soffice():
         "PDF conversion relies on LibreOffice, the free and open source document creator. "
         "Please ensure LibreOffice is installed and added to your PATH."
     )
-    
+
+
+import threading
+sema_office = threading.Semaphore(MAX_THREADS_OFFICE)
+sema_libreoffice = threading.Semaphore(MAX_THREADS_LIBREOFFICE)
+
 def make_pdf_libreoffice(input_file, output_file):
     import subprocess
     soffice = find_soffice()
@@ -71,7 +79,8 @@ def make_pdf_libreoffice(input_file, output_file):
         "--outdir", output_dir,
         input_file
     ]
-    _ = subprocess.run(cmd, capture_output=True, text=True)
+    with sema_libreoffice:
+        _ = subprocess.run(cmd, capture_output=True, text=True)
     generated_pdf = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(input_file))[0]}.pdf")
     from autoexporter import repeat_move
     repeat_move(generated_pdf, output_file)
@@ -81,9 +90,6 @@ import tempfile
 import subprocess
 from pathlib import Path
 
-import threading
-MAX_THREADS_OFFICE = 1
-sema_office = threading.Semaphore(MAX_THREADS_OFFICE)
 
 POWERSHELL_HELPER = r"""
 param(
@@ -217,23 +223,203 @@ finally {
 exit 0
 """
 
-def make_pdf_office(input_path, output_path=None, retries=3, delay=1.0):
-    """
-    Convert DOC/DOCX/RTF or PPT/PPTX -> PDF using Office (Word/PowerPoint) via PowerShell COM.
-    Runs silently (no console, no output). Returns output path on success.
-    Raises:
-      - FileNotFoundError if input missing
-      - RuntimeError on conversion failure or unsupported extension
-    """
-    in_path = Path(input_path).resolve()
-    if not in_path.exists():
-        raise FileNotFoundError(f"Input file not found: {in_path}")
-    if output_path is None:
-        out_path = in_path.with_suffix(".pdf")
-    else:
-        out_path = Path(output_path).resolve()
-        out_path.parent.mkdir(parents=True, exist_ok=True)
+MAC_OFFICE_APPLESCRIPT = r'''
+on run argv
+    if (count of argv) is not 2 then
+        error "Expected 2 arguments (input, output)"
+    end if
 
+    set inPosix to item 1 of argv
+    set outPosix to item 2 of argv
+
+    ----------------------------------------------------------------------
+    -- Decide whether to use Word or PowerPoint based on file extension
+    ----------------------------------------------------------------------
+    set AppleScript's text item delimiters to "."
+    set ext to ""
+    if inPosix contains "." then
+        set ext to last text item of inPosix
+    end if
+    set AppleScript's text item delimiters to ""
+
+    set isWord to false
+    if (ext is "doc" or ext is "docx" or ext is "rtf") then
+        set isWord to true
+    else if (ext is "ppt" or ext is "pptx") then
+        set isWord to false
+    else
+        error "Unsupported file extension for Office conversion: " & ext
+    end if
+
+    set officeAppName to ""
+    if isWord then
+        set officeAppName to "Microsoft Word"
+    else
+        set officeAppName to "Microsoft PowerPoint"
+    end if
+
+    set inFile to POSIX file inPosix
+    set outHFS to (POSIX file outPosix as text)
+    set outFile to POSIX file outPosix
+
+    ----------------------------------------------------------------------
+    -- Remember which app was frontmost before we do anything
+    ----------------------------------------------------------------------
+    set frontAppName to ""
+    tell application "System Events"
+        try
+            set frontAppName to name of first process whose frontmost is true
+        end try
+    end tell
+
+    ----------------------------------------------------------------------
+    -- Ensure the appropriate Office app is running
+    ----------------------------------------------------------------------
+    if isWord then
+        tell application "Microsoft Word" to launch
+    else
+        tell application "Microsoft PowerPoint" to launch
+    end if
+
+    -- Wait until the Office process exists
+    tell application "System Events"
+        repeat until exists process officeAppName
+            delay 0.05
+        end repeat
+    end tell
+
+    ----------------------------------------------------------------------
+    -- Open and prepare the document / presentation
+    ----------------------------------------------------------------------
+    set theItem to missing value
+
+    if isWord then
+        tell application "Microsoft Word"
+            set priorItem to missing value
+            if (count of documents) > 0 then set priorItem to active document
+
+            open inFile
+
+            -- wait until theItem becomes available
+            set itemReady to false
+            repeat 1000 times -- up to ~10 s total
+                try
+                    set theItem to active document
+                    set itemReady to true
+                    exit repeat
+                on error
+                    delay 0.01
+                end try
+            end repeat
+            if not itemReady then error "Word never exposed active document"
+
+            -- restore focus to prior doc inside Word, if any
+            if priorItem is not missing value then
+                try
+                    set active document to priorItem
+                end try
+            end if
+        end tell
+    else
+        tell application "Microsoft PowerPoint"
+            set priorItem to missing value
+            if (count of presentations) > 0 then set priorItem to active presentation
+
+            open inFile
+
+            -- wait until theItem becomes available
+            set itemReady to false
+            repeat 1000 times -- up to ~10 s total
+                try
+                    set theItem to active presentation
+                    set itemReady to true
+                    exit repeat
+                on error
+                    delay 0.01
+                end try
+            end repeat
+            if not itemReady then error "PowerPoint never exposed active presentation"
+
+            -- restore focus to prior presentation inside PowerPoint, if any
+            if priorItem is not missing value then
+                try
+                    set active presentation to priorItem
+                end try
+            end if
+        end tell
+    end if
+
+    ----------------------------------------------------------------------
+    -- FIRST restore: put original app back on top and hide Office if needed
+    ----------------------------------------------------------------------
+    my restoreFrontApp(frontAppName, officeAppName)
+
+    ----------------------------------------------------------------------
+    -- Save as PDF and close the temporary item, with extra restores
+    ----------------------------------------------------------------------
+    if isWord then
+        tell application "Microsoft Word"
+            -- Start PDF export
+            save as theItem file name outHFS file format format PDF
+
+            -- SECOND restore: immediately after starting the save
+            my restoreFrontApp(frontAppName, officeAppName)
+
+            close theItem saving no
+
+            if (count of documents) is 0 then quit
+        end tell
+    else
+        tell application "Microsoft PowerPoint"
+            -- Start PDF export
+            save theItem in outFile as save as PDF
+
+            -- SECOND restore: immediately after starting the save
+            my restoreFrontApp(frontAppName, officeAppName)
+
+            close theItem saving no
+
+            if (count of presentations) is 0 then quit
+        end tell
+    end if
+
+    -- Tiny pause, then THIRD restore to catch any late focus grabs
+    delay 0.2
+    my restoreFrontApp(frontAppName, officeAppName)
+end run
+
+on restoreFrontApp(appName, officeAppName)
+    if appName is "" then return
+
+    -- Activate the original app
+    try
+        tell application appName to activate
+    end try
+
+    -- If the original app is NOT the Office app, hide the Office windows so they
+    -- can't sit visually on top even if macOS still considers them key.
+    try
+        if appName is not officeAppName then
+            tell application "System Events"
+                if exists process officeAppName then
+                    set visible of process officeAppName to false
+                end if
+            end tell
+        end if
+    end try
+end restoreFrontApp
+'''
+
+
+
+
+def _make_pdf_office_windows(in_path: Path,
+                             out_path: Path,
+                             retries: int,
+                             delay: float) -> str:
+    """
+    Windows implementation: uses PowerShell COM automation (Word/PowerPoint)
+    """
     # Write temporary PowerShell helper
     with tempfile.NamedTemporaryFile("w", suffix=".ps1", delete=False, encoding="utf-8") as tf:
         tf.write(POWERSHELL_HELPER)
@@ -270,6 +456,88 @@ def make_pdf_office(input_path, output_path=None, retries=3, delay=1.0):
         except Exception:
             pass
 
+
+def _make_pdf_office_macos(in_path: Path,
+                           out_path: Path,
+                           retries: int,
+                           delay: float, exporter) -> str:
+    """
+    macOS implementation: uses AppleScript via `osascript`
+    to drive Word / PowerPoint directly.
+    """
+    ext = in_path.suffix.lower()
+    if ext not in (".doc", ".docx", ".rtf", ".ppt", ".pptx"):
+        raise RuntimeError(f"Unsupported file type: {ext}")
+
+    script_text = MAC_OFFICE_APPLESCRIPT
+
+    with tempfile.NamedTemporaryFile("w", suffix=".applescript",
+                                     delete=False, encoding="utf-8") as tf:
+        tf.write(script_text)
+        scpt_path = Path(tf.name)
+
+    try:
+        for attempt in range(1, retries + 1):
+            with sema_office:
+                proc = subprocess.run(
+                    ["osascript", str(scpt_path), str(in_path), str(out_path)],
+                    capture_output=True,
+                    text=True,
+                )
+                # exporter.prints("osascript stdout:\n" + (proc.stdout or ""))
+                # exporter.prints("osascript stderr:\n" + (proc.stderr or ""))
+            if proc.returncode == 0 and out_path.exists():
+                return str(out_path)
+            if attempt < retries:
+                time.sleep(delay)
+            else:
+                raise RuntimeError(
+                    "Conversion failed on macOS (exit code {code}).\n"
+                    "stdout:\n{stdout}\n"
+                    "stderr:\n{stderr}".format(
+                        code=proc.returncode,
+                        stdout=proc.stdout or "",
+                        stderr=proc.stderr or "",
+                    )
+                )
+
+    finally:
+        try:
+            scpt_path.unlink()
+        except Exception:
+            pass
+
+
+def make_pdf_office(input_path, output_path=None, exporter=None, retries=3, delay=1.0):
+    """
+    Convert DOC/DOCX/RTF or PPT/PPTX -> PDF using Office:
+      - Windows: Word/PowerPoint via PowerShell COM.
+      - macOS: Word/PowerPoint via AppleScript (`osascript`).
+
+    Runs silently (no console output). Returns output path on success.
+
+    Raises:
+      - FileNotFoundError if input missing
+      - RuntimeError on conversion failure or unsupported extension
+    """
+    in_path = Path(input_path).resolve()
+    if not in_path.exists():
+        raise FileNotFoundError(f"Input file not found: {in_path}")
+    if output_path is None:
+        out_path = in_path.with_suffix(".pdf")
+    else:
+        out_path = Path(output_path).resolve()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if sys.platform.startswith("win"):
+        return _make_pdf_office_windows(in_path, out_path, retries, delay)
+    elif sys.platform == "darwin":
+        return _make_pdf_office_macos(in_path, out_path, retries, delay, exporter)
+    else:
+        raise RuntimeError(
+            "Office-based PDF conversion is only supported on Windows and macOS."
+        )
+
 # Backward-compat alias if existing code calls the old name
 make_pdf_word = make_pdf_office
 
@@ -290,6 +558,7 @@ try:
 except ImportError:
     # v1.0 of Inkscape, use old pypdf
     pypdf_path = os.path.join(pkgdir, "pypdf-2.0.0")
+    
 if pypdf_path not in sys.path:
     sys.path.insert(0, pypdf_path)
 
@@ -298,6 +567,47 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ContentStream, NameObject, IndirectObject
 from pypdf.generic import FloatObject
 from pypdf.generic import DictionaryObject
+
+if 'pypdf-2.0.0' in pypdf_path:
+    # Endow old pypdf with dict-like properties
+    def _io_resolve(self):
+        try:
+            obj = self.get_object()
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+        return {}
+    
+    def _io_contains(self, key):
+        return key in _io_resolve(self)
+
+    def _io_getitem(self, key):
+        return _io_resolve(self)[key]
+
+    def _io_iter(self):
+        return iter(_io_resolve(self))
+
+    IndirectObject.__contains__ = _io_contains
+    IndirectObject.__getitem__ = _io_getitem
+    IndirectObject.__iter__ = _io_iter
+        
+    def _io_get(self, key, default=None):
+        return _io_resolve(self).get(key, default)
+
+    def _io_keys(self):
+        return _io_resolve(self).keys()
+
+    def _io_items(self):
+        return _io_resolve(self).items()
+
+    def _io_values(self):
+        return _io_resolve(self).values()
+
+    IndirectObject.get    = _io_get
+    IndirectObject.keys   = _io_keys
+    IndirectObject.items  = _io_items
+    IndirectObject.values = _io_values
 
 # ---- Inkscape export (same conventions as AutoExporter) ----
 def _inkscape_bin():
@@ -321,6 +631,7 @@ def export_svg_to_pdf(svg_path: str, exporter: Exporter) -> str:
     import dhelpers as dh
     exporter.check(dh.subprocess_repeat,args)  # same wrapper used by AutoExporter
     return pdf_path
+
 
 # ---- Minimal PDF matrix helpers (column-vector form) ----
 def _mat_from(a,b,c,d,e,f):
@@ -411,6 +722,35 @@ def _undo_png_predictors_rgb8(data: bytes, width: int, height: int) -> bytes:
         prev = rec
     return bytes(out)
 
+
+def _is_rgb_colorspace(cs):
+    # Resolve indirect color-space objects
+    try:
+        if hasattr(cs, "get_object"):  # works for IndirectObject
+            cs = cs.get_object()
+    except Exception:
+        # If we can't resolve, fall back to simple check
+        pass
+
+    # Accept /DeviceRGB
+    if not isinstance(cs, list):
+        return str(cs) == "/DeviceRGB"
+
+    # At this point cs is a list, e.g. [/DeviceRGB ...] or [/ICCBased profile]
+    if any(str(x) == "/DeviceRGB" for x in cs):
+        return True
+
+    if len(cs) >= 2 and str(cs[0]) == "/ICCBased":
+        try:
+            profile = cs[1].get_object()
+            alt = profile.get("/Alternate", None)
+            return str(alt) == "/DeviceRGB"
+        except Exception:
+            return False
+
+    return False
+
+
 def _try_get_uniform_rgb_hex_from_ximage(ximg) -> Optional[str]:
     """
     Attempt to decode the image XObject to raw RGB and check if it's uniform.
@@ -427,14 +767,9 @@ def _try_get_uniform_rgb_hex_from_ximage(ximg) -> Optional[str]:
 
     if not (w == 9 and h == 9 and bpc == 8 and smask is None):
         return None
-
-    # Only handle DeviceRGB (or [/DeviceRGB] form)
-    if isinstance(cs, list):
-        if not any(str(x) == "/DeviceRGB" for x in cs):
-            return None
-    else:
-        if str(cs) != "/DeviceRGB":
-            return None
+    
+    if not _is_rgb_colorspace(cs):
+        return None
 
     # pypdf gives decoded-by-filter data, but PNG 'Predictor' is still present in DecodeParms
     raw = ximg.get_data()
