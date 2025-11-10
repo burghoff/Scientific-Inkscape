@@ -145,6 +145,9 @@ class AutoExporter(inkex.EffectExtension):
         pars.add_argument(
             "--exportwhat", type=int, default=1, help="Export what?"
         )
+        pars.add_argument(
+            "--exportwhere", type=int, default=2, help="Export where?"
+        )
 
     def effect(self):
         """Start the Autoexporter or initiate export now."""
@@ -162,6 +165,7 @@ class AutoExporter(inkex.EffectExtension):
             return
         self.options.exportnow = self.options.exportwhat==3
         self.options.watchhere = self.options.exportwhat==2
+        self.options.writetowatch = self.options.exportwhere==2
 
         # self.options.testmode = True;
         if self.options.testmode:
@@ -199,10 +203,10 @@ class AutoExporter(inkex.EffectExtension):
         ]
 
         # Make an options copy we can pass to the external program
-        optcopy = copy.copy(self.options)
-        delattr(optcopy, "output")
-        delattr(optcopy, "input_file")
-        optcopy.reduce_images = self.options.imagemode2
+        opts = copy.copy(self.options)
+        delattr(opts, "output")
+        delattr(opts, "input_file")
+        opts.reduce_images = self.options.imagemode2
 
         bfn = inkex.inkscape_system_info.binary_location
         pyloc, pybin = os.path.split(sys.executable)
@@ -211,29 +215,29 @@ class AutoExporter(inkex.EffectExtension):
             aepy = os.path.abspath(
                 os.path.join(dh.get_script_path(), "autoexporter_script.py")
             )
+            
+            msg = "To watch this document's location, "
+            if self.options.watchhere or opts.watchdir is None:
+                opts.watchdir = ''   # note: is relative path
+            opts.watchdir = restore_relative(opts.watchdir)
+            if not os.path.isabs(opts.watchdir): # relative path
+                mydir = os.path.dirname(dh.Get_Current_File(self, msg))
+                opts.watchdir = os.path.abspath(os.path.join(mydir,opts.watchdir))
+                
+            if self.options.writetowatch or opts.writedir is None:
+                opts.writedir = ''   # note: is relative path
+            opts.writedir = restore_relative(opts.writedir)
+            if not os.path.isabs(opts.writedir): # relative path
+                opts.writedir = os.path.abspath(os.path.join(opts.watchdir,opts.writedir))
+                if os.path.isdir(opts.watchdir) and not os.path.isdir(opts.writedir):
+                    os.makedirs(opts.writedir, exist_ok=True) # make writedir
 
-            if self.options.watchhere:
-                pth = dh.Get_Current_File(self, "To watch this document's location, ")
-                optcopy.watchdir = os.path.dirname(pth)
-                optcopy.writedir = os.path.dirname(pth)
-
-            if not os.path.exists(optcopy.watchdir):
-                dh.idebug(
-                    "Watch directory could not be found. Please be sure the "
-                    "selected location is valid.\n"
-                )
-                dh.idebug(
-                    "Note: Linux AppImage and Snap installations of Inkscape "
-                    "cannot see locations outside the installation directory."
-                )
-                sys.exit()
 
             # Pass settings using a config file. Include the current path so
             # Inkex can be called if needed.
-            optcopy.inkscape_bfn = bfn
-            optcopy.formats = formats
-            optcopy.syspath = sys.path
-
+            opts.inkscape_bfn = bfn
+            opts.formats = formats
+            opts.syspath = sys.path
             try:
                 with warnings.catch_warnings():
                     # Ignore ImportWarning for Gtk/Pango
@@ -265,14 +269,14 @@ class AutoExporter(inkex.EffectExtension):
                 guitype = "terminal"
             if USE_TERMINAL:
                 guitype = "terminal"
-            optcopy.guitype = guitype
-            optcopy.logfile = dh.shared_temp(filename="si_ae_output.txt")
+            opts.guitype = guitype
+            opts.logfile = dh.shared_temp(filename="si_ae_output.txt")
 
             aes = os.path.join(
                 os.path.abspath(tempfile.gettempdir()), "si_ae_settings.p"
             )
             with open(aes, "wb") as file:
-                pickle.dump(optcopy, file)
+                pickle.dump(opts, file)
             warnings.simplefilter("ignore", ResourceWarning)
             # prevent warning that process is open
 
@@ -282,52 +286,23 @@ class AutoExporter(inkex.EffectExtension):
                 AutoExporter._terminal_call(pybin, aepy, pyloc)
                 
             # Create a Windows batch launcher 
-            if sys.platform.startswith("win"):
-                python_cwd = os.getcwd()
-                pickled_file_path = aes
-                with open(pickled_file_path, "rb") as f:
-                    pickled_data = f.read()
-                import base64
-                pickled_data_base64 = base64.b64encode(pickled_data).decode("utf-8")
-        
-                current_script_dir = os.path.dirname(os.path.abspath(__file__))
-                batch_file_path = os.path.join(current_script_dir, "Autoexporter.bat")
-                
-                py_for_bat = sys.executable
-                if guitype=='terminal':
-                    py_for_bat = os.path.join(os.path.dirname(py_for_bat), "python.exe")  # use console python
-        
-                escaped_path = pickled_file_path.replace("\\", "\\\\")
-                batch_content = (
-                    '@echo off\n'
-                    f'cd "{python_cwd}"\n\n'
-                    f'SET PYBIN="{py_for_bat}"\n'
-                    f'SET AEPY="{aepy}"\n'
-                    f'SET PICKLED_FILE="{escaped_path}"\n\n'
-                    'REM Recreate the pickled settings from base64\n'
-                    f'powershell -Command "[System.IO.File]::WriteAllBytes(\'%PICKLED_FILE%\', [Convert]::FromBase64String(\'{pickled_data_base64}\'))"\n\n'
-                    'REM Launch the watcher in a detached process\n'
-                    'start "" %PYBIN% %AEPY%\n'
-                )
-                with open(batch_file_path, "w") as batch_file:
-                    batch_file.write(batch_content)
-
+            write_autoexporter_bat(aes, aepy, guitype)
 
         else:
             if not (self.options.testmode):
                 pth = dh.Get_Current_File(self, "To do a direct export, ")
             else:
                 pth = self.options.input_file
-            optcopy.original_file = pth
-            optcopy.debug = DEBUGGING
-            optcopy.prints = False
-            optcopy.linked_locations = ih.get_linked_locations(self)
+            opts.original_file = pth
+            opts.debug = DEBUGGING
+            opts.prints = False
+            opts.linked_locations = ih.get_linked_locations(self)
             # needed to find linked images in relative directories
-            optcopy.formats = formats
-            optcopy.outtemplate = pth
-            optcopy.bfn = bfn
+            opts.formats = formats
+            opts.outtemplate = pth
+            opts.bfn = bfn
 
-            Exporter(self.options.input_file, optcopy).export_all()
+            Exporter(self.options.input_file, opts).export_all()
 
         if DISPPROFILE:
             prf.disable()
@@ -390,11 +365,6 @@ class AutoExporter(inkex.EffectExtension):
                 python_bin = python_bin.replace("pythonw.exe", "python.exe")
             subprocess.Popen([python_bin, python_script], shell=False, cwd=python_wd)
 
-            # if 'pythonw.exe' in python_bin:
-            #     python_bin = python_bin.replace('pythonw.exe', 'python.exe')
-            # DETACHED_PROCESS = 0x08000000
-            # subprocess.Popen([python_bin, python_script, 'standalone'],
-            # creationflags=DETACHED_PROCESS)
         else:
             if sys.executable[0:4] == "/tmp":
                 inkex.utils.errormsg(
@@ -2181,7 +2151,7 @@ def repeat_move(src: str,
                 return result
             except (PermissionError, OSError) as e:
                 # If we get a PermissionError and the destination file doesn't exist,
-                # this likely means the directory is not writable → re-raise
+                # this likely means the directory is not writable. Re-raise
                 if isinstance(e, PermissionError) and not os.path.exists(candidate):
                     raise
                 time.sleep(delay)
@@ -2195,6 +2165,80 @@ def repeat_move(src: str,
         # Exhausted retries for this candidate; advance to next numbered suffix
         n += 1
         candidate = _with_numbered_suffix(dst, n)
+        
+def restore_relative(path):
+    '''
+    Inkscape turns a relative GUI entry like "foo" into an absolute path
+    that is inside SI's location. Convert back to relative if it's inside SI.
+    '''
+    if not path:
+        return path
+
+    if os.path.isabs(path):
+        # Check possible conditions implying the user input a relative path
+        mydir = os.path.dirname(__file__)
+        if os.pardir in path:
+            # '..' in specified path, user definitely input relative
+            return os.path.relpath(path, mydir)
+        
+        # Relative directory is inside SI dir
+        if os.path.splitdrive(path)[0].lower() == os.path.splitdrive(mydir)[0].lower():
+            rel = os.path.relpath(path, mydir)
+            if not rel.startswith(os.pardir + os.sep) and rel != os.pardir:
+                return rel
+        
+        # Also try it on resolved paths in case of cloud shenanigans        
+        from pathlib import Path
+        mydir2 = str(Path(mydir).resolve()) # resolved
+        path2  = str(Path(path).resolve())  # resolved
+        if os.path.splitdrive(path2)[0].lower() == os.path.splitdrive(mydir2)[0].lower():
+            rel = os.path.relpath(path2, mydir2)
+            if not rel.startswith(os.pardir + os.sep) and rel != os.pardir:
+                return rel
+    return path
+
+def write_autoexporter_bat(aes, aepy, guitype):
+    """
+    Create or update Autoexporter.bat so it launches autoexporter_script.py
+    with the settings stored in the pickled file at `aes`.
+    """
+    if not sys.platform.startswith("win"):
+        return
+
+    python_cwd = os.getcwd()
+    pickled_file_path = aes
+
+    with open(pickled_file_path, "rb") as f:
+        pickled_data = f.read()
+
+    import base64
+    pickled_data_base64 = base64.b64encode(pickled_data).decode("utf-8")
+
+    current_script_dir = os.path.dirname(os.path.abspath(__file__))
+    batch_file_path = os.path.join(current_script_dir, "Autoexporter.bat")
+
+    py_for_bat = sys.executable
+    if guitype == "terminal":
+        # use console python for terminal mode
+        py_for_bat = os.path.join(os.path.dirname(py_for_bat), "python.exe")
+
+    escaped_path = pickled_file_path.replace("\\", "\\\\")
+    batch_content = (
+        '@echo off\n'
+        f'cd "{python_cwd}"\n\n'
+        f'SET PYBIN="{py_for_bat}"\n'
+        f'SET AEPY="{aepy}"\n'
+        f'SET PICKLED_FILE="{escaped_path}"\n\n'
+        'REM Recreate the pickled settings from base64\n'
+        f'powershell -Command "[System.IO.File]::WriteAllBytes(\'%PICKLED_FILE%\', '
+        f'[Convert]::FromBase64String(\'{pickled_data_base64}\'))"\n\n'
+        'REM Launch the watcher in a detached process\n'
+        'start "" %PYBIN% %AEPY%\n'
+    )
+
+    with open(batch_file_path, "w") as batch_file:
+        batch_file.write(batch_content)
+
 
 if __name__ == "__main__":
     dh.Run_SI_Extension(AutoExporter(), "Autoexporter")

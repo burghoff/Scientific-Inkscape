@@ -4,28 +4,55 @@
     <id>burghoff.autoexporter</id>
     <param name="tab" type="notebook">        
         <page name="scaling" gui-text="Options">
-        <label>Launches the Autoexporter, a background program that watches a directory for changes to any SVG and then writes exports in the selected formats.</label>
-        <label>If you encounter a security prompt, please be sure to allow the program to run.</label>
-        <label appearance="header">Formats to export</label>
+        <label>Launches the Autoexporter, a background program that watches a directory for file changes and exports them in the selected formats.</label>
+        <label>If security prompts appear, please allow access.</label>
+        <label appearance="header">SVG exporter</label>
+        <label>Converts SVGs into the selected formats.</label>
         <param name="usepdf" type="bool" gui-text="PDF"
-         gui-description="Filters and gradients will be rasterized.">true</param>   
+         gui-description="Filters and gradients will be rasterized. ">true</param>   
         <param name="usepng" type="bool" gui-text="PNG">false</param>    
         <param name="useemf" type="bool" gui-text="EMF"
-         gui-description="Recommended for older versions of Microsoft Office that do not support SVG.">false</param>   
-        <param name="useeps" type="bool" gui-text="EPS">false</param>  
+         gui-description="Recommended for older versions of Microsoft Office that do not support SVG">false</param>   
         <param name="usepsvg" type="bool" gui-text="Plain SVG"
-          gui-description="Plain SVG that has been optimized for compatibility. &#13;Recommended for newer versions of Microsoft Office that support SVG.">false</param> 
+          gui-description="Plain SVG that has been optimized for compatibility with Microsoft Office and LibreOffice">false</param> 
+        
+        
+        <label appearance="header">Document finalizer</label>   
+        <label>Acts on documents that contain SVGs.</label>
+        <param name="finalizermode" type="optiongroup" appearance="combo"
+                gui-text=""
+                gui-description="Currently supports: .docx, .pptx&#13;Embed linked images: Move a copy of linked images inside file&#13;Embed and convert SVGs to PNGs: Replaces SVGs with embedded PNGs&#13;Embed and delete backup PNGs: Removes backup PNGs for lower file sizes&#13;Conversion to PDF: Requires an installation of Microsoft Office or LibreOffice">
+                   <option value="1">Do not finalize</option>
+                   <option value="2">Embed linked images</option>
+                   <option value="3">Embed and convert SVGs to PNGs</option>
+                   <option value="4">Embed and delete backup PNGs</option>
+                   <option value="5">Convert to PDF using Microsoft Office</option>
+                   <option value="6">Convert to PDF using LibreOffice</option>
+                </param>
         
         <label appearance="header">What to export</label>
         <param name="exportwhat" type="optiongroup" appearance="combo"
                 gui-text="​"
-                gui-description="Autoexport runs in the background watching for changes to a directory. Single export is similar to Save a Copy.">
-                   <option value="1">Autoexport to locations below</option>
-                   <option value="2">Autoexport to this document's location</option>
-                   <option value="3">Single export now</option>
+                gui-description="Autoexport runs in the background watching for changes to a directory.&#13;Single export is similar to Save a Copy.">
+                   <option value="2">Autoexport, watching this SVG's directory</option>
+                   <option value="1">Autoexport, watching directory below</option>
+                   <option value="3">Single export of this SVG now</option>
                 </param>
-        <param type="path" name="watchdir" gui-text="Watch directory" mode="folder"/>
-        <param type="path" name="writedir" gui-text="Write directory" mode="folder"/>
+        <param type="path" name="watchdir" gui-text=""  gui-description="Watch directory"
+                mode="folder"/>
+        
+        
+        
+        <label appearance="header">Where to export</label>
+        <param name="exportwhere" type="optiongroup" appearance="combo"
+                gui-text="​">
+                   <option value="2">Write to watch directory</option>
+                   <option value="1">Write to directory below</option>
+                </param>
+        <param type="path" name="writedir" gui-text=""  gui-description="Write directory&#13;Accepts absolute and relative paths"
+                mode="folder"/>
+        
+
         
         <spacer/>
         <label>Scientific Inkscape v1.4.23</label>
@@ -86,27 +113,6 @@
         <label>David Burghoff, University of Texas at Austin</label>
         </page>
         
-        <page name="finalizer" gui-text="Finalizer">
-        <label appearance="header">Document finalizer</label>   
-        <label>When enabled, the Autoexporter produces finalized versions of Office files. This may help with SVG display issues on other computers.</label>
-        <label>This will act on .pptx or .docx files in the watch directory.</label>
-        <spacer/>
-        <label>Document finalization options</label>
-        <param name="finalizermode" type="optiongroup" appearance="combo"
-                gui-text=""
-                gui-description="Embed linked images: Move a copy of linked images inside file&#13;Embed and convert SVGs to PNGs: Replaces SVGs with embedded PNGs&#13;Embed and delete backup PNGs: Embeds SVGs and removes backup PNGs for lower file sizes&#13;">
-                   <option value="1">Do not finalize</option>
-                   <option value="2">Embed linked images</option>
-                   <option value="3">Embed and convert SVGs to PNGs</option>
-                   <option value="4">Embed and delete backup PNGs</option>
-                   <option value="5">Convert to PDF using Microsoft Office</option>
-                   <option value="6">Convert to PDF using LibreOffice</option>
-                </param>
-        <spacer/>
-        <label>Scientific Inkscape v1.4.23</label>
-        <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
-        <label>David Burghoff, University of Texas at Austin</label>
-        </page>
     </param>
     <effect needs-live-preview="false">
         <object-type>text</object-type>

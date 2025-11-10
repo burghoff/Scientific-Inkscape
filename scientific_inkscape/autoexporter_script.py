@@ -33,7 +33,7 @@ import inkex
 import inkex.text.parser  # noqa # needed to prevent GTK crashing
 
 import autoexporter
-from autoexporter import Exporter
+from autoexporter import Exporter, write_autoexporter_bat
 
 global mprint
 def mprint(*args, **kwargs):
@@ -57,6 +57,24 @@ def get_files(dirin):
         return result
     except: # (FileNotFoundError, OSError):
         return None
+
+
+def update_batch_from_options():
+    """
+    Recreate the settings pickle from current input_options and
+    regenerate Autoexporter.bat (Windows only).
+    """
+    if not sys.platform.startswith("win"):
+        return
+
+    # Write current options back to the temporary settings file
+    with open(aes, "wb") as f:
+        pickle.dump(input_options, f)
+
+    aepy = os.path.abspath(__file__)
+    guitype_local = getattr(input_options, "guitype", "terminal")
+    write_autoexporter_bat(aes, aepy, guitype_local)
+
     
 
 def is_target_file(file_name):
@@ -116,7 +134,6 @@ def make_observer_auto(dir_path: str):
         obs.schedule(handler, dir_path, recursive=False)
         obs.start()
         time.sleep(0.25)  # let backend initialize
-        # create → modify → delete
         with open(dummy, "w") as f: f.write("x")
         time.sleep(0.15)
         with open(dummy, "a") as f: f.write("y")
@@ -250,7 +267,7 @@ class Watcher(FileSystemEventHandler):
 
 # Threading class
 class FileCheckerThread(threading.Thread):
-    def __init__(self, watchdir, writedir):
+    def __init__(self):
         threading.Thread.__init__(self)
         self.stopped = False
         self.nf = True  # new folder
@@ -279,11 +296,11 @@ class FileCheckerThread(threading.Thread):
             rel_in_tree = os.path.relpath(f_abs, start=watch_abs)
             outside = rel_in_tree.startswith("..") or os.path.isabs(rel_in_tree)
         except ValueError:
-            # Different drive (C: vs H: etc.) → definitely outside watchdir
+            # Different drive (C: vs H: etc.), definitely outside watchdir
             outside = True
             rel_in_tree = None
         if outside:
-            # f is not inside watchdir → just match f itself
+            # f is not inside watchdir, just match f itself
             fthr.outtemplate = f_abs
         else:
             rel_subdir  = os.path.dirname(rel_in_tree)
@@ -440,7 +457,7 @@ import image_helpers as ih
 init_prints.append("Python does not have PIL, images will not be cropped"
        " or converted to JPG\n" if not ih.hasPIL else "Python has PIL\n")
 
-fc = FileCheckerThread(input_options.watchdir,input_options.writedir)
+fc = FileCheckerThread()
 
 if guitype == 'gtk3.0':  
     with warnings.catch_warnings():
@@ -721,6 +738,7 @@ if guitype == 'gtk3.0':
         def on_finalizer_changed(self, widget):
             input_options.finalizermode = int(widget.get_active_id())
             # mprint("Finalizer mode changed:", input_options.finalizermode)
+            update_batch_from_options()
 
 
         def on_treeview_size_allocate(self, widget, allocation):
@@ -776,6 +794,8 @@ if guitype == 'gtk3.0':
             if selected_file is not None:
                 self.ct.watchdir = selected_file
                 self.ct.nf = True
+                input_options.watchdir = selected_file
+                update_batch_from_options()
             
         def write_folder_button_clicked(self, widget):
             selected_file = self.write_file_chooser_button.get_filename()
@@ -783,6 +803,8 @@ if guitype == 'gtk3.0':
             if selected_file is not None:
                 self.ct.writedir = selected_file
                 self.ct.nf = True
+                input_options.writedir = selected_file
+                update_batch_from_options()
 
         def export_all_clicked(self, widget):
             self.ct.ea = True
@@ -808,52 +830,64 @@ if guitype == 'gtk3.0':
         def on_pdf_toggled(self, widget):
             input_options.usepdf = widget.get_active()
             print("PDF option toggled:", widget.get_active())
+            update_batch_from_options()
 
         def on_png_toggled(self, widget):
             input_options.usepng = widget.get_active()
             print("PNG option toggled:", widget.get_active())
+            update_batch_from_options()
 
         def on_emf_toggled(self, widget):
             input_options.useemf = widget.get_active()
             print("EMF option toggled:", widget.get_active())
+            update_batch_from_options()
 
         def on_eps_toggled(self, widget):
             input_options.useeps = widget.get_active()
             print("EPS option toggled:", widget.get_active())
+            update_batch_from_options()
 
         def on_svg_toggled(self, widget):
             input_options.usepsvg = widget.get_active()
             print("SVG option toggled:", widget.get_active())
+            update_batch_from_options()
 
         def on_dpi_changed(self, widget):
             input_options.dpi = widget.get_value_as_int()
             print("Rasterization DPI changed:", widget.get_value_as_int())
+            update_batch_from_options()
 
         def on_crop_toggled(self, widget):
             input_options.imagemode2 = widget.get_active()
             print("Crop and resample images option toggled:", widget.get_active())
+            update_batch_from_options()
 
         def on_convert_text_toggled(self, widget):
             input_options.texttopath = widget.get_active()
             print("Convert text to paths option toggled:", widget.get_active())
+            update_batch_from_options()
 
         def on_prevent_thin_lines_toggled(self, widget):
             input_options.thinline = widget.get_active()
             print("Prevent thin line enhancement option toggled:", widget.get_active())
+            update_batch_from_options()
 
         def on_convert_strokes_toggled(self, widget):
             input_options.stroketopath = widget.get_active()
             print("Convert all strokes to paths option toggled:", widget.get_active())
+            update_batch_from_options()
 
         def on_transparent_back_toggled(self, widget):
             input_options.backingrect = widget.get_active()
             print(
                 "Add transparent backing rectangle option toggled:", widget.get_active()
             )
+            update_batch_from_options()
 
         def on_margin_changed(self, widget):
             input_options.margin = widget.get_value()
             print("Extra margin changed:", widget.get_value())
+            update_batch_from_options()
 
         def on_omit_text_toggled(self, widget):
             input_options.latexpdf = widget.get_active()
@@ -861,6 +895,7 @@ if guitype == 'gtk3.0':
                 "Omit text in PDF and create LaTeX file option toggled:",
                 widget.get_active(),
             )
+            update_batch_from_options()
         def quit_and_close(self, *args):   # or (self, widget)
             self.ct.stopped = True
             Gtk.main_quit()
@@ -1090,6 +1125,8 @@ elif guitype=='gtk4.0':
                 # inline apply
                 self.ct.watchdir = self.watch_dir_path
                 self.ct.nf = True
+                input_options.watchdir = self.ct.watchdir
+                update_batch_from_options()
             dlg.select_folder(self._win, None, _done)
     
         def write_dir_clicked(self, _btn):
@@ -1111,6 +1148,8 @@ elif guitype=='gtk4.0':
                     self._write_dir_lbl.set_text(self.write_dir_path or "Choose write directory")
                 self.ct.writedir = self.write_dir_path
                 self.ct.nf = True
+                input_options.writedir = self.ct.writedir
+                update_batch_from_options()
             dlg.select_folder(self._win, None, _done)
         
         def export_all_clicked(self, _btn):
@@ -1182,7 +1221,10 @@ elif guitype=='gtk4.0':
             # Generic binders to consolidate callbacks
             def _bind_check(btn: Gtk.CheckButton, attr: str):
                 btn.set_active(bool(getattr(input_options, attr)))
-                btn.connect("toggled", lambda b: setattr(input_options, attr, b.get_active()))
+                def _on_toggle(b):
+                    setattr(input_options, attr, b.get_active())
+                    update_batch_from_options()
+                btn.connect("toggled", _on_toggle)
         
             def _bind_spin(spin: Gtk.SpinButton, attr: str, *, as_int: bool = False):
                 # initialize from model
@@ -1191,6 +1233,7 @@ elif guitype=='gtk4.0':
                 def _on_change(s):
                     v = s.get_value_as_int() if as_int else s.get_value()
                     setattr(input_options, attr, v)
+                    update_batch_from_options()
                 spin.connect("value-changed", _on_change)
         
             def _bind_combo_active_id(combo: Gtk.ComboBoxText, attr: str, *, to_int: bool = True):
@@ -1205,6 +1248,7 @@ elif guitype=='gtk4.0':
                     if val is None:
                         return
                     setattr(input_options, attr, int(val) if to_int else val)
+                    update_batch_from_options()
                 combo.connect("changed", _on_change)
         
             # --- Formats to export ---
