@@ -4331,9 +4331,7 @@ class CharacterTable:
         """Initializes CharacterTable with a list of elements."""
         self.els = els
         self.root = els[0].croot if len(els) > 0 else None
-        self.tstyset, self.pchrset, self.fstyset, self.cstys = (
-            CharacterTable.collect_characters(els)
-        )
+        self.collect_characters()
 
         # HASPANGO = False; os.environ["HASPANGO"]='False'
         PANGO_LOCK.acquire()
@@ -4349,12 +4347,11 @@ class CharacterTable:
         self.mults = dict()
         self._ftable = None
 
-    @staticmethod
-    def collect_characters(els):
+    def collect_characters(self):
         """Finds all the characters in a list of elements."""
         fstyset = dict()  # set of characters in a given font style
         txtfsty = []
-        for elem in els:
+        for elem in self.els:
             tree = TextTree(elem)
             for _, _, _, sel, txt in tree.dgenerator():
                 if txt:
@@ -4383,7 +4380,20 @@ class CharacterTable:
                 if csty == cstys[fsty][txt[j - 1]]:
                     pchrset[csty].setdefault(txt[j], set()).update({txt[j - 1], " "})
 
-        return tstyset, pchrset, fstyset, cstys
+        self.tstyset, self.pchrset, self.fstyset, self.cstys = tstyset, pchrset, fstyset, cstys
+        
+    def true_styles(self):
+        ''' Gets all true styles based on font styles '''
+        tsbfs = dict() 
+        for elem in self.els:
+            tree = TextTree(elem)
+            for _, _, _, sel, txt in tree.dgenerator():
+                if txt:
+                    sty = sel.cspecified_style
+                    fsty = font_style(sty)
+                    if fsty not in tsbfs:
+                        tsbfs[fsty]= true_style(sty)
+        return tsbfs
 
     def extract_characters(self):
         """

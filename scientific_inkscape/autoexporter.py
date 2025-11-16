@@ -472,7 +472,7 @@ class Exporter():
             svg = get_svg(cfile)
             tmp = self.tempbase + "_marg.svg"
             Exporter.add_margin(svg, self.margin, self.testmode)
-            dh.overwrite_svg(svg, tmp)
+            self.check(dh.overwrite_svg, svg, tmp)
             cfile = copy.copy(tmp)
 
         # Do png before any preprocessing
@@ -704,17 +704,19 @@ class Exporter():
 
         # Fix Avenir/Whitney
         tels = [elem for elem in vds if elem.tag in ttags]
-
         dh.character_fixer(tels)
-
-        # Strip all sodipodi:role lines from document
-        # Conversion to plain SVG does this automatically but poorly
-        # if self.usepsvg:
         if len(tels) > 0:
             svg.make_char_table()
             self.ctable = svg.char_table
             # store for later
 
+        # Remove elements not on any page
+        outside = self.elements_not_on_any_page(vds) # calls BB2, needs ctable
+        for elem in outside:
+            elem.delete()
+            vds.remove(elem)
+
+        # Flow to text
         for elem in reversed(tels):
             if elem.parsed_text.isflow:
                 elid = elem.get_id()
@@ -749,7 +751,7 @@ class Exporter():
                         dsd.cstyle["fill"] = dsd.cspecified_style["fill"]
 
         tmp = self.tempbase + "_mod.svg"
-        dh.overwrite_svg(svg, tmp)
+        self.check(dh.overwrite_svg,svg, tmp)
         cfile = tmp
 
         do_rasterizations = len(raster_ids + image_ids) > 0
@@ -798,7 +800,7 @@ class Exporter():
                 updatefile = True
 
             if updatefile:
-                dh.overwrite_svg(svg, cfile)
+                self.check(dh.overwrite_svg,svg, cfile)
 
             tmpstp = self.tempbase + "_stp.svg"
             allacts += [Act('stp',tels + pels,self,tmpstp)]
@@ -885,7 +887,7 @@ class Exporter():
                             )
 
                 tmp = self.tempbase + "_eimg.svg"
-                dh.overwrite_svg(svg, tmp)
+                self.check(dh.overwrite_svg, svg, tmp)
                 cfile = tmp
 
         if do_stroketopaths:
@@ -898,7 +900,7 @@ class Exporter():
                         dh.ungroup(elem)
 
             tmp = self.tempbase + "_poststp.svg"
-            dh.overwrite_svg(svg, tmp)
+            self.check(dh.overwrite_svg, svg, tmp)
             cfile = tmp
 
         self.terminal_message("Preprocessing done ("
@@ -1030,7 +1032,7 @@ class Exporter():
             else:
                 Exporter.thinline_dehancement(svg, "split",self.duplicatelabels)
             tmp = self.tempbase + "_tld" + fformat[0] + ".svg"
-            dh.overwrite_svg(svg, tmp)
+            self.check(dh.overwrite_svg,svg, tmp)
             cfile = copy.copy(tmp)
 
         if fformat == "psvg":
@@ -1119,7 +1121,7 @@ class Exporter():
                         )
                         outparts = fileout.split(".")
                         pgout = ".".join(outparts[:-1]) + addendum + "." + outparts[-1]
-                        dh.overwrite_svg(psvg, pgout)
+                        self.check(dh.overwrite_svg,psvg, pgout)
                         outputs.append(pgout)
                     self.made_outputs = outputs
             else:
@@ -1144,7 +1146,7 @@ class Exporter():
                         pname = str(i + 1) if pname is None else pname
                         addendum = "_page_" + pname if not (self.testmode) else ""
                         svgpgfn = self.tempbase + addendum + ".svg"
-                        dh.overwrite_svg(svgpg, svgpgfn)
+                        self.check(dh.overwrite_svg, svgpg, svgpgfn)
 
                         outparts = fileout.split(".")
                         pgout = ".".join(outparts[:-1]) + addendum + "." + outparts[-1]
@@ -1173,7 +1175,7 @@ class Exporter():
                     finalname = myoutput.replace(
                         "_plain.svg", "_page_" + pnum + "_plain.svg"
                     )
-                dh.overwrite_svg(svg, finalname)
+                self.check(dh.overwrite_svg,svg, finalname)
                 finalnames.append(finalname)
 
         # Remove any previous outputs that we did not just make
@@ -1921,6 +1923,56 @@ class Exporter():
                         sty["marker-start"] = dup.get_id(as_url=2)
                         elem.cstyle = sty
         return path_els, dummy_groups
+
+    def elements_not_on_any_page(self, els):
+        """
+        Given a list of elements, return those whose bounding boxes do not
+        intersect any page (or the effective viewbox, if no pages are present).
+        """
+        els = list(els)
+        if len(els) == 0:
+            return []
+
+        svg = els[0].croot
+        if svg is None:
+            return []
+
+        # Pages and page-like behavior
+        pgs = svg.cdocsize.pgs
+        haspgs = inkex.installed_haspages
+        page_bbs = []
+        if (haspgs or self.testmode) and len(pgs) > 0:
+            # True pages available: mirror what change_viewbox_to_page + effvb
+            # would do, but compute the page bbox directly instead of changing
+            # the viewbox.
+            for pg in pgs:
+                page_vb = svg.cdocsize.pxtouu(pg.bbpx)
+                page_bbs.append(dh.bbox(page_vb))
+        else:
+            # No usable pages: treat the effective viewbox as a single page
+            page_bbs.append(dh.bbox(svg.cdocsize.effvb))
+
+        # Bounding boxes for all elements, same as in make_output
+        bbs = dh.BB2(svg)
+        outside = []
+        for el in els:
+            elid = el.get_id()
+            if elid not in bbs:
+                continue
+            bbx = bbs[elid]
+            on_any_page = False
+            for pgbb in page_bbs:
+                in_page = dh.bbox(bbx).intersect(pgbb)
+
+                # If this element has a duplicate label, treat it as on-page
+                # if the labeled element intersects instead.
+                if in_page:
+                    on_any_page = True
+                    break
+
+            if not on_any_page:
+                outside.append(el)
+        return outside
 
 
 # Convenience functions
