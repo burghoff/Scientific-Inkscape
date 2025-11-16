@@ -272,6 +272,7 @@ class AutoExporter(inkex.EffectExtension):
             opts.guitype = guitype
             opts.logfile = dh.shared_temp(filename="si_ae_output.txt")
 
+
             aes = os.path.join(
                 os.path.abspath(tempfile.gettempdir()), "si_ae_settings.p"
             )
@@ -2276,13 +2277,12 @@ def write_autoexporter_bat(aes, aepy, guitype):
         # use console python for terminal mode
         py_for_bat = os.path.join(os.path.dirname(py_for_bat), "python.exe")
 
-    escaped_path = pickled_file_path.replace("\\", "\\\\")
     batch_content = (
         '@echo off\n'
         f'cd "{python_cwd}"\n\n'
         f'SET PYBIN="{py_for_bat}"\n'
         f'SET AEPY="{aepy}"\n'
-        f'SET PICKLED_FILE="{escaped_path}"\n\n'
+        'SET PICKLED_FILE="%TEMP%\\si_ae_settings.p"\n\n'
         'REM Recreate the pickled settings from base64\n'
         f'powershell -Command "[System.IO.File]::WriteAllBytes(\'%PICKLED_FILE%\', '
         f'[Convert]::FromBase64String(\'{pickled_data_base64}\'))"\n\n'
