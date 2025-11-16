@@ -633,6 +633,22 @@ class Exporter():
                 tel.set("display", "none")
                 self.duplicatelabels[tel.get_id()] = elem.get_id()
 
+        
+        # Fix Avenir/Whitney
+        tels = [elem for elem in vds if elem.tag in ttags]
+        dh.character_fixer(tels)
+        if len(tels) > 0:
+            svg.make_char_table()
+            self.ctable = svg.char_table  # store for later
+
+        # Remove elements not on any page
+        outside = self.elements_not_on_any_page(vds) # calls BB2, needs ctable
+        for elem in outside:
+            elem.delete()
+            vds.remove(elem)
+            if elem in tels:
+                tels.remove(elem)
+
         stps = []
         ttps = []
         for elem in vds:
@@ -701,20 +717,6 @@ class Exporter():
                         break
                 if trivial:
                     elem.delete(deleteup=True)
-
-        # Fix Avenir/Whitney
-        tels = [elem for elem in vds if elem.tag in ttags]
-        dh.character_fixer(tels)
-        if len(tels) > 0:
-            svg.make_char_table()
-            self.ctable = svg.char_table
-            # store for later
-
-        # Remove elements not on any page
-        outside = self.elements_not_on_any_page(vds) # calls BB2, needs ctable
-        for elem in outside:
-            elem.delete()
-            vds.remove(elem)
 
         # Flow to text
         for elem in reversed(tels):
