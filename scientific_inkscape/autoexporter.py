@@ -2252,7 +2252,7 @@ def restore_relative(path):
                 return rel
     return path
 
-def write_autoexporter_bat(aes, aepy, guitype):
+def write_autoexporter_bat(aes, aepy, guitype, batch_path=None):
     """
     Create or update Autoexporter.bat so it launches autoexporter_script.py
     with the settings stored in the pickled file at `aes`.
@@ -2269,8 +2269,11 @@ def write_autoexporter_bat(aes, aepy, guitype):
     import base64
     pickled_data_base64 = base64.b64encode(pickled_data).decode("utf-8")
 
-    current_script_dir = os.path.dirname(os.path.abspath(__file__))
-    batch_file_path = os.path.join(current_script_dir, "Autoexporter.bat")
+    if batch_path:
+        batch_file_path = os.path.abspath(batch_path)
+    else:
+        current_script_dir = os.path.dirname(os.path.abspath(__file__))
+        batch_file_path = os.path.join(current_script_dir, "Autoexporter.bat")
 
     py_for_bat = sys.executable
     if guitype == "terminal":
@@ -2280,6 +2283,7 @@ def write_autoexporter_bat(aes, aepy, guitype):
     batch_content = (
         '@echo off\n'
         f'cd "{python_cwd}"\n\n'
+        'SET SI_AE_BATCH=%~f0\n'
         f'SET PYBIN="{py_for_bat}"\n'
         f'SET AEPY="{aepy}"\n'
         'SET PICKLED_FILE="%TEMP%\\si_ae_settings.p"\n\n'

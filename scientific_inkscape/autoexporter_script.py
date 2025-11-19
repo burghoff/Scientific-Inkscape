@@ -14,6 +14,7 @@ import sys, platform, os, threading, time, copy, pickle, re, tempfile
 
 systmpdir = os.path.abspath(tempfile.gettempdir())
 aes = os.path.join(systmpdir, "si_ae_settings.p")
+SI_AE_BATCH = os.environ.get("SI_AE_BATCH")
 
 with open(aes, "rb") as f:
     input_options = pickle.load(f)
@@ -73,9 +74,7 @@ def update_batch_from_options():
 
     aepy = os.path.abspath(__file__)
     guitype_local = getattr(input_options, "guitype", "terminal")
-    write_autoexporter_bat(aes, aepy, guitype_local)
-
-    
+    write_autoexporter_bat(aes, aepy, guitype_local, batch_path=SI_AE_BATCH)    
 
 def is_target_file(file_name):
     flower = os.path.split(file_name)[1].lower()
