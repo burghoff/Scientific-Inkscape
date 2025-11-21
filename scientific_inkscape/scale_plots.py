@@ -63,13 +63,13 @@ def geometric_bbox(el, vis_bbox, irange=None):
 
 
 # Determines plot area from a list of elements and their geometric bounding boxes
-def Find_Plot_Area(els, gbbs):
+def find_plot_area(els, gbbs):
     vl = dict()  # vertical lines
     hl = dict()  # horizontal lines
     boxes = dict()
     solids = dict()
     plotareas = dict()
-    for el in list(reversed(els)):
+    for el in reversed(els):
         isrect = False
         if el.tag in PATHLIKE_TAGS:
             gbb = gbbs[el.get_id()]
@@ -143,6 +143,21 @@ def trtf(x, y):
 
 def sctf(x, y):
     return Transform("scale(" + str(x) + ", " + str(y) + ")")
+
+
+
+class bbox2:
+    ''' Contains geometric and full bounding boxes '''
+    def __init__(self, g, f):
+        if isinstance(g, list) or g is None:
+            g = bbox(g)
+        if isinstance(f, list) or f is None:
+            f = bbox(f)
+        self.g = g
+        self.f = f
+
+    def union(self, g, f):
+        return bbox2(self.g.union(g), self.f.union(f))
 
 
 class ScalePlots(inkex.EffectExtension):
@@ -270,10 +285,8 @@ class ScalePlots(inkex.EffectExtension):
             # for correction mode
             all_pels = [dh.list2(s) for s in sel]
 
-        for i0 in range(len(all_pels)):  # sel in asel:
-            pels = [
-                k for k in all_pels[i0] if k.get_id() in list(fbbs.keys())
-            ]  # plot elements list
+        for i0, pel_list in enumerate(all_pels):  # sel in asel:
+            pels = [k for k in pel_list if k.get_id() in fbbs] # plot elements
 
             # Calculate geometric (tight) bounding boxes of plot elements
             gbbs = dict()
@@ -281,7 +294,7 @@ class ScalePlots(inkex.EffectExtension):
                 if el.tag!=comment_tag and el.get_id() in fbbs:
                     gbbs[el.get_id()] = geometric_bbox(el, fbbs[el.get_id()]).sbb
 
-            vl, hl, lvel, lhel = Find_Plot_Area(pels, gbbs)
+            vl, hl, lvel, lhel = find_plot_area(pels, gbbs)
             if lvel is None or lhel is None or wholesel:
                 noplotarea = True
                 lvel = None
@@ -299,19 +312,6 @@ class ScalePlots(inkex.EffectExtension):
                     )
             else:
                 noplotarea = False
-
-            # A class that contains geometric and full bounding boxes
-            class bbox2:
-                def __init__(self, g, f):
-                    if isinstance(g, list) or g is None:
-                        g = bbox(g)
-                    if isinstance(f, list) or f is None:
-                        f = bbox(f)
-                    self.g = g
-                    self.f = f
-
-                def union(self, g, f):
-                    return bbox2(self.g.union(g), self.f.union(f))
 
             bba = bbox2(None, None)
             # all elements
@@ -407,7 +407,7 @@ class ScalePlots(inkex.EffectExtension):
                     else:
                         plotareaels = [firstsel]
 
-                    vl0, hl0, lvel0, lhel0 = Find_Plot_Area(plotareaels, gbbs)
+                    vl0, hl0, lvel0, lhel0 = find_plot_area(plotareaels, gbbs)
                     if lvel0 is None or lhel0 is None:
                         inkex.utils.errormsg(
                             "A box-like plot area could not be automatically detected on the "
@@ -507,12 +507,9 @@ class ScalePlots(inkex.EffectExtension):
 
                 vtickt = vtickb = htickl = htickr = False
                 # el is a tick
-                if tickcorrect and (
-                    (elid in list(vl.keys())) or (elid in list(hl.keys()))
-                ):
-                    isvert = elid in list(vl.keys())
-                    ishorz = elid in list(hl.keys())
-                    gbb = gbbs[elid]
+                if tickcorrect and (elid in vl or elid in hl):
+                    isvert = elid in vl
+                    ishorz = elid in hl
                     if isvert and gbb[3] < tickthr * (
                         bbp.g.y2 - bbp.g.y1
                     ):  # vertical tick
