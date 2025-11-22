@@ -42,7 +42,6 @@ testflattenpapers   = True;
 testscalecorrection = True;
 testscalecorrection2= True;
 testscalematching   = True;
-testscalefixed      = True;
 testghoster         = True;
 testcbc             = True;
 testfm              = True;
