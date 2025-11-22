@@ -280,7 +280,7 @@ class ScalePlots(inkex.EffectExtension):
         if not all(p.tag == GROUP_TAG for p in self.plots):
             inkex.utils.errormsg(
                 "Non-Group objects detected in selection. "
-                "Objects in a plot should be grouped prior to running the Scaler."
+                "Objects in a plot should be grouped prior to scaling."
             )
             return
 
