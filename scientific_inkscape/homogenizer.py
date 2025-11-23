@@ -265,35 +265,26 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             else:
                 from scale_plots import (
                     geometric_bbox,
-                    Find_Plot_Area,
+                    find_plot_area,
                     trtf,
-                    appendInt,
+                    warn_non_plot,
                 )
 
-                gbbs = {elid: geometric_bbox(el, fbb).sbb for elid, fbb in bbs.items()}
+                gbbs = {self.svg.getElementById(elid): geometric_bbox(el, fbb).sbb for elid, fbb in bbs.items()}
                 for i0, g in enumerate(sel0):
                     pels = [k for k in g if k.get_id() in bbs]  # plot elements list
-                    vl, hl, lvel, lhel = Find_Plot_Area(pels, gbbs)
+                    vl, hl, lvel, lhel = find_plot_area(pels, gbbs)
 
                     if lvel is None or lhel is None:
                         lvel = None
                         lhel = None
-                        # Display warning and proceed
-                        numgroup = str(i0 + 1) + appendInt(i0 + 1)
-                        inkex.utils.errormsg(
-                            "A box-like plot area could not be automatically detected on the "
-                            + numgroup
-                            + " selected plot (group ID "
-                            + g.get_id()
-                            + ").\n\nDraw a box with a stroke to define the plot area."
-                            + "\nAdjustment will still be performed, but the results may not be ideal."
-                        )
+                        warn_non_plot(i0, g.get_id()) # Display warning and proceed
 
                     bbp = dh.bbox(None)
                     # plot area
                     for el in pels:
                         if el.get_id() in [lvel, lhel]:
-                            bbp = bbp.union(gbbs[el.get_id()])
+                            bbp = bbp.union(gbbs[el])
                     for el in g.descendants2():
                         if el in tels:
                             bb1 = dh.bbox(bbs[el.get_id()])

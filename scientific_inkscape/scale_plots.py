@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 #
-# Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
+# Copyright (c) 2025 David Burghoff <burghoff@utexas.edu>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-#
 
 import dhelpers as dh
 import inkex
@@ -38,6 +37,7 @@ PATHLIKE_TAGS = [
 RECTANGLE_TAG = inkex.Rectangle.ctag
 TEXTLIKE_TAGS = [inkex.TextElement.ctag, inkex.FlowRoot.ctag]
 GROUP_TAG = inkex.Group.ctag
+SCALEFREE_DFLTS = TEXTLIKE_TAGS + [GROUP_TAG]
 EXCLUDE_TAGS = [
     inkex.Tspan.ctag,
     inkex.NamedView.ctag,
@@ -47,6 +47,7 @@ EXCLUDE_TAGS = [
 ]
 COMMENT_TAG = lxml.etree.Comment("").tag
 IMAGE_TAG = inkex.Image.ctag
+
 
 def geometric_bbox(el, vis_bbox, irange=None):
     gbb = copy.copy(vis_bbox)
@@ -74,12 +75,12 @@ def find_plot_area(els, gbbs):
     for el in reversed(els):
         isrect = False
         if el.tag in PATHLIKE_TAGS:
-            gbb = gbbs[el.get_id()]
+            gbb = gbbs[el]
             xs, ys = dh.get_points(el)
             if (max(xs) - min(xs)) < 0.001 * gbb[3]:
-                vl[el.get_id()] = gbb
+                vl[el] = gbb
             if (max(ys) - min(ys)) < 0.001 * gbb[2]:
-                hl[el.get_id()] = gbb
+                hl[el] = gbb
 
             tol = 1e-3 * max(max(xs) - min(xs), max(ys) - min(ys))
             if (
@@ -94,12 +95,12 @@ def find_plot_area(els, gbbs):
             hasstroke = sf.stroke is not None and sf.stroke != [255, 255, 255, 1]
 
             if hasfill and (not (hasstroke) or sf.stroke == sf.fill):  # solid rectangle
-                solids[el.get_id()] = gbb
+                solids[el] = gbb
             elif hasstroke:  # framed rectangle
-                boxes[el.get_id()] = gbb
+                boxes[el] = gbb
 
         if el.get("inkscape-scientific-scaletype") == "plot_area":
-            plotareas[el.get_id()] = gbb
+            plotareas[el] = gbb
 
     vels = dict()
     hels = dict()
@@ -123,31 +124,38 @@ def find_plot_area(els, gbbs):
 
 
 # Get the proper suffix for an integer (1st, 2nd, 3rd, etc.)
-def appendInt(num):
-    if num > 9:
-        secondToLastDigit = str(num)[-2]
-        if secondToLastDigit == "1":
-            return "th"
-    lastDigit = num % 10
-    if lastDigit == 1:
-        return "st"
-    elif lastDigit == 2:
-        return "nd"
-    elif lastDigit == 3:
-        return "rd"
+def ordinal(n: int) -> str:
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
     else:
-        return "th"
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
 
-def warn_non_plot(idx,gid):
-    numgroup = str(idx + 1) + appendInt(idx + 1)
+
+def warn_non_plot(idx, gid):
+    numgroup = ordinal(idx + 1)
     inkex.utils.errormsg(
         "A box-like plot area could not be automatically detected on the "
         + numgroup
         + " selected plot (group ID "
         + gid
-        + ").\n\nDraw a box with a stroke to define the plot area or mark objects as plot area-determining in the Advanced tab."
-        + "\nScaling will still be performed, but the results may not be ideal."
+        + ").\n\nDraw a box with a stroke to define the plot area or mark objects"
+        " as plot area-determining in the Advanced tab."
+        "\nScaling will still be performed, but the results may not be ideal."
     )
+
+
+IMAGE_ERR = (
+    "Thanks for using Scientific Inkscape!\n\n"
+    "It appears that you're attempting to scale a raster Image object. Please note that "
+    "Inkscape is mainly for working with vector images, not raster images. Vector images "
+    "preserve all of the information used to generate them, whereas raster images do not. "
+    "Read about the difference here: \nhttps://en.wikipedia.org/wiki/Vector_graphics\n\n"
+    "While raster images can be embedded in vector images, they cannot be modified directly. "
+    "If you want to edit a raster image, you will need to "
+    "use a program like Photoshop or GIMP."
+)
+
 
 def trtf(x, y):
     return Transform("translate(" + str(x) + ", " + str(y) + ")")
@@ -157,9 +165,9 @@ def sctf(x, y):
     return Transform("scale(" + str(x) + ", " + str(y) + ")")
 
 
-
 class bbox2:
-    ''' Contains geometric and full bounding boxes '''
+    """Contains geometric and full bounding boxes"""
+
     def __init__(self, g, f):
         if isinstance(g, list) or g is None:
             g = bbox(g)
@@ -170,8 +178,6 @@ class bbox2:
 
     def union(self, g, f):
         return bbox2(self.g.union(g), self.f.union(f))
-    
-
 
 
 class ScalePlots(inkex.EffectExtension):
@@ -227,16 +233,7 @@ class ScalePlots(inkex.EffectExtension):
         # regular selectable objects only
 
         if all([el.tag == IMAGE_TAG for el in sel]) and self.options.tab != "options":
-            inkex.utils.errormsg(
-                "Thanks for using Scientific Inkscape!\n\n"
-                "It appears that you're attempting to scale a raster Image object. Please note that "
-                "Inkscape is mainly for working with vector images, not raster images. Vector images "
-                "preserve all of the information used to generate them, whereas raster images do not. "
-                "Read about the difference here: \nhttps://en.wikipedia.org/wiki/Vector_graphics\n\n"
-                "Unfortunately, this means that there is not much Scale Plots can do to edit raster images "
-                "beyond simple stretching or scaling. If you want to edit a raster image, you will need to "
-                "use a program like Photoshop or GIMP."
-            )
+            inkex.utils.errormsg(IMAGE_ERR)
             quit()
 
         self.options.tickthr = self.options.tickthreshold / 100
@@ -250,6 +247,7 @@ class ScalePlots(inkex.EffectExtension):
         elif self.options.tab == "correction":
             self.options.wholesel = self.options.wholeplot3
         else:
+            # Advanced tab
             self.options.marksf = {
                 1: "scale_free",
                 2: "aspect_locked",
@@ -264,19 +262,25 @@ class ScalePlots(inkex.EffectExtension):
         self.options.matchto = {1: "plotarea", 2: "bbox"}[self.options.matchprop]
         self.options.figuremode = {1: False, 2: True}[self.options.figuremode]
 
+        cmode = self.options.tab == "correction"
+
         if self.options.wholesel:
             self.options.tickcorrect = False
 
-        # full visual bbs
-        self.fbbs = dh.BB2(self.svg, dh.unique([d for el in sel for d in el.iter('*')]))
+        # Full visual bounding boxes
+        self.fbbs = dh.BB2(self.svg, dh.unique([d for el in sel for d in el.iter("*")]))
+        self.fbbs = {self.svg.getElementById(k): v for k, v in self.fbbs.items()}
+        
+        # Geometric (tight) bounding boxes of plot elements
+        self.gbbs = {k: geometric_bbox(k, v).sbb for k, v in self.fbbs.items()}
+
         self.firstsel = sel[0]
-        if self.options.tab == "matching":
+        if not cmode:
             plots = sel[1:]
         else:
             plots = sel[:]
         self.plots = plots
-        cmode = self.options.tab == "correction"
-        
+
         if not all(p.tag == GROUP_TAG for p in self.plots):
             inkex.utils.errormsg(
                 "Non-Group objects detected in selection. "
@@ -285,58 +289,52 @@ class ScalePlots(inkex.EffectExtension):
             return
 
         for i, _ in enumerate(plots):  # sel in asel:
-            self.scale_plot(i,cmode)
+            self.scale_plot(i, cmode)
 
-        if self.options.tab == "matching" and self.options.deletematch:
+        if not cmode and self.options.deletematch:
             self.firstsel.delete()
-            
-    def scale_plot(self,i,cmode=True):
+
+    def scale_plot(self, i, cmode=True):
+        """
+        Scale an individual grouped plot
+        cmode = True: Correction mode
+        cmode = False: Matching mode
+        """
         if not cmode:
             # If in matching mode and plot has a transform, correct first
             extr = self.plots[i].ctransform
             sx = math.sqrt(extr.a**2 + extr.b**2)
-            sy = (-extr.b * extr.c + extr.a * extr.d) / math.sqrt(
-                extr.a**2 + extr.b**2
-            )
-            if abs(sx-1)>1e-5 or abs(sy-1)>1e-5:
-                self.scale_plot(i,True)
-        
-        pel_list = dh.list2(self.plots[i])
-        pels = [k for k in pel_list if k.get_id() in self.fbbs] # plot elements
-        
-        # Calculate geometric (tight) bounding boxes of plot elements
-        gbbs = dict()
-        for el in [self.firstsel] + pels + list(self.firstsel):
-            if el.tag!=COMMENT_TAG and el.get_id() in self.fbbs:
-                gbbs[el.get_id()] = geometric_bbox(el, self.fbbs[el.get_id()]).sbb
+            sy = (-extr.b * extr.c + extr.a * extr.d) / math.sqrt(extr.a**2 + extr.b**2)
+            if abs(sx - 1) > 1e-5 or abs(sy - 1) > 1e-5:
+                self.scale_plot(i, True)
 
-        vl, hl, lvel, lhel = find_plot_area(pels, gbbs)
+        pel_list = dh.list2(self.plots[i])
+        pels = [k for k in pel_list if k in self.fbbs]  # plot elements
+
+        vl, hl, lvel, lhel = find_plot_area(pels, self.gbbs)
         if lvel is None or lhel is None or self.options.wholesel:
             noplotarea = True
             lvel = None
             lhel = None
-            if not (self.options.wholesel): # Display warning message
+            if not (self.options.wholesel):  # Display warning message
                 warn_non_plot(i, self.plots[i].get_id())
         else:
             noplotarea = False
 
-        bba = bbox2(None, None) # all elements
-        bbp = bbox2(None, None) # plot area
+        bba = bbox2(None, None)  # all elements
+        bbp = bbox2(None, None)  # plot area
         for el in pels:
-            bba = bba.union(gbbs[el.get_id()], self.fbbs[el.get_id()])
-            if el.get_id() in [lvel, lhel] or noplotarea:
-                bbp = bbp.union(gbbs[el.get_id()], self.fbbs[el.get_id()])
-                
-        fbbs2 = self.fbbs
+            bba = bba.union(self.gbbs[el], self.fbbs[el])
+            if el in [lvel, lhel] or noplotarea:
+                bbp = bbp.union(self.gbbs[el], self.fbbs[el])
+
         if cmode:
             # Invert the existing transform so we can run the rest of the code regularly
             extr = self.plots[i].ctransform
             # existing transform
 
             sx = math.sqrt(extr.a**2 + extr.b**2)
-            sy = (-extr.b * extr.c + extr.a * extr.d) / math.sqrt(
-                extr.a**2 + extr.b**2
-            )
+            sy = (-extr.b * extr.c + extr.a * extr.d) / math.sqrt(extr.a**2 + extr.b**2)
             if sx < 0:
                 sx = -sx
                 sy = -sy
@@ -356,9 +354,17 @@ class ScalePlots(inkex.EffectExtension):
             # invert existing transform
             dh.global_transform(self.plots[i], iextr)
 
-            # Invert the transform on the bounding boxes (fix later)
-            fbbs2 = {k: bbox(v).transform(iextr).sbb for k, v in self.fbbs.items()}
-            gbbs = {k: bbox(v).transform(iextr).sbb for k, v in gbbs.items()}
+            # Invert the transform on the bounding boxes
+            fbbs2 = {
+                k: bbox(v).transform(iextr).sbb
+                for k, v in self.fbbs.items()
+                if k in pels
+            }
+            gbbs2 = {
+                k: bbox(v).transform(iextr).sbb
+                for k, v in self.gbbs.items()
+                if k in pels
+            }
             tr_bba = bba
             # bb with transform to be corrected
 
@@ -367,9 +373,9 @@ class ScalePlots(inkex.EffectExtension):
             bbp = bbox2(None, None)
             # bbox of plot area
             for el in pels:
-                bba = bba.union(gbbs[el.get_id()], fbbs2[el.get_id()])
-                if el.get_id() in [lvel, lhel] or noplotarea:
-                    bbp = bbp.union(gbbs[el.get_id()], fbbs2[el.get_id()])
+                bba = bba.union(gbbs2[el], fbbs2[el])
+                if el in [lvel, lhel] or noplotarea:
+                    bbp = bbp.union(gbbs2[el], fbbs2[el])
 
             if self.options.figuremode:
                 oscalex = scalex
@@ -400,24 +406,26 @@ class ScalePlots(inkex.EffectExtension):
                     # what refx needs to be to maintain top-left
                 else:
                     refy = tr_bba.f.y1 + dyl
+        else:
+            fbbs2 = self.fbbs
+            gbbs2 = self.gbbs
 
-        if not cmode:
             bbmatch = None
             if self.options.matchto == "bbox":
-                bbmatch = bbox(gbbs[self.firstsel.get_id()])
+                bbmatch = bbox(gbbs2[self.firstsel])
             elif self.options.matchto == "plotarea":
                 if self.firstsel.tag == GROUP_TAG:
                     plotareaels = list(self.firstsel)
                 else:
                     plotareaels = [self.firstsel]
 
-                vl0, hl0, lvel0, lhel0 = find_plot_area(plotareaels, gbbs)
+                vl0, hl0, lvel0, lhel0 = find_plot_area(plotareaels, gbbs2)
                 if lvel0 is None or lhel0 is None:
                     if self.firstsel.tag != IMAGE_TAG:
                         warn_non_plot(0, self.firstsel.get_id())
-                    bbmatch = bbox(gbbs[self.firstsel.get_id()])
+                    bbmatch = bbox(gbbs2[self.firstsel])
                 else:
-                    bbmatch = bbox(gbbs[lvel0]).union(bbox(gbbs[lhel0]))
+                    bbmatch = bbox(gbbs2[lvel0]).union(bbox(gbbs2[lhel0]))
 
             scalex = scaley = 1
             if self.options.hmatch:
@@ -433,7 +441,7 @@ class ScalePlots(inkex.EffectExtension):
 
         # Compute global transformation
         if not cmode:
-            if self.options.matchwhat == 'plotarea':
+            if self.options.matchwhat == "plotarea":
                 refx = bbp.g.xc
                 refy = bbp.g.yc
             else:
@@ -450,14 +458,18 @@ class ScalePlots(inkex.EffectExtension):
             if self.options.matchwhat == "bbox":
                 # Following scaling, margins stay the same size so the
                 # bounding box center has moved
-                finx -= 1/2*( (bba.g.x2 - bbp.g.x2) - (bbp.g.x1 - bba.g.x1)) * (1-scalex)
-                finy -= 1/2*( (bba.g.y2 - bbp.g.y2) - (bbp.g.y1 - bba.g.y1)) * (1-scaley)
+                finx -= (
+                    0.5 * ((bba.g.x2 - bbp.g.x2) - (bbp.g.x1 - bba.g.x1)) * (1 - scalex)
+                )
+                finy -= (
+                    0.5 * ((bba.g.y2 - bbp.g.y2) - (bbp.g.y1 - bba.g.y1)) * (1 - scaley)
+                )
 
         gtr = trtf(finx, finy) @ sctf(scalex, scaley) @ (-trtf(refx, refy))
         # global transformation
         iscl = sctf(1 / scalex, 1 / scaley)  # inverse scale
         liscl = (
-            sctf(math.sqrt(scalex * scaley), math.sqrt(scalex * scaley)) @ iscl
+            sctf(math.sqrt(abs(scalex * scaley)), math.sqrt(abs(scalex * scaley))) @ iscl
         )  # aspect-scaled and inverse scaled
         trul = gtr.apply_to_point([bbp.g.x1, bbp.g.y1])  # transformed upper-left
         trbr = gtr.apply_to_point([bbp.g.x2, bbp.g.y2])  # transformed bottom-right
@@ -476,52 +488,45 @@ class ScalePlots(inkex.EffectExtension):
             dh.debug("Largest vertical line: " + lvel)
             dh.debug("Largest horizontal line: " + lhel)
 
-        # Make a list of elements to be transformed
-        sclels = []
-        for el in pels:
-            if el not in sclels:
-                sclels.append(el)
-
         # Apply transform and compute corrections (if needed)
-        for el in sclels:
-            dh.global_transform(el, gtr)
-            # apply the transform
+        for el in pels:
+            dh.global_transform(el, gtr)  # apply the transform
 
-            elid = el.get_id()
-            gbb = gbbs[elid]
-            fbb = fbbs2[elid]
+            fbb, gbb = fbbs2[el], gbbs2[el]
 
-            if el.tag in TEXTLIKE_TAGS + [GROUP_TAG]:
-                stype = "scale_free"
-            else:
-                stype = "normal"
-
-            mtype = el.get("inkscape-scientific-scaletype")
-            if mtype is not None:
-                stype = mtype
-
+            stype = el.get("inkscape-scientific-scaletype") or (
+                "scale_free" if el.tag in SCALEFREE_DFLTS else "normal"
+            )
             if hasattr(self.options, "hcall") and self.options.hcall:
-                if el.tag in TEXTLIKE_TAGS + [GROUP_TAG]:
+                if el.tag in SCALEFREE_DFLTS:
                     stype = "normal"
 
             vtickt = vtickb = htickl = htickr = False
             # el is a tick
-            if self.options.tickcorrect and (elid in vl or elid in hl):
-                isvert = elid in vl
-                ishorz = elid in hl
+            if self.options.tickcorrect and (el in vl or el in hl):
+                isvert = el in vl
+                ishorz = el in hl
                 if isvert and gbb[3] < self.options.tickthr * (
                     bbp.g.y2 - bbp.g.y1
                 ):  # vertical tick
-                    if gbb[1] + gbb[3] < bbp.g.y1 + self.options.tickthr * (bbp.g.y2 - bbp.g.y1):
+                    if gbb[1] + gbb[3] < bbp.g.y1 + self.options.tickthr * (
+                        bbp.g.y2 - bbp.g.y1
+                    ):
                         vtickt = True
-                    elif gbb[1] > bbp.g.y2 - self.options.tickthr * (bbp.g.y2 - bbp.g.y1):
+                    elif gbb[1] > bbp.g.y2 - self.options.tickthr * (
+                        bbp.g.y2 - bbp.g.y1
+                    ):
                         vtickb = True
                 if ishorz and gbb[2] < self.options.tickthr * (
                     bbp.g.x2 - bbp.g.x1
                 ):  # horizontal tick
-                    if gbb[0] + gbb[2] < bbp.g.x1 + self.options.tickthr * (bbp.g.x2 - bbp.g.x1):
+                    if gbb[0] + gbb[2] < bbp.g.x1 + self.options.tickthr * (
+                        bbp.g.x2 - bbp.g.x1
+                    ):
                         htickl = True
-                    elif gbb[0] > bbp.g.x2 - self.options.tickthr * (bbp.g.x2 - bbp.g.x1):
+                    elif gbb[0] > bbp.g.x2 - self.options.tickthr * (
+                        bbp.g.x2 - bbp.g.x1
+                    ):
                         htickr = True
 
             if any([vtickt, vtickb, htickl, htickr]):
@@ -531,30 +536,17 @@ class ScalePlots(inkex.EffectExtension):
                 cy = gbb_tr.yc
 
                 if vtickt:
-                    if cy > trul[1]:
-                        trl = trtf(cx, gbb_tr.y1)  # inner tick
-                    else:
-                        trl = trtf(cx, gbb_tr.y2)  # outer tick
+                    trl = trtf(cx, gbb_tr.y1 if cy > trul[1] else gbb_tr.y2)
                 elif vtickb:
-                    if cy < trbr[1]:
-                        trl = trtf(cx, gbb_tr.y2)  # inner tick
-                    else:
-                        trl = trtf(cx, gbb_tr.y1)  # outer tick
+                    trl = trtf(cx, gbb_tr.y2 if cy < trbr[1] else gbb_tr.y1)
                 elif htickl:
-                    if cx > trul[0]:
-                        trl = trtf(gbb_tr.x1, cy)  # inner tick
-                    else:
-                        trl = trtf(gbb_tr.x2, cy)  # outer tick
+                    trl = trtf(gbb_tr.x1 if cx > trul[0] else gbb_tr.x2, cy)
                 elif htickr:
-                    if cx < trbr[0]:
-                        trl = trtf(gbb_tr.x2, cy)  # inner tick
-                    else:
-                        trl = trtf(gbb_tr.x1, cy)  # outer tick
+                    trl = trtf(gbb_tr.x2 if cx < trbr[0] else gbb_tr.x1, cy)
+
                 tr1 = trl @ iscl @ (-trl)
                 dh.global_transform(el, tr1)
-            # elif isalwayscorr or isoutsideplot or issf:
             elif stype in ["scale_free", "aspect_locked"]:
-                # dh.idebug(el.get_id())
                 # Invert the transformation for text/groups, anything outside the plot, scale-free
                 cbc = el.get("inkscape-scientific-combined-by-color")
                 if cbc is None:
@@ -569,8 +561,7 @@ class ScalePlots(inkex.EffectExtension):
 
                     # For elements outside the plot area, adjust position to maintain
                     # the distance to the plot area
-                    dx = 0
-                    dy = 0
+                    dx, dy = 0, 0
                     if cx < trul[0]:
                         ox = gbb[0] + gbb[2] / 2 - bbp.g.x1
                         dx = ox - (cx - trul[0])
@@ -589,8 +580,7 @@ class ScalePlots(inkex.EffectExtension):
                 else:  # If previously combined, apply to subpaths instead
                     cbc = [int(v) for v in cbc.split()]
                     fbb_tr = bbox(fbb).transform(gtr).sbb
-                    irng = []
-                    trng = []
+                    irng, trng = [], []
                     for ii in range(len(cbc) - 1):
                         gbb_tr = geometric_bbox(
                             el, fbb_tr, irange=[cbc[ii], cbc[ii + 1]]
@@ -604,8 +594,7 @@ class ScalePlots(inkex.EffectExtension):
                             tr1 = trl @ iscl @ (-trl)
                         else:
                             tr1 = trl @ liscl @ (-trl)
-                        dx = 0
-                        dy = 0
+                        dx, dy = 0, 0
                         if cx < trul[0]:
                             ox = gbb[0] + gbb[2] / 2 - bbp.g.x1
                             dx = ox - (cx - trul[0])
