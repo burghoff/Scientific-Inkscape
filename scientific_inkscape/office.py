@@ -66,10 +66,28 @@ def safe_extract_zip(file, temp_dir=None, retries=5, delay=0.5):
                         'temp_extracted_pptx'
                     )
 
-                if os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
+                # Temporary staging directory
+                staging_dir = temp_dir + "_temp"
+                if os.path.exists(staging_dir):
+                    shutil.rmtree(staging_dir)
+                zip_read.extractall(staging_dir)
+                
+            os.makedirs(temp_dir, exist_ok=True)
 
-                zip_read.extractall(temp_dir)
+            # Move everything from staging_dir to temp_dir
+            # Do this in case the temp_dir already existed and had contents
+            # we don't want to remove
+            for name in os.listdir(staging_dir):
+                src = os.path.join(staging_dir, name)
+                dst = os.path.join(temp_dir, name)
+                if os.path.exists(dst):
+                    if os.path.isdir(dst) and not os.path.islink(dst):
+                        shutil.rmtree(dst)
+                    else:
+                        os.remove(dst)
+                shutil.move(src, dst)
+            shutil.rmtree(staging_dir)  
+                
             return temp_dir  # success
         except PermissionError:
             if attempt == retries - 1:
