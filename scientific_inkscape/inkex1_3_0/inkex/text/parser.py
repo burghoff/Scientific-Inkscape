@@ -4333,15 +4333,18 @@ class CharacterTable:
         self.root = els[0].croot if len(els) > 0 else None
         self.collect_characters()
 
-        # HASPANGO = False; os.environ["HASPANGO"]='False'
         PANGO_LOCK.acquire()
         hp = PangoRenderer().HASPANGO
         PANGO_LOCK.release()
+        # hp = False; import os; os.environ["HASPANGO"]='False'
         if hp:
-            # Prefer to measure with Pango if we have it (faster, more accurate)
+            # Prefer to measure with Pango if we have it (faster, most accurate)
             self.ctable = self.measure_characters()
         else:
             # Can also extract directly using fonttools, which is pure Python
+            # Currently is almost identical to Pango, although some rare 
+            # differential kerning differences persist, e.g. in between
+            # the characters 'b' and 'y' in the Noto Sans font
             self.ctable = self.extract_characters()
 
         self.mults = dict()
