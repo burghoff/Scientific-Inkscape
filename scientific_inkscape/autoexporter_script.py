@@ -88,6 +88,73 @@ def is_target_file(file_name):
         return False
     return flower.endswith(".svg")
 
+def get_expected_exports(src_path, watchdir, writedir):
+    """
+    Return a set of absolute paths that AutoExporter is expected to create
+    for the given source file, based on current input_options, watchdir,
+    and writedir.
+    """
+    src_abs = os.path.abspath(src_path)
+    watch_abs = os.path.abspath(watchdir)
+    writedir_abs = os.path.abspath(writedir)
+
+    try:
+        rel_in_tree = os.path.relpath(src_abs, start=watch_abs)
+        outside = rel_in_tree.startswith("..") or os.path.isabs(rel_in_tree)
+    except ValueError:
+        # Different drive or otherwise unrelated paths
+        outside = True
+        rel_in_tree = None
+
+    if outside:
+        # Matches FileCheckerThread.queue_thread: export alongside the file
+        outtemplate = src_abs
+    else:
+        rel_subdir = os.path.dirname(rel_in_tree)
+        base_name = os.path.basename(rel_in_tree)
+        outdir = autoexporter.joinmod(writedir_abs, rel_subdir) if rel_subdir else writedir_abs
+        outtemplate = autoexporter.joinmod(outdir, base_name)
+
+    outputs = set()
+    base, ext = os.path.splitext(outtemplate)
+    lower_ext = ext.lower()
+
+    # SVG sources: mirror Exporter.export_file naming logic
+    if lower_ext == ".svg":
+        formats = [
+            fmt
+            for fmt, use in zip(
+                ["pdf", "png", "emf", "eps", "psvg"],
+                [
+                    input_options.usepdf,
+                    input_options.usepng,
+                    input_options.useemf,
+                    input_options.useeps,
+                    input_options.usepsvg,
+                ],
+            )
+            if use
+        ]
+        for fmt in formats:
+            if fmt == "psvg":
+                # foo.svg -> foo_plain.svg
+                outputs.add(base + "_plain.svg")
+            else:
+                # foo.svg -> foo.pdf / foo.png / etc.
+                outputs.add(base + "." + fmt)
+
+    # DOCX / PPTX sources: mirror Exporter.finalize outputs :contentReference[oaicite:0]{index=0}
+    elif lower_ext in (".docx", ".pptx"):
+        fm = getattr(input_options, "finalizermode", 1)
+        if fm in (5, 6):
+            # Finalization to PDF (Word/LibreOffice)
+            outputs.add(base + ".pdf")
+        elif fm in (2, 3, 4):
+            # Finalized Office doc: "base finalized.ext"
+            outputs.add(f"{base} finalized{ext}")
+
+    return outputs
+
 import warnings
 from threading import Timer
 warnings.filterwarnings(
@@ -174,14 +241,10 @@ class Watcher(FileSystemEventHandler):
         self.createfcn = createfcn
         self.modfcn = modfcn
         self.deletefcn = deletefcn
-
         self.debounce_timers = {}
-        self.last_event = {}
         self.file_mod_times = {}
-
         self.observer = make_observer_auto(directory_to_watch)
         self.start()
-        self.tstart = time.time()
 
     def start(self):
         self.initialize_mod_times(self.directory_to_watch)
@@ -200,68 +263,81 @@ class Watcher(FileSystemEventHandler):
             return None
 
     def initialize_mod_times(self, directory):
-        for file in os.listdir(directory):
-            file_path = os.path.join(directory, file)
-            if os.path.isfile(file_path) and is_target_file(file_path):
-                mod_time = self.get_mod_time(file_path)
-                if mod_time:
-                    self.file_mod_times[file_path] = mod_time
+        for root, dirs, files in os.walk(directory):
+            for file in files:
+                file_path = os.path.join(root, file)
+                if os.path.isfile(file_path) and is_target_file(file_path):
+                    mod_time = self.get_mod_time(file_path)
+                    if mod_time is not None:
+                        self.file_mod_times[file_path] = mod_time
 
-    def debounce(self, event):
-        if event.event_type == "created":
+    def debounce(self, file_path):
+        # mprint('Debounce '+file_path)
+        old_mod_time = self.file_mod_times.get(file_path)
+        new_mod_time = self.get_mod_time(file_path)
+
+        # Deleted: was tracked before, now missing
+        if new_mod_time is None:
+            if old_mod_time is not None:
+                if self.deletefcn:
+                    self.deletefcn(file_path)
+                # Remove from tracking
+                del self.file_mod_times[file_path]
+            return
+
+        # From here, new_mod_time is numeric
+        if old_mod_time is None:
+            # Created: not seen before, now exists
             if self.createfcn:
-                self.createfcn(event.src_path)
-        elif event.event_type == "modified":
+                self.createfcn(file_path)
+            self.file_mod_times[file_path] = new_mod_time
+        elif new_mod_time != old_mod_time:
+            # Modified: existed and mtime changed
             if self.modfcn:
-                # mprint('Go '+str(time.time()-self.tstart))
-                self.modfcn(event.src_path)
-        elif event.event_type == "deleted":
-            if self.deletefcn:
-                self.deletefcn(event.src_path)
+                self.modfcn(file_path)
+            self.file_mod_times[file_path] = new_mod_time
+        else:
+            # No change in mtime, do nothing
+            return
 
     def handle_event(self, event):
         if event.is_directory:
             return
-        if is_target_file(event.src_path):
-            if event.src_path in self.debounce_timers:
-                self.debounce_timers[event.src_path].cancel()
-                # mprint('Cancel')
-            self.last_event[event.src_path] = event
-            self.debounce_timers[event.src_path] = Timer(1.0, self.debounce, [event])
-            self.debounce_timers[event.src_path].start()
+        file_path = event.src_path
+        if not is_target_file(file_path):
+            return
+
+        if file_path in self.debounce_timers:
+            self.debounce_timers[file_path].cancel()
+        self.debounce_timers[file_path] = Timer(1.0, self.debounce, [file_path])
+        self.debounce_timers[file_path].start()
 
     def on_created(self, event):
-        # mprint('Created '+event.src_path)
+        # mprint('Created ' + event.src_path)
         self.handle_event(event)
 
     def on_modified(self, event):
-        # mprint('Modified '+event.src_path)
-        if event.is_directory:
-            return
-        if is_target_file(event.src_path):
-            new_mod_time = self.get_mod_time(event.src_path)
-            old_mod_time = self.file_mod_times.get(event.src_path)
-            if new_mod_time and new_mod_time != old_mod_time:
-                self.file_mod_times[event.src_path] = new_mod_time
-                self.handle_event(event)
+        # mprint('Modified ' + event.src_path)
+        self.handle_event(event)
 
     def on_deleted(self, event):
-        # mprint('Deleted '+event.src_path)
-        if event.src_path in self.file_mod_times:
-            del self.file_mod_times[event.src_path]
+        # mprint('Deleted ' + event.src_path)
         self.handle_event(event)
-        
+
     def on_moved(self, event):
-        # mprint('Moved '+event.src_path)
-        if event.is_directory:
-            return
-        # Treat destination as a ‘modified’ event
-        class _E:
-            def __init__(self, p):
+        # mprint('Moved ' + event.src_path + ' to ' + event.dest_path)
+        
+        class _E: # Local event wrapper
+            def __init__(self, p, etype):
                 self.is_directory = False
                 self.src_path = p
-                self.event_type = "modified"
-        self.handle_event(_E(event.dest_path))
+                self.event_type = etype  # kept for debugging, not used in debounce
+
+        # General move: logical delete of old path + create of new path,
+        # but both go through the same debounce logic
+        self.handle_event(_E(event.src_path,  "deleted"))
+        self.handle_event(_E(event.dest_path, "created"))
+
 
 
 # Threading class
@@ -309,12 +385,59 @@ class FileCheckerThread(threading.Thread):
             fthr.outtemplate = autoexporter.joinmod(outdir, base_name)
         
         self.thread_queue.append(fthr)
+        
+    def delete_exports_for(self, f):
+        """
+        Delete any exports that correspond to the given source file path,
+        including per-page variants with the AutoExporter page suffix.
+        """
+        for out in get_expected_exports(f, self.watchdir, self.writedir):
+            base, ext = os.path.splitext(out)
+            dir_name = os.path.dirname(out)
+            base_name = os.path.basename(base)
+
+            # Also remove any page-suffixed outputs in the same directory
+            candidates = [out]
+            if dir_name and os.path.isdir(dir_name):
+                try:
+                    for fname in os.listdir(dir_name):
+                        if fname == os.path.basename(out):
+                            continue
+
+                        # Plain SVG case: foo_plain.svg → foo_page_1_plain.svg
+                        if base_name.endswith("_plain") and ext.lower() == ".svg":
+                            core = base_name[:-6]  # strip "_plain"
+                            if (
+                                fname.startswith(core + "_page_")
+                                and fname.endswith("_plain" + ext)
+                            ):
+                                candidates.append(os.path.join(dir_name, fname))
+
+                        # General case: foo.ext → foo_page_1.ext
+                        else:
+                            if (
+                                fname.startswith(base_name + "_page_")
+                                and fname.endswith(ext)
+                            ):
+                                candidates.append(os.path.join(dir_name, fname))
+                except (PermissionError, FileNotFoundError):
+                    # Directory may have disappeared; ignore
+                    pass
+
+            # Delete all candidates, ignoring failures
+            for path in set(candidates):
+                try:
+                    if os.path.exists(path):
+                        os.remove(path)
+                except (PermissionError, FileNotFoundError):
+                    pass
 
     def start_watcher(self):
         if self.watcher is not None:  # Stop existing watcher
             self.watcher.stop()
         mfcn = lambda x: self.queue_thread(os.path.abspath(x))
-        self.watcher = Watcher(self.watchdir, createfcn=mfcn, modfcn=mfcn)
+        dfcn = lambda x: self.delete_exports_for(os.path.abspath(x))
+        self.watcher = Watcher(self.watchdir, createfcn=mfcn, modfcn=mfcn, deletefcn=dfcn)
 
     def run(self):
         self.start_watcher()
