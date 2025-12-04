@@ -381,7 +381,7 @@
          ascent="100.53711"
          descent="21.972656"
          units-per-em="100"
-         style="font-style:normal; font-family:sans-serif; font-weight:normal;"
+         style="font-style:normal; font-family:'DejaVu Sans'; font-weight:normal;"
          id="font-face30096" /><missing-glyph
          horiz-adv-x="75.0"
          d="M12.5 0 L12.5 62.5 L62.5 62.5 L62.5 0 L12.5 0 ZM14.0625 1.5625 L60.9375 1.5625 L60.9375 60.9375 L14.0625 60.9375 L14.0625 1.5625 Z"
@@ -957,7 +957,7 @@
    xml:space="preserve"
    x="392.20157"
    transform="translate(-297.82854,-661.53057)">Ptychoscopy</text><text
-   font-family="Tahoma, Tahoma_MSFontService, sans-serif"
+   font-family="Tahoma"
    font-weight="400"
    font-size="3.73198px"
    id="text1326-3"
@@ -2413,7 +2413,7 @@
      x="-114.01244"
      y="671.81757"
      id="tspan245829">Letter-spacing</tspan></text><text
-   font-family="Tahoma, Tahoma_MSFontService, sans-serif"
+   font-family="Tahoma"
    font-weight="400"
    font-size="24px"
    transform="matrix(0.117306,0,0,0.117306,136.08088,7.8876643)"
@@ -2437,7 +2437,7 @@
    x="25.4916"
    y="117"
    id="tspan1292">0</tspan><tspan
-   font-family="'Cambria Math', 'Cambria Math_MSFontService', sans-serif"
+   font-family="Cambria Math"
    x="39.6516"
    y="108"
    id="tspan1294" /><tspan
@@ -2734,7 +2734,7 @@
        style="font-style:normal;font-variant:normal;font-weight:400;font-size:8.8125px;font-family:Tahoma;fill:#262626;stroke-width:1.28939"
        id="tspan4113-9">-6</tspan></tspan></text><text
    transform="matrix(0.35277777,0,0,0.35277777,-74.231141,-2.5546321)"
-   style="font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6px;font-family:'ONDED C +Helvetica Neue LT Std';-inkscape-font-specification:HelveticaNeueLTStd-Roman4;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-linecap:butt;stroke-linejoin:round"
+   style="font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6px;font-family:'DejaVu Sans';-inkscape-font-specification:HelveticaNeueLTStd-Roman4;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-linecap:butt;stroke-linejoin:round"
    id="text4017"><tspan
      sodipodi:role="line"
      id="tspan3995"
@@ -2869,7 +2869,7 @@
      y="0"
      id="tspan1264">m</tspan></text><text
    xml:space="preserve"
-   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:sans-serif;font-variant-ligatures:normal;letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
+   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:'DejaVu Sans';font-variant-ligatures:normal;letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
    x="171.42773"
    y="729.5694"
    id="text976"
@@ -2887,7 +2887,7 @@
        style="font-size:40px;line-height:1.25"
        id="tspan972">ω</tspan></tspan></text><text
    xml:space="preserve"
-   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
+   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:'DejaVu Sans';letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
    x="171.42773"
    y="729.5694"
    id="text982"
@@ -3026,12 +3026,12 @@
    id="text383"
    xml:space="preserve"
    transform="matrix(0.31419358,0,0,0.31419358,54.911754,37.090085)"><tspan
-     style="font-variant:normal;font-weight:normal;font-stretch:normal;font-size:7px;font-family:'Graphik Nature l Regular';writing-mode:lr-tb;fill:#000000 icc-color(sRGB-IEC61966-2, 0.1, 0, 0, 0);fill-opacity:1;fill-rule:nonzero;stroke:none"
+     style="font-variant:normal;font-weight:normal;font-stretch:normal;font-size:7px;font-family:'DejaVu Sans';writing-mode:lr-tb;fill:#000000 icc-color(sRGB-IEC61966-2, 0.1, 0, 0, 0);fill-opacity:1;fill-rule:nonzero;stroke:none"
      x="-146.832 -141.246 -137.7012 -133.81619 -131.27519 -129.3152 -125.6262 -121.3282 -119.8372 -117.5734 -113.8844 -109.9854 -107.5914 -103.4544 0 4.3260002 6.0011001 10.0079"
      y="13.727"
      sodipodi:role="line"
      id="tspan385">Overlap factor0.97</tspan></text><g
-   style="font-style:normal;font-weight:normal;font-size:12px;font-family:Dialog;color-interpolation:auto;fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:1;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:10;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;color-rendering:auto;image-rendering:auto;shape-rendering:auto;text-rendering:auto"
+   style="font-style:normal;font-weight:normal;font-size:12px;font-family:'DejaVu Sans';color-interpolation:auto;fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:1;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:10;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;color-rendering:auto;image-rendering:auto;shape-rendering:auto;text-rendering:auto"
    id="g40703"
    transform="matrix(0.11105694,0,0,0.11105694,37.417889,-3.8335851)"><g
      id="g31054"><defs
@@ -3328,7 +3328,7 @@
            ascent="100.53711"
            descent="21.972656"
            units-per-em="100"
-           style="font-style:normal; font-family:sans-serif; font-weight:normal;"
+           style="font-style:normal; font-family:'DejaVu Sans'; font-weight:normal;"
            id="font-face40671" /><missing-glyph
            horiz-adv-x="75.0"
            d="M12.5 0 L12.5 62.5 L62.5 62.5 L62.5 0 L12.5 0 ZM14.0625 1.5625 L60.9375 1.5625 L60.9375 60.9375 L14.0625 60.9375 L14.0625 1.5625 Z"
@@ -3424,12 +3424,12 @@
      x="286.12466"
      y="35.982342"
      style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:104.721px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal">Nested super/sub:</tspan></text><text
-   font-family="Tahoma, Tahoma_MSFontService, sans-serif"
+   font-family="Tahoma"
    font-weight="400"
    font-size="24px"
    transform="matrix(0.117306,0,0,0.117306,138.77681,77.235459)"
    id="text1308-7"
-   style="font-style:normal;font-weight:400;font-stretch:normal;font-family:Tahoma, Tahoma_MSFontService, sans-serif;text-align:center;text-anchor:middle;stroke-linecap:butt;stroke-linejoin:round"
+   style="font-style:normal;font-weight:400;font-stretch:normal;font-family:Tahoma;text-align:center;text-anchor:middle;stroke-linecap:butt;stroke-linejoin:round"
    x="6.5507812"
    y="0"
    xml:space="preserve"
@@ -3488,7 +3488,7 @@
      y="6.0553055"
      dx="0 0 0 0 0 -32.156651 0 0 0 0 -32.1525 0 0 0 0 -32.156651 0 0 0 0 -32.152615 0 0 0 0 -32.156651">2,0001,8001,6001,4001,2001,000</tspan></text><text
    xml:space="preserve"
-   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:sans-serif;font-variant-ligatures:normal;letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
+   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:'DejaVu Sans';font-variant-ligatures:normal;letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
    x="171.42773"
    y="729.5694"
    id="text19"
@@ -3503,7 +3503,7 @@
        style="font-weight:bold;font-size:40px;line-height:1.25"
        id="tspan17">ħω</tspan></tspan></text><text
    xml:space="preserve"
-   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
+   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:'DejaVu Sans';letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
    x="171.42773"
    y="729.5694"
    id="text21"
@@ -3528,7 +3528,7 @@
      y="671.81757"
      id="tspan15-8">Sub/super merging:</tspan></text><text
    xml:space="preserve"
-   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:sans-serif;font-variant-ligatures:normal;letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
+   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:'DejaVu Sans';font-variant-ligatures:normal;letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
    x="171.42773"
    y="729.5694"
    id="text24"
@@ -3546,7 +3546,7 @@
        style="font-size:40px;line-height:1.25"
        id="tspan23">ω</tspan></tspan></text><text
    xml:space="preserve"
-   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
+   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:'DejaVu Sans';letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
    x="171.42773"
    y="729.5694"
    id="text26"
@@ -3560,7 +3560,7 @@
        style="font-size:40px;line-height:1.25"
        id="tspan25">LWIR</tspan></tspan></text><text
    xml:space="preserve"
-   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:sans-serif;font-variant-ligatures:normal;letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
+   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:'DejaVu Sans';font-variant-ligatures:normal;letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
    x="171.42773"
    y="729.5694"
    id="text28"
@@ -3575,7 +3575,7 @@
        style="font-weight:bold;font-size:40px;line-height:1.25"
        id="tspan27">ħω</tspan></tspan></text><text
    xml:space="preserve"
-   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
+   style="font-style:normal;font-weight:normal;line-height:0.01%;font-family:'DejaVu Sans';letter-spacing:0px;word-spacing:0px;fill:#f3439f;fill-opacity:1;stroke:none"
    x="171.42773"
    y="729.5694"
    id="text31"
@@ -3697,7 +3697,7 @@
    y="178.61197"
    style="font-size:4.36885px;stroke-width:0.364071"><tspan
      id="tspan2327"
-     style="font-variant:normal;font-weight:normal;font-size:2.61119px;font-family:Metropolis-Regular;writing-mode:lr-tb;fill:#262626;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.364071"
+     style="font-variant:normal;font-weight:normal;font-size:2.61119px;font-family:'DejaVu Sans';writing-mode:lr-tb;fill:#262626;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.364071"
      x="280.00119"
      dx="0 -36.222397 5.1905193 5.9589915 5.4516377 5.3868804 -42.711456 -2.407515 6.9666486 -1.7910137 -21.00779 -2.4962955 6.820683 -2.3999422 -14.806219"
      y="178.61197">5012342-1-4-3--5</tspan></text><text
@@ -3708,7 +3708,7 @@
    y="183.08183"
    style="font-size:4.83468px;stroke-width:0.40289"><tspan
      id="tspan1680"
-     style="font-variant:normal;font-weight:normal;font-size:2.71121px;font-family:Metropolis-Regular;writing-mode:lr-tb;fill:#262626;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.40289"
+     style="font-variant:normal;font-weight:normal;font-size:2.71121px;font-family:'DejaVu Sans';writing-mode:lr-tb;fill:#262626;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.40289"
      x="260.2077"
      dx="0 -2.3424819 -2.4357471 9.3520336 -3.1317139 -2.3422108 -2.4756019 9.3645048 -2.4430673 -2.4756019 -38.179741 -3.1314428 -1.710771 -2.5558536 9.3853807 -2.3503439 8.7815962 -3.1317141 -2.3503444 -2.4756019 -9.1608934 -32.099049 6.5256014 0 -4.2454772 -2.4552681 9.4393339 -1.710771 -2.5959797"
      y="183.08183">3.053.04.051.02.52.00005.01.0</tspan></text><text
@@ -3723,7 +3723,7 @@
      y="179.74702"
      id="tspan38">Strangely ordered </tspan></text><text
    xml:space="preserve"
-   style="font-size:20.1999px;line-height:1.25;font-family:Dialog;-inkscape-font-specification:'Dialog, Normal';letter-spacing:0px;word-spacing:0px;stroke-width:5.90869e+07"
+   style="font-size:20.1999px;line-height:1.25;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';letter-spacing:0px;word-spacing:0px;stroke-width:5.90869e+07"
    x="182.50284"
    y="167.36308"
    id="text39"
@@ -3737,14 +3737,14 @@
    xml:space="preserve"
    transform="matrix(0.39460253,0,0,0.39460253,143.07339,102.52927)"><tspan
      id="tspan100"
-     style="font-variant:normal;font-weight:500;font-size:7.99997px;font-family:'Whitney Book';writing-mode:lr-tb;fill:#262626;fill-opacity:1;fill-rule:nonzero;stroke:none"
+     style="font-variant:normal;font-weight:500;font-size:7.99997px;font-family:'Whitney';writing-mode:lr-tb;fill:#262626;fill-opacity:1;fill-rule:nonzero;stroke:none"
      x="0"
      dx="0 -0.94399649 -0.14399946"
      y="0">Transmission </tspan></text><text
    class="cls-16"
    transform="matrix(0.36577291,0,0,0.36577291,12.694917,66.791416)"
    id="text67"
-   style="font-size:9px;font-family:Avenir-Book, Avenir"><tspan
+   style="font-size:9px;font-family:'DejaVu Sans'"><tspan
      class="cls-18"
      id="tspan66">V</tspan><tspan
      x="5"
@@ -3754,7 +3754,7 @@
    transform="matrix(0.11178016,0,0,0.11178016,4.4359959,-1.2849446)"
    x="20"
    y="40"
-   font-family="DejaVu Sans, Arial, sans-serif"
+   font-family="DejaVu Sans"
    font-size="18"
    xml:space="preserve"
    fill="#111">
@@ -3808,7 +3808,7 @@
      y="167.60077"
      dx="0 0 0 0 0 -14.413064 0 0 0 0 -14.411203 0 0 0 0 -14.413064 0 0 0 0 -14.411255 0 0 0 0 -14.413064">2,0001,8001,6001,4001,2001,000</tspan></text><text
    xml:space="preserve"
-   style="font-size:20.1999px;line-height:1.25;font-family:Dialog;-inkscape-font-specification:'Dialog, Normal';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start"
+   style="font-size:20.1999px;line-height:1.25;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start"
    x="149.13263"
    y="-33.690998"
    id="text41-4"
@@ -3820,7 +3820,7 @@
      x="149.13263"
      y="-33.690998">textLength compress</tspan></text><text
    xml:space="preserve"
-   style="font-size:20.1999px;line-height:1.25;font-family:Dialog;-inkscape-font-specification:'Dialog, Normal';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start"
+   style="font-size:20.1999px;line-height:1.25;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start"
    x="49.862499"
    y="-33.690998"
    id="text42"
@@ -3832,7 +3832,7 @@
      x="49.862499"
      y="-33.690998">textLength stretch</tspan></text><text
    xml:space="preserve"
-   style="font-size:20.1999px;line-height:1.25;font-family:Dialog;-inkscape-font-specification:'Dialog, Normal';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start"
+   style="font-size:20.1999px;line-height:1.25;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start"
    x="148.67912"
    y="-33.690998"
    id="text43"
@@ -3844,7 +3844,7 @@
      x="148.67912"
      y="-33.690998">textLength compress</tspan></text><text
    xml:space="preserve"
-   style="font-size:20.1999px;line-height:1.25;font-family:Dialog;-inkscape-font-specification:'Dialog, Normal';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start"
+   style="font-size:20.1999px;line-height:1.25;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start"
    x="50.631168"
    y="-33.690998"
    id="text45"
@@ -3858,7 +3858,7 @@
      type="text/css"
      id="style4742">
 	.st0{fill:#010202;}
-	.st1{font-family:'Metropolis-Regular';}
+	.st1{font-family:'DejaVu Sans';}
 	.st2{font-size:7.7351px;}
 	.st3{fill:#984F9F;}
 	.st4{fill:#4FAF49;}
@@ -3882,7 +3882,7 @@
 	.st22{font-size:7.0545px;}
 	.st23{font-size:7.0211px;}
 	.st24{letter-spacing:2;}
-	.st25{font-family:'Metropolis-Bold';}
+	.st25{font-family:'DejaVu Sans';}
 	.st26{font-size:9.6843px;}
 	.st27{font-size:7.0403px;}
 	.st28{fill:#E21E26;}
@@ -3898,7 +3898,7 @@
      type="text/css"
      id="style4742-7">
 	.st0{fill:#010202;}
-	.st1{font-family:'Metropolis-Regular';}
+	.st1{font-family:'DejaVu Sans';}
 	.st2{font-size:7.7351px;}
 	.st3{fill:#984F9F;}
 	.st4{fill:#4FAF49;}
@@ -3922,7 +3922,7 @@
 	.st22{font-size:7.0545px;}
 	.st23{font-size:7.0211px;}
 	.st24{letter-spacing:2;}
-	.st25{font-family:'Metropolis-Bold';}
+	.st25{font-family:'DejaVu Sans';}
 	.st26{font-size:9.6843px;}
 	.st27{font-size:7.0403px;}
 	.st28{fill:#E21E26;}
