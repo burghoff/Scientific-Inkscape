@@ -1,11 +1,9 @@
 # coding=utf-8
 
-# Certain tests require particular fonts be installed to pass, including:
-# DejaVu Sans, Avenir, Avenir Next, Helvetica, Roboto Light,
-# Calibri, Whitney, Arial, Cambria, Cambria Math, Tahoma, Verdana
-
-# Likely also needs to be on Windows to pass, as Windows renders invalid fonts
-# as Verdana.
+# Font-related tests require the following fonts be installed to pass:
+# DejaVu Sans, Roboto, Roboto Light,
+# Franklin Gothic Book, Cambria, Cambria Math, Calibri, Arial, Verdana, Tahoma,
+# Avenir, Avenir Next, Helvetica
 
 STORE_REFS = False
 OPEN_COMPARISON = True
