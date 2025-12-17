@@ -41,7 +41,7 @@ from inkex.units import CONVERSIONS, BOTH_MATCH
 # any styles/transforms/document scaling
 flookup = {"small": "10px", "medium": "12px", "large": "14px"}
 
-
+RELATIVE_UNIT_RE = re.compile(r'(?:%|em)$')
 def composed_width(elem, comp):
     """
     Gets the transformed size of a style component and the scale factor representing
@@ -64,14 +64,14 @@ def composed_width(elem, comp):
     if satt is None:
         satt = default_style_atts[comp]
 
-    if "%" in satt:  # relative width, get ancestor width
+    if RELATIVE_UNIT_RE.search(satt):  # relative width, get ancestor width
         cel = elem
-        while satt != cel.cstyle.get(comp) and satt != cel.get(comp):
+        while cel is not None and satt != cel.ccascaded_style.get(comp) and satt != cel.get(comp):
             cel = cel.getparent()
             # figure out ancestor where % is coming from
-
-        satt = float(satt.strip("%")) / 100
-        tsz, scf, utsz = composed_width(cel.getparent(), comp)
+        par = cel.getparent() if cel is not None else elem.croot
+        satt = float(satt.strip("%")) / 100 if "%" in satt else float(satt.strip("em"))
+        tsz, scf, utsz = composed_width(par, comp)
 
         # Since relative widths have no untransformed width, we assign
         # it to be a scaled version of the ancestor's ut width
@@ -188,19 +188,20 @@ def isrectangle(elem, includingtransform=True):
             determination.
 
     Returns:
-        tuple: A tuple containing a boolean indicating if the element is a rectangle and
-        the path if it is.
+        tuple: A tuple containing a boolean indicating if the element is a rectangle
     """
 
     ret = True
     if not includingtransform and elem.tag == rect_tag:
-        pth = elem.cpath
+        pass
     elif elem.tag in rectlike_tags:
         if elem.tag == pel_tag and not (1 <= cnt_pth_cmds(elem.get("d", "")) <= 6):
         # Allow up to 6 (initial M + 4 lines + redundant close path)
             return False
-        pth = elem.cpath
-        pts = list(pth.end_points)
+        if len(elem.cpath)<4:
+            return False
+        pts = list(elem.cpath.end_points)
+
         if includingtransform:
             tmat = elem.ctransform.matrix
             x, y = list(
@@ -219,13 +220,12 @@ def isrectangle(elem, includingtransform=True):
 
         maxsz = max(max(x) - min(x), max(y) - min(y))
         tol = 1e-3 * maxsz
-        if len(pts)<4 or len(uniquetol(x, tol)) != 2 or len(uniquetol(y, tol)) != 2:
-            ret = False
+        if len(uniquetol(x, tol)) != 2 or len(uniquetol(y, tol)) != 2:
+            return False
     elif elem.tag == usetag:
         useel = elem.get_link("xlink:href")
         if useel is not None:
-            return isrectangle(useel)
-        ret = True
+            ret = isrectangle(useel)
     else:
         ret = False
 
@@ -506,7 +506,8 @@ comment_tag = lxml.etree.Comment("").tag
 
 def list2(elem):
     """Returns non-comment children of an element."""
-    return [k for k in list(elem) if not (k.tag == comment_tag)]
+    # return [k for k in list(elem) if not (k.tag == comment_tag)]
+    return [k for k in elem.iterchildren('*')]
 
 
 conv2 = {k: v / CONVERSIONS["px"] for k, v in CONVERSIONS.items()}

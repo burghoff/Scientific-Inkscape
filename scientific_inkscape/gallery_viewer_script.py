@@ -618,30 +618,10 @@ class Processor(threading.Thread):
                                     ", hash: "
                                 )
                                 
-                            # Gather directory names we consider identical
-                            # from the config file
-                            idir_groups = dh.si_config.identical_dirs_gv
-                            ipaths = []
-                            of_abs = os.path.abspath(orig_file)
-                            for idirg in idir_groups:
-                                for idir in idirg:
-                                    id_abs = os.path.abspath(idir)
-                                    if id_abs in of_abs:
-                                        for idir2 in idirg:
-                                            if not idir==idir2:
-                                                ipaths.append(of_abs.replace(id_abs,os.path.abspath(idir2)))
-                                                
-                            subdirs = dh.si_config.subdirs_gv
-                            for ipth in ipaths[:]:
-                                for sd in subdirs:
-                                    dn = os.path.dirname(ipth)
-                                    bn = os.path.basename(ipth)
-                                    ipaths.append(os.path.join(dn,sd,bn))
-                                                
-                            ipaths = [of_abs] + ipaths
-                                
-                            if any(os.path.exists(p) for p in ipaths):
-                                ev = [p for p in ipaths if os.path.exists(p)][0]
+                            found = dh.si_config.find_missing_links(orig_file)
+                            if found:
+                                ev = found
+                            
                             # else:
                             #     # Check subdirectories of the file's location in case it was moved
 
@@ -750,7 +730,11 @@ class Processor(threading.Thread):
         
         for ii, f in enumerate(self.files):
             if f.islinked and f.thumbnail.endswith(".svg") and not os.path.exists(self.files[ii].name):
-                f.thumbnail = os.path.join(dh.si_dir,'pngs','missing_svg.svg')
+                mfile = dh.si_config.find_missing_links(f.thumbnail)
+                if mfile:
+                    f.thumbnail = mfile
+                else:
+                    f.thumbnail = os.path.join(dh.si_dir,'pngs','missing_svg.svg')
                 
         self.convert_emfs() # start ConversionThreads
         self.run_on_fof_done = True

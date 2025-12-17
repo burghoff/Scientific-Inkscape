@@ -47,11 +47,13 @@ SUBSUPER_THR = 0.99
 SUBSUPER_YTHR = 1 / 3
 # superscripts must be at least 1/3 of the way above the baseline to merge
 # (1/3 below cap for sub)
+FONTSIZE_THR = 0.01
+# how close font sizes need to be to merge
 
 import inkex
 import inkex.text.parser as tp
 
-import os, sys, re
+import os, sys, re, math
 
 sys.path.append(
     os.path.dirname(os.path.realpath(sys.argv[0]))
@@ -69,7 +71,7 @@ def remove_kerning(
     debugparser=False,
 ):
     tels = [el for el in els if isinstance(el, (inkex.TextElement, inkex.FlowRoot))]
-    if len(tels) > 0:
+    if tels:
         tels[0].croot.make_char_table(tels)
     if DEBUG_PARSER or debugparser:
         for el in tels:
@@ -78,6 +80,10 @@ def remove_kerning(
         # Do merges first (deciding based on original position)
         tels = [el for el in els if isinstance(el, (inkex.TextElement,))]
         ptl = tp.ParsedTextList(tels)
+        if removemanual:
+            for pt in ptl:
+                pt.remove_textlength()
+                # Do before parsed points assigned, since transform changes
         ptl.precalcs()
         ptl.make_next_chain()
         if removemanual:
@@ -87,8 +93,8 @@ def remove_kerning(
             tels = Remove_Manual_Kerning(tels, mergesupersub)
         if mergenearby or mergesupersub:
             tels = External_Merges(tels, mergenearby, mergesupersub)
-        # # Then do splits (deciding based on current position, not original position,
-        # # since merges intentionally change position)
+        # Then do splits (deciding based on current position, not original position,
+        # since merges intentionally change position)
         if splitdistant:
             tels = Split_Distant_Chunks(tels)
         if splitdistant:
@@ -100,10 +106,22 @@ def remove_kerning(
         tels, removedspc = Remove_Trailing_Leading_Spaces(tels)
         if removemanual or mergenearby or mergesupersub or removedspc:
             tels = Fix_Merge_Positions(tels)
-        tels = Make_All_Editable(tels)
-        tels = Final_Cleanup(tels)
+            
+        # import time
+        # tic = time.time()
+        # tels = Make_All_Editable(tels)
+        # tels = Final_Cleanup(tels)
+        tels = make_clean_textelements(tels)
+        # dh.idebug(time.time()-tic)
+        
+        # for el in tels:
+        #     el.parsed_text.make_highlights("charink")
     return dh.unique(els + tels)
 
+def make_clean_textelements(els):
+    tels = [el.parsed_text.make_clean_textelement() for el in els]
+    return [el for el in tels if el is not None]
+    
 
 def Final_Cleanup(els):
     for el in els:
@@ -113,9 +131,8 @@ def Final_Cleanup(els):
 
 def Fix_Merge_Positions(els):
     for el in els:
-        for line in el.parsed_text.lns:
-            for w in line.chks:
-                w.fix_merged_position()
+        for w in el.parsed_text.chks:
+            w.fix_merged_position()
     return els
 
 
@@ -126,14 +143,14 @@ def Remove_Trailing_Leading_Spaces(els):
             el.parsed_text.isflow
         ):  # skip Inkscape-generated text
             for line in el.parsed_text.lns:
-                mtxt = line.txt()
+                mtxt = line.txt
                 ii = len(mtxt) - 1
                 while ii >= 0 and mtxt[ii] == " ":
                     line.chrs[ii].delc()
                     ii -= 1
                     removed = True
 
-                mtxt = line.txt()
+                mtxt = line.txt
                 ii = 0
                 while ii < len(mtxt) and mtxt[ii] == " ":
                     line.chrs[0].delc()
@@ -173,9 +190,14 @@ def Split_Lines(els, ignoreinkscape=True):
             and (not (ptxt.ismlinkscape) or not (ignoreinkscape))
             and not (ptxt.isflow)
         ):
+            # for il in reversed(range(1, len(ptxt.lns))):
+            #     newtxt = ptxt.split_off_characters([ptxt.lns[il].chrs])[0]
+            #     els.append(newtxt)
+            chr_lists = []
             for il in reversed(range(1, len(ptxt.lns))):
-                newtxt = ptxt.split_off_characters(ptxt.lns[il].chrs)
-                els.append(newtxt)
+                chr_lists.append(ptxt.lns[il].chrs)
+            newtxts = ptxt.split_off_characters(chr_lists)
+            els.extend(newtxts)
     return els
 
 
@@ -207,16 +229,27 @@ def Split_Distant_Chunks(els):
                 line.splits = splits
                 line.sws = sws
 
-                if len(splits) > 0:
+                if splits:
+                    # for ii in reversed(range(len(splits))):
+                    #     sstart = splits[ii]
+                    #     if ii != len(splits) - 1:
+                    #         sstop = splits[ii + 1]
+                    #     else:
+                    #         sstop = len(line.chks)
+
+                    #     newtxt = ptxt.split_off_chunks(sws[sstart:sstop])
+                    #     els.append(newtxt)
+                    
+                    chr_lists = []
                     for ii in reversed(range(len(splits))):
                         sstart = splits[ii]
                         if ii != len(splits) - 1:
                             sstop = splits[ii + 1]
                         else:
                             sstop = len(line.chks)
-
-                        newtxt = ptxt.split_off_chunks(sws[sstart:sstop])
-                        els.append(newtxt)
+                        chr_lists.append([c for w in sws[sstart:sstop] for c in w.chrs])   
+                    newtxts = ptxt.split_off_characters(chr_lists)
+                    els.extend(newtxts)
     return els
 
 
@@ -224,59 +257,61 @@ def Split_Distant_Chunks(els):
 def Split_Distant_Intrachunk(els):
     for ptxt in [el.parsed_text for el in els]:
         if ptxt.lns is not None and not (ptxt.ismlinkscape) and not (ptxt.isflow):
-            for line in ptxt.lns:
-                for w in line.chks:
-                    if len(w.chrs) > 0:
-                        chrs = sorted(w.chrs, key=lambda chr: chr.pts_ut[0][0])
-                        lastnspc = None
-                        splitiis = []
-                        prevsplit = 0
-                        if chrs[0].c not in [" ", "\u00a0"]:
-                            lastnspc = chrs[0]
-                        for ii in range(1, len(chrs)):
-                            if lastnspc is not None:
-                                c = lastnspc
-                                c2 = chrs[ii]
+            for w in ptxt.chks:
+                if w.chrs:
+                    chrs = sorted(w.chrs, key=lambda c: c.chk.charpos[0][c.windex][0])
+                    # chrs = sorted(w.chrs, key=lambda chr: chr.pts_ut[0][0])
+                    lastnspc = None
+                    splitiis = []
+                    prevsplit = 0
+                    if chrs[0].c not in [" ", "\u00a0"]:
+                        lastnspc = chrs[0]
+                    for ii in range(1, len(chrs)):
+                        if lastnspc is not None:
+                            c = lastnspc
+                            c2 = chrs[ii]
 
-                                bl2 = c2.pts_ut[0]
-                                br1 = c.pts_ut[3]
+                            bl2 = c2.pts_ut[0]
+                            br1 = c.pts_ut[3]
 
-                                dx = w.spw * (NUM_SPACES)
-                                xtol = XTOLSPLIT * w.spw
+                            dx = w.spw * (NUM_SPACES)
+                            xtol = XTOLSPLIT * w.spw
 
-                                # If this character is splitting two numbers,
-                                # should always split in case they are ticks
-                                import re
+                            # If this character is splitting two numbers,
+                            # should always split in case they are ticks
+                            import re
 
-                                remainingnumeric = False
-                                numbersplits = [" ", "-", "−"]
-                                # chars that may separate numbers
-                                splrest = re.split("|".join(numbersplits), w.txt[ii:])
-                                splrest = [v for v in splrest if v != ""]
-                                if len(splrest) > 0:
-                                    remainingnumeric = isnumeric(splrest[0])
-                                numbersplit = (
-                                    isnumeric(w.txt[prevsplit:ii])
-                                    and (c2.c in numbersplits and remainingnumeric)
-                                    and c.loc.elem == c2.loc.elem
-                                )
+                            remainingnumeric = False
+                            numbersplits = [" ", "-", "−"]
+                            # chars that may separate numbers
+                            splrest = re.split("|".join(numbersplits), w.txt[ii:])
+                            splrest = [v for v in splrest if v != ""]
+                            if splrest:
+                                remainingnumeric = isnumeric(splrest[0])
+                            numbersplit = (
+                                isnumeric(w.txt[prevsplit:ii])
+                                and (c2.c in numbersplits and remainingnumeric)
+                                and c.loc.elem == c2.loc.elem
+                            )
 
-                                if bl2[0] > br1[0] + dx + xtol or numbersplit:
-                                    splitiis.append(ii)
-                                    prevsplit = ii
-                            if chrs[ii].c not in [" ", "\u00a0"]:
-                                lastnspc = chrs[ii]
+                            if bl2[0] > br1[0] + dx + xtol or numbersplit:
+                                splitiis.append(ii)
+                                prevsplit = ii
+                        if chrs[ii].c not in [" ", "\u00a0"]:
+                            lastnspc = chrs[ii]
 
-                        if len(splitiis) > 0:
-                            for ii in reversed(range(len(splitiis))):
-                                sstart = splitiis[ii]
-                                if ii != len(splitiis) - 1:
-                                    sstop = splitiis[ii + 1]
-                                else:
-                                    sstop = len(chrs)
-                                split_chrs = [chr for chr in w.chrs if chr in chrs[sstart:sstop]]
-                                newtxt = ptxt.split_off_characters(split_chrs)
-                                els.append(newtxt)
+                    if splitiis:
+                        lensplitiis = len(splitiis)
+                        split_lists = []
+                        for ii in reversed(range(lensplitiis)):
+                            sstart = splitiis[ii]
+                            if ii != lensplitiis - 1:
+                                sstop = splitiis[ii + 1]
+                            else:
+                                sstop = len(chrs)
+                            split_lists.append([c for c in w.chrs if c in chrs[sstart:sstop]])
+                        newtxts = ptxt.split_off_characters(split_lists)
+                        els.extend(newtxts)
     return els
 
 
@@ -286,7 +321,7 @@ def Remove_Manual_Kerning(els, mergesupersub):
     ptxts = [el.parsed_text for el in els]
     for ptxt in ptxts:
         if ptxt.lns is not None:
-            chks += [w for line in ptxt.lns for w in line.chks]
+            chks += ptxt.chks
     for w in chks:
         mw = []
         w2 = w.nextw
@@ -326,11 +361,18 @@ def Remove_Manual_Kerning(els, mergesupersub):
     # need to be split out into new text els
     newptxts = []
     for ptxt in ptxts:
+        # for line in ptxt.lns:
+        #     while len(line.chks) > 1:
+        #         newtxt = ptxt.split_off_chunks([line.chks[-1]])
+        #         els.append(newtxt)
+        #         newptxts.append(newtxt.parsed_text)
+        chr_lists = []
         for line in ptxt.lns:
-            while len(line.chks) > 1:
-                newtxt = ptxt.split_off_chunks([line.chks[-1]])
-                els.append(newtxt)
-                newptxts.append(newtxt.parsed_text)
+            for chk in reversed(line.chks[1:]):
+                chr_lists.append(chk.chrs)
+        newtxts = ptxt.split_off_characters(chr_lists)
+        els.extend(newtxts)
+        newptxts.extend([nt.parsed_text for nt in newtxts])
     return els
 
 
@@ -342,7 +384,7 @@ def External_Merges(els, mergenearby, mergesupersub):
     chks = []
     for ptxt in [el.parsed_text for el in els]:
         if ptxt.lns is not None:
-            chks += [w for line in ptxt.lns for w in line.chks]
+            chks += ptxt.chks
 
     pbbs = [None]*len(chks)
     for ii, w in enumerate(chks):
@@ -388,11 +430,18 @@ def External_Merges(els, mergenearby, mergesupersub):
         dx = w.spw * (NUM_SPACES - trl_spcs - ldg_spcs)
         xtol = XTOLEXT * w.spw
         ytol = YTOLEXT * w.mch
+        
+        
+        w1fs = (w.utfs *math.sqrt(w.transform.a**2 +w.transform.b**2),
+                w.utfs *math.sqrt(w.transform.c**2 +w.transform.d**2))
+        w2fs = (w2.utfs*math.sqrt(w2.transform.a**2+w2.transform.b**2),
+                w2.utfs*math.sqrt(w2.transform.c**2+w2.transform.d**2))
+        # (x size, y size) (not including angle)
 
         # calculate 2's coords in 1's system
         tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
         xpenmatch = br1[0] - xtol <= bl2[0] <= br1[0] + dx + xtol
-        neitherempty = len(wstrip(w.txt)) > 0 and len(wstrip(w2.txt)) > 0
+        neitherempty = wstrip(w.txt) and wstrip(w2.txt)
         if xpenmatch and neitherempty and not twospaces(w.txt, w2.txt):
             weight_match = w.chrs[-1].tsty['font-weight'] == w2.chrs[0].tsty['font-weight']
             # Don't sub/super merge when differences in font-weight
@@ -403,10 +452,10 @@ def External_Merges(els, mergenearby, mergesupersub):
             mtype = None
             if (
                 abs(bl2[1] - br1[1]) < ytol
-                and abs(w.tfs - w2.tfs) < 0.001
+                and abs(w1fs[0] - w2fs[0]) < FONTSIZE_THR*w1fs[0] and abs(w1fs[1] - w2fs[1]) < FONTSIZE_THR*w1fs[1]
                 and mergenearby
             ):
-                if isnumeric(w.line.txt()) and isnumeric(w2.line.txt(), True):
+                if isnumeric(w.line.txt) and isnumeric(w2.line.txt, True):
                     numsp = (bl2[0] - br1[0]) / (w.spw)
                     if abs(numsp) < 0.25:
                         # only merge numbers if very close (could be x ticks)
@@ -428,7 +477,7 @@ def External_Merges(els, mergenearby, mergesupersub):
                     mtype = "subreturn"
                 elif SUBSUPER_THR == 1:
                     if aboveline:
-                        if len(w2.line.txt()) > 2:  # long text, probably not super
+                        if len(w2.line.txt) > 2:  # long text, probably not super
                             mtype = "subreturn"
                         else:
                             mtype = "superorsubreturn"
@@ -447,7 +496,7 @@ def External_Merges(els, mergenearby, mergesupersub):
                     mtype = "superreturn"
                 elif SUBSUPER_THR == 1:
                     if belowline:
-                        if len(w2.line.txt()) > 2:  # long text, probably not sub
+                        if len(w2.line.txt) > 2:  # long text, probably not sub
                             mtype = "superreturn"
                         else:
                             mtype = "suborsuperreturn"
@@ -468,12 +517,12 @@ def External_Merges(els, mergenearby, mergesupersub):
                 if mtype is None:
                     if not (abs(bl2[1] - br1[1]) < ytol):
                         dh.idebug("Aborted, y pen too far: " + str([bl2[1], br1[1]]))
-                    elif not (abs(w.tfs - w2.tfs) < 0.001):
+                    elif not (abs(w1fs[0] - w2fs[0]) < FONTSIZE_THR*w1fs[0] and abs(w1fs[1] - w2fs[1]) < FONTSIZE_THR*w1fs[1]):
                         dh.idebug(
-                            "Aborted, fonts too different: " + str([w.tfs, w2.tfs])
+                            "Aborted, fonts too different: " + str([w1fs, w2fs])
                         )
                     elif not (
-                        not (isnumeric(w.line.txt())) or not (isnumeric(w2.line.txt()))
+                        not (isnumeric(w.line.txt)) or not (isnumeric(w2.line.txt))
                     ):
                         dh.idebug("Aborted, both numbers")
                 else:
@@ -487,11 +536,8 @@ def Perform_Merges(chks, mk=False):
     for w in chks:
         mw = w.mw
         minx = float("inf")
-        for ii in range(len(mw)):
-            w2 = mw[ii][0]
-            mtype = mw[ii][1]
-            br1 = mw[ii][2]
-            bl2 = mw[ii][3]
+        for ii, mwv in enumerate(mw):
+            w2, mtype, br1, bl2 = mwv
             if abs(bl2[0] - br1[0]) < minx:
                 minx = abs(bl2[0] - br1[0])
                 # starting pen best matches the stop of the previous one
@@ -499,22 +545,18 @@ def Perform_Merges(chks, mk=False):
         w.merges = []
         w.mergetypes = []
         w.merged = False
-        if len(mw) > 0:
-            w2 = mw[mi][0]
-            mtype = mw[mi][1]
-            br1 = mw[mi][2]
-            bl2 = mw[mi][3]
+        if mw:
+            w2, mtype, br1, bl2 = mw[mi]
             w.merges = [w2]
             w.mergetypes = [mtype]
 
     # Generate chains of merges
     for w in chks:
-        # if w.txt=='T':
-        if not (w.merged) and len(w.merges) > 0:
+        if not (w.merged) and w.merges:
             w.merges[-1].merged = True
             nextmerge = w.merges[-1].merges
             nextmerget = w.merges[-1].mergetypes
-            while len(nextmerge) > 0:
+            while nextmerge:
                 w.merges += nextmerge
                 w.mergetypes += nextmerget
                 w.merges[-1].merged = True
@@ -523,7 +565,7 @@ def Perform_Merges(chks, mk=False):
 
     # Create a merge plan
     for w in chks:
-        if len(w.merges) > 0:
+        if w.merges:
             ctype = "normal"
             w.wtypes = [ctype]
             bail = False
@@ -571,31 +613,33 @@ def Perform_Merges(chks, mk=False):
 
     # Execute the merge plan
     for w in chks:
-        if len(w.merges) > 0 and not (w.merged):
-            maxii = len(w.merges)
+        if w.merges and not (w.merged):
             alltxt = "".join([w.txt] + [w2.txt for w2 in w.merges])
             hasspaces = " " in alltxt
 
             mels = []
-            for ii in range(maxii):
+            tomerge = []
+            for ii,mrg in enumerate(w.merges):
+                if mrg not in mrg.line.chks:
+                    continue # skip deleted
                 maxspaces = None
-                if mk and hasspaces and w.merges[ii].prevsametspan:
+                if mk and hasspaces and mrg.prevsametspan:
                     maxspaces = 0
                 if (
-                    w.txt is not None and len(w.txt) > 0 and w.txt[-1] == " "
+                    w.txt and w.txt[-1] == " "
                 ) or w.wtypes[ii + 1] in [
                     "super",
                     "sub",
                 ]:  # no extra spaces for sub/supers or if there's already one
                     maxspaces = 0
-
-                mels.append(w.merges[ii].line.ptxt.textel)
-                w.append_chk(w.merges[ii], w.wtypes[ii + 1], maxspaces)
+                mels.append(mrg.line.ptxt.textel)
+                tomerge.append((mrg, w.wtypes[ii + 1], maxspaces))
+            w.append_chks(tomerge)
 
             # Union clips if necessary
             mels = dh.unique([w.line.ptxt.textel] + mels)
             if len(mels) > 1:
-                clips = [el.get_link("clip-path") for el in mels]
+                clips = [el.get_link("clip-path",llget=True) for el in mels]
                 if any([c is None for c in clips]):
                     w.line.ptxt.textel.set_link("clip-path", None)
                 else:
@@ -612,11 +656,8 @@ def Perform_Merges(chks, mk=False):
                     mels[0].set_link("clip-path", dc.get_id(2))
 
 
-# Check if text represents a number
-ncs = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "e", "E", "-", "−", ","]
-
-
 def isnumeric(s, countminus=False):
+    '''  Check if text represents a number '''
     s = (
         s.strip().replace("−", "-").replace(",", "")
     )  # strip whitespaces, replace minus signs with -, remove commas
@@ -629,31 +670,21 @@ def isnumeric(s, countminus=False):
         return False
 
 
-# Strip whitespaces
+
 def wstrip(txt):
+    # Strip whitespaces
     return txt.translate({ord(c): None for c in " \n\t\r"})
 
 
 def twospaces(w1txt, w2txt):
-    if (
-        (w1txt is not None and len(w1txt) > 1 and w1txt[-2:] == "  ")
-        or (
-            w1txt is not None
-            and len(w1txt) > 0
-            and w1txt[-1:] == " "
-            and w2txt is not None
-            and len(w2txt) > 0
-            and w2txt[0] == " "
-        )
-        or (w2txt is not None and len(w2txt) > 1 and w2txt[:1] == "  ")
-    ):
-        return True  # resultant chunk has two spaces
-    return False
-
+    ''' Check if merging two chunks would create two spaces in a row in the middle'''
+    return (
+        w1txt.endswith("  ") or
+        (w1txt.endswith(" ") and w2txt.startswith(" ")) or
+        w2txt.startswith("  ")
+    )
 
 def trailing_leading(wtxt, w2txt):
-    trl_spcs = sum([all([c == " " for c in wtxt[ii:]]) for ii in range(len(wtxt))])
-    ldg_spcs = sum(
-        [all([c == " " for c in w2txt[: ii + 1]]) for ii in range(len(w2txt))]
-    )
+    trl_spcs = len(wtxt) - len(wtxt.rstrip(' '))
+    ldg_spcs = len(w2txt) - len(w2txt.lstrip(' '))
     return trl_spcs, ldg_spcs

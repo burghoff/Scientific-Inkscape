@@ -12,7 +12,7 @@
         gui-description="Port for the Gallery Viewer server. &#13;If the default does not work, try another.">5001</param>
         
         <spacer/>
-        <label>Scientific Inkscape v1.4.23</label>
+        <label>Scientific Inkscape v1.4.24</label>
         <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>David Burghoff, University of Texas at Austin</label></page>
     </param>

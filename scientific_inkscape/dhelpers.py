@@ -26,7 +26,6 @@
 
 # Locate the installed Inkex so we can assess the version. Do not import!
 import pkgutil
-
 installed_inkex = None
 for finder in pkgutil.iter_importers():
     if hasattr(finder, "find_spec"):
@@ -51,7 +50,6 @@ import inkex
 import styles0
 
 inkex.Style = styles0.Style0
-
 # Next we make sure we have the text submodule
 sys.path.append(
     os.path.join(si_dir, inkex_to_use, "site-packages", "python_fontconfig")
@@ -61,7 +59,6 @@ import speedups  # noqa
 
 from inkex import Style
 from inkex.text.cache import BaseElementCache
-from inkex.text.parser import TextTree, TYP_TEXT
 
 from inkex.text.utils import (
     composed_width,
@@ -72,7 +69,6 @@ from inkex.text.utils import (
     bbox,
     ipx,
 )
-
 
 from inkex import Tspan, Transform, Path, PathElement, BaseElement
 from applytransform_mod import fuseTransform
@@ -121,7 +117,6 @@ def count_callers():
     else:
         callinfo[lstr] = 1
 
-
 # Discover the version of Inkex installed, NOT the version packaged with SI
 if installed_inkex is not None:
     with open(installed_inkex, "r") as file:
@@ -150,7 +145,8 @@ if (
     and inkex.installed_ivp[0:2] == [1, 1]
     or (inkex.installed_ivp[0:2] == [1, 2] and inkex.installed_ivp[2] < 2)
 ):
-    if inkex.text.font_properties.HASPANGOFT2:
+    from inkex.text.font_properties import PangoRenderer
+    if PangoRenderer().HASPANGOFT2:
         from gi.repository import GLib
 
         def custom_log_writer(log_domain, log_level, message, user_data):
@@ -269,7 +265,7 @@ def unlink2(el):
             )
             replace_element(el, d)
             d.set("unlinked_clone", True)
-            for k in d.descendants2()[1:]:
+            for k in d.iterdescendants('*'):  # iterdescendants skips self
                 unlink2(k)
 
             # To match Unlink Clone behavior, convert Symbol to Group
@@ -279,7 +275,9 @@ def unlink2(el):
                 d = g
             return d
         else:
-            return el
+            # Clone of missing object, delete
+            el.delete()
+            return None
     else:
         return el
 
@@ -289,31 +287,31 @@ unungroupable = tags((inkex.NamedView, inkex.Defs, inkex.Metadata, inkex.Foreign
 ctag = lxml.etree.Comment("").tag
 unungroupable.add(ctag)
 
+xmlspace = inkex.addNS("space", "xml")
 
 def ungroup(g, removetextclip=False):
     # Ungroup a group, preserving style, clipping, and masking
     # Remove any comments
-
     if g.croot is not None:
-        gparent = g.getparent()
-        gindex = gparent.index(g)  # group's location in parent
-
-        gtransform = g.ctransform
-        gclip = g.get_link("clip-path", llget=True)
-        gmask = g.get_link("mask", llget=True)
-        gstyle = g.ccascaded_style
-
         for el in reversed(list(g)):
             if el.tag == ctag:  # remove comments
                 g.remove(el)
             if el.tag not in unungroupable:
+                gtransform = g.ctransform
+                gclip = g.get_link("clip-path", llget=True)
+                gmask = g.get_link("mask", llget=True)
+                gstyle = g.ccascaded_style
+                gxmlspace = EBget(g,xmlspace)
+                
                 clippedout = compose_all(
                     el, gclip, gmask, gtransform, gstyle, removetextclip=removetextclip
                 )
+                if gxmlspace is not None and EBget(el,xmlspace) is None:
+                    el.set('xml:space',gxmlspace)
                 if clippedout:
                     el.delete()
                 else:
-                    gparent.insert(gindex + 1, el)  # places above
+                    g.addnext(el)
         if len(g) == 0:
             g.delete()
 
@@ -433,24 +431,22 @@ def intersect_paths(ptha, pthb):
 
 usetag = inkex.Use.ctag
 
+def compose_clips(el, ptha, pthb):
+    newpath = intersect_paths(ptha, pthb)
+    isempty = str(newpath) == ""
+
+    if not (isempty):
+        p = PathElement()
+        el.getparent().append(p)
+        p.set("d", newpath)
+    el.delete()
+    return isempty  # if clipped out, safe to delete element
 
 def merge_clipmask(node, newclip, mask=False):
     # Modified from Deep Ungroup
-    def compose_clips(el, ptha, pthb):
-        newpath = intersect_paths(ptha, pthb)
-        isempty = str(newpath) == ""
-
-        if not (isempty):
-            p = PathElement()
-            el.getparent().append(p)
-            p.set("d", newpath)
-        el.delete()
-        return isempty  # if clipped out, safe to delete element
-
     if newclip is not None:
         svg = node.croot
         cmstr = "mask" if mask else "clip-path"
-
         if node.ctransform is not None:
             # Clip-paths on nodes with a transform have the transform
             # applied to the clipPath as well, which we don't want.
@@ -460,21 +456,20 @@ def merge_clipmask(node, newclip, mask=False):
                 if not (hasattr(svg, "newclips")):
                     svg.newclips = []
                 svg.newclips.append(d)  # for later cleanup
-                for k in list(d):
+                for k in d:
                     compose_all(k, None, None, -node.ctransform, None)
-                # newclipurl = d.get_id(2)
                 newclip = d
 
         if newclip is not None:
-            for k in list(newclip):
+            for k in newclip:
                 if k.tag == usetag:
-                    k = unlink2(k)
+                    unlink2(k)
         oldclip = node.get_link(cmstr, llget=True)
         if oldclip is not None:
             # Existing clip is replaced by a duplicate, then apply new clip to children of duplicate
-            for k in list(oldclip):
+            for k in oldclip:
                 if k.tag == usetag:
-                    k = unlink2(k)
+                    unlink2(k)
 
             d = oldclip.duplicate()
             if not (hasattr(svg, "newclips")):
@@ -484,16 +479,16 @@ def merge_clipmask(node, newclip, mask=False):
 
             newclipisrect = False
             if newclip is not None and len(newclip) == 1:
-                newclipisrect = isrectangle(list(newclip)[0])
+                newclipisrect = isrectangle(newclip[0])
 
             couts = []
-            for k in reversed(list(d)):  # may be deleting, so reverse
+            for k in reversed(d):  # may be deleting, so reverse
                 oldclipisrect = isrectangle(k)
                 if newclipisrect and oldclipisrect and mask == False:
                     # For rectangular clips, we can compose them easily
                     # Since most clips are rectangles this semi-fixes the PDF clip export bug
-                    newclippth = list(newclip)[0].cpath.transform(
-                        list(newclip)[0].ctransform
+                    newclippth = newclip[0].cpath.transform(
+                        newclip[0].ctransform
                     )
                     oldclippth = k.cpath.transform(k.ctransform)
                     cout = compose_clips(k, newclippth, oldclippth)
@@ -673,7 +668,7 @@ def BB2(svg, els=None, forceupdate=False, roughpath=False, parsed=False):
         allds = set()
         for el in els:
             if el not in allds:  # so we're not re-descendants2ing
-                allds.update(el.descendants2())
+                allds.update(el.iter('*'))
         tels = [
             d
             for d in unique(allds)
@@ -724,7 +719,7 @@ def BB2(svg, els=None, forceupdate=False, roughpath=False, parsed=False):
 def Check_BB2(svg):
     bb2 = BB2(svg)
     HIGHLIGHT_STYLE = "fill:#007575;fill-opacity:0.4675"  # mimic selection
-    for el in svg.descendants2():
+    for el in svg.iter('*'):
         if el.get_id() in bb2 and not el.tag in grouplike_tags:
             bb = bbox(bb2[el.get_id()])
             # bb = bbox(bb2[el.get_id()])*(1/slf.svg.cscale);
@@ -779,7 +774,7 @@ def bb_intersects(bbs, bb2s=None):
 
 # Return list of objects on top of other objects
 def overlapping_els(svg, tocheck):
-    els = [el for el in svg.descendants2() if isdrawn(el)]
+    els = [el for el in svg.iter('*') if isdrawn(el)]
     bbs = BB2(svg, els, roughpath=True, parsed=True)
     bbs = [bbox(bbs.get(el.get_id())) for el in els]
 
@@ -1159,6 +1154,19 @@ from inkex.text.utils import default_style_atts as dsa
 
 NONES = [None, "none"]
 
+class StrokeFill:
+    def __init__(self, *args):
+        (
+            self.stroke,
+            self.fill,
+            self.strokewidth,
+            self.strokedasharray,
+            self.markerstart,
+            self.markermid,
+            self.markerend,
+            self.strk_isurl,
+            self.fill_isurl,
+        ) = args
 
 def get_strokefill(el):
     sty = el.cspecified_style
@@ -1214,20 +1222,6 @@ def get_strokefill(el):
     mm = sty.get("marker-mid", None)
     me = sty.get("marker-end", None)
 
-    class StrokeFill:
-        def __init__(self, *args):
-            (
-                self.stroke,
-                self.fill,
-                self.strokewidth,
-                self.strokedasharray,
-                self.markerstart,
-                self.markermid,
-                self.markerend,
-                self.strk_isurl,
-                self.fill_isurl,
-            ) = args
-
     return StrokeFill(strk, fill, sw, sd, ms, mm, me, strk_isurl, fill_isurl)
 
 
@@ -1239,7 +1233,7 @@ def get_script_path():
 # Return a document's visible descendants not in Defs/Metadata/etc
 def visible_descendants(svg):
     ndefs = [el for el in list(svg) if not (el.tag in unungroupable)]
-    return [v for el in ndefs for v in el.descendants2()]
+    return [v for el in ndefs for v in el.iter('*')]
 
 
 # Get document location or prompt
@@ -1269,9 +1263,11 @@ class SI_Config:
     """
     Loads a config json file that can be used to adjust certain Scientific
     Inkscape behaviors.
-    identical_dirs_gv: A list of directories that the Gallery Viewer should treat
-                       as identical when searching for pre-export files. Useful
-                       for cloud drives.
+    identical_dirs: A list of directories that the Autoexporter / Gallery Viewer
+                    should treat as identical when searching for linked files.
+                    Useful for looking for locations in cloud drives that have
+                    different absolute paths on different machines.
+    subdirs
     """
 
     def __init__(self, filename="config.json"):
@@ -1290,33 +1286,55 @@ class SI_Config:
         self.loaded = True
 
     @property
-    def identical_dirs_gv(self):
+    def identical_dirs(self):
         if not self.loaded:
             self._load()
-        groups = self.data.get("identical_dirs_gv", [])
+        groups = self.data.get("identical_dirs", [])
         if isinstance(groups, list) and all(isinstance(g, list) for g in groups):
             return groups
         return []
 
     @property
-    def subdirs_gv(self):
+    def subdirs(self):
         if not self.loaded:
             self._load()
-        subdirs = self.data.get("subdirs_gv", [])
+        subdirs = self.data.get("subdirs", [])
         if isinstance(subdirs, list):
             return subdirs
         return []
 
     def get_option(self, section, key, default=None):
         return self.data.get(section, {}).get(key, default)
+    
+    def find_missing_links(self,missing_file):
+        '''
+        For linked files that were missing, check the identical_dirs and subdirs
+        '''
+        idir_groups = self.identical_dirs
+        ipaths = []
+        of_abs = os.path.abspath(missing_file)
+        for idirg in idir_groups:
+            for idir in idirg:
+                id_abs = os.path.abspath(idir)
+                if id_abs in of_abs:
+                    for idir2 in idirg:
+                        if not idir==idir2:
+                            ipaths.append(of_abs.replace(id_abs,os.path.abspath(idir2)))
+                            
+        subdirs = self.subdirs
+        for ipth in ipaths[:]:
+            for sd in subdirs:
+                dn = os.path.dirname(ipth)
+                bn = os.path.basename(ipth)
+                ipaths.append(os.path.join(dn,sd,bn))
+        ipaths = [of_abs] + ipaths
+        
+        if any(os.path.exists(p) for p in ipaths):
+            return [p for p in ipaths if os.path.exists(p)][0]
+        return None
 
 
 si_config = SI_Config()
-
-import threading
-
-sema_temp = threading.Semaphore(1)
-
 
 def shared_temp(headprefix=None, filename=None):
     """
@@ -1346,7 +1364,10 @@ def shared_temp(headprefix=None, filename=None):
         os.mkdir(tempdir)
 
     if headprefix is not None:
-        with sema_temp:
+        if not hasattr(shared_temp, "_sema"):
+            import threading
+            shared_temp._sema = threading.Semaphore(1)
+        with shared_temp._sema:
             pnum = random.randint(1, 100000)
             while any(
                 t.startswith(f"{headprefix}{pnum:05d}") for t in os.listdir(tempdir)
@@ -1589,13 +1610,13 @@ def Run_SI_Extension(effext, name):
         if cprofile:
             ctic()
         if lprofile:
-            try:
+            # try:
                 from line_profiler import LineProfiler
 
                 lp = LineProfiler()
                 from inkex.text import parser
                 from inkex.text import font_properties
-                from inkex.text import speedups  # noqa
+                import speedups  # noqa
                 from inkex.text import cache
                 import remove_kerning
                 from inspect import getmembers, isfunction, isclass, getmodule
@@ -1657,8 +1678,8 @@ def Run_SI_Extension(effext, name):
                 shutil.copy2(ppath, dst_path)
 
                 alreadyran = True
-            except ImportError:
-                pass
+            # except ImportError:
+            #     pass
 
     if not (alreadyran):
         try:
@@ -1772,6 +1793,7 @@ def shouldfixfont(ffam):
 
 def character_fixer(els):
     """Fixes characters in a list of elements based on their text style."""
+    from inkex.text.parser import TextTree, TYP_TEXT
     for elem in els:
         tree = TextTree(elem)
         for _, typ, tel, sel, txt in tree.dgenerator():
@@ -1897,7 +1919,7 @@ def replace_non_ascii_font(elem, newfont, *args):
     # Inkscape automatically prunes empty text/tails
     # Do the same so future parsing is not affected
     if elem.tag == TEtag:
-        for ddv in elem.descendants2():
+        for ddv in elem.iter('*'):
             if ddv.text is not None and ddv.text == "":
                 ddv.text = None
             if ddv.tail is not None and ddv.tail == "":
@@ -1911,6 +1933,7 @@ def split_text(elem):
     """
     dups = []
     dds = elem.descendants2()
+    from inkex.text.parser import TextTree
     for dgen in reversed(list(TextTree(elem).dgenerator())):
         _, _, _, sel, txt = dgen
         if txt is not None:
@@ -1934,8 +1957,8 @@ def split_text(elem):
 
 
 def Version_Check(caller):
-    siv = "v1.4.23"  # Scientific Inkscape version
-    maxsupport = "1.4.2"
+    siv = "v1.4.24"  # Scientific Inkscape version
+    maxsupport = "1.5.0"
     minsupport = "1.1.0"
 
     logname = "Log.txt"
@@ -1957,7 +1980,6 @@ def Version_Check(caller):
         if displayedform:
             d = d[: len(d) - 1]
 
-    # idebug(ivp)
     prevvp = [inkex.vparse(dv[-6:]) for dv in d]
     if (inkex.ivp[0] < minsupp[0] or inkex.ivp[1] < minsupp[1]) and not (
         inkex.ivp in prevvp

@@ -183,7 +183,7 @@ class FlattenPlots(inkex.EffectExtension):
         reversions = self.options.reversions and self.options.fixtext
         removetextclips = self.options.removetextclips and self.options.fixtext
 
-        sel = [el for el in self.svg.descendants2() if el in sel]  # doc order
+        sel = [el for el in self.svg.iter('*') if el in sel]  # doc order
         if self.options.tab == "Exclusions":
             self.options.markexc = {1: True, 2: False}[self.options.markexc]
             for el in sel:
@@ -195,9 +195,9 @@ class FlattenPlots(inkex.EffectExtension):
         for el in sel:
             if el.get("inkscape-scientific-flattenexclude"):
                 sel.remove(el)
-        seld = [v for el in sel for v in el.descendants2()]
+        seld = [v for el in sel for v in el.iter('*')]
         for el in seld:
-            if el.get("inkscape-scientific-flattenexclude"):
+            if dh.EBget(el,"inkscape-scientific-flattenexclude"):
                 seld.remove(el)
 
         # Move selected defs/clips/mask into global defs
@@ -207,13 +207,13 @@ class FlattenPlots(inkex.EffectExtension):
             seldefs = [el for el in seld if el.tag == defstag]
             for el in seldefs:
                 self.svg.cdefs.append(el)
-                for d in el.descendants2():
+                for d in el.iter('*'):
                     if d in seld:
                         seld.remove(d)  # no longer selected
             selcm = [el for el in seld if el.tag in clipmask]
             for el in selcm:
                 self.svg.cdefs.append(el)
-                for d in el.descendants2():
+                for d in el.iter('*'):
                     if d in seld:
                         seld.remove(d)  # no longer selected
 
@@ -230,15 +230,16 @@ class FlattenPlots(inkex.EffectExtension):
             # Unlink all clones
             nels = []
             oels = []
+            usetag, symboltag = inkex.Use.ctag, inkex.Symbol.ctag
             for el in seld:
-                if isinstance(el, inkex.Use):
+                if el.tag == usetag:
                     useel = el.get_link("xlink:href")
-                    if useel is not None and not (isinstance(useel, (inkex.Symbol))):
+                    if useel is not None and useel.tag != symboltag:
                         ul = dh.unlink2(el)
                         nels.append(ul)
                         oels.append(el)
             for nel in nels:
-                seld += nel.descendants2()
+                seld += list(nel.iter('*'))
             for oel in oels:
                 seld.remove(oel)
             gs = [el for el in seld if el.tag == gtag]
@@ -265,7 +266,7 @@ class FlattenPlots(inkex.EffectExtension):
                         ]
                     )
                     g.set("mpl_comment", cmnt)
-                    [g.remove(k) for k in ks if isinstance(k, lxml.etree._Comment)]
+                    [g.remove(k) for k in ks if k.tag==commenttag]
                     # remove comment, but leave grouped
                 elif dh.EBget(g, "mpl_comment") is not None:
                     pass
@@ -381,9 +382,7 @@ class FlattenPlots(inkex.EffectExtension):
                         elif ff == repl:
                             pass
                         else:
-                            ff = [
-                                x.strip("'").strip('"').strip() for x in ff.split(",")
-                            ]
+                            ff = [x.strip('\'" ') for x in ff.split(",")]
                             if not (ff[-1].lower() == repl.lower()):
                                 ff.append(repl)
                             el.cstyle["font-family"] = ",".join(ff)
@@ -416,14 +415,14 @@ class FlattenPlots(inkex.EffectExtension):
         if self.options.removerectw or self.options.removeduppaths:
             ngset = set(ngs)
             ngs2 = [
-                el for el in self.svg.descendants2() if el in ngset and dh.isdrawn(el)
+                el for el in self.svg.iter('*') if el in ngset and dh.isdrawn(el)
             ]
             bbs = dh.BB2(self.svg, ngs2, roughpath=True, parsed=True)
             
             if self.options.removeduppaths:
                 # Prune identical overlapping paths
                 bbsp = {el:bbs[el.get_id()] for el in ngs2 if el.get_id() in bbs}
-                txts = [el for el in self.svg.descendants2() if el.tag==TE_TAG and 'shape-inside' in el.cspecified_style]
+                txts = [el for el in self.svg.iter('*') if el.tag==TE_TAG and 'shape-inside' in el.cspecified_style]
                 txt_inside = [el.cspecified_style.get_link("shape-inside",el.croot) for el in txts]
                 bbsp = {el:v for el,v in bbsp.items() if el.tag in prltag and el not in txt_inside}
                 
@@ -458,37 +457,44 @@ class FlattenPlots(inkex.EffectExtension):
                 else:
                     equal = np.zeros((0, 0), dtype=bool)
                         
-                for jj in reversed(range(len(els))):
-                    for ii in range(jj):
-                        if equal[ii,jj]:
-                            for kk in [ii,jj]:
-                                if sfs[kk] is None:
-                                    sfs[kk] = dh.get_strokefill(els[kk])
-                            mysf  = sfs[jj]
-                            othsf = sfs[ii]
-                            if mysf.stroke is None and mysf.fill is None:
-                                continue
-                            if mysf.stroke is not None:
-                                if mysf.stroke.alpha != 1.0 or othsf.stroke is None:
-                                    continue
-                                if not mysf.stroke == othsf.stroke:
-                                    continue
-                            if mysf.fill is not None:
-                                if mysf.fill.alpha != 1.0 or othsf.fill is None:
-                                    continue
-                                if not mysf.fill == othsf.fill:
-                                    continue
-                            if not els[jj].cspecified_style == els[ii].cspecified_style:
-                                continue
-                                
-                            mypth = els[jj].cpath.transform(els[jj].ccomposed_transform).to_absolute();
-                            othpth= els[ii].cpath.transform(els[ii].ccomposed_transform).to_absolute();
-                            if mypth!=othpth and mypth!=othpth.reverse():
-                                continue
-                            # dh.idebug(els[ii].get_id())
-                            els[ii].delete(deleteup=True)
-                            equal[ii,:] = False
-                            ngs2.remove(els[ii])
+                # for jj in reversed(range(len(els))):
+                #     for ii in range(jj):
+                #         if equal[ii,jj]:
+                iis, jjs = np.nonzero(np.triu(equal, k=1))  # strict upper triangle
+                order = np.lexsort((iis, -jjs))  # sort by -jj, then ii
+                iis, jjs = iis[order], jjs[order]
+                removed = set()
+                for ii, jj in zip(iis, jjs):
+                    if ii in removed:
+                        continue
+                    for kk in [ii,jj]:
+                        if sfs[kk] is None:
+                            sfs[kk] = dh.get_strokefill(els[kk])
+                    mysf  = sfs[jj]
+                    othsf = sfs[ii]
+                    if mysf.stroke is None and mysf.fill is None:
+                        continue
+                    if mysf.stroke is not None:
+                        if mysf.strk_isurl or mysf.stroke.alpha != 1.0 or othsf.stroke is None:
+                            continue
+                        if not mysf.stroke == othsf.stroke:
+                            continue
+                    if mysf.fill is not None:
+                        if mysf.fill_isurl or mysf.fill.alpha != 1.0 or othsf.fill is None:
+                            continue
+                        if not mysf.fill == othsf.fill:
+                            continue
+                    if not els[jj].cspecified_style == els[ii].cspecified_style:
+                        continue
+                        
+                    mypth = els[jj].cpath.transform(els[jj].ccomposed_transform).to_absolute();
+                    othpth= els[ii].cpath.transform(els[ii].ccomposed_transform).to_absolute();
+                    if mypth!=othpth and mypth!=othpth.reverse():
+                        continue
+                    els[ii].delete(deleteup=True)
+                    equal[ii,:] = False
+                    if els[ii] in ngs2:
+                        ngs2.remove(els[ii])
             
             if self.options.removerectw:
                 ngs3 = [el for el in ngs2 if el.get_id() in bbs]
@@ -515,7 +521,7 @@ class FlattenPlots(inkex.EffectExtension):
                     if po in self.svg.newclips and (
                         (po.tag == ctag and po.get_id() not in self.svg.iddict.clips) or 
                         (po.tag == mtag and po.get_id() not in self.svg.iddict.masks)):
-                        oldcms = [ddv.get_link(cm) for ddv in po.descendants2() for cm in ['clip-path','mask']]
+                        oldcms = [ddv.get_link(cm) for ddv in po.iter('*') for cm in ['clip-path','mask']]
                         deleted_cms.update({v for v in oldcms if v is not None and v in self.svg.newclips})
                         po.delete(deleteup=True)
                 potential_orphans = deleted_cms

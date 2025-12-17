@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg
    xml:space="preserve"
-   inkscape:version="1.4-beta (62f545ba5e, 2024-04-22)"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
    id="svg26"
    version="1.1"
    viewBox="0 0 140.43673 135.50807"
@@ -990,8 +990,8 @@
      inkscape:current-layer="layer1"
      inkscape:document-units="mm"
      inkscape:cy="256.07824"
-     inkscape:cx="265.49511"
-     inkscape:zoom="1.6459813"
+     inkscape:cx="265.28056"
+     inkscape:zoom="1.5756903"
      inkscape:pageshadow="2"
      inkscape:pageopacity="0.0"
      borderopacity="1.0"
@@ -1000,7 +1000,7 @@
      id="base"
      inkscape:pagecheckerboard="0"
      inkscape:window-width="1920"
-     inkscape:window-height="1017"
+     inkscape:window-height="1009"
      inkscape:window-x="-8"
      inkscape:window-y="-8"
      inkscape:window-maximized="1"
@@ -1762,10 +1762,10 @@
        id="image90129"
        transform="matrix(0.03086251,0,0,0.03086251,107.69494,148.834)" /><image
        width="767.67999"
-       height="781.12"
+       height="781.11999"
        preserveAspectRatio="none"
        style="image-rendering:optimizeSpeed"
-       xlink:href="file:///C:%5CUsers%5Cburgh%5CBox%5CBurghoff%5CStorage%5CGithub%5CScientific-Inkscape%5Ctests%5Cdata%5Csvg/Flower.png"
+       xlink:href="file:///H:%5CMy%20Drive%5CStorage%5CGithub%5CScientific-Inkscape%5Ctests%5Cdata%5Csvg%5CFlower.png"
        id="image90166"
        transform="matrix(0.03086251,0,0,0.03086251,132.44581,148.834)" /><text
        xml:space="preserve"
@@ -2633,9 +2633,15 @@
        xml:space="preserve"
        transform="matrix(0.01753759,0,0,0.01753759,63.933928,84.012497)"
        id="text268395"
-       style="font-size:148.615px;line-height:1.25;font-family:Arial;-inkscape-font-specification:'Arial, Normal';letter-spacing:0px;word-spacing:0px;white-space:pre;shape-inside:url(#rect268397)">Flowed text <tspan
+       style="font-size:148.615px;line-height:1.25;font-family:Arial;-inkscape-font-specification:'Arial, Normal';letter-spacing:0px;word-spacing:0px;white-space:pre;shape-inside:url(#rect268397)"><tspan
+         x="586"
+         y="339.86562"
+         id="tspan17">Flowed </tspan><tspan
+         x="586"
+         y="559.90987"
+         id="tspan19">text <tspan
    style="font-size:186.667px"
-   id="tspan269949">123</tspan></text><text
+   id="tspan18">123</tspan></tspan></text><text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:2.82223px;line-height:1.25;font-family:Avenir;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.0959116"
        x="-15.073676"
@@ -2772,4 +2778,14 @@
        style="display:inline;fill:#68bb44;fill-opacity:1;fill-rule:evenodd;stroke:#68bb44;stroke-width:0.590849;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:1.77254, 0.590849;stroke-dashoffset:0;stroke-opacity:1;marker-end:none"
        d="M 45.6315,38.8214 V 25.3748"
        id="path1"
-       transform="matrix(0.66876835,0,0,0.66876835,51.820407,119.87208)" /></g></svg>
+       transform="matrix(0.66876835,0,0,0.66876835,51.820407,119.87208)" /><text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:300;font-stretch:normal;font-size:2.54px;line-height:1.25;font-family:Roboto;fill:#000000;stroke-width:0.205976"
+       x="88.79216"
+       y="91.578682"
+       id="text31-9-4-58-2-2-8-8-7"><tspan
+         sodipodi:role="line"
+         id="tspan31-58-1-27-7-5-9-4-1"
+         style="font-style:normal;font-weight:300;font-stretch:normal;font-size:2.54px;font-family:Roboto;fill:#000000;stroke-width:0.205976"
+         x="88.79216"
+         y="91.578682">5→4</tspan></text></g></svg>

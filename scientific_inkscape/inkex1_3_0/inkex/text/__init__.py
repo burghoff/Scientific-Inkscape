@@ -44,6 +44,7 @@ import os
 import inspect
 import inkex
 
+in_import_module = False
 if not hasattr(inkex, "text"):
     import importlib
 
@@ -51,31 +52,33 @@ if not hasattr(inkex, "text"):
     myloc, myname = os.path.split(mydir)
     oldpath = sys.path
     sys.path.append(myloc)
+
+    in_import_module = in_import_module | ('text' in sys.modules)  
     inkex.text = importlib.import_module(myname)
     sys.modules["inkex.text"] = inkex.text
     sys.path = oldpath
 
-# Gives inkex elements some additional cached attributes, for further speedups
-import inkex.text.cache  # pylint: disable=wrong-import-position
-
-
-def add_cache(base, derived):
-    """
-    Adds the cache capabilities from a derived class to a base class by dynamically
-    attaching methods, properties, and data descriptors that are unique to the derived
-    class to the base class.
-    """
-    predfn = (
-        lambda x: isinstance(x, property)
-        or inspect.isfunction(x)
-        or inspect.isdatadescriptor(x)
-    )
-    base_m = dict(inspect.getmembers(base, predicate=predfn))
-    for name, memb in inspect.getmembers(derived, predicate=predfn):
-        if memb not in base_m.values():
-            setattr(base, name, memb)
-
-
-add_cache(inkex.BaseElement, inkex.text.cache.BaseElementCache)
-add_cache(inkex.SvgDocumentElement, inkex.text.cache.SvgDocumentElementCache)
-add_cache(inkex.Style, inkex.text.cache.StyleCache)
+if not in_import_module:
+    # Gives inkex elements some additional cached attributes, for further speedups
+    import inkex.text.cache  # pylint: disable=wrong-import-position
+    
+    def add_cache(base, derived):
+        """
+        Adds the cache capabilities from a derived class to a base class by dynamically
+        attaching methods, properties, and data descriptors that are unique to the derived
+        class to the base class.
+        """
+        predfn = (
+            lambda x: isinstance(x, property)
+            or inspect.isfunction(x)
+            or inspect.isdatadescriptor(x)
+        )
+        base_m = dict(inspect.getmembers(base, predicate=predfn))
+        for name, memb in inspect.getmembers(derived, predicate=predfn):
+            if memb not in base_m.values():
+                setattr(base, name, memb)
+    
+    
+    add_cache(inkex.BaseElement, inkex.text.cache.BaseElementCache)
+    add_cache(inkex.SvgDocumentElement, inkex.text.cache.SvgDocumentElementCache)
+    add_cache(inkex.Style, inkex.text.cache.StyleCache)
