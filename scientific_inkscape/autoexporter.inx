@@ -55,7 +55,7 @@
 
         
         <spacer/>
-        <label>Scientific Inkscape v1.4.23</label>
+        <label>Scientific Inkscape v1.4.24</label>
         <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>David Burghoff, University of Texas at Austin</label>
         </page>
@@ -89,7 +89,7 @@
          gui-description="Equivalent to same option when saving as PDF">false</param> 
          
         <spacer/>
-        <label>Scientific Inkscape v1.4.23</label>
+        <label>Scientific Inkscape v1.4.24</label>
         <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>David Burghoff, University of Texas at Austin</label>
         </page>
@@ -108,7 +108,7 @@
                    <option value="4">Left unchanged</option>
                 </param>
         <spacer/>
-        <label>Scientific Inkscape v1.4.23</label>
+        <label>Scientific Inkscape v1.4.24</label>
         <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>David Burghoff, University of Texas at Austin</label>
         </page>

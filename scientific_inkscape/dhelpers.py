@@ -1957,8 +1957,8 @@ def split_text(elem):
 
 
 def Version_Check(caller):
-    siv = "v1.4.23"  # Scientific Inkscape version
-    maxsupport = "1.4.2"
+    siv = "v1.4.24"  # Scientific Inkscape version
+    maxsupport = "1.5.0"
     minsupport = "1.1.0"
 
     logname = "Log.txt"
@@ -1980,7 +1980,6 @@ def Version_Check(caller):
         if displayedform:
             d = d[: len(d) - 1]
 
-    # idebug(ivp)
     prevvp = [inkex.vparse(dv[-6:]) for dv in d]
     if (inkex.ivp[0] < minsupp[0] or inkex.ivp[1] < minsupp[1]) and not (
         inkex.ivp in prevvp
