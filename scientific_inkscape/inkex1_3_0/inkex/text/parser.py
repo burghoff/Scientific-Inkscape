@@ -1232,7 +1232,7 @@ class ParsedText:
             for i, c in enumerate(run):
                 c.loc = CLoc(ts,TYP_TEXT,i)
             
-        ts.cstyle = run[0].sty
+        ts.cspecified_style = run[0].sty
         algn = {"start": "start", "middle": "center", "end": "end"}[fchr.line.anchor]
         ts.cstyle.update({'font-size':str(fchr.utfs),"text-align":algn,"text-anchor":fchr.line.anchor})
         ts.cstyle -= {'line-height','direction','baseline-shift','shape-inside'}
@@ -3477,7 +3477,7 @@ class TChunk:
         else:
             ts.text = txt
         
-        ts.cstyle = self.chrs[0].sty
+        ts.cspecified_style = self.chrs[0].sty
         algn = {"start": "start", "middle": "center", "end": "end"}[self.line.anchor]
         ts.cstyle.update({'font-size':str(self.utfs),"text-align":algn,"text-anchor":self.line.anchor})
         ts.cstyle -= {'line-height','direction','baseline-shift','shape-inside'}

@@ -205,12 +205,20 @@ class BaseElementCache(BaseElement):
         else:
             # Set the specified style by setting the local style
             self.cstyle = svi
-            for att in self.cspecified_style:
-                # If there are attributes in the new specified style not in
+            
+            par = self.getparent()
+            parsty = par.cspecified_style if par is not None else {}
+            for att in parsty:
+                # If there are attributes in the parent specified style not in
                 # the one we just applied, we are inheriting something we don't
                 # want and need to set using the default
                 if att not in svi:
                     self.cstyle[att] = default_style_atts.get(att)
+                # If the new value is identical to the parent's specified style,
+                # we do not need to apply it (already inherits)
+                elif svi[att] == parsty.get(att):
+                    del self.cstyle[att]
+
             # self.cstyle.update({k: default_style_atts.get(k) for k in self.cspecified_style if k not in svi})
 
     cspecified_style = property(get_cspecified_style, set_cspecified_style)

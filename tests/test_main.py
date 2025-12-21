@@ -50,14 +50,14 @@ testae              = True;
 
 # testflattenfonts     = True; 
 
-import os, sys, re
+import os, sys, re, warnings
 INKSCAPES_LOCATION = "C:\\Inkscapes"
 vpaths = {'1.0' : 'inkscape-1.0.2-2-x64',
           '1.1' : 'inkscape-1.1.2_2022-02-05_b8e25be833-x64',
           '1.2' : 'inkscape-1.2.2_2022-12-09_732a01da63-x64', 
           '1.3' : 'inkscape-1.3.1_2023-11-16_91b66b0783-x64',
           '1.3e': 'inkscape-1.3_2023-07-21_0e150ed6c4-x64_extensions',
-          '1.4' : 'inkscape-1.4.2_2025-05-13_f4327f4-x64',
+          '1.4' : 'inkscape-1.4.3rc_2025-12-13_9500139-x64',
           }
 vpaths = {k: os.path.join(INKSCAPES_LOCATION, v) for k,v in vpaths.items()}
 
@@ -306,10 +306,16 @@ if __name__ == "__main__":
                     obj.effect_class().run(args,fout);
 
                     if OPEN_COMPARISON and not STORE_REFS:
-                        binloc = os.path.join(vpaths[version],'bin','inkscape.exe')
-                        import subprocess
-                        process = subprocess.run([binloc, fout], text=True)
-                        process = subprocess.run([binloc, os.path.abspath(pout)], text=True)
+                        with warnings.catch_warnings():
+                            warnings.filterwarnings(
+                                "ignore",
+                                category=ResourceWarning,
+                                message=r"subprocess .* is still running"
+                            )
+                            binloc = os.path.join(vpaths[version],'bin','inkscape.exe')
+                            import subprocess
+                            process = subprocess.Popen([binloc, fout], text=True)
+                            process = subprocess.Popen([binloc, os.path.abspath(pout)], text=True)
 
                     if STORE_REFS:
                         import shutil
