@@ -2400,10 +2400,12 @@ class ParsedText:
         
                 
         for k, v in self.textel.attrib.items():
-            if k not in {'baseline-shift','shape-inside','direction','style'}:
+            if k not in {'baseline-shift','shape-inside','direction','style','font-family'}:
                 te.attrib[k] = v
         te.cstyle = self.textel.cstyle
         te.cstyle -= {'baseline-shift','shape-inside','direction'}
+        # Set text el font-family so it's displayed correctly in the status bar
+        te.cstyle['font-family'] = self.chrs[0].tsty['font-family']
         
         xs = []; ys = []; fszs = []
         for ln in self.lns:
