@@ -124,12 +124,11 @@ def get_expected_exports(src_path, watchdir, writedir):
         formats = [
             fmt
             for fmt, use in zip(
-                ["pdf", "png", "emf", "eps", "psvg"],
+                ["pdf", "png", "emf", "psvg"],
                 [
                     input_options.usepdf,
                     input_options.usepng,
                     input_options.useemf,
-                    input_options.useeps,
                     input_options.usepsvg,
                 ],
             )
@@ -143,7 +142,7 @@ def get_expected_exports(src_path, watchdir, writedir):
                 # foo.svg -> foo.pdf / foo.png / etc.
                 outputs.add(base + "." + fmt)
 
-    # DOCX / PPTX sources: mirror Exporter.finalize outputs :contentReference[oaicite:0]{index=0}
+    # DOCX / PPTX sources: mirror Exporter.finalize outputs
     elif lower_ext in (".docx", ".pptx"):
         fm = getattr(input_options, "finalizermode", 1)
         if fm in (5, 6):
@@ -535,8 +534,8 @@ class AutoExporterThread(threading.Thread):
         opts.formats = [
             fmt
             for fmt, use in zip(
-                ["pdf", "png", "emf", "eps", "psvg"],
-                [opts.usepdf, opts.usepng, opts.useemf, opts.useeps, opts.usepsvg],
+                ["pdf", "png", "emf", "psvg"],
+                [opts.usepdf, opts.usepng, opts.useemf, opts.usepsvg],
             )
             if use
         ]
@@ -722,12 +721,10 @@ if guitype == 'gtk3.0':
             self.pdf_check = Gtk.CheckButton(label="PDF")
             self.png_check = Gtk.CheckButton(label="PNG")
             self.emf_check = Gtk.CheckButton(label="EMF")
-            self.eps_check = Gtk.CheckButton(label="EPS")
             self.svg_check = Gtk.CheckButton(label="Plain SVG")
             vbox_formats.pack_start(self.pdf_check, False, False, 0)
             vbox_formats.pack_start(self.png_check, False, False, 0)
             vbox_formats.pack_start(self.emf_check, False, False, 0)
-            vbox_formats.pack_start(self.eps_check, False, False, 0)
             vbox_formats.pack_start(self.svg_check, False, False, 0)
         
             # Rasterization DPI
@@ -769,12 +766,16 @@ if guitype == 'gtk3.0':
             self.transparent_back_check = Gtk.CheckButton(
                 label="Add transparent backing rectangle"
             )
+            self.darkmode_check = Gtk.CheckButton(
+                label="Convert to dark mode"
+            )
             vbox_other_options.pack_start(self.convert_text_check, False, False, 0)
             vbox_other_options.pack_start(
                 self.prevent_thin_lines_check, False, False, 0
             )
             vbox_other_options.pack_start(self.convert_strokes_check, False, False, 0)
             vbox_other_options.pack_start(self.transparent_back_check, False, False, 0)
+            vbox_other_options.pack_start(self.darkmode_check, False, False, 0)
             extra_margin_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
             other_options_box.pack_start(extra_margin_box, False, False, 0)
             self.extra_margin_label = Gtk.Label(label="Extra margin (mm)")
@@ -803,47 +804,59 @@ if guitype == 'gtk3.0':
             self.finalizer_combo.append("4", "Embed and delete backup PNGs")
             self.finalizer_combo.append("5", "Convert to PDF using Microsoft Office")
             self.finalizer_combo.append("6", "Convert to PDF using LibreOffice")
-            self.finalizer_combo.set_active(int(getattr(input_options, "finalizermode", 1)) - 1)
-            self.finalizer_combo.connect("changed", self.on_finalizer_changed)
             tab2_box.pack_start(self.finalizer_combo, False, False, 1)
 
         
-            # Initialize from input_options
-            self.pdf_check.set_active(input_options.usepdf)
-            self.png_check.set_active(input_options.usepng)
-            self.emf_check.set_active(input_options.useemf)
-            self.eps_check.set_active(input_options.useeps)
-            self.svg_check.set_active(input_options.usepsvg)
-            self.dpi_spin.set_value(float(input_options.dpi))
+            # --- Generic binders (GTK3) ---
+            def _bind_check(btn, attr: str, *, default=False):
+                btn.set_active(bool(getattr(input_options, attr, default)))
+                def _on_toggle(b):
+                    setattr(input_options, attr, b.get_active())
+                    update_batch_from_options()
+                btn.connect("toggled", _on_toggle)
             
-            self.crop_check.set_active(input_options.imagemode2)
-            self.convert_text_check.set_active(input_options.texttopath)
-            self.prevent_thin_lines_check.set_active(input_options.thinline)
-            self.convert_strokes_check.set_active(input_options.stroketopath)
-            self.transparent_back_check.set_active(input_options.backingrect)
-            self.extra_margin_spin.set_value(float(input_options.margin))
-            self.omit_text_check.set_active(input_options.latexpdf)
-        
-            # Connect options buttons to callbacks
-            self.pdf_check.connect("toggled", self.on_pdf_toggled)
-            self.png_check.connect("toggled", self.on_png_toggled)
-            self.emf_check.connect("toggled", self.on_emf_toggled)
-            self.eps_check.connect("toggled", self.on_eps_toggled)
-            self.svg_check.connect("toggled", self.on_svg_toggled)
-            self.dpi_spin.connect("value-changed", self.on_dpi_changed)
-            self.crop_check.connect("toggled", self.on_crop_toggled)
-            self.convert_text_check.connect("toggled", self.on_convert_text_toggled)
-            self.prevent_thin_lines_check.connect(
-                "toggled", self.on_prevent_thin_lines_toggled
-            )
-            self.convert_strokes_check.connect(
-                "toggled", self.on_convert_strokes_toggled
-            )
-            self.transparent_back_check.connect(
-                "toggled", self.on_transparent_back_toggled
-            )
-            self.extra_margin_spin.connect("value-changed", self.on_margin_changed)
-            self.omit_text_check.connect("toggled", self.on_omit_text_toggled)
+            def _bind_spin(spin, attr: str, *, as_int: bool = False, default=0):
+                spin.set_value(float(getattr(input_options, attr, default)))
+                def _on_change(s):
+                    v = s.get_value_as_int() if as_int else s.get_value()
+                    setattr(input_options, attr, v)
+                    update_batch_from_options()
+                spin.connect("value-changed", _on_change)
+            
+            def _bind_combo_active_id(combo, attr: str, *, default=1, to_int: bool = True):
+                cur = getattr(input_options, attr, default)
+                try:
+                    combo.set_active_id(str(int(cur)))
+                except Exception:
+                    combo.set_active_id(str(default))
+                def _on_change(c):
+                    val = c.get_active_id()
+                    if val is None:
+                        return
+                    setattr(input_options, attr, int(val) if to_int else val)
+                    update_batch_from_options()
+                combo.connect("changed", _on_change)
+            
+            # --- Replace per-widget init/connect with declarative bindings ---
+            for w, attr, dflt in (
+                (self.pdf_check,   "usepdf",   False),
+                (self.png_check,   "usepng",   False),
+                (self.emf_check,   "useemf",   False),
+                (self.svg_check,   "usepsvg",  False),
+                (self.crop_check,  "imagemode2", False),
+                (self.convert_text_check, "texttopath", False),
+                (self.prevent_thin_lines_check, "thinline", False),
+                (self.convert_strokes_check, "stroketopath", False),
+                (self.transparent_back_check, "backingrect", False),
+                (self.darkmode_check, "darkmode", False),
+                (self.omit_text_check, "latexpdf", False),
+            ):
+                _bind_check(w, attr, default=dflt)
+            
+            _bind_spin(self.dpi_spin, "dpi", as_int=True, default=300)
+            _bind_spin(self.extra_margin_spin, "margin", as_int=False, default=0)
+            _bind_combo_active_id(self.finalizer_combo, "finalizermode", default=1, to_int=True)
+
         
             self.ct = ct
             self.connect("destroy", self.quit_and_close)
@@ -854,13 +867,6 @@ if guitype == 'gtk3.0':
             mprint = print_fn
             for p in init_prints:
                 mprint(p)
-            
-        
-            
-        def on_finalizer_changed(self, widget):
-            input_options.finalizermode = int(widget.get_active_id())
-            # mprint("Finalizer mode changed:", input_options.finalizermode)
-            update_batch_from_options()
 
 
         def on_treeview_size_allocate(self, widget, allocation):
@@ -949,75 +955,6 @@ if guitype == 'gtk3.0':
                 self.ct.es = True
             native.destroy()
 
-        def on_pdf_toggled(self, widget):
-            input_options.usepdf = widget.get_active()
-            print("PDF option toggled:", widget.get_active())
-            update_batch_from_options()
-
-        def on_png_toggled(self, widget):
-            input_options.usepng = widget.get_active()
-            print("PNG option toggled:", widget.get_active())
-            update_batch_from_options()
-
-        def on_emf_toggled(self, widget):
-            input_options.useemf = widget.get_active()
-            print("EMF option toggled:", widget.get_active())
-            update_batch_from_options()
-
-        def on_eps_toggled(self, widget):
-            input_options.useeps = widget.get_active()
-            print("EPS option toggled:", widget.get_active())
-            update_batch_from_options()
-
-        def on_svg_toggled(self, widget):
-            input_options.usepsvg = widget.get_active()
-            print("SVG option toggled:", widget.get_active())
-            update_batch_from_options()
-
-        def on_dpi_changed(self, widget):
-            input_options.dpi = widget.get_value_as_int()
-            print("Rasterization DPI changed:", widget.get_value_as_int())
-            update_batch_from_options()
-
-        def on_crop_toggled(self, widget):
-            input_options.imagemode2 = widget.get_active()
-            print("Crop and resample images option toggled:", widget.get_active())
-            update_batch_from_options()
-
-        def on_convert_text_toggled(self, widget):
-            input_options.texttopath = widget.get_active()
-            print("Convert text to paths option toggled:", widget.get_active())
-            update_batch_from_options()
-
-        def on_prevent_thin_lines_toggled(self, widget):
-            input_options.thinline = widget.get_active()
-            print("Prevent thin line enhancement option toggled:", widget.get_active())
-            update_batch_from_options()
-
-        def on_convert_strokes_toggled(self, widget):
-            input_options.stroketopath = widget.get_active()
-            print("Convert all strokes to paths option toggled:", widget.get_active())
-            update_batch_from_options()
-
-        def on_transparent_back_toggled(self, widget):
-            input_options.backingrect = widget.get_active()
-            print(
-                "Add transparent backing rectangle option toggled:", widget.get_active()
-            )
-            update_batch_from_options()
-
-        def on_margin_changed(self, widget):
-            input_options.margin = widget.get_value()
-            print("Extra margin changed:", widget.get_value())
-            update_batch_from_options()
-
-        def on_omit_text_toggled(self, widget):
-            input_options.latexpdf = widget.get_active()
-            print(
-                "Omit text in PDF and create LaTeX file option toggled:",
-                widget.get_active(),
-            )
-            update_batch_from_options()
         def quit_and_close(self, *args):   # or (self, widget)
             self.ct.stopped = True
             Gtk.main_quit()
@@ -1385,16 +1322,14 @@ elif guitype=='gtk4.0':
             self.pdf_check = Gtk.CheckButton(label="PDF")
             self.png_check = Gtk.CheckButton(label="PNG")
             self.emf_check = Gtk.CheckButton(label="EMF")
-            self.eps_check = Gtk.CheckButton(label="EPS")
             self.svg_check = Gtk.CheckButton(label="Plain SVG")
         
-            for w in (self.pdf_check, self.png_check, self.emf_check, self.eps_check, self.svg_check):
+            for w in (self.pdf_check, self.png_check, self.emf_check, self.svg_check):
                 fmt_col.append(w)
         
             _bind_check(self.pdf_check, "usepdf")
             _bind_check(self.png_check, "usepng")
             _bind_check(self.emf_check, "useemf")
-            _bind_check(self.eps_check, "useeps")
             _bind_check(self.svg_check, "usepsvg")
         
             # right column: DPI
@@ -1428,12 +1363,14 @@ elif guitype=='gtk4.0':
             self.prevent_thin_lines_check = Gtk.CheckButton(label="Prevent thin line enhancement")
             self.convert_strokes_check = Gtk.CheckButton(label="Convert all strokes to paths")
             self.transparent_back_check = Gtk.CheckButton(label="Add transparent backing rectangle")
+            self.darkmode_check = Gtk.CheckButton(label="Convert to dark mode")
         
             for w in (
                 self.convert_text_check,
                 self.prevent_thin_lines_check,
                 self.convert_strokes_check,
                 self.transparent_back_check,
+                self.darkmode_check,
             ):
                 left_other.append(w)
         
@@ -1441,6 +1378,7 @@ elif guitype=='gtk4.0':
             _bind_check(self.prevent_thin_lines_check, "thinline")
             _bind_check(self.convert_strokes_check, "stroketopath")
             _bind_check(self.transparent_back_check, "backingrect")
+            _bind_check(self.darkmode_check, "darkmode")
         
             right_other = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
             other_row.append(right_other)

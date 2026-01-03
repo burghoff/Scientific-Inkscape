@@ -123,6 +123,12 @@ class AutoExporter(inkex.EffectExtension):
             help="Add backing rectangle?",
         )
         pars.add_argument(
+            "--darkmode",
+            type=inkex.Boolean,
+            default=False,
+            help="Convert to dark mode?",
+        )
+        pars.add_argument(
             "--stroketopath", type=inkex.Boolean, default=False, help="Stroke to paths?"
         )
         pars.add_argument(
@@ -641,6 +647,9 @@ class Exporter():
         if len(tels) > 0:
             svg.make_char_table()
             self.ctable = svg.char_table  # store for later
+
+        if self.darkmode:
+            self.pagecolor = Exporter.convert_to_dark_mode(svg)
 
         # Remove elements not on any page
         outside = self.elements_not_on_any_page(vds) # calls BB2, needs ctable
@@ -1244,6 +1253,15 @@ class Exporter():
             elif isinstance(dsd, (inkex.Group)):
                 if len(dsd) == 0:
                     dsd.delete(deleteup=True)
+        
+        if hasattr(self,'pagecolor'):
+            nvs = [v for v in list(svg) if v.tag == inkex.NamedView.ctag]
+            if nvs:
+                nv = nvs[0]
+            else:
+                nv = inkex.NamedView()
+                svg.append(nv)
+            nv.set('pagecolor',self.pagecolor)
 
         if self.backingrect:
             r = inkex.Rectangle()
@@ -1976,7 +1994,463 @@ class Exporter():
             if not on_any_page:
                 outside.append(el)
         return outside
+    
+    @staticmethod
+    def convert_to_dark_mode(svg):
+        from inkex.text.parser import TEtag, FRtag
+        nvtag = inkex.NamedView.ctag
+        from dhelpers import dsa
+        
+        # Find objects on top of images (which should be left unaffected)
+        full_hits, text_hits = Exporter.find_image_overlaps(svg)
+        for el, inds in text_hits:
+            # For characters on top of images, wrap in a new tspan
+            el.set("xml:space", "preserve")
+            for i in inds:
+                c = el.parsed_text.chrs[i]
+                ns = {'fill': dsa.get('fill') if 'fill' not in c.sty else c.sty.get('fill')}
+                c.add_style(ns,False)
+                full_hits.append(c.loc.elem)
+        els = [el for el in svg.descendants2() if el not in full_hits]
+        
+        from inkex.text.cache import BaseElementCache
+        req_tags = BaseElementCache.otp_support_tags | {TEtag,FRtag}
+        for el in els:
+            if el.tag in req_tags:
+                ssty = el.cspecified_style
+                el.cstyle['fill'] = ssty.get('fill', dsa.get('fill'))
+                el.cstyle['stroke'] = ssty.get('stroke', dsa.get('stroke'))
 
+        pagecolor = None
+        for el in els:
+            for attr in ('stroke','fill','stop-color'):
+                color_sty = el.ccascaded_style.get(attr)
+                color_att = el.get(attr)
+                color = color_sty or color_att
+                if color and 'url' not in color and color!='none':
+                    # dh.idebug((el.get_id(),attr,color))
+                    try:
+                        color = inkex.Color(color).to_rgb()
+                        icolor = Exporter.invert_color(color)
+                        el.cstyle[attr] = str(icolor)
+                        el.pop(attr,None)
+                    except inkex.colors.ColorError:
+                        pass
+            if el.tag == nvtag:
+                color = el.get("pagecolor", "#ffffff")
+                color = inkex.Color(color).to_rgb()
+                if color:
+                    pagecolor = Exporter.invert_color(color)
+                    el.set("pagecolor",str(pagecolor))
+        return pagecolor
+
+    @staticmethod
+    def invert_color(color):
+        def rgb_to_hsl_255(r, g, b):
+            r /= 255.0
+            g /= 255.0
+            b /= 255.0
+        
+            cmax = max(r, g, b)
+            cmin = min(r, g, b)
+            delta = cmax - cmin
+        
+            # Lightness
+            l = (cmax + cmin) / 2.0
+        
+            # Saturation
+            if delta == 0:
+                s = 0.0
+                h = 0.0
+            else:
+                s = delta / (1.0 - abs(2.0*l - 1.0))
+        
+                if cmax == r:
+                    h = ((g - b) / delta) % 6.0
+                elif cmax == g:
+                    h = (b - r) / delta + 2.0
+                else:
+                    h = (r - g) / delta + 4.0
+        
+                h *= 60.0
+        
+            # Scale to 0–255
+            h = h * 255.0 / 360.0
+            s = s * 255.0
+            l = l * 255.0
+        
+            return h, s, l
+        def hsl_to_rgb_255(h, s, l):
+            h = (h * 360.0 / 255.0) % 360.0
+            s /= 255.0
+            l /= 255.0
+        
+            c = (1.0 - abs(2.0*l - 1.0)) * s
+            x = c * (1.0 - abs((h / 60.0) % 2.0 - 1.0))
+            m = l - c / 2.0
+        
+            if h < 60:
+                rp, gp, bp = c, x, 0
+            elif h < 120:
+                rp, gp, bp = x, c, 0
+            elif h < 180:
+                rp, gp, bp = 0, c, x
+            elif h < 240:
+                rp, gp, bp = 0, x, c
+            elif h < 300:
+                rp, gp, bp = x, 0, c
+            else:
+                rp, gp, bp = c, 0, x
+        
+            r = int(round((rp + m) * 255.0))
+            g = int(round((gp + m) * 255.0))
+            b = int(round((bp + m) * 255.0))
+        
+            # Hard clamp (defensive, but should never trigger)
+            r = max(0, min(255, r))
+            g = max(0, min(255, g))
+            b = max(0, min(255, b))
+        
+            return r, g, b
+        
+        r, g, b, a = color.to_rgba()
+        h, s, l = rgb_to_hsl_255(r, g, b)
+
+        # l = 255-l
+        # r2, g2, b2 = hsl_to_rgb_255(h, s, linv)
+        
+        r2, g2, b2 = Exporter.invert_rgb255_lab_d50(r, g, b)
+        
+        return inkex.colors.Color([r2, g2, b2])
+
+    @staticmethod
+    def invert_rgb255_lab_d50(r, g, b):
+        """
+        Invert an sRGB color (0–255 ints) by converting to CIE Lab (D50),
+        mapping L* via L2 = min(110 - L*, 100), then converting back to sRGB.
+
+        Returns (r2, g2, b2) as 0–255 ints.
+        """
+
+        def clamp(x, lo, hi):
+            return lo if x < lo else hi if x > hi else x
+
+        def srgb_to_linear(u):
+            # u in [0,1]
+            return u / 12.92 if u < 0.04045 else ((u + 0.055) / 1.055) ** 2.4
+
+        def linear_to_srgb(u):
+            # u in [0,1]
+            return 12.92 * u if u < 0.0031308 else 1.055 * (u ** (1.0 / 2.4)) - 0.055
+
+        def mat3_mul_vec3(m, v):
+            return (
+                m[0][0]*v[0] + m[0][1]*v[1] + m[0][2]*v[2],
+                m[1][0]*v[0] + m[1][1]*v[1] + m[1][2]*v[2],
+                m[2][0]*v[0] + m[2][1]*v[1] + m[2][2]*v[2],
+            )
+
+        def mat3_mul_mat3(a, b):
+            return tuple(
+                tuple(sum(a[i][k]*b[k][j] for k in range(3)) for j in range(3))
+                for i in range(3)
+            )
+
+        def mat3_inv(m):
+            (a,b,c),(d,e,f),(g,h,i) = m
+            A =   e*i - f*h
+            B = -(d*i - f*g)
+            C =   d*h - e*g
+            D = -(b*i - c*h)
+            E =   a*i - c*g
+            F = -(a*h - b*g)
+            G =   b*f - c*e
+            H = -(a*f - c*d)
+            I =   a*e - b*d
+            det = a*A + b*B + c*C
+            if det == 0:
+                return ((1.0,0.0,0.0),(0.0,1.0,0.0),(0.0,0.0,1.0))
+            invdet = 1.0 / det
+            return (
+                (A*invdet, D*invdet, G*invdet),
+                (B*invdet, E*invdet, H*invdet),
+                (C*invdet, F*invdet, I*invdet),
+            )
+
+        def diag3(sx, sy, sz):
+            return ((sx,0.0,0.0),(0.0,sy,0.0),(0.0,0.0,sz))
+
+        def chromatic_adaptation(bradford, src_wp, dst_wp):
+            # Von Kries adaptation in Bradford LMS space
+            src_lms = mat3_mul_vec3(bradford, src_wp)
+            dst_lms = mat3_mul_vec3(bradford, dst_wp)
+            scale = (dst_lms[0]/src_lms[0], dst_lms[1]/src_lms[1], dst_lms[2]/src_lms[2])
+            inv_b = mat3_inv(bradford)
+            return mat3_mul_mat3(inv_b, mat3_mul_mat3(diag3(*scale), bradford))
+
+        # White points (normalized)
+        D50 = (0.964212, 1.0, 0.825188)
+        D65 = (0.95042855, 1.0, 1.0889004)
+
+        BRADFORD = (
+            (0.8951,  0.2664, -0.1614),
+            (-0.7502, 1.7135,  0.0367),
+            (0.0389,  0.0685,  1.0296),
+        )
+
+        # Linear sRGB -> XYZ (D65)
+        XYZ_FROM_LINEAR_SRGB = (
+            (0.41238642, 0.3575915,  0.18045056),
+            (0.21263677, 0.715183,   0.07218022),
+            (0.019330615,0.11919712, 0.95037293),
+        )
+
+        # Linear sRGB -> XYZ (D50) via Bradford D65->D50
+        ADAPT_D65_TO_D50 = chromatic_adaptation(BRADFORD, D65, D50)
+        RGB_TO_XYZ_D50 = mat3_mul_mat3(ADAPT_D65_TO_D50, XYZ_FROM_LINEAR_SRGB)
+        XYZ_D50_TO_RGB = mat3_inv(RGB_TO_XYZ_D50)
+
+        def xyz_to_lab(xyz):
+            # CIE Lab with D50 reference white
+            x, y, z = xyz[0]/D50[0], xyz[1]/D50[1], xyz[2]/D50[2]
+            # sigma  = 6.0/29.0
+            sigma2 = 36.0/841.0
+            sigma3 = 216.0/24389.0
+
+            def f(t):
+                return t ** (1.0/3.0) if t > sigma3 else t/(3.0*sigma2) + 4.0/29.0
+
+            fx, fy, fz = f(x), f(y), f(z)
+            L = 116.0*fy - 16.0
+            a = 500.0*(fx - fy)
+            b = 200.0*(fy - fz)
+            return (clamp(L, 0.0, 100.0), clamp(a, -128.0, 128.0), clamp(b, -128.0, 128.0))
+
+        def lab_to_xyz(lab):
+            # Inverse CIE Lab with D50 reference white
+            L, a, b = clamp(lab[0],0.0,100.0), clamp(lab[1],-128.0,128.0), clamp(lab[2],-128.0,128.0)
+            sigma  = 6.0/29.0
+            sigma2 = 36.0/841.0
+
+            def invf(t):
+                return t**3 if t > sigma else 3.0*sigma2*(t - 4.0/29.0)
+
+            fy = (L + 16.0)/116.0
+            fx = fy + (a / 500.0)
+            fz = fy - (b / 200.0)
+
+            X = invf(fx) * D50[0]
+            Y = invf(fy) * D50[1]
+            Z = invf(fz) * D50[2]
+            return (X, Y, Z)
+
+        # 1) sRGB [0,255] -> [0,1]
+        rf, gf, bf = r/255.0, g/255.0, b/255.0
+
+        # 2) sRGB -> linear
+        rl, gl, bl = srgb_to_linear(rf), srgb_to_linear(gf), srgb_to_linear(bf)
+
+        # 3) linear RGB -> XYZ (D50)
+        X, Y, Z = mat3_mul_vec3(RGB_TO_XYZ_D50, (rl, gl, bl))
+
+        # 4) XYZ -> Lab
+        L, a, bb = xyz_to_lab((X, Y, Z))
+
+        # 5) Lightness mapping
+        L2 = min(110.0 - L, 100.0)
+
+        # 6) Lab -> XYZ -> linear RGB
+        X2, Y2, Z2 = lab_to_xyz((L2, a, bb))
+        rl2, gl2, bl2 = mat3_mul_vec3(XYZ_D50_TO_RGB, (X2, Y2, Z2))
+
+        # 7) linear -> sRGB and clamp
+        rf2 = clamp(linear_to_srgb(clamp(rl2, 0.0, 1.0)), 0.0, 1.0)
+        gf2 = clamp(linear_to_srgb(clamp(gl2, 0.0, 1.0)), 0.0, 1.0)
+        bf2 = clamp(linear_to_srgb(clamp(bl2, 0.0, 1.0)), 0.0, 1.0)
+
+        # 8) Small near-gray tweak in a narrow band
+        if abs(rf2 - gf2) < 1e-7 and abs(rf2 - bf2) < 1e-7:
+            if (18.0/255.0) < rf2 < (32.0/255.0):
+                rf2 = gf2 = bf2 = (18.0/255.0)
+
+        return (
+            int(round(rf2 * 255.0)),
+            int(round(gf2 * 255.0)),
+            int(round(bf2 * 255.0)),
+        )
+    
+    @staticmethod
+    def find_image_overlaps(svg, min_frac=0.4):
+        """
+        Returns (full_hits, text_char_hits)
+
+        full_hits:
+            list of non-text, non-image elements whose bbox has >= min_frac of its OWN
+            area intersecting at least one image bbox, and element is above that image.
+
+        text_char_hits:
+            list of (text_element, [char_bbox_indexes...]) for TextElement/FlowRoot,
+            where each char bbox is tested individually (>= min_frac of the char bbox's
+            OWN area intersecting at least one image bbox), and element is above that image.
+        """
+
+        IMAGE_TAG = inkex.Image.ctag
+        TEXT_TAGS = {inkex.TextElement.ctag, inkex.FlowRoot.ctag}
+        min_frac = float(min_frac)
+
+        vds = [el for el in dh.visible_descendants(svg) if dh.isdrawn(el)]
+        bbs = dh.BB2(svg, vds, roughpath=True, parsed=True)
+        vds = [el for el in vds if el.get_id() in bbs]
+        bbs = [dh.bbox(bbs[el.get_id()]) for el in vds]
+
+        # Images in vds order
+        img_iis = [ii for ii, el in enumerate(vds) if el.tag == IMAGE_TAG]
+        if not img_iis:
+            return [], []
+
+        img_bbs = [bbs[ii] for ii in img_iis]
+
+        # One big intersects matrix (same as removerectw)
+        intrscts = dh.bb_intersects(bbs, img_bbs)
+
+        selected_full = np.zeros(len(vds), dtype=bool)
+        text_hits = {}  # key: ngs3 index -> set(char_indices)
+
+        def _inter_area_vs_one_image(cb_list, ib):
+            l = np.fromiter((b.x1 for b in cb_list), dtype=float)
+            t = np.fromiter((b.y1 for b in cb_list), dtype=float)
+            r = np.fromiter((b.x2 for b in cb_list), dtype=float)
+            btm = np.fromiter((b.y2 for b in cb_list), dtype=float)
+
+            il, it, ir, ibtm = float(ib.x1), float(ib.y1), float(ib.x2), float(ib.y2)
+            iw = np.maximum(0.0, np.minimum(r, ir) - np.maximum(l, il))
+            ih = np.maximum(0.0, np.minimum(btm, ibtm) - np.maximum(t, it))
+            return iw * ih
+
+        def _get_best_transform(el):
+            # Prefer the one you use elsewhere
+            xf = getattr(el, "ccomposed_transform", None)
+            if xf is not None:
+                return xf
+            # fallbacks (depending on inkex version / context)
+            xf = getattr(el, "composed_transform", None)
+            if xf is not None:
+                return xf
+            return getattr(el, "transform", None)
+
+        def _char_bboxes_docspace(el):
+            pt = getattr(el, "parsed_text", None)
+            if pt is None or not hasattr(pt, "get_char_extents"):
+                return []
+        
+            exts = pt.get_char_extents() or []
+            if not exts:
+                return []
+        
+            xf = getattr(el, "ccomposed_transform", None)  # you said this is correct
+        
+            out = []
+            for bb in exts:
+                if bb is None:
+                    out.append(dh.bbox(None))
+                    continue
+        
+                # IMPORTANT: don't re-wrap dh.bbox objects
+                if hasattr(bb, "x1") and hasattr(bb, "y1") and hasattr(bb, "x2") and hasattr(bb, "y2"):
+                    b = bb
+                else:
+                    try:
+                        b = dh.bbox(bb)
+                    except Exception:
+                        out.append(dh.bbox(None))
+                        continue
+        
+                if b.isnull:
+                    out.append(b)
+                    continue
+        
+                # IMPORTANT: only transform if xf is present
+                if xf is not None:
+                    out.append(b.transform(xf))
+                else:
+                    out.append(b)
+        
+            return out
+
+
+        # Per-image loop, but using the Flattener removerectw slice trick for "on top"
+        for jj, img_row in enumerate(img_iis):
+            start = img_row + 1
+            if start >= len(vds):
+                continue
+
+            hit_rows = np.nonzero(intrscts[start:, jj])[0] + start
+            if hit_rows.size == 0:
+                continue
+
+            ib = img_bbs[jj]
+
+            # --- full elements (non-text, non-image) ---
+            full_rows = []
+            text_rows = []
+            for k in hit_rows:
+                tag = vds[k].tag
+                if tag in TEXT_TAGS:
+                    text_rows.append(k)
+                elif tag != IMAGE_TAG:
+                    full_rows.append(k)
+
+            if full_rows:
+                cb = [bbs[k] for k in full_rows]
+                inter_area = _inter_area_vs_one_image(cb, ib)
+                obj_area = np.fromiter((b.w * b.h for b in cb), dtype=float)
+                ok = (obj_area > 0) & ((inter_area / obj_area) >= min_frac)
+                if np.any(ok):
+                    fr = np.asarray(full_rows, dtype=int)
+                    selected_full[fr[ok]] = True
+
+            # --- text/flow per-character ---
+            for k in text_rows:
+                el = vds[k]
+
+                char_bbs = _char_bboxes_docspace(el)
+                if not char_bbs:
+                    continue
+
+                # quick prune: ignore degenerate char boxes
+                areas = np.fromiter((b.w * b.h if not b.isnull else 0.0 for b in char_bbs), dtype=float)
+                good = areas > 0
+                if not np.any(good):
+                    continue
+
+                inter_area = _inter_area_vs_one_image(char_bbs, ib)
+
+                frac = np.zeros_like(inter_area, dtype=float)
+                frac[good] = inter_area[good] / areas[good]
+
+                hit_char_idx = np.nonzero(frac >= min_frac)[0]
+                if hit_char_idx.size:
+                    s = text_hits.get(k)
+                    if s is None:
+                        s = set()
+                        text_hits[k] = s
+                    s.update(int(i) for i in hit_char_idx)
+
+        # Build the two returns in doc order; exclude images
+        img_set = set(img_iis)
+
+        full_hits = []
+        text_char_hits = []
+
+        for ii, el in enumerate(vds):
+            if ii in img_set:
+                continue
+            if selected_full[ii]:
+                full_hits.append(el)
+            if ii in text_hits:
+                text_char_hits.append((el, sorted(text_hits[ii])))
+
+        return full_hits, text_char_hits
 
 # Convenience functions
 def joinmod(dirc, fname):
