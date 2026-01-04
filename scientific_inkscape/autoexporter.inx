@@ -17,8 +17,8 @@
           gui-description="Plain SVG that has been optimized for compatibility with Microsoft Office and LibreOffice">false</param> 
         
         
-        <label appearance="header">Document finalizer</label>   
-        <label>Acts on documents that contain SVGs.</label>
+        <label appearance="header">Document finalizer</label>
+        <label>Modifies documents that contain SVGs.</label>
         <param name="finalizermode" type="optiongroup" appearance="combo"
                 gui-text=""
                 gui-description="Currently supports: .docx, .pptx&#13;Embed linked images: Move a copy of linked images inside file&#13;Embed and convert SVGs to PNGs: Replaces SVGs with embedded PNGs&#13;Embed and delete backup PNGs: Removes backup PNGs for lower file sizes&#13;Conversion to PDF: Requires an installation of Microsoft Office or LibreOffice">
