@@ -58,7 +58,7 @@ The Flattener removes unwanted structure from figures imported into Inkscape. Se
 <li><i>Replace missing fonts</i>: Specifies a backup font for when the desired font is not installed on your machine.</li></ol>
 
 # The Homogenizer
-The Homogenizer is a utility that can set all fonts, font sizes, and stroke widths in a selection to the same value. It also removes any text or path distortions. This is most useful when assembling sub-figures, as it allows you to ensure that the whole figure has a uniform look. 
+The Homogenizer is a utility that can set all fonts, font sizes, and stroke widths in a selection to common values. It also removes any text or path distortions. This is most useful when assembling sub-figures, as it allows you to ensure that the whole figure has a uniform look. 
 <p align="center"><img src="https://github.com/burghoff/Academic-Inkscape/blob/main/examples/Homogenizer_portable.svg" alt="drawing" ></img></p>
 
 # Text Ghoster
