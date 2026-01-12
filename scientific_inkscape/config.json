@@ -1,0 +1,15 @@
+{
+  "_comment__file": "Scientific-Inkscape user-editable config file. Keys starting with underscores are comments and ignored.",
+  
+  "_comment_identical_dirs": "List of directory groups that should be treated as equivalent. Each inner list is a set of alternate roots. Used to substitute paths when a linked file is missing across machines/cloud drives.",
+  "_example_identical_dirs": [["G:/My Drive", "H:/My Drive", "P:/My Drive"],["C:/Users/Alice/Box/Project", "C:/Users/Bob/Box/Project"]],
+  "identical_dirs": [],
+
+  "_comment_subdirs": "Extra subdirectories to try when a linked file is missing. For each candidate path, find_missing_links() also tries: dirname/<subdir>/basename.",
+  "_example_subdirs": ["figures", "images", "assets"],
+  "subdirs": [],
+
+  "_comment_dark_mode_colors": "Optional exact overrides for dark-mode inversion. Keys/values should be SVG color strings (hex #RRGGBB recommended). Alpha is ignored.",
+  "_example_dark_mode_colors": {"#000000": "#FFFFFF","#FFFFFF": "#000000"},
+  "dark_mode_colors": {}
+}

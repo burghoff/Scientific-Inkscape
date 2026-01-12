@@ -1303,6 +1303,28 @@ class SI_Config:
             return subdirs
         return []
 
+    @property
+    def dark_mode_colors(self):
+        """
+        Dict mapping light-mode colors to dark-mode colors.
+        """
+        if not hasattr(self,'dmc'):
+            if not self.loaded:
+                self._load()
+            dmc = self.data.get("dark_mode_colors", {})
+            
+            ret = {}
+            if isinstance(dmc,dict):
+                for color in dmc:
+                    try:
+                        r, g, b, a = inkex.Color(color).to_rgba()
+                        r2, g2, b2, a2 = inkex.Color(dmc[color]).to_rgba()
+                        ret[(r,g,b)] = (r2,g2,b2)
+                    except inkex.colors.ColorError:
+                        pass
+            self._dmc = ret
+        return self._dmc
+
     def get_option(self, section, key, default=None):
         return self.data.get(section, {}).get(key, default)
     

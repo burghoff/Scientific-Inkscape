@@ -711,6 +711,29 @@ class Processor(threading.Thread):
 
     def run_on_fof(self):
         print("Running on file: " + self.fof)
+        
+        # Bump container number each rerun, because browsers can improperly 
+        # cache old images
+        old_no = self.no
+        global wthread_no
+        with wthread_lock:
+            self.no = wthread_no
+            wthread_no += 1
+        old_contents = os.path.join(temp_dir, f"{temp_head}_cont{old_no}")
+        if os.path.isdir(old_contents):
+            for name in os.listdir(old_contents):
+                if name == "thumbnails":
+                    continue  # keep cached converted thumbnails
+                p = os.path.join(old_contents, name)
+                try:
+                    if os.path.isdir(p):
+                        shutil.rmtree(p)
+                    else:
+                        os.remove(p)
+                except (PermissionError, FileNotFoundError):
+                    # Could be in use by a still-running ConversionThread
+                    pass
+        self.cthreads = []
 
         contents = os.path.join(
             temp_dir, f"{temp_head}_cont{self.no}"
@@ -775,13 +798,13 @@ mydir = os.path.dirname(os.path.abspath(__file__))
 packages = os.path.join(mydir, "packages")
 if packages not in sys.path:
     sys.path.append(packages)
-from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
 from collections import defaultdict
 class Watcher(FileSystemEventHandler):
     def __init__(self):
         super().__init__()
-        self.observer = Observer()
+        self.observer = PollingObserver(timeout=0.5)
         self.dir_processors = defaultdict(list)  # dirpath -> list of Processor
         self.dir_refs = defaultdict(int)       # dirpath -> number of watchers
         self.dir_watches = {}                  # dirpath -> Watch object
@@ -849,44 +872,70 @@ class Watcher(FileSystemEventHandler):
     def handle_event(self, event):
         if event.is_directory:
             return
-        dir_path = os.path.dirname(event.src_path)
+        file_path = os.path.abspath(event.src_path)
+        dir_path = os.path.dirname(file_path)
         for watcher in self.dir_processors.get(dir_path, []):
-            if not self.is_target_file(event.src_path, watcher):
+            if not self.is_target_file(file_path, watcher):
                 continue
-            key = (watcher, event.src_path)
-            
+            key = (watcher, file_path)
             if key in self.debounce_timers:
                 self.debounce_timers[key].cancel()
+    
+            # Debounce based on observed mtime, not event_type
             self.debounce_timers[key] = threading.Timer(
-                0.5, self.run_callback, [watcher, event]
+                1.0, self.debounce, [watcher, file_path]
             )
             self.debounce_timers[key].start()
-            
-
-    def run_callback(self, watcher, event):
-        if event.event_type == "created" and watcher.create_fcn:
-            watcher.create_fcn(event.src_path)
-        elif event.event_type == "modified" and watcher.mod_fcn:
-            watcher.mod_fcn(event.src_path)
-        elif event.event_type == "deleted" and watcher.delete_fcn:
-            watcher.delete_fcn(event.src_path)
+    
+    def debounce(self, watcher, file_path):
+        file_path = os.path.abspath(file_path)
+        old_mod_time = self.file_mod_times.get(file_path)
+        new_mod_time = self.get_mod_time(file_path)
+    
+        # Deleted: was tracked before, now missing
+        if new_mod_time is None:
+            if old_mod_time is not None:
+                if watcher.delete_fcn:
+                    watcher.delete_fcn(file_path)
+                self.file_mod_times.pop(file_path, None)
+            return
+    
+        # From here, new_mod_time is numeric
+        if old_mod_time is None:
+            # Created: not seen before, now exists
+            if watcher.create_fcn:
+                watcher.create_fcn(file_path)
+            self.file_mod_times[file_path] = new_mod_time
+        elif new_mod_time != old_mod_time:
+            # Modified: existed and mtime changed
+            if watcher.mod_fcn:
+                watcher.mod_fcn(file_path)
+            self.file_mod_times[file_path] = new_mod_time
+        else:
+            # No change in mtime, do nothing
+            return
 
     def on_created(self, event):
         self.handle_event(event)
 
     def on_deleted(self, event):
-        self.file_mod_times.pop(event.src_path, None)
         self.handle_event(event)
 
     def on_modified(self, event):
-        if event.is_directory:
-            return
-        new_mtime = self.get_mod_time(os.path.abspath(event.src_path))
-        old_mtime = self.file_mod_times.get(os.path.abspath(event.src_path))
+        self.handle_event(event)
+        
+    def on_moved(self, event):
+        class _E:  # Local event wrapper (same as AE)
+            def __init__(self, p, etype):
+                self.is_directory = False
+                self.src_path = p
+                self.event_type = etype  # kept for debugging, not used in debounce
+    
+        # Logical delete of old path + create of new path, both through debounce
+        self.handle_event(_E(event.src_path,  "deleted"))
+        self.handle_event(_E(event.dest_path, "created"))
 
-        if new_mtime and new_mtime != old_mtime:
-            self.file_mod_times[event.src_path] = new_mtime
-            self.handle_event(event)
+        
 watcher = Watcher()
 
 converted_files = dict()

@@ -2034,8 +2034,14 @@ class Exporter():
                         icolor = Exporter.invert_color(color)
                         el.cstyle[attr] = str(icolor)
                         el.pop(attr,None)
+                        
+                        if 'filter' in el.ccascaded_style:
+                            filt = el.ccascaded_style.get_link('filter', el.croot)
+                            if filt is not None:
+                                filt.cstyle['color-interpolation-filters']='auto'
                     except inkex.colors.ColorError:
                         pass
+                    
             if el.tag == nvtag:
                 color = el.get("pagecolor", "#ffffff")
                 color = inkex.Color(color).to_rgb()
@@ -2119,7 +2125,8 @@ class Exporter():
         # l = 255-l
         # r2, g2, b2 = hsl_to_rgb_255(h, s, linv)
         
-        r2, g2, b2 = Exporter.invert_rgb255_lab_d50(r, g, b)
+        dmc = dh.si_config.dark_mode_colors
+        r2, g2, b2 = dmc.get((r,g,b),Exporter.invert_rgb255_lab_d50(r, g, b))
         
         return inkex.colors.Color([r2, g2, b2])
 
