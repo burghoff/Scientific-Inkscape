@@ -1270,10 +1270,13 @@ class SI_Config:
     subdirs
     """
 
-    def __init__(self, filename="config.json"):
-        self.config_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), filename
-        )
+    def __init__(self):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        local = os.path.join(base_dir, "config.local.json")
+        default = os.path.join(base_dir, "config.json")
+    
+        self.config_path = local if os.path.exists(local) else default
+    
         self.data = {}
         self.loaded = False
 
