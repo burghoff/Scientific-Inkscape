@@ -266,6 +266,15 @@ class AutoExporter(inkex.EffectExtension):
                                 pass
                             else:
                                 raise
+                                
+                    # Silence assertion 'desc != NULL' failed errors in v1.4.3
+                    from gi.repository import GLib
+                    GLib.log_set_handler(
+                        "Pango",
+                        GLib.LogLevelFlags.LEVEL_CRITICAL,
+                        lambda *args: None,
+                        None,
+                    )
                     
                     from gi.repository import Gtk  # noqa
                     # pylint: enable=import-outside-toplevel, unused-import

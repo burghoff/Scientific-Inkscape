@@ -163,72 +163,9 @@ mydir = os.path.dirname(os.path.abspath(__file__))
 packages = os.path.join(mydir, "packages")
 if packages not in sys.path:
     sys.path.append(packages)
-import os, uuid
-from watchdog.observers import Observer as NativeObserver
+import os
 from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
-
-
-def make_observer_auto(dir_path: str):
-    """
-    Probe dir_path for reliable native filesystem events.
-    If create/modify/delete are all detected within 2.5s,
-    return a NativeObserver(); otherwise return PollingObserver(timeout=0.5).
-    """
-    class ProbeHandler(FileSystemEventHandler):
-        def __init__(self, path):
-            super().__init__()
-            self.path = os.path.abspath(path)
-            self.got_create = threading.Event()
-            self.got_modify = threading.Event()
-            self.got_delete = threading.Event()
-        def _match(self, p): return os.path.abspath(p) == self.path
-        def on_created(self, e): 
-            if not e.is_directory and self._match(e.src_path): self.got_create.set()
-        def on_modified(self, e): 
-            if not e.is_directory and self._match(e.src_path): self.got_modify.set()
-        def on_deleted(self, e): 
-            if not e.is_directory and self._match(e.src_path): self.got_delete.set()
-
-    os.makedirs(dir_path, exist_ok=True)
-    dummy = os.path.join(dir_path, f".probe_{uuid.uuid4().hex}.tmp")
-    handler = ProbeHandler(dummy)
-    obs = NativeObserver()
-    ok = False
-    try:
-        obs.schedule(handler, dir_path, recursive=False)
-        obs.start()
-        time.sleep(0.25)  # let backend initialize
-        with open(dummy, "w") as f: f.write("x")
-        time.sleep(0.15)
-        with open(dummy, "a") as f: f.write("y")
-        time.sleep(0.15)
-        os.remove(dummy)
-        # wait for all three events
-        deadline = time.time() + 2.5
-        while time.time() < deadline:
-            if handler.got_create.is_set() and handler.got_modify.is_set() and handler.got_delete.is_set():
-                ok = True
-                break
-            time.sleep(0.05)
-    except Exception:
-        ok = False
-    finally:
-        try:
-            obs.stop(); obs.join(1)
-        except Exception:
-            pass
-        if os.path.exists(dummy):
-            try: os.remove(dummy)
-            except Exception: pass
-    if sys.platform == "darwin":
-        ok = False
-    if ok or not PollingObserver:
-        # mprint("[watcher] using native Observer")
-        return NativeObserver()
-    else:
-        # mprint("[watcher] using PollingObserver(timeout=1.0)")
-        return PollingObserver(timeout=0.5)
 
 class Watcher(FileSystemEventHandler):
     """Class that watches a folder for changes to SVGs"""
@@ -242,7 +179,7 @@ class Watcher(FileSystemEventHandler):
         self.deletefcn = deletefcn
         self.debounce_timers = {}
         self.file_mod_times = {}
-        self.observer = make_observer_auto(directory_to_watch)
+        self.observer = PollingObserver(timeout=0.5)
         self.start()
 
     def start(self):
