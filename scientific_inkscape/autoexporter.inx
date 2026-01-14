@@ -82,7 +82,7 @@
         <param name="backingrect" type="bool" gui-text="Add transparent backing rectangle"
         gui-description="A transparent rectangle behind the image makes it easier to select in certain programs">true</param> 
         <param name="darkmode" type="bool" gui-text="Convert to dark mode"
-        gui-description="Inverts colors for presentations with a dark background. Color mapping can be configured in config.json.>false</param> 
+        gui-description="Inverts colors for presentations with a dark background. Color mapping can be configured in config.json.">false</param> 
         <param name="margin" type="float" precision="1" min="-9999" max="9999" gui-text="Extra margin (mm)"
         gui-description="Adds a margin to the export. A small margin can ensure that edges are not clipped off.">0.3</param>
         
