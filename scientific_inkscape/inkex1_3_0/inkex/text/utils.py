@@ -254,6 +254,7 @@ class InkscapeSystemInfo:
         self._preferences = self._UNSET
         self._binary_location = self._UNSET
         self._binary_version = self._UNSET
+        self._gtk_version = self._UNSET
 
     @property
     def language(self):
@@ -441,6 +442,53 @@ class InkscapeSystemInfo:
                 inkex.utils.debug("locale language: " + str(prefslang))
         return prefslang
 
+    @property
+    def gtk_version(self):
+        """Get the current GTK version."""
+        if self._gtk_version is self._UNSET:
+            try:
+                import warnings
+                with warnings.catch_warnings():
+                    # Ignore ImportWarning for Gtk/Pango
+                    warnings.simplefilter("ignore")
+                    # Prevent Gtk-Message: Failed to load module "xapp-gtk3-module"
+                    os.environ["GTK_MODULES"] = ""
+                    # pylint: disable=import-outside-toplevel, unused-import
+                    import gi
+
+                    current = getattr(gi, "_versions", {}).get("Gtk")
+                    if not current:
+                        try:
+                            gi.require_version("Gtk", "3.0")
+                        except ValueError as e:
+                            msg = str(e)
+                            if "not available for version 3.0" in msg:
+                                gi.require_version("Gtk", "4.0")
+                            elif "already requires version" in msg:
+                                # Someone already picked (likely 4.0); just continue.
+                                pass
+                            else:
+                                raise
+                                
+                    # Silence assertion 'desc != NULL' failed errors in v1.4.3
+                    from gi.repository import GLib
+                    GLib.log_set_handler(
+                        "Pango",
+                        GLib.LogLevelFlags.LEVEL_CRITICAL,
+                        lambda *args: None,
+                        None,
+                    )
+                    
+                    from gi.repository import Gtk  # noqa
+                    # pylint: enable=import-outside-toplevel, unused-import
+                current = getattr(gi, "_versions", {}).get("Gtk")
+                self._gtk_version = current
+            except ImportError:
+                self._gtk_version = None
+        return self._gtk_version
+        
+            
+        
 
 inkex.inkscape_system_info = InkscapeSystemInfo()  # type: ignore
 

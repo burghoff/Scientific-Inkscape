@@ -244,47 +244,9 @@ class AutoExporter(inkex.EffectExtension):
             opts.inkscape_bfn = bfn
             opts.formats = formats
             opts.syspath = sys.path
-            try:
-                with warnings.catch_warnings():
-                    # Ignore ImportWarning for Gtk/Pango
-                    warnings.simplefilter("ignore")
-                    # Prevent Gtk-Message: Failed to load module "xapp-gtk3-module"
-                    os.environ["GTK_MODULES"] = ""
-                    # pylint: disable=import-outside-toplevel, unused-import
-                    import gi
-
-                    current = getattr(gi, "_versions", {}).get("Gtk")
-                    if not current:
-                        try:
-                            gi.require_version("Gtk", "3.0")
-                        except ValueError as e:
-                            msg = str(e)
-                            if "not available for version 3.0" in msg:
-                                gi.require_version("Gtk", "4.0")
-                            elif "already requires version" in msg:
-                                # Someone already picked (likely 4.0); just continue.
-                                pass
-                            else:
-                                raise
-                                
-                    # Silence assertion 'desc != NULL' failed errors in v1.4.3
-                    from gi.repository import GLib
-                    GLib.log_set_handler(
-                        "Pango",
-                        GLib.LogLevelFlags.LEVEL_CRITICAL,
-                        lambda *args: None,
-                        None,
-                    )
-                    
-                    from gi.repository import Gtk  # noqa
-                    # pylint: enable=import-outside-toplevel, unused-import
-                current = getattr(gi, "_versions", {}).get("Gtk")
-                guitype = "gtk"+current
-            except ImportError:
-                guitype = "terminal"
-            if USE_TERMINAL:
-                guitype = "terminal"
-            opts.guitype = guitype
+            
+            gtkv = inkex.inkscape_system_info.gtk_version
+            opts.guitype = {"3.0":"gtk3.0", "4.0":"gtk4.0", None:"terminal"}[gtkv]
             opts.logfile = dh.shared_temp(filename="si_ae_output.txt")
 
 
@@ -296,13 +258,13 @@ class AutoExporter(inkex.EffectExtension):
             warnings.simplefilter("ignore", ResourceWarning)
             # prevent warning that process is open
 
-            if guitype.startswith("gtk"):
+            if opts.guitype.startswith("gtk"):
                 AutoExporter._gtk_call(pybin, aepy)
             else:
                 AutoExporter._terminal_call(pybin, aepy, pyloc)
                 
             # Create a Windows batch launcher 
-            write_autoexporter_bat(aes, aepy, guitype)
+            write_autoexporter_bat(aes, aepy, opts.guitype)
 
         else:
             if not (self.options.testmode):
