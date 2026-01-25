@@ -1312,12 +1312,17 @@ class Exporter():
         
         uzo_path = self.tempbase + '_uzo'
         from office import Unzipped_Office
-        uzo = Unzipped_Office(original,uzo_path)
+        uzo = Unzipped_Office(original,uzo_path,aecaller=self)
         uzo.embed_linked()
+        
+        # self.finalizermode=7
+        
         if self.finalizermode==3:
             uzo.leave_fallback_png()
         elif self.finalizermode==5:
             uzo.leave_fallback_png_simple()
+        # elif self.finalizermode==7:
+        #     uzo.freeze_all_slide_colors()
         elif self.finalizermode==4:
             uzo.delete_fallback_png()
         elif self.finalizermode==6:

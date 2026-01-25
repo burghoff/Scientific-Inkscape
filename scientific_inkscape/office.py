@@ -17,6 +17,10 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+
+DPI_MIN = 300 # when replacing SVG with PNG, ensure DPI is at least this
+EMU_PER_INCH = 914400  # Office EMUs
+
 import sys
 import dhelpers as dh
 bfn = dh.inkex.inkscape_system_info.binary_location
@@ -40,11 +44,7 @@ from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo
 from urllib.parse import unquote
 from lxml import etree as ET
 import re
-import zlib, struct, binascii
-
-def svg_to_png(svg_path, png_path):
-    print(f'Exporting {svg_path}')
-    overwrite_output(svg_path, png_path)
+import zlib, struct, binascii, threading
 
 def normalize_and_copy(source_path, media_dir):
     os.makedirs(media_dir, exist_ok=True)
@@ -96,7 +96,7 @@ def safe_extract_zip(file, temp_dir=None, retries=5, delay=0.5):
 
             
 class Unzipped_Office():
-    def __init__(self,file,temp_dir=None):
+    def __init__(self,file,temp_dir=None,aecaller=None):
         safe_extract_zip(file,temp_dir)
         
         self.temp_dir = temp_dir
@@ -106,6 +106,10 @@ class Unzipped_Office():
         self.svg_color_map = {}          # maps '000001' -> 'figure42.svg'
         self.svg_to_color = {}           # maps normalized full svg path -> '000001'
         self._simple_png_next_color = 1  # next RGB code as integer (start at 1)
+        
+        self.aecaller = aecaller
+        self._queued_png_out = set()
+        self._queued_png_lock = threading.Lock()
         
         if not os.path.exists(self.media_dir):
             self.nfiles = 0
@@ -139,9 +143,34 @@ class Unzipped_Office():
         for slide in self.slides:
             slide.delete_fallback_png()
             
+    
+    def svg_to_png(self,svg_path, png_path):
+        print(f'Exporting {svg_path}')
+        
+        if self.aecaller is not None:
+            self.aecaller.check(overwrite_output,svg_path, png_path)
+        else:
+            overwrite_output(svg_path, png_path)
+            
+    def queue_svg_to_png(self, svg_path, png_path):
+        key = os.path.normcase(os.path.abspath(os.path.normpath(png_path)))
+
+        # Deduplicate by output file path so we never render the same PNG twice.
+        with self._queued_png_lock:
+            if key in self._queued_png_out:
+                return
+            self._queued_png_out.add(key)
+
+        t = threading.Thread(target=self.svg_to_png, args=(svg_path, png_path), daemon=True)
+        t.start()
+        self.threads.append(t)
+            
     def leave_fallback_png(self):
+        self.threads = []
         for slide in self.slides:
             slide.leave_fallback_png()
+        for t in self.threads:
+            t.join()
             
     def leave_fallback_png_simple(self):
         for slide in self.slides:
@@ -514,8 +543,6 @@ class Slide_and_Rels():
         if changed_slide:
             self.slide_tree.write(self.slide_path, xml_declaration=True, encoding='UTF-8', pretty_print=False)
             
-            
-            
     def delete_fallback_png(self):
         ns = {
             'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
@@ -561,6 +588,64 @@ class Slide_and_Rels():
             'asvg': 'http://schemas.microsoft.com/office/drawing/2016/SVG/main'
         }
         
+        def min_dpi(blip_el, png_abs_path):
+            def _png_px_size(png_path):
+                # Read PNG width/height from IHDR (no PIL)
+                try:
+                    with open(png_path, "rb") as f:
+                        sig = f.read(8)
+                        if sig != b"\x89PNG\r\n\x1a\n":
+                            return None
+                        # Next chunk must be IHDR
+                        _len = struct.unpack(">I", f.read(4))[0]
+                        ctyp = f.read(4)
+                        if ctyp != b"IHDR":
+                            return None
+                        data = f.read(_len)
+                        if len(data) < 8:
+                            return None
+                        w, h = struct.unpack(">II", data[:8])
+                        return (w, h)
+                except Exception:
+                    return None
+            
+            def _display_emu_from_blip(blip_el):
+                # Walk up to <p:pic>, then grab <a:xfrm><a:ext cx cy>
+                cur = blip_el
+                while cur is not None and not cur.tag.endswith("}pic"):
+                    cur = cur.getparent()
+                if cur is None:
+                    return None
+                xfrm = cur.find(".//a:xfrm", namespaces=ns)
+                if xfrm is None:
+                    return None
+                ext = xfrm.find("a:ext", namespaces=ns)
+                if ext is None:
+                    return None
+                try:
+                    cx = int(ext.get("cx"))
+                    cy = int(ext.get("cy"))
+                    return (cx, cy)
+                except Exception:
+                    return None
+                
+            px = _png_px_size(png_abs_path)
+            emu = _display_emu_from_blip(blip_el)
+            if not px or not emu:
+                return True  # can't evaluate -> don't force rerender
+            wpx, hpx = px
+            cx, cy = emu
+            if cx <= 0 or cy <= 0:
+                return True
+            win = cx / EMU_PER_INCH
+            hin = cy / EMU_PER_INCH
+            if win <= 0 or hin <= 0:
+                return True
+            dpx = wpx / win
+            dpy = hpx / hin
+            return min(dpx, dpy)
+
+        
         rel_id_to_target = {
             rel.attrib["Id"]: unquote(rel.attrib["Target"])
             for rel in self.rels_root if rel.tag.endswith("Relationship")
@@ -584,6 +669,8 @@ class Slide_and_Rels():
         if len(svgblips)+len(blips)==0:
             return
 
+
+
         removed_svgblips = []
         for svgblip in svgblips:
             # SVGs are usually embedded with a backup PNG
@@ -599,9 +686,30 @@ class Slide_and_Rels():
                 embed_rid = blip.attrib.get(f"{{{ns['r']}}}embed")
                 target = rel_id_to_target.get(embed_rid, "").lower()
                 if embed_rid and target.endswith(".png"):
+                    # Resolve SVG + PNG absolute paths (part-dir relative)
+                    source_part_path = self.rels_path.replace('\\_rels\\', '\\').replace('/_rels/', '/').rsplit('.rels', 1)[0]
+                    part_dir = os.path.dirname(source_part_path)
+                
+                    # svgblip's rid points to the SVG
+                    svg_rid = svgblip.attrib.get(f"{{{ns['r']}}}embed")
+                    svg_target = rel_id_to_target.get(svg_rid, "")
+                    svg_abs = os.path.normpath(os.path.join(part_dir, svg_target)) if svg_target else None
+                
+                    # blip's embed_rid points to the PNG fallback
+                    png_target = rel_id_to_target.get(embed_rid, "")
+                    png_abs = os.path.normpath(os.path.join(part_dir, png_target)) if png_target else None
+                
+                    # If PNG exists but is too low DPI for its displayed size -> rerender
+                    if svg_abs and png_abs and os.path.exists(png_abs):
+                        mdpi =  min_dpi(blip, png_abs)
+                        print('DPI of '+svg_abs+' : '+str(int(mdpi)) + '' if mdpi >= DPI_MIN else " (rerendering)")
+                        if mdpi < DPI_MIN:
+                            self.uzo.queue_svg_to_png(svg_abs, png_abs)
+                
                     blip.remove(extLst)
                     changed_slide = True
                     removed_svgblips.append(svgblip)
+
                 else:
                     # Invalid blip ancestor, replace with svgblip
                     blip.getparent().replace(blip, svgblip)
@@ -629,7 +737,7 @@ class Slide_and_Rels():
                 new_png_path = os.path.join(self.uzo.media_dir, new_png_name)
             
             new_rel_target = f"{self.uzo.media_loc}/{new_png_name}"
-            svg_to_png(svg_path, new_png_path)
+            self.uzo.queue_svg_to_png(svg_path, new_png_path)
 
             imagenum = len(self.rels_root) + 1
             while f"rId{imagenum}" in rel_id_to_target:
@@ -648,6 +756,7 @@ class Slide_and_Rels():
                 "Target": new_rel_target
             })
             changed_rels = True
+            
 
         if changed_slide:
             self.slide_tree.write(self.slide_path, xml_declaration=True, encoding='UTF-8', method="xml")

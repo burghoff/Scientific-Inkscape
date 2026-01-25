@@ -79,7 +79,17 @@ def update_batch_from_options():
 def is_target_file(file_name):
     flower = os.path.split(file_name)[1].lower()
     excludes = ["_portable.svg", "_plain.svg"," finalized.pptx"," finalized.docx"]
-    if any(file_name.endswith(ex) for ex in excludes) or flower.startswith('~$'):
+    if (
+        any(
+            flower.endswith(ex) or
+            re.search(
+                re.escape(ex).replace(r'\.', r'(?: \(\d+\))?\.' ) + r'$',
+                flower
+            )
+            for ex in excludes
+        )
+        or flower.startswith('~$')
+    ):
         return False
     if input_options.finalizermode>1 and  (flower.endswith(".pptx") or flower.endswith(".docx")):
         return True
