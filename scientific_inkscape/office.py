@@ -989,6 +989,23 @@ def get_images_onenote(target_file,outputdir):
     def is_jpeg(file_data: bytes) -> bool:
         """Check if the file_data represents a JPEG file by inspecting the header."""
         return file_data.startswith(b'\xFF\xD8\xFF')
+    
+    def is_gif(file_data: bytes) -> bool:
+        """Check if the file_data represents a GIF file by inspecting the header."""
+        return file_data.startswith(b'GIF87a') or file_data.startswith(b'GIF89a')
+    
+    def is_tiff(file_data: bytes) -> bool:
+        """Check if the file_data represents a TIFF file by inspecting the header."""
+        return file_data.startswith(b'II*\x00') or file_data.startswith(b'MM\x00*')
+    
+    def is_bmp(file_data: bytes) -> bool:
+        """Check if the file_data represents a BMP file by inspecting the header."""
+        return file_data.startswith(b'BM')
+    
+    def is_pdf(file_data: bytes) -> bool:
+        """Check if the file_data represents a PDF file by inspecting the header."""
+        return file_data.startswith(b'%PDF')
+    
     for index, file_data in enumerate(document.extract_files()):
         bn = Path(target_file).stem  # Use stem to get filename without extension
         if is_emf(file_data):
@@ -999,6 +1016,14 @@ def get_images_onenote(target_file,outputdir):
             extension = '.png'
         elif is_jpeg(file_data):
             extension = '.jpg'
+        elif is_gif(file_data):
+            extension = '.gif'
+        elif is_tiff(file_data):
+            extension = '.tif'
+        elif is_bmp(file_data):
+            extension = '.bmp'
+        elif is_pdf(file_data):
+            extension = '.pdf'
         else:
             extension = '.bin'  # Default extension for unknown types
         target_path = Path(outputdir) / f"{bn}_{index}{extension}"
