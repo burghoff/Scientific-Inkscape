@@ -786,6 +786,7 @@ class Slide_and_Rels():
                 referenced_files.add(os.path.basename(target))
 
         if changed_rels:
+            os.makedirs(os.path.dirname(self.rels_path), exist_ok=True)
             self.rels_tree.write(self.rels_path, xml_declaration=True, encoding='UTF-8')
         return referenced_files
     
