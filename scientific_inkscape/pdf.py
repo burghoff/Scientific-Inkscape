@@ -629,7 +629,7 @@ def export_svg_to_pdf(svg_path: str, exporter: Exporter) -> str:
         svg_path,
     ]
     import dhelpers as dh
-    exporter.check(dh.subprocess_repeat,args)  # same wrapper used by AutoExporter
+    exporter.check(dh.subprocess_repeat,args,finalization=True)  # same wrapper used by AutoExporter
     return pdf_path
 
 
@@ -1195,7 +1195,7 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
         pdf_path = os.path.splitext(svg)[0] + ".pdf"
         if (not os.path.exists(pdf_path)
                 or os.path.getmtime(pdf_path) < os.path.getmtime(svg)):
-            pdf_path = export_svg_to_pdf(svg, exporter)   # gated by Exporter.check(...)
+            pdf_path = export_svg_to_pdf(svg, exporter)
         svg_to_pdf_cache[svg] = pdf_path
     import threading
     threads = []

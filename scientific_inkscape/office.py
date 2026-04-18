@@ -47,7 +47,7 @@ def overwrite_output(filein, fileout):
 
 import os
 import shutil
-from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo
+from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo, BadZipFile
 from urllib.parse import unquote
 from lxml import etree as ET
 import re
@@ -168,7 +168,7 @@ class Unzipped_Office:
         print(f"Exporting {svg_path}")
 
         if self.aecaller is not None:
-            self.aecaller.check(overwrite_output, svg_path, png_path)
+            self.aecaller.check(overwrite_output, svg_path, png_path,finalization=True)
         else:
             overwrite_output(svg_path, png_path)
 

@@ -73,8 +73,8 @@ DISPPROFILE = False
 
 MAXATTEMPTS = 2
 MAX_THREADS = 10;
-sema1 = threading.Semaphore(MAX_THREADS)
-sema2 = threading.Semaphore(MAX_THREADS)
+sema_export = threading.Semaphore(MAX_THREADS)
+sema_finalize = threading.Semaphore(MAX_THREADS)
 
 class AutoExporter(inkex.EffectExtension):
     """Automates exporting of SVG files in multiple formats."""
@@ -890,17 +890,24 @@ class Exporter():
         + str(round(1000 * (time.time() - timestart)) / 1000)
         + " s)")
         return cfile
-    
-    def check(self,func, *args, **kwargs):
-        """Wraps a binary call with a check if thread has been stopped; if so, clear the temp file and exit"""
-        with sema1 if func==dh.wrapped_binary else sema2:
+
+    def check(self, func, *args, finalization=False, **kwargs):
+        """Wraps a call with a stopped-thread check; if stopped, clear temp and exit.
+        Different semas are used for finalization and export.
+        dh.overwrite_svg is pure-Python and bypasses semaphores entirely."""
+        def stopcheck():
             if hasattr(self, "aeThread") and self.aeThread.stopped is True:
                 self.clear_temp()
                 sys.exit()
+        if func == dh.overwrite_svg:
+            stopcheck()
             ret = func(*args, **kwargs)
-            if hasattr(self, "aeThread") and self.aeThread.stopped is True:
-                self.clear_temp()
-                sys.exit()
+            stopcheck()
+            return ret
+        with sema_finalize if finalization else sema_export:
+            stopcheck()
+            ret = func(*args, **kwargs)
+            stopcheck()
             return ret
 
     def split_acts(self, fnm, acts, reserved=None, get_bbs=True):
@@ -1342,12 +1349,12 @@ class Exporter():
 
             from pdf import make_pdf_libreoffice, make_pdf_word, replace_color_markers_with_svgs
             if self.finalizermode==6:
-                self.check(make_pdf_libreoffice,doc_finalized, temppdf)
+                self.check(make_pdf_libreoffice,doc_finalized, temppdf,finalization=True)
                 actual_output = repeat_move(temppdf, output_pdf)
             else:
-                self.check(make_pdf_word,doc_finalized, temppdf,self)
+                self.check(make_pdf_word,doc_finalized, temppdf,self,finalization=True)
                 temppdf2 = self.tempbase+'_replaced.pdf'
-                self.check(replace_color_markers_with_svgs,temppdf,uzo.svg_color_map,temppdf2,self)
+                self.check(replace_color_markers_with_svgs,temppdf,uzo.svg_color_map,temppdf2,self,finalization=True)
                 # temppdf3 = os.path.join(os.path.split(self.tempbase)[0],'tmp.pdf')
                 # shutil.copyfile(temppdf, temppdf3)
                 # self.prints(temppdf3)
