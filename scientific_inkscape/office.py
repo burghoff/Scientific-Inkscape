@@ -99,7 +99,7 @@ def safe_extract_zip(file, temp_dir=None, retries=5, delay=0.5):
             shutil.rmtree(staging_dir)
 
             return temp_dir  # success
-        except PermissionError:
+        except (BadZipFile, PermissionError):
             if attempt == retries - 1:
                 raise  # re-raise after last attempt
             time.sleep(delay * (2**attempt))  # exponential backoff
