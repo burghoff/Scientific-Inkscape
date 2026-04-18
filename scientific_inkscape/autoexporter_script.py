@@ -3,14 +3,12 @@
 # automatically to another folder in multiple formats.
 
 DEBUG = False
-WHILESLEEP = 0.5
-MAXTHREADS = 1000
 
 WINDOW_WIDTH = 450
 MARGIN = 10
 LABEL_WIDTH = 16
 
-import sys, platform, os, threading, time, copy, pickle, re, tempfile
+import sys, platform, os, threading, copy, pickle, re, tempfile
 
 systmpdir = os.path.abspath(tempfile.gettempdir())
 aes = os.path.join(systmpdir, "si_ae_settings.p")
@@ -425,37 +423,26 @@ class FileCheckerThread(threading.Thread):
                 for f in sorted(updatefiles):
                     self.queue_thread(f)
 
-                while (
-                    len(self.thread_queue) > 0
-                    and len(self.running_threads) < MAXTHREADS
-                    and not self.stopped
-                ):
+                while len(self.thread_queue) > 0 and not self.stopped:
                     self.thread_queue[0].start()
                     self.running_threads.append(self.thread_queue[0])
                     self.thread_queue.remove(self.thread_queue[0])
-                    time.sleep(WHILESLEEP)
 
                 for thr in reversed(self.running_threads):
                     if not thr.is_alive():
                         self.running_threads.remove(thr)
                         self.finished_threads.append(thr)
                         self.promptpending = True
-
-                while self.dm and any([thr.is_alive() for thr in self.running_threads]):
-                    time.sleep(WHILESLEEP)
                 loopme = self.dm
 
             if self.promptpending and len(self.running_threads) + len(self.thread_queue) == 0:
                 if guitype == "terminal":
                     mprint(promptstring)
                 self.promptpending = False
-            time.sleep(WHILESLEEP)
 
         self.watcher.stop()
         for t in self.running_threads:
             t.stopped = True
-        while any([thr.is_alive() for thr in self.running_threads]):
-            time.sleep(WHILESLEEP)
         for thr in reversed(self.running_threads):
             self.running_threads.remove(thr)
             self.finished_threads.append(thr)
@@ -1490,7 +1477,6 @@ else:
                 t2 = PromptThread()
                 t2.start()
                 fc.promptpending = True
-        time.sleep(WHILESLEEP)
 
     # On macOS close the terminal we opened
     # https://superuser.com/questions/158375/
