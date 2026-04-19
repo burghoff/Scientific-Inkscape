@@ -1340,10 +1340,10 @@ class Exporter():
         
         doc_finalized = self.tempbase +  f"_finalized{ext}"
         uzo.rezip(doc_finalized)
+        base, ext = os.path.splitext(self.outtemplate)
 
         notes = ''
         if self.finalizermode in [5,6]:
-            base, ext = os.path.splitext(self.outtemplate)
             temppdf = self.tempbase+'_raw.pdf'
             output_pdf = f"{base}.pdf"
 
