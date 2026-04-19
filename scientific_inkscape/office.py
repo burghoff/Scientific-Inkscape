@@ -1100,11 +1100,30 @@ class Slide_and_Rels:
             rel_id_to_target[new_rid] = new_rel_target
             changed_rels = True
 
-            # Replace the node with a fresh <a:blip> that embeds our new PNG rid
-            new_blip = ET.Element(f"{{{ns['a']}}}blip")
-            new_blip.attrib[f"{{{ns['r']}}}embed"] = new_rid
-            parent = node.getparent()
-            parent.replace(node, new_blip)
+            # If this is an <asvg:svgBlip> nested in <a:blip>/<a:extLst>/<a:ext>
+            # whose outer <a:blip> has no r:embed, promote the new PNG rid onto
+            # the outer blip and drop the extLst. A plain parent.replace here
+            # would leave the PNG reference buried inside the SVG-extension slot
+            # and the outer blip still with no primary image, so PowerPoint
+            # would render a broken-picture placeholder.
+            promoted = False
+            if node.tag == f"{{{ns['asvg']}}}svgBlip":
+                ext = node.getparent()
+                extLst = ext.getparent() if ext is not None else None
+                outer_blip = extLst.getparent() if extLst is not None else None
+                if (ext is not None and ext.tag == f"{{{ns['a']}}}ext"
+                        and extLst is not None and extLst.tag == f"{{{ns['a']}}}extLst"
+                        and outer_blip is not None and outer_blip.tag == f"{{{ns['a']}}}blip"
+                        and not outer_blip.attrib.get(f"{{{ns['r']}}}embed")):
+                    outer_blip.attrib[f"{{{ns['r']}}}embed"] = new_rid
+                    outer_blip.remove(extLst)
+                    promoted = True
+            if not promoted:
+                # Replace the node with a fresh <a:blip> that embeds our new PNG rid
+                new_blip = ET.Element(f"{{{ns['a']}}}blip")
+                new_blip.attrib[f"{{{ns['r']}}}embed"] = new_rid
+                parent = node.getparent()
+                parent.replace(node, new_blip)
             changed_slide = True
 
         if changed_slide:
