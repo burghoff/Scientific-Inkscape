@@ -4860,8 +4860,13 @@ def cleanup_whitespace(elem,isflow):
         for ddi, typ, src, sel, txt in TextTree(elem).dgenerator():
             if txt is not None and len(txt)>1:
                 # Leave singleton spaces alone 
-                if typ==TYP_TEXT:
-                    src.text = re.sub(r'[ \t\r\n\f\v]+', ' ', txt).strip(' \t\r\n\f\v')
+                if typ == TYP_TEXT:
+                    collapsed = re.sub(r'[ \t\r\n\f\v]+', ' ', txt)
+                    stripped = collapsed.strip(' \t\r\n\f\v')
+                    # If followed by element children, a trailing single space is rendered
+                    if len(src) > 0 and txt[-1:] in ' \t\r\n\f\v':
+                        stripped = stripped + ' '
+                    src.text = stripped
                 else:
                     # For tails, a single leading space may be rendered
                     collapsed = re.sub(r'[ \t\r\n\f\v]+', ' ', txt)
