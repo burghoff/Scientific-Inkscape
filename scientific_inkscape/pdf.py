@@ -151,6 +151,21 @@ def _debug_copy(src_path, label=None):
         return None
 
 
+def _debug_print(msg):
+    """Emit a verbose debug line to stderr when DEBUG_PDF is set.
+
+    Used to narrate the marker-detection / replacement pipeline -- especially
+    *why* a candidate image was rejected as a marker. The DEBUG_PDF guard at
+    the top keeps the cost negligible when debugging is off.
+    """
+    if not DEBUG_PDF:
+        return
+    try:
+        print("[pdf debug] {}".format(msg), file=sys.stderr, flush=True)
+    except Exception:
+        pass
+
+
 POWERSHELL_HELPER = r"""
 param(
     [Parameter(Mandatory=$true)][string]$InputPath,
@@ -908,51 +923,265 @@ def _is_rgb_colorspace(cs):
     return False
 
 
-def _try_get_uniform_rgb_hex_from_ximage(ximg) -> Optional[str]:
+def _decode_image_rows(raw, w, h, bpp, predictor):
+    """Generator yielding each decoded row of an 8-bit-per-channel image.
+
+    Handles both PNG-style predictor (10..15) and the no-predictor case in a
+    single helper so callers can walk RGB and SMask streams in lockstep.
+
+    Yields ``(row_bytes, None)`` per row on success, or ``(None, error_msg)``
+    once when the stream is malformed or uses an unsupported filter; the
+    generator stops after a single error yield.
     """
-    Attempt to decode the image XObject to raw RGB and check if it's uniform.
-    Returns lowercase 'rrggbb' or None.
+    stride = bpp * w
+
+    if predictor < 10:
+        # No predictor: stream is just stride*h raw sample bytes.
+        if len(raw) != stride * h:
+            yield None, ("data length mismatch (no predictor): got {}, "
+                         "expected {}").format(len(raw), stride * h)
+            return
+        for r in range(h):
+            yield bytes(raw[r * stride:(r + 1) * stride]), None
+        return
+
+    # PNG-style predictor: each row is [filter byte][stride sample bytes].
+    if len(raw) != (1 + stride) * h:
+        yield None, ("predictor data length mismatch: got {}, "
+                     "expected {} for {}x{}").format(
+                         len(raw), (1 + stride) * h, w, h)
+        return
+
+    prev = bytearray(stride)
+    src = memoryview(raw)
+    for row in range(h):
+        base = row * (1 + stride)
+        f = src[base]
+        line = src[base + 1:base + 1 + stride]
+        if f == 0:
+            rec = bytearray(line)
+        elif f == 1:  # Sub
+            rec = bytearray(stride)
+            for i in range(stride):
+                left = rec[i - bpp] if i >= bpp else 0
+                rec[i] = (line[i] + left) & 0xFF
+        elif f == 2:  # Up
+            rec = bytearray(stride)
+            for i in range(stride):
+                rec[i] = (line[i] + prev[i]) & 0xFF
+        elif f == 3:  # Average
+            rec = bytearray(stride)
+            for i in range(stride):
+                left = rec[i - bpp] if i >= bpp else 0
+                up = prev[i]
+                rec[i] = (line[i] + ((left + up) // 2)) & 0xFF
+        elif f == 4:  # Paeth
+            rec = bytearray(stride)
+            for i in range(stride):
+                left = rec[i - bpp] if i >= bpp else 0
+                up = prev[i]
+                up_left = prev[i - bpp] if i >= bpp else 0
+                rec[i] = (line[i] + _paeth(left, up, up_left)) & 0xFF
+        else:
+            yield None, "unknown PNG filter byte {} at row {}".format(f, row)
+            return
+        yield bytes(rec), None
+        prev = rec
+
+
+def _try_get_uniform_rgb_hex_from_ximage(ximg, name=None) -> Optional[str]:
     """
+    Decode an image XObject and, if its visible (fully-opaque) pixels are all
+    a single RGB color, return that color as lowercase 'rrggbb'. Otherwise
+    return None.
+
+    Why this isn't simply "every pixel must match":
+
+      - Marker PNGs are written as 9x9 by office.py, but PDF generators
+        (LibreOffice, Word, PowerPoint) routinely resize embedded images.
+        Size is therefore not used for matching.
+      - When a generator resizes a marker, it often splits the result into
+        an RGB image + grayscale /SMask, with anti-aliased edge pixels whose
+        RGB drifts by 1-2 levels. Those edge pixels have alpha < 255; the
+        interior keeps the marker's exact color at alpha == 255.
+
+    Rule:
+      - If no /SMask: every pixel must match (early exit on first deviation).
+      - If /SMask present and same dimensions: only fully-opaque pixels
+        (alpha == 255) participate in the uniformity check; anti-aliased
+        edge pixels are ignored. An image with no opaque pixels at all is
+        rejected (it's invisible).
+
+    Decoding is row-by-row with early exit so large photographic images get
+    rejected in milliseconds instead of being fully decoded.
+
+    ``name`` is an optional XObject reference name (e.g. '/Im5') used purely
+    for verbose debug logging when DEBUG_PDF is enabled.
+    """
+    label = "image {}".format(name) if name else "image"
     try:
         w = int(ximg.get("/Width", 0))
         h = int(ximg.get("/Height", 0))
         bpc = int(ximg.get("/BitsPerComponent", 8))
         cs = ximg.get("/ColorSpace", "/DeviceRGB")
         smask = ximg.get("/SMask", None)
-    except Exception:
+    except Exception as e:
+        _debug_print("{}: rejected (metadata read failed: {})".format(label, e))
         return None
 
-    if not (w == 9 and h == 9 and bpc == 8 and smask is None):
+    if not (w > 0 and h > 0 and bpc == 8):
+        if DEBUG_PDF:
+            reasons = []
+            if not (w > 0 and h > 0):
+                reasons.append("bad size {}x{}".format(w, h))
+            if bpc != 8:
+                reasons.append("bit depth {}".format(bpc))
+            _debug_print("{}: rejected ({})".format(label, "; ".join(reasons)))
         return None
 
     if not _is_rgb_colorspace(cs):
+        _debug_print("{}: rejected (non-RGB colorspace: {})".format(label, cs))
         return None
 
-    # pypdf gives decoded-by-filter data, but PNG 'Predictor' is still present in DecodeParms
     raw = ximg.get_data()
     dp = ximg.get("/DecodeParms", {})
     predictor = int(dp.get("/Predictor", 0)) if isinstance(dp, dict) else 0
 
-    # If predictor is PNG-style (10..15), each row is [filter][bytes...]
-    if predictor >= 10:
-        rgb = _undo_png_predictors_rgb8(raw, w, h)
-        if not rgb:
+    # Set up the alpha iterator if there's an SMask of matching dimensions.
+    alpha_iter = None
+    if smask is not None:
+        try:
+            sm = smask.get_object() if hasattr(smask, "get_object") else smask
+            sw = int(sm.get("/Width", 0))
+            sh = int(sm.get("/Height", 0))
+            sbpc = int(sm.get("/BitsPerComponent", 8))
+        except Exception as e:
+            _debug_print("{}: rejected (SMask metadata read failed: {})".format(label, e))
             return None
+        if (sw, sh) != (w, h):
+            _debug_print("{}: rejected (SMask {}x{} doesn't match image {}x{})".format(
+                label, sw, sh, w, h))
+            return None
+        if sbpc != 8:
+            _debug_print("{}: rejected (SMask bit depth {})".format(label, sbpc))
+            return None
+        try:
+            sraw = sm.get_data()
+        except Exception as e:
+            _debug_print("{}: rejected (SMask data read failed: {})".format(label, e))
+            return None
+        sdp = sm.get("/DecodeParms", {})
+        spred = int(sdp.get("/Predictor", 0)) if isinstance(sdp, dict) else 0
+        alpha_iter = _decode_image_rows(sraw, w, h, 1, spred)
+
+    rgb_iter = _decode_image_rows(raw, w, h, 3, predictor)
+
+    target = None      # (r, g, b) of the first opaque pixel
+    target_row = None  # cached `bytes(target) * w` for fast row equality
+    n_opaque = 0
+    n_skipped_alpha = 0
+
+    for row_idx in range(h):
+        rgb_row, err = next(rgb_iter)
+        if rgb_row is None:
+            _debug_print("{}: rejected ({})".format(label, err))
+            return None
+
+        if alpha_iter is None:
+            # No SMask -- every pixel must match the target.
+            if target is None:
+                target = (rgb_row[0], rgb_row[1], rgb_row[2])
+                target_row = bytes(target) * w
+                n_opaque += w
+                # The very first row's first pixel is the target. The rest
+                # of the row still needs to match it.
+                if rgb_row != target_row:
+                    _emit_first_deviation(label, row_idx, target, rgb_row, w)
+                    return None
+                continue
+            if rgb_row == target_row:
+                n_opaque += w
+                continue
+            _emit_first_deviation(label, row_idx, target, rgb_row, w)
+            return None
+
+        # SMask path: only count fully-opaque pixels.
+        alpha_row, err = next(alpha_iter)
+        if alpha_row is None:
+            _debug_print("{}: rejected (SMask: {})".format(label, err))
+            return None
+
+        # Fast path: if the entire alpha row is 255, the row reduces to the
+        # plain comparison above.
+        if alpha_row == b"\xff" * w:
+            if target is None:
+                target = (rgb_row[0], rgb_row[1], rgb_row[2])
+                target_row = bytes(target) * w
+            if rgb_row != target_row:
+                _emit_first_deviation(label, row_idx, target, rgb_row, w,
+                                       through_smask=True)
+                return None
+            n_opaque += w
+            continue
+
+        # Slow path: walk the row, ignoring pixels whose alpha is not 255.
+        for c in range(w):
+            if alpha_row[c] != 255:
+                n_skipped_alpha += 1
+                continue
+            base = c * 3
+            r, g, b = rgb_row[base], rgb_row[base + 1], rgb_row[base + 2]
+            if target is None:
+                target = (r, g, b)
+                target_row = bytes(target) * w
+                n_opaque += 1
+                continue
+            if r != target[0] or g != target[1] or b != target[2]:
+                _debug_print(
+                    "{}: rejected (non-uniform opaque pixel at row {}, col {}; "
+                    "target {:02x}{:02x}{:02x}, got "
+                    "{:02x}{:02x}{:02x})".format(
+                        label, row_idx, c,
+                        target[0], target[1], target[2], r, g, b))
+                return None
+            n_opaque += 1
+
+    if target is None:
+        # Image is non-empty but every pixel had alpha != 255 -- effectively
+        # invisible. Don't claim it as a marker.
+        _debug_print("{}: rejected (no fully-opaque pixels: image is invisible "
+                     "via SMask)".format(label))
+        return None
+
+    result = "{:02x}{:02x}{:02x}".format(target[0], target[1], target[2])
+    if alpha_iter is not None:
+        _debug_print(
+            "{}: uniform color {} at {}x{} ({} opaque px, {} alpha-blended "
+            "edge px ignored)".format(
+                label, result, w, h, n_opaque, n_skipped_alpha))
     else:
-        # No predictor: expect raw planar? In practice for these markers it will be PNG predictor.
-        # Fallback: assume row filter=0 was used and raw has no filter bytes (rare).
-        expected = 3 * w * h
-        if len(raw) != expected:
-            return None
-        rgb = raw
+        _debug_print("{}: uniform color {} at {}x{}".format(label, result, w, h))
+    return result
 
-    # Check uniform
-    r0, g0, b0 = rgb[0], rgb[1], rgb[2]
-    for i in range(0, len(rgb), 3):
-        if rgb[i] != r0 or rgb[i+1] != g0 or rgb[i+2] != b0:
-            return None
 
-    return f"{r0:02x}{g0:02x}{b0:02x}"
+def _emit_first_deviation(label, row_idx, target, rgb_row, w, through_smask=False):
+    """Find the first pixel in ``rgb_row`` that doesn't match ``target`` and
+    emit a debug rejection line that points at it. Used by the no-SMask fast
+    path and the all-alpha-255 fast path so the user gets the same kind of
+    diagnostic they'd get from the per-pixel slow path."""
+    if not DEBUG_PDF:
+        return
+    tr, tg, tb = target
+    for i in range(0, 3 * w, 3):
+        if rgb_row[i] != tr or rgb_row[i + 1] != tg or rgb_row[i + 2] != tb:
+            kind = "non-uniform opaque pixel" if through_smask else "non-uniform pixel"
+            _debug_print(
+                "{}: rejected ({} at row {}, col {}; "
+                "target {:02x}{:02x}{:02x}, got "
+                "{:02x}{:02x}{:02x})".format(
+                    label, kind, row_idx, i // 3, tr, tg, tb,
+                    rgb_row[i], rgb_row[i + 1], rgb_row[i + 2]))
+            return
 
 
 def print_ops(res,ops):
@@ -1145,17 +1374,26 @@ def _uniquify_rep_resource_names(dst_res, rep_res, rep_ops):
                     rep_ops[i] = (ops2, operator)
 
 
-def _collect_and_inline_markers(page, writer, color_to_svg, rep_by_color):
+def _collect_and_inline_markers(page, writer, color_to_svg, rep_by_color,
+                                page_index=None):
     """
-    Scan a page, replace any 9x9 uniform-color marker images with the
+    Scan a page, replace any uniform-color marker images (any size) with the
     replacement PDF's operators in-place (inside the same q..Q / clip / cm).
+    Markers are written as 9x9 by office.py but may be resized during PDF
+    generation, so size is not used for matching.
+
+    ``page_index`` is an optional 0-based page number used solely for verbose
+    debug logging when DEBUG_PDF is enabled.
     """
+    page_label = "page {}".format(page_index) if page_index is not None else "page"
+
     pdf = page.pdf
     res = page.get("/Resources", {}) or {}
     xobjs = res.get("/XObject", {})
 
     contents = page.get("/Contents", None)
     if contents is None:
+        _debug_print("{}: no /Contents stream, skipping".format(page_label))
         return
 
     cs = ContentStream(contents, pdf)
@@ -1165,6 +1403,14 @@ def _collect_and_inline_markers(page, writer, color_to_svg, rep_by_color):
     CTM = stack[-1]
     new_ops = []
     touched_resources = False
+
+    # Counters used only for the per-page summary in DEBUG_PDF mode.
+    n_do = 0
+    n_image_do = 0
+    n_uniform = 0
+    n_replaced = 0
+    n_unknown_color = 0
+    n_zero_size_skip = 0
 
     # Shallow merge helper for /Resources
     def _merge_resources(dst, src):
@@ -1215,36 +1461,66 @@ def _collect_and_inline_markers(page, writer, color_to_svg, rep_by_color):
             continue
 
         if op == "Do" and len(operands) == 1:
+            n_do += 1
+            xo_name = str(operands[0])
             xo = _resolve_xobj(xobjs, operands[0])
             if xo is not None and xo.get("/Subtype") == "/Image":
-                hexcolor = _try_get_uniform_rgb_hex_from_ximage(xo)
-                if hexcolor and hexcolor in color_to_svg and hexcolor in rep_by_color:
-                    # Inline replacement here: q, cm(1/rep_w,1/rep_h), <rep_ops>, Q
-                    rep_ops, rep_w, rep_h, rep_res = rep_by_color[hexcolor]
+                n_image_do += 1
+                xo_label = "{} {}".format(page_label, xo_name)
+                hexcolor = _try_get_uniform_rgb_hex_from_ximage(xo, name=xo_label)
+                if hexcolor:
+                    n_uniform += 1
+                    if hexcolor in color_to_svg and hexcolor in rep_by_color:
+                        # Inline replacement here: q, cm(1/rep_w,1/rep_h), <rep_ops>, Q
+                        rep_ops, rep_w, rep_h, rep_res = rep_by_color[hexcolor]
 
-                    if rep_w > 0 and rep_h > 0:
-                        _uniquify_rep_resource_names(res, rep_res, rep_ops)
-                        # Merge resources so rep_ops names resolve
-                        _merge_resources(res, rep_res)
-                        # Sandbox replacement state
-                        new_ops.append(([], b"q"))
-                        # Scale from replacement page units to unit square
-                        new_ops.append((
-                            [FloatObject(1.0/rep_w), FloatObject(0.0), FloatObject(0.0),
-                             FloatObject(1.0/rep_h), FloatObject(0.0), FloatObject(0.0)],
-                            b"cm"
-                        ))
-                        # Splice the replacement operators
-                        new_ops.extend(rep_ops)
-                        new_ops.append(([], b"Q"))
-                        # Skip the original Do (we've replaced it)
-                        continue
+                        if rep_w > 0 and rep_h > 0:
+                            _debug_print(
+                                "{}: replacing {} (color {}) with marker for {}".format(
+                                    page_label, xo_name, hexcolor,
+                                    color_to_svg[hexcolor]))
+                            _uniquify_rep_resource_names(res, rep_res, rep_ops)
+                            # Merge resources so rep_ops names resolve
+                            _merge_resources(res, rep_res)
+                            # Sandbox replacement state
+                            new_ops.append(([], b"q"))
+                            # Scale from replacement page units to unit square
+                            new_ops.append((
+                                [FloatObject(1.0/rep_w), FloatObject(0.0), FloatObject(0.0),
+                                 FloatObject(1.0/rep_h), FloatObject(0.0), FloatObject(0.0)],
+                                b"cm"
+                            ))
+                            # Splice the replacement operators
+                            new_ops.extend(rep_ops)
+                            new_ops.append(([], b"Q"))
+                            # Skip the original Do (we've replaced it)
+                            n_replaced += 1
+                            continue
+                        else:
+                            n_zero_size_skip += 1
+                            _debug_print(
+                                "{}: skipping {} (color {}): replacement page "
+                                "has zero size {}x{}".format(
+                                    page_label, xo_name, hexcolor, rep_w, rep_h))
+                    else:
+                        n_unknown_color += 1
+                        _debug_print(
+                            "{}: {} is uniform color {} but not in marker map"
+                            " -- leaving as-is".format(
+                                page_label, xo_name, hexcolor))
             # Non-marker Do or no replacement available: keep as-is
             new_ops.append((operands, operator))
             continue
 
         # default
         new_ops.append((operands, operator))
+
+    if DEBUG_PDF:
+        _debug_print(
+            "{}: summary -- {} Do ops, {} image XObjects, {} uniform, "
+            "{} replaced, {} unknown-color, {} skipped (zero replacement size)"
+            .format(page_label, n_do, n_image_do, n_uniform,
+                    n_replaced, n_unknown_color, n_zero_size_skip))
 
     # Write back modified content stream and any resource merges
     cs.operations = new_ops
@@ -1271,6 +1547,12 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
       - color_to_svg: dict like {'000001': 'C:/.../figure1.svg', ...} from leave_fallback_png_simple
       - output_pdf_path: output
     """
+    _debug_print("replace_color_markers_with_svgs: input={}".format(input_pdf_path))
+    _debug_print("  marker map has {} color(s)".format(len(color_to_svg)))
+    if DEBUG_PDF:
+        for hc, sp in sorted(color_to_svg.items()):
+            _debug_print("    {} -> {}".format(hc, sp))
+
     in_reader = PdfReader(input_pdf_path)
     writer = PdfWriter()
 
@@ -1285,9 +1567,13 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
         # so the debug folder always reflects what was actually used.
         _debug_copy(svg, label="marker_svg")
         pdf_path = os.path.splitext(svg)[0] + ".pdf"
-        if (not os.path.exists(pdf_path)
-                or os.path.getmtime(pdf_path) < os.path.getmtime(svg)):
+        cached = (os.path.exists(pdf_path)
+                  and os.path.getmtime(pdf_path) >= os.path.getmtime(svg))
+        if not cached:
+            _debug_print("exporting SVG -> PDF: {}".format(svg))
             pdf_path = export_svg_to_pdf(svg, exporter)
+        else:
+            _debug_print("using cached PDF for SVG: {}".format(svg))
         svg_to_pdf_cache[svg] = pdf_path
         _debug_copy(pdf_path, label="marker_pdf")
     import threading
@@ -1298,17 +1584,20 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
         threads.append(t)
     for t in threads:
         t.join()
-        
+
     if hasattr(exporter, "aeThread") and exporter.aeThread.stopped is True:
         exporter.clear_temp()
         sys.exit()
-        
+
     # Build hexcolor -> replacement content map (ops + size + resources)
     rep_by_color = {}
     from pypdf.generic import ContentStream
     for hexcolor, svg in color_to_svg.items():
         rep_pdf_path = svg_to_pdf_cache.get(svg)
         if not rep_pdf_path:
+            _debug_print("no PDF available for color {} (svg={!r}) -- "
+                         "this color will pass through unchanged".format(
+                             hexcolor, svg))
             continue
         rr = PdfReader(rep_pdf_path)
         rp = rr.pages[0]
@@ -1320,12 +1609,19 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
         # Grab replacement resources (may be None)
         rep_res = rp.get("/Resources", {}) or {}
         rep_by_color[hexcolor] = (rep_ops, rep_w, rep_h, rep_res)
+        _debug_print(
+            "replacement registered for color {}: page size {:g}x{:g}, "
+            "{} content op(s) from {}".format(
+                hexcolor, rep_w, rep_h, len(rep_ops), rep_pdf_path))
 
+    n_pages = len(in_reader.pages)
+    _debug_print("scanning {} page(s) of {}".format(n_pages, input_pdf_path))
 
     # For each page: strip markers, then overlay their corresponding PDFs
-    for page in in_reader.pages:
-        _collect_and_inline_markers(page, writer, color_to_svg, rep_by_color)
-    
+    for i, page in enumerate(in_reader.pages):
+        _collect_and_inline_markers(page, writer, color_to_svg, rep_by_color,
+                                    page_index=i)
+
         # Just write the modified page; no later overlay needed
         writer.add_page(page)
 
@@ -1343,4 +1639,5 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
     with open(output_pdf_path, "wb") as f:
         writer.write(f)
     _debug_copy(output_pdf_path, label="output_pdf")
+    _debug_print("replace_color_markers_with_svgs: wrote {}".format(output_pdf_path))
     return output_pdf_path

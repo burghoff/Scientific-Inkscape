@@ -116,6 +116,11 @@ class Unzipped_Office:
         self.svg_color_map = {}  # maps '000001' -> 'figure42.svg'
         self.svg_to_color = {}  # maps normalized full svg path -> '000001'
         self._simple_png_next_color = 1  # next RGB code as integer (start at 1)
+        # Set of lowercase 'rrggbb' colors already used by pre-existing flat
+        # PNGs in the media dir. Populated lazily on first _alloc_next_color
+        # call so we never assign a marker color that collides with an
+        # unrelated uniform-color image already in the document.
+        self._forbidden_colors = None
 
         self.aecaller = aecaller
         self._queued_png_out = set()
@@ -399,13 +404,193 @@ class Unzipped_Office:
         return processed
 
     def _alloc_next_color(self):
-        """Return ('%06X' % n).lower() and (R,G,B) for next color; increment counter."""
-        n = self._simple_png_next_color
-        self._simple_png_next_color += 1
-        r = (n >> 16) & 0xFF
-        g = (n >> 8) & 0xFF
-        b = (n >> 0) & 0xFF
-        return f"{n:06x}", (r, g, b)
+        """
+        Return ('%06X' % n).lower() and (R,G,B) for next color, skipping any
+        color already used by a pre-existing flat (uniform-color) PNG in the
+        media dir so our marker colors stay unique.
+        """
+        self._ensure_forbidden_colors_scanned()
+        while True:
+            n = self._simple_png_next_color
+            self._simple_png_next_color += 1
+            color_hex = f"{n:06x}"
+            if color_hex not in self._forbidden_colors:
+                r = (n >> 16) & 0xFF
+                g = (n >> 8) & 0xFF
+                b = (n >> 0) & 0xFF
+                return color_hex, (r, g, b)
+
+    def _ensure_forbidden_colors_scanned(self):
+        """
+        Lazily walk self.media_dir once and record the colors of every
+        pre-existing uniform-color PNG. Called before the first marker color
+        is handed out, so the scan reflects the document's original state
+        (no markers we wrote ourselves are present yet).
+        """
+        if self._forbidden_colors is not None:
+            return
+        forbidden = set()
+        if os.path.isdir(self.media_dir):
+            for fname in os.listdir(self.media_dir):
+                if not fname.lower().endswith(".png"):
+                    continue
+                path = os.path.join(self.media_dir, fname)
+                if not os.path.isfile(path):
+                    continue
+                color_hex = self._read_png_uniform_color(path)
+                if color_hex is not None:
+                    forbidden.add(color_hex.lower())
+        self._forbidden_colors = forbidden
+
+    def _read_png_uniform_color(self, path):
+        """
+        If the PNG at ``path`` is a single uniform opaque color, return that
+        color as a lowercase 'rrggbb' hex string. Otherwise return None.
+
+        Supports non-interlaced 8-bit PNGs of color types 0 (grayscale),
+        2 (truecolor RGB), 3 (palette), 4 (gray + alpha) and 6 (RGB + alpha).
+        Anything else (interlaced, 1/2/4/16-bit depth, unknown filter) is
+        treated as not-flat. Decoding bails on the first deviating pixel.
+        """
+        try:
+            with open(path, "rb") as f:
+                data = f.read()
+        except Exception:
+            return None
+        if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+            return None
+
+        pos = 8
+        width = height = bit_depth = color_type = None
+        interlace = 0
+        idat = bytearray()
+        palette = None
+
+        while pos + 8 <= len(data):
+            try:
+                chunk_len = struct.unpack(">I", data[pos:pos + 4])[0]
+            except struct.error:
+                return None
+            chunk_type = data[pos + 4:pos + 8]
+            chunk_start = pos + 8
+            chunk_end = chunk_start + chunk_len
+            if chunk_end + 4 > len(data):
+                return None
+            chunk_data = data[chunk_start:chunk_end]
+            pos = chunk_end + 4  # skip CRC
+
+            if chunk_type == b"IHDR":
+                if len(chunk_data) < 13:
+                    return None
+                (width, height, bit_depth, color_type,
+                 _comp, _filt, interlace) = struct.unpack(">IIBBBBB", chunk_data[:13])
+            elif chunk_type == b"IDAT":
+                idat.extend(chunk_data)
+            elif chunk_type == b"PLTE":
+                palette = bytes(chunk_data)
+            elif chunk_type == b"IEND":
+                break
+
+        if (not width or not height
+                or bit_depth != 8 or interlace != 0
+                or color_type is None):
+            return None
+
+        if color_type == 0:
+            bpp = 1
+        elif color_type == 2:
+            bpp = 3
+        elif color_type == 3:
+            if not palette:
+                return None
+            bpp = 1
+        elif color_type == 4:
+            bpp = 2
+        elif color_type == 6:
+            bpp = 4
+        else:
+            return None
+
+        try:
+            raw = zlib.decompress(bytes(idat))
+        except zlib.error:
+            return None
+
+        stride = bpp * width
+        if len(raw) != (1 + stride) * height:
+            return None
+
+        def _paeth(a, b, c):
+            p = a + b - c
+            pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+            if pa <= pb and pa <= pc:
+                return a
+            return b if pb <= pc else c
+
+        prev = bytearray(stride)
+        target = None  # bytes-like row[0:bpp] of first row, established on row 0
+        src_pos = 0
+        for _row in range(height):
+            f = raw[src_pos]; src_pos += 1
+            line = raw[src_pos:src_pos + stride]; src_pos += stride
+            if f == 0:
+                rec = bytearray(line)
+            elif f == 1:  # Sub
+                rec = bytearray(stride)
+                for i in range(stride):
+                    left = rec[i - bpp] if i >= bpp else 0
+                    rec[i] = (line[i] + left) & 0xFF
+            elif f == 2:  # Up
+                rec = bytearray(stride)
+                for i in range(stride):
+                    rec[i] = (line[i] + prev[i]) & 0xFF
+            elif f == 3:  # Average
+                rec = bytearray(stride)
+                for i in range(stride):
+                    left = rec[i - bpp] if i >= bpp else 0
+                    up = prev[i]
+                    rec[i] = (line[i] + ((left + up) // 2)) & 0xFF
+            elif f == 4:  # Paeth
+                rec = bytearray(stride)
+                for i in range(stride):
+                    left = rec[i - bpp] if i >= bpp else 0
+                    up = prev[i]
+                    up_left = prev[i - bpp] if i >= bpp else 0
+                    rec[i] = (line[i] + _paeth(left, up, up_left)) & 0xFF
+            else:
+                return None
+
+            if target is None:
+                target = bytes(rec[:bpp])
+            for i in range(0, stride, bpp):
+                if rec[i:i + bpp] != target:
+                    return None
+            prev = rec
+
+        if target is None:
+            return None
+
+        # Convert the per-pixel bytes to RGB.
+        if color_type == 2:
+            r, g, b = target[0], target[1], target[2]
+        elif color_type == 0:
+            r = g = b = target[0]
+        elif color_type == 3:
+            idx = target[0]
+            if (idx + 1) * 3 > len(palette):
+                return None
+            r, g, b = palette[idx * 3], palette[idx * 3 + 1], palette[idx * 3 + 2]
+        elif color_type == 4:
+            if target[1] != 255:
+                return None
+            r = g = b = target[0]
+        elif color_type == 6:
+            if target[3] != 255:
+                return None
+            r, g, b = target[0], target[1], target[2]
+        else:
+            return None
+        return f"{r:02x}{g:02x}{b:02x}"
 
     def _write_solid_png_9x9(self, rgb, out_path):
         """
