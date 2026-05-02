@@ -40,7 +40,7 @@ from typing import (
     cast,
 )
 
-from argparse import ArgumentParser, Namespace
+from argparse import Action, ArgumentParser, Namespace
 from lxml import etree
 
 from .interfaces.IElement import IBaseElement, ISVGDocumentElement
@@ -460,6 +460,16 @@ class TempDirMixin(_Base):  # pylint: disable=abstract-method
             self._tempdir.cleanup()
         super().clean_up()
 
+class _LoadArgsFromFile(Action):
+    """Read additional arguments (one per line) from the file passed via
+    --arg-file and parse them into namespace.
+    Inkscape uses this to work around the Windows command-line length
+    limit when many objects are selected. Cleanup is handled by Inkscape.
+    """
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        with open(values, "r", encoding="utf-8") as fhl:
+            parser.parse_args(fhl.read().split(), namespace)
 
 class SvgInputMixin(_Base):  # pylint: disable=too-few-public-methods, abstract-method
     """
@@ -488,6 +498,15 @@ class SvgInputMixin(_Base):  # pylint: disable=too-few-public-methods, abstract-
             dest="selected_nodes",
             default=[],
             help="id:subpath:position of selected nodes, if any",
+        )
+        
+        self.arg_parser.add_argument(
+            "--arg-file",
+            action=_LoadArgsFromFile,
+            help="A file containing extra command line arguments "
+            "to get around limitations in the operating system's "
+            "maximum command length. Any argument in this help is "
+            "a valid argument in this arg-file.",
         )
 
     def load(self, stream):

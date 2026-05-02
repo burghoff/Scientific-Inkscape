@@ -499,6 +499,12 @@ class AutoExporterThread(threading.Thread):
                 Exporter(self.file, opts).finalize()
         except SystemExit:
             pass
+        except FileNotFoundError:
+            import traceback
+            error_message = f"Exception in {fname}\n"
+            error_message += "File probably deleted mid-execution\n"
+            error_message += traceback.format_exc()
+            print(error_message)
         except:
             import traceback
             error_message = f"Exception in {fname}\n"
@@ -797,6 +803,7 @@ if guitype == 'gtk3.0':
                             
             def print_fn(*args, **kwargs):
                 GLib.idle_add(self.print_text, args[0])
+                print(*args, **kwargs)
             global mprint
             mprint = print_fn
             for p in init_prints:
@@ -1085,6 +1092,7 @@ elif guitype=='gtk4.0':
             
             def print_fn(*args, **kwargs):
                 self.print_text(args[0])
+                print(*args, **kwargs)
             global mprint
             mprint = print_fn
             for p in init_prints:

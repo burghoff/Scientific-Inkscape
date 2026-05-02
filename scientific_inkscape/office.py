@@ -469,9 +469,10 @@ class Slide_and_Rels:
                 os.path.basename(path),
             )
 
-        self.slide_tree = ET.parse(self.slide_path)
+        huge_parser = ET.XMLParser(huge_tree=True)
+        self.slide_tree = ET.parse(self.slide_path, huge_parser)
         self.slide_root = self.slide_tree.getroot()
-        self.rels_tree = ET.parse(self.rels_path)
+        self.rels_tree = ET.parse(self.rels_path, huge_parser)
         self.rels_root = self.rels_tree.getroot()
 
     def get_slide_targets(self):
