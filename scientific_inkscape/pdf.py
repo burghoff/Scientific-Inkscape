@@ -17,6 +17,8 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+DEBUG_PDF = False
+
 import os, platform, sys
 from shutil import which
 
@@ -84,11 +86,69 @@ def make_pdf_libreoffice(input_file, output_file):
     generated_pdf = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(input_file))[0]}.pdf")
     from autoexporter import repeat_move
     repeat_move(generated_pdf, output_file)
+    _debug_copy(output_file, label="libreoffice")
 
 import time
 import tempfile
 import subprocess
 from pathlib import Path
+
+
+# ---- Debug flag ----
+# When True, every SVG and PDF that flows through the PDF generation pipeline
+# -- especially the SVG -> PDF marker-replacement path used by
+# replace_color_markers_with_svgs / export_svg_to_pdf -- is copied into a
+# temp folder for inspection. The folder is created lazily on first use and
+# its location is printed once.
+import shutil as _debug_shutil
+
+_debug_dir = None
+_debug_lock = threading.Lock()
+_debug_counter = 0
+
+def _debug_dir_path():
+    """Return the (lazily created) debug folder, printing its path the first time."""
+    global _debug_dir
+    if _debug_dir is not None:
+        return _debug_dir
+    with _debug_lock:
+        if _debug_dir is None:
+            _debug_dir = tempfile.mkdtemp(prefix="si_pdf_debug_")
+            print("[pdf debug] copying SVGs/PDFs to: {}".format(_debug_dir),
+                  file=sys.stderr, flush=True)
+    return _debug_dir
+
+def _debug_copy(src_path, label=None):
+    """If DEBUG_PDF is set and src_path exists, copy it into the debug folder.
+
+    Files are prefixed with a monotonic counter so the order of operations is
+    visible from the filenames alone. ``label`` is an optional short string
+    woven into the destination filename to make the source step easy to
+    identify (e.g. 'svg_in', 'svg_out', 'libreoffice', 'input_pdf').
+    Returns the destination path on success, or None.
+    """
+    if not DEBUG_PDF:
+        return None
+    try:
+        if not src_path or not os.path.exists(src_path):
+            return None
+        global _debug_counter
+        with _debug_lock:
+            _debug_counter += 1
+            n = _debug_counter
+        d = _debug_dir_path()
+        base = os.path.basename(src_path)
+        name = "{:04d}_{}_{}".format(n, label, base) if label else "{:04d}_{}".format(n, base)
+        dst = os.path.join(d, name)
+        _debug_shutil.copy2(src_path, dst)
+        return dst
+    except Exception as e:
+        try:
+            print("[pdf debug] failed to copy {}: {}".format(src_path, e),
+                  file=sys.stderr, flush=True)
+        except Exception:
+            pass
+        return None
 
 
 POWERSHELL_HELPER = r"""
@@ -443,6 +503,7 @@ def _make_pdf_office_windows(in_path: Path,
                     stderr=subprocess.DEVNULL,
                 )
             if proc.returncode == 0:
+                _debug_copy(str(out_path), label="office_win")
                 return str(out_path)
             if proc.returncode == 3:
                 raise RuntimeError(f"Unsupported file type: {in_path.suffix}")
@@ -487,6 +548,7 @@ def _make_pdf_office_macos(in_path: Path,
                 # exporter.prints("osascript stdout:\n" + (proc.stdout or ""))
                 # exporter.prints("osascript stderr:\n" + (proc.stderr or ""))
             if proc.returncode == 0 and out_path.exists():
+                _debug_copy(str(out_path), label="office_mac")
                 return str(out_path)
             if attempt < retries:
                 time.sleep(delay)
@@ -541,7 +603,7 @@ def make_pdf_office(input_path, output_path=None, exporter=None, retries=3, dela
 # Backward-compat alias if existing code calls the old name
 make_pdf_word = make_pdf_office
 
-from typing import Dict, Tuple, List, Optional
+from typing import Dict, Optional
 
 mydir = os.path.dirname(os.path.abspath(__file__))
 packages = os.path.join(mydir, "packages")
@@ -616,20 +678,115 @@ def _inkscape_bin():
     import dhelpers as dh
     return dh.inkex.inkscape_system_info.binary_location  # noqa
 
-from autoexporter import Exporter
-def export_svg_to_pdf(svg_path: str, exporter: Exporter) -> str:
-    """Export SVG -> PDF next to the SVG, mirroring AutoExporter’s CLI call."""
-    pdf_path = os.path.splitext(svg_path)[0] + ".pdf"
-    args = [
-        _inkscape_bin(),
-        "--export-background", "#ffffff",
-        "--export-background-opacity", "1.0",
-        "--export-dpi", "600",
-        "--export-filename", pdf_path,
-        svg_path,
-    ]
+from autoexporter import Exporter, ORIG_KEY, get_svg
+
+
+def _is_ae_output_svg(svg_path: str) -> bool:
+    """Return True iff the SVG carries AutoExporter's ORIG_KEY marker
+    (a hidden <text> direct child of the root containing 'si_ae_original_filename').
+
+    Uses raw lxml for speed — this is meant to be a cheap probe. If parsing
+    fails for any reason, return False so the caller routes through the
+    full AE pipeline (which uses inkex's more permissive loader)."""
+    try:
+        from lxml import etree as LET
+        parser = LET.XMLParser(huge_tree=True, recover=True)
+        root = LET.parse(svg_path, parser).getroot()
+        if root is None:
+            return False
+        SVG_TEXT = "{http://www.w3.org/2000/svg}text"
+        for child in root:
+            if (child.tag == SVG_TEXT
+                    and child.text is not None
+                    and ORIG_KEY in child.text):
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _strip_inkscape_pages(in_svg_path: str, out_svg_path: str) -> None:
+    """Write a copy of in_svg_path to out_svg_path with all <inkscape:page>
+    elements removed, so the Exporter treats it as a single-page document
+    and exports just the viewBox (the only thing Word / PowerPoint render).
+
+    Uses the codebase's own load/save helpers (get_svg + dh.overwrite_svg)
+    so the file is guaranteed to round-trip through the rest of the AE
+    pipeline. Raw lxml.etree.parse + tree.write produces files that inkex's
+    loader sometimes can't read back, which causes get_svg to return None
+    and visible_descendants to crash on `list(svg)`."""
     import dhelpers as dh
-    exporter.check(dh.subprocess_repeat,args,finalization=True)  # same wrapper used by AutoExporter
+    svg = get_svg(in_svg_path)
+    INK_PAGE = "{http://www.inkscape.org/namespaces/inkscape}page"
+    for pg in list(svg.iter(INK_PAGE)):
+        parent = pg.getparent()
+        if parent is not None:
+            parent.remove(pg)
+    dh.overwrite_svg(svg, out_svg_path)
+    
+def export_svg_to_pdf(svg_path: str, exporter: Exporter) -> str:
+    """Export SVG -> PDF next to the SVG.
+
+    - If the SVG was produced by AutoExporter (carries the ORIG_KEY marker),
+      use a simple Inkscape CLI call. AE outputs are already preprocessed.
+    - Otherwise (e.g. a hand-made SVG someone dropped into a Word doc),
+      run the full AE export pipeline, with margin=0 and viewBox-only output
+      since Word/PowerPoint render only a single page.
+    """
+    pdf_path = os.path.splitext(svg_path)[0] + ".pdf"
+    import dhelpers as dh
+
+    _debug_copy(svg_path, label="svg_in")
+
+    if _is_ae_output_svg(svg_path):
+        # Simple, fast path for AE-processed SVGs.
+        args = [
+            _inkscape_bin(),
+            "--export-background", "#ffffff",
+            "--export-background-opacity", "1.0",
+            "--export-dpi", "600",
+            "--export-filename", pdf_path,
+            svg_path,
+        ]
+        exporter.check(dh.subprocess_repeat, args, finalization=True)
+        _debug_copy(pdf_path, label="svg_out_ae")
+        return pdf_path
+
+    # Full AE pipeline for foreign SVGs.
+    import tempfile, shutil as _sh
+    from types import SimpleNamespace
+
+    tmp_dir = tempfile.mkdtemp(prefix="si_ae_subexport_")
+    try:
+        # 1. Strip <inkscape:page> elements so we get a single viewBox-sized PDF.
+        stripped_svg = os.path.join(tmp_dir, os.path.basename(svg_path))
+        _strip_inkscape_pages(svg_path, stripped_svg)
+        # Capture the intermediate SVG before tmp_dir is wiped in the finally.
+        _debug_copy(stripped_svg, label="svg_stripped")
+
+        # 2. Inherit all of the calling exporter's settings, then override
+        #    the few we need to change for a Word/PPT-bound export.
+        opts = SimpleNamespace(**dict(vars(exporter)))
+        opts.formats = ["pdf"]
+        opts.margin = 0
+        opts.original_file = svg_path
+        opts.outtemplate = pdf_path[:-4] + ".svg"
+        
+        # Exporter.__init__ sets self.filein=fin and then does
+        # self.__dict__.update(vars(opts)) — so an inherited `filein` would
+        # overwrite the stripped_svg we pass in. Drop it.
+        opts.__dict__.pop("filein", None)
+        
+        # linked_locations from the parent are relative to the docx, not our SVG.
+        # Force the sub-Exporter to scan the SVG for its own linked images.
+        opts.exportnow = False
+        opts.linked_locations = {}
+        
+        Exporter(stripped_svg, opts).export_all()
+    finally:
+        _sh.rmtree(tmp_dir, ignore_errors=True)
+
+    _debug_copy(pdf_path, label="svg_out_foreign")
     return pdf_path
 
 
@@ -767,7 +924,7 @@ def _try_get_uniform_rgb_hex_from_ximage(ximg) -> Optional[str]:
 
     if not (w == 9 and h == 9 and bpc == 8 and smask is None):
         return None
-    
+
     if not _is_rgb_colorspace(cs):
         return None
 
@@ -797,76 +954,6 @@ def _try_get_uniform_rgb_hex_from_ximage(ximg) -> Optional[str]:
 
     return f"{r0:02x}{g0:02x}{b0:02x}"
 
-def _collect_and_strip_markers(page, writer, color_to_svg: Dict[str, str]) -> List[Tuple[Tuple[float,float,float,float], str]]:
-    """
-    Scan a page, remove any 9x9 uniform-color image draw ops that have a hit in color_to_svg.
-    Returns list of (xmin,ymin,xmax,ymax, svg_path).
-    """
-    pdf = page.pdf
-    res = page.get("/Resources", {}) or {}
-    xobjs = res.get("/XObject", {})
-
-    contents = page.get("/Contents", None)
-    if contents is None:
-        return []
-
-    cs = ContentStream(contents, pdf)
-
-    I = [[1,0,0],[0,1,0],[0,0,1]]
-    stack = [I]
-    CTM = stack[-1]
-    new_ops = []
-    placements: List[Tuple[Tuple[float,float,float,float], str]] = []
-
-    for operands, operator in cs.operations:
-        op = operator.decode("latin1") if isinstance(operator, (bytes, bytearray)) else operator
-
-        if op == "q":
-            stack.append([row[:] for row in CTM]); CTM = stack[-1]
-            new_ops.append((operands, operator))
-        elif op == "Q":
-            if len(stack) > 1:
-                stack.pop(); CTM = stack[-1]
-            new_ops.append((operands, operator))
-        elif op == "cm":
-            a,b,c,d,e,f = (float(v) for v in operands)
-            CTM = _mat_mul(CTM, _mat_from(a,b,c,d,e,f))
-            stack[-1] = CTM
-            new_ops.append((operands, operator))
-        elif op == "Do" and len(operands) == 1:
-            xo = _resolve_xobj(xobjs, operands[0])
-            # Only intercept actual image draws
-            if xo is not None and xo.get("/Subtype") == "/Image":
-                hexcolor = _try_get_uniform_rgb_hex_from_ximage(xo)
-                if hexcolor and hexcolor in color_to_svg:
-                    # Compute AABB of the transformed unit square
-                    p00 = _apply_mat(CTM, 0, 0)
-                    p10 = _apply_mat(CTM, 1, 0)
-                    p01 = _apply_mat(CTM, 0, 1)
-                    p11 = _apply_mat(CTM, 1, 1)
-                    xs = [p00[0], p10[0], p01[0], p11[0]]
-                    ys = [p00[1], p10[1], p01[1], p11[1]]
-                    rect = (min(xs), min(ys), max(xs), max(ys))
-                    placements.append((rect, color_to_svg[hexcolor]))
-                    # Skip drawing: we “delete” the image op by not appending
-                    continue
-            # fall-through: keep non-marker images
-            new_ops.append((operands, operator))
-        else:
-            new_ops.append((operands, operator))
-
-    # Persist modified content stream so deletions stick
-    cs.operations = new_ops
-    new_obj = None
-    for adder in (getattr(writer, "_add_object", None), getattr(pdf, "_add_object", None)):
-        if callable(adder):
-            try:
-                new_obj = adder(cs)
-                break
-            except Exception:
-                pass
-    page[NameObject("/Contents")] = new_obj if new_obj is not None else cs
-    return placements
 
 def print_ops(res,ops):
     import dhelpers as dh
@@ -1134,7 +1221,7 @@ def _collect_and_inline_markers(page, writer, color_to_svg, rep_by_color):
                 if hexcolor and hexcolor in color_to_svg and hexcolor in rep_by_color:
                     # Inline replacement here: q, cm(1/rep_w,1/rep_h), <rep_ops>, Q
                     rep_ops, rep_w, rep_h, rep_res = rep_by_color[hexcolor]
-                    
+
                     if rep_w > 0 and rep_h > 0:
                         _uniquify_rep_resource_names(res, rep_res, rep_ops)
                         # Merge resources so rep_ops names resolve
@@ -1187,16 +1274,22 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
     in_reader = PdfReader(input_pdf_path)
     writer = PdfWriter()
 
+    _debug_copy(input_pdf_path, label="input_pdf")
+
     # Pre-export SVGs -> PDFs (once per unique SVG)
     svg_to_pdf_cache: Dict[str, str] = {}
     def _export_one(svg: str):
         if not svg:
             return
+        # Capture the source SVG even when the PDF is served from cache,
+        # so the debug folder always reflects what was actually used.
+        _debug_copy(svg, label="marker_svg")
         pdf_path = os.path.splitext(svg)[0] + ".pdf"
         if (not os.path.exists(pdf_path)
                 or os.path.getmtime(pdf_path) < os.path.getmtime(svg)):
             pdf_path = export_svg_to_pdf(svg, exporter)
         svg_to_pdf_cache[svg] = pdf_path
+        _debug_copy(pdf_path, label="marker_pdf")
     import threading
     threads = []
     for svg in set(color_to_svg.values()):
@@ -1249,4 +1342,5 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
         output_pdf_path = f"{root}_replaced{ext}"
     with open(output_pdf_path, "wb") as f:
         writer.write(f)
+    _debug_copy(output_pdf_path, label="output_pdf")
     return output_pdf_path
