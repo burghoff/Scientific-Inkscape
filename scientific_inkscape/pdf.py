@@ -786,6 +786,9 @@ def export_svg_to_pdf(svg_path: str, exporter: Exporter) -> str:
         opts.margin = 0
         opts.original_file = svg_path
         opts.outtemplate = pdf_path[:-4] + ".svg"
+        opts.display_name = "{0} in {1}".format(
+            os.path.basename(svg_path), os.path.basename(exporter.filein)
+        )
         
         # Exporter.__init__ sets self.filein=fin and then does
         # self.__dict__.update(vars(opts)) — so an inherited `filein` would
@@ -798,7 +801,7 @@ def export_svg_to_pdf(svg_path: str, exporter: Exporter) -> str:
         opts.linked_locations = {}
         
         if exporter.prints:
-            exporter.prints("{} : Beginning export (internal SVG)".format(os.path.basename(svg_path)))
+            exporter.prints("{} : Beginning export".format(opts.display_name))
         Exporter(stripped_svg, opts).export_all()
     finally:
         _sh.rmtree(tmp_dir, ignore_errors=True)

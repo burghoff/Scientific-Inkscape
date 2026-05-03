@@ -433,6 +433,15 @@ class Exporter():
         self.filein = fin
         self.__dict__.update(vars(opts))
         
+        # filein is the file being exported right now (possibly a temp file)
+        # original_file is the document being exported prior to any modifications
+        if getattr(self, "original_file", None) is None:
+            self.original_file = self.filein
+        if getattr(self, "formats", None) and "psvg" in self.formats:
+            self.original_hash = hash_file(self.original_file)
+        if getattr(self, "display_name", None) is None:
+            self.display_name = os.path.basename(self.original_file)
+        
     sema_temp = threading.Semaphore(1)
     def export_all(self):
         """Export all files in specified formats."""
@@ -512,7 +521,7 @@ class Exporter():
                         
     def terminal_message(self,msg):
         if self.prints:
-            fname = os.path.split(self.filein)[1]
+            fname = self.display_name
             try:
                 offset = round(os.get_terminal_size().columns / 2)
             except OSError:
@@ -529,7 +538,7 @@ class Exporter():
     def preprocessing(self, fin):
         """Modifications that are done prior to conversion to any vector output"""
         # self.terminal_message("Preprocessing vector output")
-        timestart = time.time()
+        # timestart = time.time()
 
         # SVG modifications that should be done prior to any binary calls
         cfile = fin
@@ -1007,7 +1016,7 @@ class Exporter():
 
     def export_file(self, fin, fformat):
         """Use the Inkscape binary to export the file"""
-        myoutput = self.outtemplate[0:-4] + "." + fformat
+        myoutput = os.path.splitext(self.outtemplate)[0] + "." + fformat
         # self.terminal_message("Converting to " + fformat)
         timestart = time.time()
 
@@ -1303,7 +1312,7 @@ class Exporter():
             tel = inkex.TextElement()
             svg.append(tel)
         tel.text = ORIG_KEY + ": {0}, hash: {1}".format(
-            self.original_file, hash_file(self.original_file)
+            self.original_file, self.original_hash
         )
         tel.set("style", "display:none")
         dh.clean_up_document(svg)  # Clean up

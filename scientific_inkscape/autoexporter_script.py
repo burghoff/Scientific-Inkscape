@@ -489,7 +489,6 @@ class AutoExporterThread(threading.Thread):
         opts.debug = DEBUG
         opts.prints = mprint
         opts.aeThread = self
-        opts.original_file = self.file
         opts.outtemplate = self.outtemplate
         opts.bfn = bfn
         try:
