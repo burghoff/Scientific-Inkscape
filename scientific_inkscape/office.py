@@ -54,6 +54,75 @@ import re
 import zlib, struct, binascii, threading
 
 
+# Drawing-ML namespaces used when locating <a:srcRect> alongside an
+# <a:blip>/<asvg:svgBlip> in a <pic:blipFill>.
+_A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+_ASVG_NS = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+
+
+def _find_srcrect_crop(node):
+    """Locate the <a:srcRect> sibling of the *outer* <a:blip> that owns
+    ``node`` (which can itself be the outer <a:blip> or a nested
+    <asvg:svgBlip>) and return ``(crop_tuple, srcrect_elem)`` where:
+
+    - ``crop_tuple`` is ``(left, top, right, bottom)`` as fractions in [0, 1]
+      if the srcRect contains a non-zero crop that leaves a non-empty visible
+      region; otherwise ``None``.
+    - ``srcrect_elem`` is the <a:srcRect> XML element if one exists at all
+      (regardless of whether the crop was meaningful), so callers can decide
+      to remove it from the tree. ``None`` if no srcRect exists.
+
+    OOXML stores each side as an integer in 100000ths of a percent:
+    ``l="34146"`` means 34.146% cropped from the left. Any side not
+    present defaults to 0.
+    """
+    # Walk up to the outer <a:blip>. <asvg:svgBlip> lives inside
+    # <a:blip>/<a:extLst>/<a:ext>, so we may need to climb three levels.
+    outer_blip = node
+    if node.tag == f"{{{_ASVG_NS}}}svgBlip":
+        ext = node.getparent()
+        extLst = ext.getparent() if ext is not None else None
+        outer_blip = extLst.getparent() if extLst is not None else None
+
+    if outer_blip is None or outer_blip.tag != f"{{{_A_NS}}}blip":
+        return None, None
+
+    blip_fill = outer_blip.getparent()
+    if blip_fill is None:
+        return None, None
+
+    src_rect = blip_fill.find(f"{{{_A_NS}}}srcRect")
+    if src_rect is None:
+        return None, None
+
+    def _frac(attr):
+        v = src_rect.get(attr)
+        if v is None:
+            return 0.0
+        try:
+            return int(v) / 100000.0
+        except (ValueError, TypeError):
+            return 0.0
+
+    l = _frac("l")
+    t = _frac("t")
+    r = _frac("r")
+    b = _frac("b")
+
+    # All zero -> there's a srcRect element but no actual crop. Word
+    # occasionally writes empty <a:srcRect/>; nothing to record.
+    if max(abs(l), abs(t), abs(r), abs(b)) < 1e-9:
+        return None, src_rect
+
+    # Defensive: if the crop fully eliminates the visible region, treat as
+    # no-crop so pdf.py never has to divide by zero. Such a srcRect would
+    # produce nothing visible anyway.
+    if (1.0 - l - r) <= 1e-9 or (1.0 - t - b) <= 1e-9:
+        return None, src_rect
+
+    return (l, t, r, b), src_rect
+
+
 def normalize_and_copy(source_path, media_dir):
     os.makedirs(media_dir, exist_ok=True)
     basename = os.path.basename(source_path)
@@ -113,8 +182,25 @@ class Unzipped_Office:
         self.type = "ppt" if os.path.isdir(os.path.join(temp_dir, "ppt")) else "word"
         self.media_dir = os.path.join(temp_dir, self.type, "media")
 
-        self.svg_color_map = {}  # maps '000001' -> 'figure42.svg'
-        self.svg_to_color = {}  # maps normalized full svg path -> '000001'
+        # Two dicts (inverses of each other) track which marker color
+        # represents which (svg_path, crop) reference. We always key by the
+        # full (norm_path, crop) tuple -- crop=None for uncropped, a
+        # (l, t, r, b) tuple for cropped -- so two crops of the same SVG and
+        # the same SVG referenced both cropped and uncropped each get their
+        # own color cleanly.
+        # crop is a 4-tuple of fractions in [0,1]: (left, top, right, bottom).
+        self.svg_to_color = {}   # {(norm_svg_path, crop_or_None): '000001'}
+        self.svg_color_map = {}  # {'000001': (norm_svg_path, crop_or_None)}
+        # Tracks which color we've already burned into each marker PNG file
+        # (absolute path -> '000001'). Two <pic> elements can legally share
+        # the same PNG part (same rId, or different rIds pointing at the same
+        # target). If they need *different* colors -- e.g. one cropped and one
+        # uncropped reference to the same SVG -- a naive second
+        # _write_solid_png_9x9 would clobber the first picture's color, and
+        # both pictures would end up rendering with the second's substitution
+        # in pdf.py. Case 1 below uses this map to detect that situation and
+        # divert the conflicting picture to a freshly minted PNG file.
+        self.png_color_written = {}
         self._simple_png_next_color = 1  # next RGB code as integer (start at 1)
         # Set of lowercase 'rrggbb' colors already used by pre-existing flat
         # PNGs in the media dir. Populated lazily on first _alloc_next_color
@@ -206,15 +292,14 @@ class Unzipped_Office:
     def _norm_path(self, p: str) -> str:
         return os.path.normcase(os.path.abspath(os.path.normpath(p))) if p else ""
 
-    def _lookup_color_for_svg(self, svg_path: str):
-        return self.svg_to_color.get(self._norm_path(svg_path))
-
-    def _register_svg_color(self, svg_path: str, color_hex: str):
+    def _lookup_color_for_svg(self, svg_path: str, crop=None):
         np = self._norm_path(svg_path)
-        self.svg_to_color[np] = color_hex
-        self.svg_color_map[color_hex] = (
-            np  # store full normalized path in the forward map, too
-        )
+        return self.svg_to_color.get((np, crop))
+
+    def _register_svg_color(self, svg_path: str, color_hex: str, crop=None):
+        np = self._norm_path(svg_path)
+        self.svg_to_color[(np, crop)] = color_hex
+        self.svg_color_map[color_hex] = (np, crop)
 
     def _hex_to_rgb(self, color_hex: str):
         n = int(color_hex, 16)
@@ -1136,7 +1221,7 @@ class Slide_and_Rels:
         Alternate to leave_fallback_png:
         - Ensures each SVG reference resolves to a PNG fallback that is a 9x9
           opaque solid color (sequential RGB 000001, 000002, ...)
-        - Records color->svg_filename in self.uzo.svg_color_map
+        - Records color -> (svg_path, crop_or_None) in self.uzo.svg_color_map
         """
         ns = {
             "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
@@ -1177,6 +1262,12 @@ class Slide_and_Rels:
         )
         source_part_dir = os.path.dirname(source_part_path)
 
+        # svgBlips fully resolved by Case 1 below: their <a:extLst> has been
+        # detached from the live tree, so they should not be re-handled by
+        # Case 2 (which would otherwise allocate a duplicate color/PNG/rel
+        # for the same picture).
+        case1_handled = set()
+
         # Case 1: svgBlip paired with an existing PNG fallback -> overwrite that PNG file in-place
         for svgblip in list(svgblips):
             ext = svgblip.getparent()
@@ -1211,9 +1302,17 @@ class Slide_and_Rels:
                 # Overwrite existing media PNG file with our 9x9 color square
                 # Target is relative to the part; we want absolute disk path:
                 png_abs = os.path.normpath(os.path.join(source_part_dir, png_target))
-                # Use existing color if we've seen this SVG before
+
+                # If this picture is cropped via <a:srcRect>, record the crop
+                # so pdf.py can substitute only the visible portion of the SVG
+                # instead of squashing the whole thing into the cropped frame.
+                # A non-zero crop forces a unique color per (SVG, crop) combo
+                # so two crops of the same SVG don't collide.
+                crop, srcrect_elem = _find_srcrect_crop(svgblip)
+
+                # Use existing color if we've seen this SVG (with this crop) before
                 if svg_path:
-                    existing = self.uzo._lookup_color_for_svg(svg_path)
+                    existing = self.uzo._lookup_color_for_svg(svg_path, crop)
                 else:
                     existing = None
 
@@ -1223,17 +1322,62 @@ class Slide_and_Rels:
                 else:
                     color_hex, rgb = self.uzo._alloc_next_color()
                     if svg_path:
-                        self.uzo._register_svg_color(svg_path, color_hex)
+                        self.uzo._register_svg_color(svg_path, color_hex, crop)
 
-                self.uzo._write_solid_png_9x9(rgb, png_abs)
+                # Detect the multi-reference conflict: same PNG file already
+                # had a *different* color burned in for an earlier <pic>. We
+                # can't share the file, so mint a fresh one and rewire just
+                # this picture's <a:blip> r:embed to it. The other picture
+                # still points at the original file.
+                prev_color = self.uzo.png_color_written.get(png_abs)
+                if prev_color is not None and prev_color != color_hex:
+                    new_png_path = None
+                    while new_png_path is None or os.path.exists(new_png_path):
+                        self.uzo.nfiles += 1
+                        new_png_name = f"image{self.uzo.nfiles}.png"
+                        new_png_path = os.path.join(self.uzo.media_dir, new_png_name)
+                    new_rel_target = f"{self.uzo.media_loc}/{new_png_name}"
+                    imagenum = len(self.rels_root) + 1
+                    while f"rId{imagenum}" in rel_id_to_target:
+                        imagenum += 1
+                    new_rid = f"rId{imagenum}"
+                    rels_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+                    ET.SubElement(
+                        self.rels_root,
+                        f"{{{rels_ns}}}Relationship",
+                        {
+                            "Id": new_rid,
+                            "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+                            "Target": new_rel_target,
+                        },
+                    )
+                    rel_id_to_target[new_rid] = new_rel_target
+                    changed_rels = True
+                    self.uzo._write_solid_png_9x9(rgb, new_png_path)
+                    self.uzo.png_color_written[new_png_path] = color_hex
+                    blip.attrib[f"{{{ns['r']}}}embed"] = new_rid
+                else:
+                    self.uzo._write_solid_png_9x9(rgb, png_abs)
+                    self.uzo.png_color_written[png_abs] = color_hex
                 self.uzo.ensure_image_in_content_types("dummy.png")
                 # Also remove the <asvg:svgBlip> extension so the PNG fallback is used
                 blip.remove(extLst)
+                # Drop the <a:srcRect> too. The marker PNG is uniform color so
+                # cropping it has no visual effect, and removing it lets the
+                # PDF generator place the full marker in the displayed extent
+                # without stitching together a sub-image XObject. pdf.py then
+                # applies the inverse crop using the recorded crop tuple.
+                if srcrect_elem is not None:
+                    parent_fill = srcrect_elem.getparent()
+                    if parent_fill is not None:
+                        parent_fill.remove(srcrect_elem)
+                case1_handled.add(svgblip)
                 changed_slide = True
 
         # Case 2: bare svgBlip or <a:blip> that points to an .svg but has no PNG fallback
         # Replace node with a new <a:blip> that points at a freshly minted PNG
-        residual = svgblips + blips_pointing_to_svg
+        residual = [n for n in (svgblips + blips_pointing_to_svg)
+                    if n not in case1_handled]
         for node in residual:
             # Get the SVG rid/target
             svg_rid = node.attrib.get(f"{{{ns['r']}}}embed")
@@ -1247,6 +1391,10 @@ class Slide_and_Rels:
                 os.path.normpath(os.path.join(source_part_dir, svg_target))
             )
 
+            # See Case 1 above: detect any srcRect on this picture so pdf.py
+            # can inverse-crop the SVG-PDF replacement instead of squashing it.
+            crop, srcrect_elem = _find_srcrect_crop(node)
+
             # Allocate a new media png name
             new_png_path = None
             while new_png_path is None or os.path.exists(new_png_path):
@@ -1256,16 +1404,27 @@ class Slide_and_Rels:
             new_rel_target = f"{self.uzo.media_loc}/{new_png_name}"
 
             # Generate or re-use color + PNG
-            existing = self.uzo._lookup_color_for_svg(svg_path) if svg_path else None
+            existing = (
+                self.uzo._lookup_color_for_svg(svg_path, crop) if svg_path else None
+            )
             if existing:
                 color_hex = existing
                 rgb = self.uzo._hex_to_rgb(existing)
             else:
                 color_hex, rgb = self.uzo._alloc_next_color()
                 if svg_path:
-                    self.uzo._register_svg_color(svg_path, color_hex)
+                    self.uzo._register_svg_color(svg_path, color_hex, crop)
 
             self.uzo._write_solid_png_9x9(rgb, new_png_path)
+            self.uzo.png_color_written[new_png_path] = color_hex
+
+            # Drop any <a:srcRect> sibling now that the marker PNG (uniform
+            # color) will fill the picture's full extent. The crop is recorded
+            # on the color and replayed during PDF post-processing.
+            if srcrect_elem is not None:
+                parent_fill = srcrect_elem.getparent()
+                if parent_fill is not None:
+                    parent_fill.remove(srcrect_elem)
 
             # Create new relationship
             imagenum = len(self.rels_root) + 1

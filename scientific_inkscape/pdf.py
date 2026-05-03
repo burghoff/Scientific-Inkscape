@@ -1471,25 +1471,82 @@ def _collect_and_inline_markers(page, writer, color_to_svg, rep_by_color,
                 if hexcolor:
                     n_uniform += 1
                     if hexcolor in color_to_svg and hexcolor in rep_by_color:
-                        # Inline replacement here: q, cm(1/rep_w,1/rep_h), <rep_ops>, Q
-                        rep_ops, rep_w, rep_h, rep_res = rep_by_color[hexcolor]
+                        # Inline replacement: q, [optional clip], cm, <rep_ops>, Q
+                        rep_ops, rep_w, rep_h, rep_res, crop = rep_by_color[hexcolor]
 
                         if rep_w > 0 and rep_h > 0:
                             _debug_print(
-                                "{}: replacing {} (color {}) with marker for {}".format(
+                                "{}: replacing {} (color {}) with marker for {}{}".format(
                                     page_label, xo_name, hexcolor,
-                                    color_to_svg[hexcolor]))
+                                    color_to_svg[hexcolor][0],
+                                    " crop={!r}".format(crop) if crop else ""))
                             _uniquify_rep_resource_names(res, rep_res, rep_ops)
                             # Merge resources so rep_ops names resolve
                             _merge_resources(res, rep_res)
                             # Sandbox replacement state
                             new_ops.append(([], b"q"))
-                            # Scale from replacement page units to unit square
-                            new_ops.append((
-                                [FloatObject(1.0/rep_w), FloatObject(0.0), FloatObject(0.0),
-                                 FloatObject(1.0/rep_h), FloatObject(0.0), FloatObject(0.0)],
-                                b"cm"
-                            ))
+
+                            if crop is None:
+                                # No cropping: scale replacement page coords
+                                # straight into the unit square the marker
+                                # XObject occupies.
+                                new_ops.append((
+                                    [FloatObject(1.0/rep_w), FloatObject(0.0),
+                                     FloatObject(0.0), FloatObject(1.0/rep_h),
+                                     FloatObject(0.0), FloatObject(0.0)],
+                                    b"cm"
+                                ))
+                            else:
+                                # Cropped picture: the renderer placed the
+                                # marker XObject so its unit square covers
+                                # only the *visible* portion of the original
+                                # source. We need to draw only the matching
+                                # sub-rectangle of the replacement PDF -- and
+                                # have it cover the full unit square -- not
+                                # the whole replacement squashed in.
+                                #
+                                # Visible region of the replacement PDF (in
+                                # PDF coords, y-up; OOXML 't' is from the top
+                                # so the visible y-range is
+                                # [b*rep_h, (1-t)*rep_h]):
+                                #     x in [l*rep_w, (1-r)*rep_w]
+                                #     y in [b*rep_h, (1-t)*rep_h]
+                                #
+                                # The cm we want maps that visible rectangle
+                                # to [0,1]x[0,1]. Solving gives:
+                                #     a = 1 / ((1-l-r) * rep_w)
+                                #     d = 1 / ((1-t-b) * rep_h)
+                                #     e = -l / (1-l-r)
+                                #     f = -b / (1-t-b)
+                                # (sanity check: l=t=r=b=0 collapses to the
+                                # uncropped 1/rep_w, 1/rep_h scale above.)
+                                l_f, t_f, r_f, b_f = crop
+                                vis_w_frac = 1.0 - l_f - r_f
+                                vis_h_frac = 1.0 - t_f - b_f
+                                a = 1.0 / (vis_w_frac * rep_w)
+                                d = 1.0 / (vis_h_frac * rep_h)
+                                e = -l_f / vis_w_frac
+                                f = -b_f / vis_h_frac
+                                # Clip to the unit square *before* the cm so
+                                # the rectangle is expressed in the same
+                                # user-space the surrounding marker call set
+                                # up. After cm, content from outside the
+                                # visible region of the replacement maps
+                                # outside [0,1]x[0,1] and gets clipped away
+                                # instead of bleeding onto the page.
+                                new_ops.append((
+                                    [FloatObject(0.0), FloatObject(0.0),
+                                     FloatObject(1.0), FloatObject(1.0)],
+                                    b"re"
+                                ))
+                                new_ops.append(([], b"W"))
+                                new_ops.append(([], b"n"))
+                                new_ops.append((
+                                    [FloatObject(a), FloatObject(0.0),
+                                     FloatObject(0.0), FloatObject(d),
+                                     FloatObject(e), FloatObject(f)],
+                                    b"cm"
+                                ))
                             # Splice the replacement operators
                             new_ops.extend(rep_ops)
                             new_ops.append(([], b"Q"))
@@ -1538,20 +1595,31 @@ def _collect_and_inline_markers(page, writer, color_to_svg, rep_by_color,
 
 
 def replace_color_markers_with_svgs(input_pdf_path: str,
-                                    color_to_svg: Dict[str, str],
+                                    color_to_svg: Dict[str, tuple],
                                     output_pdf_path: Optional[str],
                                     exporter: Exporter) -> str:
     """
     Arguments:
       - input_pdf_path: the PDF to process
-      - color_to_svg: dict like {'000001': 'C:/.../figure1.svg', ...} from leave_fallback_png_simple
+      - color_to_svg: dict like
+            {'000001': ('C:/.../figure1.svg', (l, t, r, b)),
+             '000002': ('C:/.../figure2.svg', None), ...}
+        produced by leave_fallback_png_simple. Each value is a 2-tuple of
+        (svg_path, crop_or_None) where the crop, if present, is a 4-tuple
+        of fractions in [0, 1] indicating the OOXML <a:srcRect> on the
+        original picture. Colors with crop=None are placed without
+        inverse-cropping; colors with a crop have the SVG-PDF inverse-cropped
+        so only the visible portion fills the marker's unit square (otherwise
+        the renderer would squash the full SVG into the cropped display box).
       - output_pdf_path: output
     """
     _debug_print("replace_color_markers_with_svgs: input={}".format(input_pdf_path))
     _debug_print("  marker map has {} color(s)".format(len(color_to_svg)))
     if DEBUG_PDF:
-        for hc, sp in sorted(color_to_svg.items()):
-            _debug_print("    {} -> {}".format(hc, sp))
+        for hc, val in sorted(color_to_svg.items()):
+            sp, cr = val
+            _debug_print("    {} -> {}{}".format(
+                hc, sp, " crop={!r}".format(cr) if cr else ""))
 
     in_reader = PdfReader(input_pdf_path)
     writer = PdfWriter()
@@ -1578,7 +1646,10 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
         _debug_copy(pdf_path, label="marker_pdf")
     import threading
     threads = []
-    for svg in set(color_to_svg.values()):
+    # Same SVG referenced cropped + uncropped (or with two crops) appears
+    # under multiple colors but only needs one Inkscape conversion.
+    unique_svgs = {svg for (svg, _crop) in color_to_svg.values()}
+    for svg in unique_svgs:
         t = threading.Thread(target=_export_one, args=(svg,), daemon=True)
         t.start()
         threads.append(t)
@@ -1589,10 +1660,10 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
         exporter.clear_temp()
         sys.exit()
 
-    # Build hexcolor -> replacement content map (ops + size + resources)
+    # Build hexcolor -> replacement content map (ops + size + resources + crop)
     rep_by_color = {}
     from pypdf.generic import ContentStream
-    for hexcolor, svg in color_to_svg.items():
+    for hexcolor, (svg, crop) in color_to_svg.items():
         rep_pdf_path = svg_to_pdf_cache.get(svg)
         if not rep_pdf_path:
             _debug_print("no PDF available for color {} (svg={!r}) -- "
@@ -1608,11 +1679,13 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
         rep_ops = list(rep_cs.operations)
         # Grab replacement resources (may be None)
         rep_res = rp.get("/Resources", {}) or {}
-        rep_by_color[hexcolor] = (rep_ops, rep_w, rep_h, rep_res)
+        rep_by_color[hexcolor] = (rep_ops, rep_w, rep_h, rep_res, crop)
         _debug_print(
             "replacement registered for color {}: page size {:g}x{:g}, "
-            "{} content op(s) from {}".format(
-                hexcolor, rep_w, rep_h, len(rep_ops), rep_pdf_path))
+            "{} content op(s){} from {}".format(
+                hexcolor, rep_w, rep_h, len(rep_ops),
+                (" crop=" + repr(crop)) if crop else "",
+                rep_pdf_path))
 
     n_pages = len(in_reader.pages)
     _debug_print("scanning {} page(s) of {}".format(n_pages, input_pdf_path))
