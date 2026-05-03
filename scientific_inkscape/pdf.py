@@ -797,6 +797,8 @@ def export_svg_to_pdf(svg_path: str, exporter: Exporter) -> str:
         opts.exportnow = False
         opts.linked_locations = {}
         
+        if exporter.prints:
+            exporter.prints("{} : Beginning export (internal SVG)".format(os.path.basename(svg_path)))
         Exporter(stripped_svg, opts).export_all()
     finally:
         _sh.rmtree(tmp_dir, ignore_errors=True)

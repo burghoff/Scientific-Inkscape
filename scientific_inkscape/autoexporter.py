@@ -528,7 +528,7 @@ class Exporter():
 
     def preprocessing(self, fin):
         """Modifications that are done prior to conversion to any vector output"""
-        self.terminal_message("Preprocessing vector output")
+        # self.terminal_message("Preprocessing vector output")
         timestart = time.time()
 
         # SVG modifications that should be done prior to any binary calls
@@ -886,9 +886,9 @@ class Exporter():
             self.check(dh.overwrite_svg, svg, tmp)
             cfile = tmp
 
-        self.terminal_message("Preprocessing done ("
-        + str(round(1000 * (time.time() - timestart)) / 1000)
-        + " s)")
+        # self.terminal_message("Preprocessing done ("
+        # + str(round(1000 * (time.time() - timestart)) / 1000)
+        # + " s)")
         return cfile
 
     def check(self, func, *args, finalization=False, **kwargs):
@@ -1008,7 +1008,7 @@ class Exporter():
     def export_file(self, fin, fformat):
         """Use the Inkscape binary to export the file"""
         myoutput = self.outtemplate[0:-4] + "." + fformat
-        self.terminal_message("Converting to " + fformat)
+        # self.terminal_message("Converting to " + fformat)
         timestart = time.time()
 
         ispsvg = fformat == "psvg"
