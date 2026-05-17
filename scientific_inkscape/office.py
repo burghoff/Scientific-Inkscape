@@ -300,6 +300,33 @@ class Unzipped_Office:
         np = self._norm_path(svg_path)
         self.svg_to_color[(np, crop)] = color_hex
         self.svg_color_map[color_hex] = (np, crop)
+        
+    def _saved_rasters_dir(self):
+        """Sibling temp dir holding pristine copies of every raster we swap
+        out for a marker, so pdf.py can re-embed the originals losslessly."""
+        d = os.path.join(self.temp_dir, "_saved_rasters")
+        os.makedirs(d, exist_ok=True)
+        return d
+    
+    def _save_raster_copy(self, src_path):
+        """Copy src_path into _saved_rasters_dir; idempotent per src."""
+        if not hasattr(self, "_raster_save_map"):
+            self._raster_save_map = {}
+        key = self._norm_path(src_path)
+        cached = self._raster_save_map.get(key)
+        if cached is not None:
+            return cached
+        base = os.path.basename(src_path)
+        dest = os.path.join(self._saved_rasters_dir(), base)
+        if os.path.exists(dest):
+            root, ext = os.path.splitext(base)
+            n = 1
+            while os.path.exists(dest):
+                dest = os.path.join(self._saved_rasters_dir(), f"{root}_{n}{ext}")
+                n += 1
+        shutil.copy2(src_path, dest)
+        self._raster_save_map[key] = dest
+        return dest
 
     def _hex_to_rgb(self, color_hex: str):
         n = int(color_hex, 16)
@@ -1469,6 +1496,136 @@ class Slide_and_Rels:
                 new_blip.attrib[f"{{{ns['r']}}}embed"] = new_rid
                 parent = node.getparent()
                 parent.replace(node, new_blip)
+            changed_slide = True
+            
+        # Case 3: standalone raster images. Swap each for a 9x9 marker PNG so
+        # Office's PDF renderer can't recompress it; the original raster is
+        # stashed in uzo._saved_rasters_dir and recorded in svg_color_map by
+        # its saved path. pdf.py inlines those bytes back into the final PDF
+        # with complete fidelity. Markers we wrote earlier in Cases 1/2 are
+        # tracked in png_color_written and skipped here.
+        RASTER_EXTS = (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif")
+        
+        # Refresh map: Cases 1/2 may have appended rels
+        rel_id_to_target = {
+            rel.attrib["Id"]: unquote(rel.attrib.get("Target", ""))
+            for rel in self.rels_root
+            if rel.tag.endswith("Relationship")
+        }
+        
+        raster_blips = []
+        for elem in self.slide_root.iter():
+            if elem.tag != f"{{{ns['a']}}}blip":
+                continue
+            rid = elem.attrib.get(f"{{{ns['r']}}}embed")
+            if not rid:
+                continue
+            target = rel_id_to_target.get(rid, "")
+            if not target.lower().endswith(RASTER_EXTS):
+                continue
+            raster_abs = os.path.normpath(os.path.join(source_part_dir, target))
+            if not os.path.isfile(raster_abs):
+                continue
+            if raster_abs in self.uzo.png_color_written:
+                continue  # marker we wrote ourselves in Case 1/2
+            raster_blips.append((elem, raster_abs))
+        
+        # Within one slide, multiple blips referencing the same (file, crop)
+        # share a single freshly-minted marker PNG/rel.
+        color_to_rid_case3 = {}
+        
+        def _mint_marker_png_and_rel(rgb):
+            """Inline mirror of the Case 1 conflict branch / Case 2 mint dance."""
+            new_png_path = None
+            while new_png_path is None or os.path.exists(new_png_path):
+                self.uzo.nfiles += 1
+                new_png_name = f"image{self.uzo.nfiles}.png"
+                new_png_path = os.path.join(self.uzo.media_dir, new_png_name)
+            new_rel_target = f"{self.uzo.media_loc}/{new_png_name}"
+            imagenum = len(self.rels_root) + 1
+            while f"rId{imagenum}" in rel_id_to_target:
+                imagenum += 1
+            new_rid = f"rId{imagenum}"
+            rels_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+            ET.SubElement(
+                self.rels_root,
+                f"{{{rels_ns}}}Relationship",
+                {
+                    "Id": new_rid,
+                    "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+                    "Target": new_rel_target,
+                },
+            )
+            rel_id_to_target[new_rid] = new_rel_target
+            self.uzo._write_solid_png_9x9(rgb, new_png_path)
+            return new_rid, new_png_path
+        
+        for blip, raster_abs in raster_blips:
+            crop, srcrect_elem = _find_srcrect_crop(blip)
+            saved_path = self.uzo._save_raster_copy(raster_abs)
+        
+            existing = self.uzo._lookup_color_for_svg(saved_path, crop)
+            if existing:
+                color_hex = existing
+                rgb = self.uzo._hex_to_rgb(existing)
+            else:
+                color_hex, rgb = self.uzo._alloc_next_color()
+                self.uzo._register_svg_color(saved_path, color_hex, crop)
+        
+            if raster_abs.lower().endswith(".png"):
+                # Overwrite in place (PNG → PNG). Multi-rId conflict handled
+                # the same way Case 1 does it.
+                prev_color = self.uzo.png_color_written.get(raster_abs)
+                if prev_color is not None and prev_color != color_hex:
+                    new_rid, new_png_path = _mint_marker_png_and_rel(rgb)
+                    self.uzo.png_color_written[new_png_path] = color_hex
+                    blip.attrib[f"{{{ns['r']}}}embed"] = new_rid
+                    changed_rels = True
+                else:
+                    self.uzo._write_solid_png_9x9(rgb, raster_abs)
+                    self.uzo.png_color_written[raster_abs] = color_hex
+            else:
+                # Non-PNG raster: extension/content-type would mismatch if we
+                # overwrote bytes in place, so mint a fresh imageN.png and rewire
+                # the blip. The original file becomes unreferenced and is removed
+                # by cleanup_unused_rels_and_media.
+                new_rid = color_to_rid_case3.get(color_hex)
+                if new_rid is None:
+                    new_rid, new_png_path = _mint_marker_png_and_rel(rgb)
+                    self.uzo.png_color_written[new_png_path] = color_hex
+                    color_to_rid_case3[color_hex] = new_rid
+                blip.attrib[f"{{{ns['r']}}}embed"] = new_rid
+                changed_rels = True
+                
+            # Drop every <a:blip> child. After substitution the blip points at
+            # a flat 9x9 PNG marker; any child element would either distort the
+            # marker's color so pdf.py can't find it back, or route Office at
+            # an entirely different source layer:
+            #   <a:duotone>, <a:lum>, <a:tint>, <a:hsl>, <a:clrChange>,
+            #   <a:clrRepl>, <a:grayscl>, <a:biLevel>, <a:fillOverlay>,
+            #   <a:blur>  -- mangle marker RGB (e.g. a duotone with a black
+            #               end maps marker #000004 to #000000 in the PDF, so
+            #               _try_get_uniform_rgb_hex_from_ximage reads black
+            #               and color_to_svg has no entry for it)
+            #   <a:alpha*>  -- same problem on the alpha channel
+            #   <a:extLst>  -- can host <a14:imgLayer> pointing at a JPEG-XR
+            #                  alternative-content source that Office uses
+            #                  *instead of* our PNG, so the marker is never
+            #                  drawn into the PDF at all
+            # The only blip child Cases 1/2 care about is <asvg:svgBlip>
+            # inside an extLst, and they always strip that extLst before
+            # Case 3 sees the blip, so this is safe to do unconditionally.
+            # Side effect: any color filter the user authored on this picture
+            # is lost. That's the price of byte-perfect raster fidelity --
+            # the raw bytes win over the filter's visual effect.
+            for child in list(blip):
+                blip.remove(child)
+        
+            self.uzo.ensure_image_in_content_types("dummy.png")
+            if srcrect_elem is not None:
+                parent_fill = srcrect_elem.getparent()
+                if parent_fill is not None:
+                    parent_fill.remove(srcrect_elem)
             changed_slide = True
 
         if changed_slide:

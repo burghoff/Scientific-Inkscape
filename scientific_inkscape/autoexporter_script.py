@@ -573,7 +573,7 @@ if guitype == 'gtk3.0':
             self.treeview = Gtk.TreeView(model=self.filelogstore)
             renderer_text = Gtk.CellRendererText()
             column_text = Gtk.TreeViewColumn("Filename", renderer_text, text=0)
-            column_text.set_fixed_width((WINDOW_WIDTH-2*MARGIN)*0.49)  # Set your desired fixed width
+            column_text.set_fixed_width((WINDOW_WIDTH-2*MARGIN)*0.49)
             self.treeview.append_column(column_text)
             renderer_text = Gtk.CellRendererText()
             column_text = Gtk.TreeViewColumn("Message", renderer_text, text=1)

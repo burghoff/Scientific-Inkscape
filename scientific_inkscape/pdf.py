@@ -689,7 +689,7 @@ if 'pypdf-2.0.0' in pypdf_path:
 # ---- Inkscape export (same conventions as AutoExporter) ----
 def _inkscape_bin():
     # pull the Inkscape binary location the same way AutoExporter does
-    # (requires dhelpers + inkex, which you already use elsewhere)
+    # (requires dhelpers + inkex)
     import dhelpers as dh
     return dh.inkex.inkscape_system_info.binary_location  # noqa
 
@@ -1598,6 +1598,194 @@ def _collect_and_inline_markers(page, writer, color_to_svg, rep_by_color,
     if touched_resources:
         page[NameObject("/Resources")] = res
 
+def _make_raster_marker_pdf(raster_path: str, out_pdf_path: str) -> None:
+    """
+    Build a single-page PDF whose only content is ``raster_path`` filling
+    the page, embedded losslessly:
+
+    - JPEG: raw bytes go in under /DCTDecode (pixel-perfect, byte-identical).
+    - PNG (non-interlaced 8-bit, common subset): decoded with this module's
+      pure-Python helpers, re-encoded with /FlateDecode (pixel-perfect;
+      alpha/palette/grayscale variants split out into an /SMask where needed).
+    - Anything else (Adam7-interlaced PNG, 1/2/4/16-bit PNG, TIFF, BMP,
+      GIF, ...): falls back to Pillow.
+    """
+    from pypdf import PdfWriter
+    from pypdf.generic import (
+        StreamObject, DictionaryObject, NameObject, NumberObject,
+    )
+    import zlib, struct
+
+    ext = os.path.splitext(raster_path)[1].lower()
+    with open(raster_path, "rb") as fh:
+        data = fh.read()
+
+    img = StreamObject()
+    smask_bytes = None
+    w = h = None
+    colorspace = None
+    handled = False  # set True once the JPEG or native-PNG path populates img
+
+    # ----- JPEG: lossless byte passthrough via /DCTDecode -----
+    if ext in (".jpg", ".jpeg") and data[:2] == b"\xff\xd8":
+        bits = comps = None
+        i, N = 2, len(data)
+        while i + 3 < N:
+            while i < N and data[i] != 0xFF:
+                i += 1
+            while i < N and data[i] == 0xFF:
+                i += 1
+            if i >= N:
+                break
+            marker = data[i]; i += 1
+            if marker == 0xD8 or marker == 0xD9 or 0xD0 <= marker <= 0xD7:
+                continue
+            if i + 2 > N:
+                break
+            seg_len = struct.unpack(">H", data[i:i+2])[0]
+            if (marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
+                           0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF)
+                    and seg_len >= 8):
+                bits = data[i+2]
+                h    = struct.unpack(">H", data[i+3:i+5])[0]
+                w    = struct.unpack(">H", data[i+5:i+7])[0]
+                comps = data[i+7]
+                break
+            i += seg_len
+        if w and h and comps in (1, 3):
+            img._data = data
+            img[NameObject("/Filter")] = NameObject("/DCTDecode")
+            colorspace = "/DeviceGray" if comps == 1 else "/DeviceRGB"
+            img[NameObject("/ColorSpace")] = NameObject(colorspace)
+            img[NameObject("/BitsPerComponent")] = NumberObject(bits or 8)
+            img[NameObject("/Width")]  = NumberObject(w)
+            img[NameObject("/Height")] = NumberObject(h)
+            handled = True
+        # else: malformed/exotic JPEG -> PIL fallback below
+
+    # ----- PNG: native decode for the common case only -----
+    if not handled and data[:8] == b"\x89PNG\r\n\x1a\n":
+        bit_depth = color_type = interlace = None
+        idat = bytearray(); palette = None; trns = None
+        pos = 8
+        while pos + 8 <= len(data):
+            chunk_len = struct.unpack(">I", data[pos:pos+4])[0]
+            ctype     = data[pos+4:pos+8]
+            cdata     = data[pos+8:pos+8+chunk_len]
+            pos += 8 + chunk_len + 4
+            if ctype == b"IHDR":
+                w, h, bit_depth, color_type, _c, _f, interlace = struct.unpack(
+                    ">IIBBBBB", cdata[:13])
+            elif ctype == b"IDAT":
+                idat.extend(cdata)
+            elif ctype == b"PLTE":
+                palette = bytes(cdata)
+            elif ctype == b"tRNS":
+                trns = bytes(cdata)
+            elif ctype == b"IEND":
+                break
+        bpp_map = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
+        bpp = bpp_map.get(color_type)
+        # Only the common subset goes through pure-Python. Adam7-interlaced
+        # streams pack each of 7 sub-images with its own filter bytes, so the
+        # raw stream isn't (1+stride)*h; 1/2/4/16-bit depths use a different
+        # sample layout. Both are handled fine by Pillow below.
+        if (w is not None and bit_depth == 8
+                and interlace == 0 and bpp is not None):
+            raw = zlib.decompress(bytes(idat))
+            pixels = bytearray()
+            for row_bytes, err in _decode_image_rows(raw, w, h, bpp, predictor=10):
+                if err is not None:
+                    raise ValueError(f"PNG decode error in {raster_path}: {err}")
+                pixels.extend(row_bytes)
+            if color_type == 2:
+                colorspace = "/DeviceRGB"; sample_bytes = bytes(pixels)
+            elif color_type == 0:
+                colorspace = "/DeviceGray"; sample_bytes = bytes(pixels)
+            elif color_type == 3:
+                colorspace = "/DeviceRGB"
+                out = bytearray(w * h * 3)
+                for k, idx in enumerate(pixels):
+                    out[k*3:k*3+3] = palette[idx*3:idx*3+3]
+                sample_bytes = bytes(out)
+                if trns is not None:
+                    smask_bytes = bytes(trns[idx] if idx < len(trns) else 255
+                                        for idx in pixels)
+            elif color_type == 4:
+                colorspace = "/DeviceGray"
+                gray  = bytearray(w * h); alpha = bytearray(w * h)
+                for k in range(w * h):
+                    gray[k]  = pixels[2*k]
+                    alpha[k] = pixels[2*k+1]
+                sample_bytes = bytes(gray); smask_bytes = bytes(alpha)
+            else:  # 6: RGBA
+                colorspace = "/DeviceRGB"
+                rgb   = bytearray(w * h * 3); alpha = bytearray(w * h)
+                for k in range(w * h):
+                    rgb[k*3:k*3+3] = pixels[4*k:4*k+3]
+                    alpha[k]       = pixels[4*k+3]
+                sample_bytes = bytes(rgb); smask_bytes = bytes(alpha)
+            img._data = zlib.compress(sample_bytes, level=9)
+            img[NameObject("/Filter")] = NameObject("/FlateDecode")
+            img[NameObject("/Width")]  = NumberObject(w)
+            img[NameObject("/Height")] = NumberObject(h)
+            img[NameObject("/ColorSpace")] = NameObject(colorspace)
+            img[NameObject("/BitsPerComponent")] = NumberObject(8)
+            handled = True
+
+    # ----- Pillow fallback (Adam7 PNG, 16-bit PNG, TIFF/BMP/GIF, ...) -----
+    if not handled:
+        from PIL import Image
+        im = Image.open(raster_path)
+        w, h = im.size
+        smask_bytes = None
+        if im.mode in ("RGBA", "LA"):
+            base = "RGB" if im.mode == "RGBA" else "L"
+            sample_bytes = im.convert(base).tobytes()
+            smask_bytes  = im.split()[-1].tobytes()
+            colorspace   = "/DeviceRGB" if base == "RGB" else "/DeviceGray"
+        elif im.mode == "P":
+            sample_bytes = im.convert("RGB").tobytes(); colorspace = "/DeviceRGB"
+        elif im.mode == "L":
+            sample_bytes = im.tobytes(); colorspace = "/DeviceGray"
+        elif im.mode == "1":
+            sample_bytes = im.convert("L").tobytes(); colorspace = "/DeviceGray"
+        else:
+            sample_bytes = im.convert("RGB").tobytes(); colorspace = "/DeviceRGB"
+        img._data = zlib.compress(sample_bytes, level=9)
+        img[NameObject("/Filter")] = NameObject("/FlateDecode")
+        img[NameObject("/Width")]  = NumberObject(w)
+        img[NameObject("/Height")] = NumberObject(h)
+        img[NameObject("/ColorSpace")] = NameObject(colorspace)
+        img[NameObject("/BitsPerComponent")] = NumberObject(8)
+
+    img[NameObject("/Type")]    = NameObject("/XObject")
+    img[NameObject("/Subtype")] = NameObject("/Image")
+
+    if smask_bytes is not None:
+        sm = StreamObject()
+        sm._data = zlib.compress(smask_bytes, level=9)
+        sm[NameObject("/Type")]    = NameObject("/XObject")
+        sm[NameObject("/Subtype")] = NameObject("/Image")
+        sm[NameObject("/Width")]   = NumberObject(w)
+        sm[NameObject("/Height")]  = NumberObject(h)
+        sm[NameObject("/ColorSpace")] = NameObject("/DeviceGray")
+        sm[NameObject("/BitsPerComponent")] = NumberObject(8)
+        sm[NameObject("/Filter")]  = NameObject("/FlateDecode")
+        img[NameObject("/SMask")]  = sm
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=w, height=h)
+    page = writer.pages[0]
+    img_ref = writer._add_object(img)
+    page[NameObject("/Resources")] = DictionaryObject({
+        NameObject("/XObject"): DictionaryObject({NameObject("/Im0"): img_ref})
+    })
+    cs = StreamObject()
+    cs._data = f"q\n{w} 0 0 {h} 0 0 cm\n/Im0 Do\nQ\n".encode("latin1")
+    page[NameObject("/Contents")] = writer._add_object(cs)
+    with open(out_pdf_path, "wb") as f:
+        writer.write(f)
 
 def replace_color_markers_with_svgs(input_pdf_path: str,
                                     color_to_svg: Dict[str, tuple],
@@ -1633,21 +1821,23 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
 
     # Pre-export SVGs -> PDFs (once per unique SVG)
     svg_to_pdf_cache: Dict[str, str] = {}
-    def _export_one(svg: str):
-        if not svg:
+    def _export_one(src: str):
+        if not src:
             return
-        # Capture the source SVG even when the PDF is served from cache,
-        # so the debug folder always reflects what was actually used.
-        _debug_copy(svg, label="marker_svg")
-        pdf_path = os.path.splitext(svg)[0] + ".pdf"
+        _debug_copy(src, label="marker_source")
+        pdf_path = os.path.splitext(src)[0] + ".pdf"
         cached = (os.path.exists(pdf_path)
-                  and os.path.getmtime(pdf_path) >= os.path.getmtime(svg))
+                  and os.path.getmtime(pdf_path) >= os.path.getmtime(src))
         if not cached:
-            _debug_print("exporting SVG -> PDF: {}".format(svg))
-            pdf_path = export_svg_to_pdf(svg, exporter)
+            if src.lower().endswith(".svg"):
+                _debug_print("exporting SVG -> PDF: {}".format(src))
+                pdf_path = export_svg_to_pdf(src, exporter)
+            else:
+                _debug_print("embedding raster -> PDF: {}".format(src))
+                _make_raster_marker_pdf(src, pdf_path)
         else:
-            _debug_print("using cached PDF for SVG: {}".format(svg))
-        svg_to_pdf_cache[svg] = pdf_path
+            _debug_print("using cached PDF for source: {}".format(src))
+        svg_to_pdf_cache[src] = pdf_path
         _debug_copy(pdf_path, label="marker_pdf")
     import threading
     threads = []

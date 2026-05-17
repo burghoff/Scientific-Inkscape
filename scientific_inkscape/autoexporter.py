@@ -2327,7 +2327,7 @@ class Exporter():
             return iw * ih
 
         def _get_best_transform(el):
-            # Prefer the one you use elsewhere
+            # Prefer the one used elsewhere
             xf = getattr(el, "ccomposed_transform", None)
             if xf is not None:
                 return xf
@@ -2346,7 +2346,7 @@ class Exporter():
             if not exts:
                 return []
         
-            xf = getattr(el, "ccomposed_transform", None)  # you said this is correct
+            xf = getattr(el, "ccomposed_transform", None)
         
             out = []
             for bb in exts:
