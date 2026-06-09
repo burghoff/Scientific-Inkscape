@@ -50,7 +50,6 @@ import itertools
 import re
 import math
 from copy import copy
-import threading
 import lxml
 import numpy as np
 import inkex
@@ -77,6 +76,7 @@ from inkex.text.font_properties import (
     fcfg,
     font_style,
     true_style,
+    has_pango,
 )
 from inkex.utils import debug
 
@@ -93,7 +93,6 @@ TEFRtags = {TEtag, FRtag}
 TEtags = {TEtag, TStag}
 FRtags = {FRtag, FlowRegion.ctag, FlowPara.ctag, FlowSpan.ctag}
 SPR = inkex.addNS("role", "sodipodi")
-PANGO_LOCK = threading.Lock()
 
 class ParsedTextList(list):
     """
@@ -1232,7 +1231,7 @@ class ParsedText:
             for i, c in enumerate(run):
                 c.loc = CLoc(ts,TYP_TEXT,i)
             
-        ts.cstyle = run[0].sty
+        ts.cspecified_style = run[0].sty
         algn = {"start": "start", "middle": "center", "end": "end"}[fchr.line.anchor]
         ts.cstyle.update({'font-size':str(fchr.utfs),"text-align":algn,"text-anchor":fchr.line.anchor})
         ts.cstyle -= {'line-height','direction','baseline-shift','shape-inside'}
@@ -2400,10 +2399,12 @@ class ParsedText:
         
                 
         for k, v in self.textel.attrib.items():
-            if k not in {'baseline-shift','shape-inside','direction','style'}:
+            if k not in {'baseline-shift','shape-inside','direction','style','font-family'}:
                 te.attrib[k] = v
         te.cstyle = self.textel.cstyle
         te.cstyle -= {'baseline-shift','shape-inside','direction'}
+        # Set text el font-family so it's displayed correctly in the status bar
+        te.cstyle['font-family'] = self.chrs[0].tsty['font-family']
         
         xs = []; ys = []; fszs = []
         for ln in self.lns:
@@ -3477,7 +3478,7 @@ class TChunk:
         else:
             ts.text = txt
         
-        ts.cstyle = self.chrs[0].sty
+        ts.cspecified_style = self.chrs[0].sty
         algn = {"start": "start", "middle": "center", "end": "end"}[self.line.anchor]
         ts.cstyle.update({'font-size':str(self.utfs),"text-align":algn,"text-anchor":self.line.anchor})
         ts.cstyle -= {'line-height','direction','baseline-shift','shape-inside'}
@@ -4333,9 +4334,7 @@ class CharacterTable:
         self.root = els[0].croot if len(els) > 0 else None
         self.collect_characters()
 
-        PANGO_LOCK.acquire()
-        hp = PangoRenderer().HASPANGO
-        PANGO_LOCK.release()
+        hp = has_pango()
         # hp = False; import os; os.environ["HASPANGO"]='False'
         if hp:
             # Prefer to measure with Pango if we have it (faster, most accurate)
@@ -4535,72 +4534,65 @@ class CharacterTable:
             ctbl[sty][pistr] = StringInfo(pistr, make_string(pistr, sty), dict())
             ctbl[sty][empty] = StringInfo(empty, make_string(empty, sty), dict())
 
-        # Pango querying doesn't multithread well
-        PANGO_LOCK.acquire()
-        try:
-            pngr = PangoRenderer()
-            nbb = dict()
-            for sty in ctbl:
-                joinch = " "
-                mystrs = [val[0] for k, val in pstrings.items() if val[1] == sty]
-                myids = [k for k, val in pstrings.items() if val[1] == sty]
+        # Pango querying is serialized inside font_properties.measure_text
+        nbb = dict()
+        pngr = PangoRenderer()
+        for sty in ctbl:
+            joinch = " "
+            mystrs = [val[0] for k, val in pstrings.items() if val[1] == sty]
+            myids = [k for k, val in pstrings.items() if val[1] == sty]
 
-                success, metrics = pngr.set_text_style(sty)
-                if not (success):
-                    PANGO_LOCK.release()
-                    return self.extract_characters()
-                joinedstr = joinch.join(mystrs) + joinch + prefix
+            joinedstr = joinch.join(mystrs) + joinch + prefix
 
-                # We need to render all the characters, but we don't
-                # need all of their extents. For most of them we just
-                # need the first character, unless the following string
-                # has length 1 (and may be differently differentially kerned)
-                modw = [
-                    any(
-                        len(mystrs[i]) == 1
-                        for i in range(i, i + 2)
-                        if 0 <= i < len(mystrs)
+            # We need to render all the characters, but we don't
+            # need all of their extents. For most of them we just
+            # need the first character, unless the following string
+            # has length 1 (and may be differently differentially kerned)
+            modw = [
+                any(
+                    len(mystrs[i]) == 1
+                    for i in range(i, i + 2)
+                    if 0 <= i < len(mystrs)
+                )
+                for i in range(len(mystrs))
+            ]
+            needexts = [
+                "1"
+                if len(s) == 1
+                else "1" + "0" * (len(s) - 2) + ("1" if modw[i] else "0")
+                for i, s in enumerate(mystrs)
+            ]
+            needexts2 = "0".join(needexts) + "1" + "1" * len(prefix)
+            success, metrics, exts = pngr.measure_text(sty, joinedstr, needexts2)
+            if not success:
+                return self.extract_characters()
+
+            spw = exts[-len(prefix) - 1][0][2]
+            cnt = 0
+            x = 0
+            for i, mystr in enumerate(mystrs):
+                if modw[i]:
+                    altw = (
+                        exts[cnt + len(mystr) - 1][0][0]
+                        + exts[cnt + len(mystr) - 1][0][2]
+                        - exts[cnt][0][0]
                     )
-                    for i in range(len(mystrs))
-                ]
-                needexts = [
-                    "1"
-                    if len(s) == 1
-                    else "1" + "0" * (len(s) - 2) + ("1" if modw[i] else "0")
-                    for i, s in enumerate(mystrs)
-                ]
-                needexts2 = "0".join(needexts) + "1" + "1" * len(prefix)
-                pngr.render_text(joinedstr)
-                exts, _ = pngr.get_character_extents(metrics[1], needexts2)
+                else:
+                    altw = (
+                        exts[cnt + len(mystr) + 1][0][0] - exts[cnt][0][0] - spw
+                    )
+                wdt = altw
 
-                spw = exts[-len(prefix) - 1][0][2]
-                cnt = 0
-                x = 0
-                for i, mystr in enumerate(mystrs):
-                    if modw[i]:
-                        altw = (
-                            exts[cnt + len(mystr) - 1][0][0]
-                            + exts[cnt + len(mystr) - 1][0][2]
-                            - exts[cnt][0][0]
-                        )
-                    else:
-                        altw = (
-                            exts[cnt + len(mystr) + 1][0][0] - exts[cnt][0][0] - spw
-                        )
-                    wdt = altw
+                firstch = exts[cnt]
+                (xbr, ybr, wbr, hbr) = tuple(firstch[2])
+                if myids[i] not in bareids:
+                    xbr = x
+                    wbr = wdt
+                    # use logical width
 
-                    firstch = exts[cnt]
-                    (xbr, ybr, wbr, hbr) = tuple(firstch[2])
-                    if myids[i] not in bareids:
-                        xbr = x
-                        wbr = wdt
-                        # use logical width
-
-                    nbb[myids[i]] = [val * TEXTSIZE for val in [xbr, ybr, wbr, hbr]]
-                    cnt += len(mystr) + len(joinch)
-                    x += wdt
-        finally:
-            PANGO_LOCK.release()
+                nbb[myids[i]] = [val * TEXTSIZE for val in [xbr, ybr, wbr, hbr]]
+                cnt += len(mystr) + len(joinch)
+                x += wdt
 
         dadv = dict()
         for sty, chd in ctbl.items():
@@ -4868,8 +4860,13 @@ def cleanup_whitespace(elem,isflow):
         for ddi, typ, src, sel, txt in TextTree(elem).dgenerator():
             if txt is not None and len(txt)>1:
                 # Leave singleton spaces alone 
-                if typ==TYP_TEXT:
-                    src.text = re.sub(r'[ \t\r\n\f\v]+', ' ', txt).strip(' \t\r\n\f\v')
+                if typ == TYP_TEXT:
+                    collapsed = re.sub(r'[ \t\r\n\f\v]+', ' ', txt)
+                    stripped = collapsed.strip(' \t\r\n\f\v')
+                    # If followed by element children, a trailing single space is rendered
+                    if len(src) > 0 and txt[-1:] in ' \t\r\n\f\v':
+                        stripped = stripped + ' '
+                    src.text = stripped
                 else:
                     # For tails, a single leading space may be rendered
                     collapsed = re.sub(r'[ \t\r\n\f\v]+', ' ', txt)

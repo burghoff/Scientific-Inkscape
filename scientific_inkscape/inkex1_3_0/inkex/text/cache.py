@@ -204,13 +204,22 @@ class BaseElementCache(BaseElement):
                     d.__dict__.pop("_cspecified_style", None)
         else:
             # Set the specified style by setting the local style
-            self.cstyle = svi
+            # Change local style only as needed
+            ssty = self.cspecified_style
+            for att in svi:
+                if svi[att] != ssty.get(att):
+                    self.cstyle[att] = svi[att]     
+            for att in self.cstyle:
+                if att not in svi:
+                    del self.cstyle[att]
+            
+            # If there are still attributes in the specified style not in
+            # the one we just applied, we are inheriting something we don't
+            # want and need to counter using the default
             for att in self.cspecified_style:
-                # If there are attributes in the new specified style not in
-                # the one we just applied, we are inheriting something we don't
-                # want and need to set using the default
                 if att not in svi:
                     self.cstyle[att] = default_style_atts.get(att)
+
             # self.cstyle.update({k: default_style_atts.get(k) for k in self.cspecified_style if k not in svi})
 
     cspecified_style = property(get_cspecified_style, set_cspecified_style)

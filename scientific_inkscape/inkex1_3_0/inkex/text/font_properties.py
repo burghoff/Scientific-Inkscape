@@ -35,9 +35,12 @@ import sys
 import re
 import ctypes
 from functools import lru_cache
+import threading
 import inkex
 from inkex.text.utils import default_style_atts
 from inkex import Style
+
+_font_lock = threading.RLock()
 
 # The fontconfig library is used to select a font given its CSS specs
 # This library should work starting with v1.0
@@ -194,23 +197,25 @@ class FontConfig:
 
     def get_true_font(self, fontsty):
         """Use fontconfig to get the true font that most text will be rendered as"""
-        if fontsty not in self.truefonts:
-            found = self.font_match(fontsty)
-            truefont = FontConfig.fcfont_to_css(found)
-            self.truefonts[fontsty] = truefont
-            self.truefontsfc[fontsty] = found
-            self.fontcharsets[truefont] = found.get(fc.PROP.CHARSET, 0)[0]
-        return self.truefonts[fontsty]
+        with _font_lock:
+            if fontsty not in self.truefonts:
+                found = self.font_match(fontsty)
+                truefont = FontConfig.fcfont_to_css(found)
+                self.truefonts[fontsty] = truefont
+                self.truefontsfc[fontsty] = found
+                self.fontcharsets[truefont] = found.get(fc.PROP.CHARSET, 0)[0]
+            return self.truefonts[fontsty]
 
     def get_true_font_fullname(self, fontsty):
         """Use fontconfig to get the Face name for a font style"""
-        if fontsty not in self.truefontsfn:
-            if fontsty not in self.truefontsfc:
-                self.get_true_font(fontsty)
-            self.truefontsfn[fontsty] = self.truefontsfc[fontsty].get(
-                fc.PROP.FULLNAME, 0
-            )[0]
-        return self.truefontsfn[fontsty]
+        with _font_lock:
+            if fontsty not in self.truefontsfn:
+                if fontsty not in self.truefontsfc:
+                    self.get_true_font(fontsty)
+                self.truefontsfn[fontsty] = self.truefontsfc[fontsty].get(
+                    fc.PROP.FULLNAME, 0
+                )[0]
+            return self.truefontsfn[fontsty]
 
     def get_true_font_by_char(self, fontsty, chars):
         """
@@ -218,59 +223,63 @@ class FontConfig:
         substituted. (For example, many fonts do not have the ⎣ character.)
         Gets the true font by character
         """
-        if fontsty not in self.truefonts:
-            # font_match is more reliable at matching Inkscape than font_sort
-            self.get_true_font(fontsty)
-        truefont = self.truefonts[fontsty]
-        cd1 = {k: truefont for k in chars if ord(k) in self.fontcharsets[truefont]}
-
-        if len(cd1) < len(chars):
-            found = self.font_sort(fontsty)
-            for fnt in found:
-                truefont = FontConfig.fcfont_to_css(fnt)
-                if truefont not in self.fontcharsets:
-                    self.fontcharsets[truefont] = fnt.get(fc.PROP.CHARSET, 0)[0]
-                cset = self.fontcharsets[truefont]
-                cd2 = {k: truefont for k in chars if ord(k) in cset and k not in cd1}
-                cd1.update(cd2)
-                if len(cd1) == len(chars):
-                    break
+        with _font_lock:
+            if fontsty not in self.truefonts:
+                # font_match is more reliable at matching Inkscape than font_sort
+                self.get_true_font(fontsty)
+            truefont = self.truefonts[fontsty]
+            cd1 = {k: truefont for k in chars if ord(k) in self.fontcharsets[truefont]}
+    
             if len(cd1) < len(chars):
-                cd1.update({c: None for c in chars if c not in cd1})
-        return cd1
+                found = self.font_sort(fontsty)
+                for fnt in found:
+                    truefont = FontConfig.fcfont_to_css(fnt)
+                    if truefont not in self.fontcharsets:
+                        self.fontcharsets[truefont] = fnt.get(fc.PROP.CHARSET, 0)[0]
+                    cset = self.fontcharsets[truefont]
+                    cd2 = {k: truefont for k in chars if ord(k) in cset and k not in cd1}
+                    cd1.update(cd2)
+                    if len(cd1) == len(chars):
+                        break
+                if len(cd1) < len(chars):
+                    cd1.update({c: None for c in chars if c not in cd1})
+            return cd1
 
     @lru_cache(maxsize=None)
     def font_match(self, fontsty):
         """
         fc fonts matching a given reduced font style
         """
-        pat = FontConfig.css_to_fcpattern(fontsty)
-        self.conf.substitute(pat, FC.MatchPattern)
-        pat.default_substitute()
-        ret, _ = self.conf.font_match(pat)
-        return ret
+        with _font_lock:
+            pat = FontConfig.css_to_fcpattern(fontsty)
+            self.conf.substitute(pat, FC.MatchPattern)
+            pat.default_substitute()
+            ret, _ = self.conf.font_match(pat)
+            return ret
 
     @lru_cache(maxsize=None)
     def font_sort(self, fontsty):
         """
         List of fc fonts closest to a given reduced font style
         """
-        pat = FontConfig.css_to_fcpattern(fontsty)
-        self.conf.substitute(pat, FC.MatchPattern)
-        pat.default_substitute()
-        ret, _, _ = self.conf.font_sort(pat, trim=True, want_coverage=False)
-        return ret
+        with _font_lock:
+            pat = FontConfig.css_to_fcpattern(fontsty)
+            self.conf.substitute(pat, FC.MatchPattern)
+            pat.default_substitute()
+            ret, _, _ = self.conf.font_sort(pat, trim=True, want_coverage=False)
+            return ret
 
     def get_fonttools_font(self, fontsty):
         """
         Get a FontTools font instance based on the reduced style.
         """
-        if fontsty not in self.truefontsft:
-            if fontsty not in self.truefontsfc:
-                self.get_true_font(fontsty)
-            found = self.truefontsfc[fontsty]
-            self.truefontsft[fontsty] = FontToolsFontInstance(found)
-        return self.truefontsft[fontsty]
+        with _font_lock:
+            if fontsty not in self.truefontsft:
+                if fontsty not in self.truefontsfc:
+                    self.get_true_font(fontsty)
+                found = self.truefontsfc[fontsty]
+                self.truefontsft[fontsty] = FontToolsFontInstance(found)
+            return self.truefontsft[fontsty]
 
     @staticmethod
     def css_to_fcpattern(sty):
@@ -319,23 +328,25 @@ class FontConfig:
         A few fonts are missing, such as HoloLens MDL2 Assets Bold on Windows
         These fonts can still be found using get_true_font
         """
-        if self._font_list is None:
-            pattern = fc.Pattern.create()  # blank pattern
-            properties = ["family", "weight", "slant", "width", "style", "file"]
-            # style is a nice name for the weight/slant/width combo
-            # e.g., Arial Narrow Bold
-            self._font_list = self.conf.font_list(pattern, properties)
-            self._font_list = sorted(
-                self._font_list, key=lambda x: x.get("family", 0)[0]
-            )  # Sort by family
-        return self._font_list
+        with _font_lock:
+            if self._font_list is None:
+                pattern = fc.Pattern.create()  # blank pattern
+                properties = ["family", "weight", "slant", "width", "style", "file"]
+                # style is a nice name for the weight/slant/width combo
+                # e.g., Arial Narrow Bold
+                self._font_list = self.conf.font_list(pattern, properties)
+                self._font_list = sorted(
+                    self._font_list, key=lambda x: x.get("family", 0)[0]
+                )  # Sort by family
+            return self._font_list
 
     @property
     def font_list_css(self):
         """Finds all fonts known to FontConfig in css form"""
-        if self._font_list_css is None:
-            self._font_list_css = [FontConfig.fcfont_to_css(f) for f in self.font_list]
-        return self._font_list_css
+        with _font_lock:
+            if self._font_list_css is None:
+                self._font_list_css = [FontConfig.fcfont_to_css(f) for f in self.font_list]
+            return self._font_list_css
 
 
 fcfg = FontConfig()
@@ -731,28 +742,30 @@ class PR: # PangoRenderer
 
     def set_text_style(self, sty):
         """Set the text style for rendering based on the provided style"""
-        fdesc = PR.css_to_pango_description(sty)
-        fdesc.set_absolute_size(self.pufd(self.pangosize))
-        fnt = self.ctx.get_font_map().load_font(self.ctx, fdesc)
+        with _font_lock:
+            fdesc = PR.css_to_pango_description(sty)
+            fdesc.set_absolute_size(self.pufd(self.pangosize))
+            fnt = self.ctx.get_font_map().load_font(self.ctx, fdesc)
 
-        success = fnt is not None
-        if success:
-            self.pangolayout.set_font_description(fdesc)
-            metrics = fnt.get_metrics()
-            metrics = [
-                self.putd(v) / self.pangosize
-                for v in [
-                    metrics.get_height(),
-                    metrics.get_ascent(),
-                    metrics.get_descent(),
+            success = fnt is not None
+            if success:
+                self.pangolayout.set_font_description(fdesc)
+                metrics = fnt.get_metrics()
+                metrics = [
+                    self.putd(v) / self.pangosize
+                    for v in [
+                        metrics.get_height(),
+                        metrics.get_ascent(),
+                        metrics.get_descent(),
+                    ]
                 ]
-            ]
-            return success, metrics
-        return success, None
+                return success, metrics
+            return success, None
 
     def render_text(self, texttorender):
         """Render text using Pango layout."""
-        self.pangolayout.set_text(texttorender, -1)
+        with _font_lock:
+            self.pangolayout.set_text(texttorender, -1)
 
     def process_extents(self, ext, ascent):
         """
@@ -780,30 +793,55 @@ class PR: # PangoRenderer
         will be thinner due to the 'o' that follows.
         Units: relative to font size
         """
-        loi = self.pangolayout.get_iter()
-        wds = []
-        i = -1
-        lastpos = True
-        unwrapper = 0
-        moved = True
-        while moved:
-            cext = loi.get_cluster_extents()
-            i += 1
-            if needexts[i] == "1":
-                ext = self.process_extents(cext, ascent)
-                if ext[0][0] < 0 and lastpos:
-                    unwrapper += 2**32 / (self.scale * self.pangosize)
-                lastpos = ext[0][0] >= 0
-                ext[0][0] += unwrapper  # account for 32-bit overflow
-                ext[1][0] += unwrapper
-                wds.append(ext)
-            else:
-                wds.append(None)
-            moved = loi.next_char()
+        with _font_lock:
+            loi = self.pangolayout.get_iter()
+            wds = []
+            i = -1
+            lastpos = True
+            unwrapper = 0
+            moved = True
+            while moved:
+                cext = loi.get_cluster_extents()
+                i += 1
+                if needexts[i] == "1":
+                    ext = self.process_extents(cext, ascent)
+                    if ext[0][0] < 0 and lastpos:
+                        unwrapper += 2**32 / (self.scale * self.pangosize)
+                    lastpos = ext[0][0] >= 0
+                    ext[0][0] += unwrapper  # account for 32-bit overflow
+                    ext[1][0] += unwrapper
+                    wds.append(ext)
+                else:
+                    wds.append(None)
+                moved = loi.next_char()
 
-        numunknown = self.pangolayout.get_unknown_glyphs_count()
-        return wds, numunknown
+            numunknown = self.pangolayout.get_unknown_glyphs_count()
+            return wds, numunknown
+
+    def measure_text(self, sty, text, needexts):
+        """
+        Thread-safe, atomic measurement: set the style on the shared Pango
+        layout, render the given text, and return the requested character
+        extents. The whole sequence runs under the shared font lock so the
+        layout cannot be mutated by another thread mid-measurement.
+        Returns (success, metrics, extents). On failure, metrics and extents
+        are None and the caller should fall back.
+        """
+        with _font_lock:
+            success, metrics = self.set_text_style(sty)
+            if not success:
+                return False, None, None
+            self.render_text(text)
+            exts, _ = self.get_character_extents(metrics[1], needexts)
+            return True, metrics, exts
 PangoRenderer = PR
+
+
+def has_pango():
+    """Whether Pango is available for rendering. Acquires the font lock."""
+    with _font_lock:
+        return PangoRenderer().HASPANGO
+
 
 # pylint:disable=import-outside-toplevel
 class FontToolsFontInstance:

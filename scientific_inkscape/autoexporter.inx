@@ -17,8 +17,8 @@
           gui-description="Plain SVG that has been optimized for compatibility with Microsoft Office and LibreOffice">false</param> 
         
         
-        <label appearance="header">Document finalizer</label>   
-        <label>Acts on documents that contain SVGs.</label>
+        <label appearance="header">Document finalizer</label>
+        <label>Modifies documents that contain SVGs.</label>
         <param name="finalizermode" type="optiongroup" appearance="combo"
                 gui-text=""
                 gui-description="Currently supports: .docx, .pptx&#13;Embed linked images: Move a copy of linked images inside file&#13;Embed and convert SVGs to PNGs: Replaces SVGs with embedded PNGs&#13;Embed and delete backup PNGs: Removes backup PNGs for lower file sizes&#13;Conversion to PDF: Requires an installation of Microsoft Office or LibreOffice">
@@ -55,7 +55,7 @@
 
         
         <spacer/>
-        <label>Scientific Inkscape v1.4.24</label>
+        <label>Scientific Inkscape v1.4.25</label>
         <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>David Burghoff, University of Texas at Austin</label>
         </page>
@@ -81,6 +81,8 @@
         gui-description="Most PDF readers draw stroked lines differently than equivalent filled paths. By converting strokes to paths, this can be prevented. (This uses Inkscape's Stroke to Path, which has some unresolved bugs. Double-check the final output.)">false</param>
         <param name="backingrect" type="bool" gui-text="Add transparent backing rectangle"
         gui-description="A transparent rectangle behind the image makes it easier to select in certain programs">true</param> 
+        <param name="darkmode" type="bool" gui-text="Convert to dark mode"
+        gui-description="Inverts colors for presentations with a dark background. Color mapping can be configured in config.json.">false</param> 
         <param name="margin" type="float" precision="1" min="-9999" max="9999" gui-text="Extra margin (mm)"
         gui-description="Adds a margin to the export. A small margin can ensure that edges are not clipped off.">0.3</param>
         
@@ -89,7 +91,7 @@
          gui-description="Equivalent to same option when saving as PDF">false</param> 
          
         <spacer/>
-        <label>Scientific Inkscape v1.4.24</label>
+        <label>Scientific Inkscape v1.4.25</label>
         <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>David Burghoff, University of Texas at Austin</label>
         </page>
@@ -108,7 +110,7 @@
                    <option value="4">Left unchanged</option>
                 </param>
         <spacer/>
-        <label>Scientific Inkscape v1.4.24</label>
+        <label>Scientific Inkscape v1.4.25</label>
         <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
         <label>David Burghoff, University of Texas at Austin</label>
         </page>

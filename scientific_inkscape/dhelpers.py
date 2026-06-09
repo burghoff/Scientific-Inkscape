@@ -1270,10 +1270,13 @@ class SI_Config:
     subdirs
     """
 
-    def __init__(self, filename="config.json"):
-        self.config_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), filename
-        )
+    def __init__(self):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        local = os.path.join(base_dir, "config.local.json")
+        default = os.path.join(base_dir, "config.json")
+    
+        self.config_path = local if os.path.exists(local) else default
+    
         self.data = {}
         self.loaded = False
 
@@ -1302,6 +1305,28 @@ class SI_Config:
         if isinstance(subdirs, list):
             return subdirs
         return []
+
+    @property
+    def dark_mode_colors(self):
+        """
+        Dict mapping light-mode colors to dark-mode colors.
+        """
+        if not hasattr(self,'dmc'):
+            if not self.loaded:
+                self._load()
+            dmc = self.data.get("dark_mode_colors", {})
+            
+            ret = {}
+            if isinstance(dmc,dict):
+                for color in dmc:
+                    try:
+                        r, g, b, a = inkex.Color(color).to_rgba()
+                        r2, g2, b2, a2 = inkex.Color(dmc[color]).to_rgba()
+                        ret[(r,g,b)] = (r2,g2,b2)
+                    except inkex.colors.ColorError:
+                        pass
+            self._dmc = ret
+        return self._dmc
 
     def get_option(self, section, key, default=None):
         return self.data.get(section, {}).get(key, default)
@@ -1760,6 +1785,71 @@ def Run_SI_Extension(effext, name):
 # inkex.Style.to_str = to_str
 # inkex.Style.__str__ = __str__
 
+# Patch arc_to_path to handle the case where norm(OA) or norm(OB)
+# evaluates to zero, which crashes the original on acos(OA[0] / norm(OA)).
+from inkex.paths import matprod, rotmat, applymat, norm
+from math import pi, sqrt, acos, tan, cos, sin
+
+def _safe_arc_to_path(point, params):
+    """Approximates an arc with cubic bezier segments. Patched to treat
+    a collapsed OA/OB as degenerate, avoiding ZeroDivisionError."""
+    # pylint: disable=invalid-name, too-many-locals
+    A = point[:]
+    rx, ry, teta, longflag, sweepflag, x2, y2 = params[:]
+    teta = teta * pi / 180.0
+    B = [x2, y2]
+    if rx == 0 or ry == 0 or A == B:
+        return [[A[:], A[:], A[:]], [B[:], B[:], B[:]]]
+    mat = matprod((rotmat(teta), [[1.0 / rx, 0.0], [0.0, 1.0 / ry]], rotmat(-teta)))
+    applymat(mat, A)
+    applymat(mat, B)
+    k = [-(B[1] - A[1]), B[0] - A[0]]
+    d = k[0] * k[0] + k[1] * k[1]
+    k[0] /= sqrt(d)
+    k[1] /= sqrt(d)
+    d = sqrt(max(0, 1 - d / 4.0))
+    if longflag == sweepflag:
+        d *= -1
+    O = [(B[0] + A[0]) / 2.0 + d * k[0], (B[1] + A[1]) / 2.0 + d * k[1]]
+    OA = [A[0] - O[0], A[1] - O[1]]
+    OB = [B[0] - O[0], B[1] - O[1]]
+    nOA, nOB = norm(OA), norm(OB)
+    if nOA == 0 or nOB == 0:
+        return [[point[:], point[:], point[:]], [[x2, y2], [x2, y2], [x2, y2]]]
+    start = acos(OA[0] / nOA)
+    if OA[1] < 0:
+        start *= -1
+    end = acos(OB[0] / nOB)
+    if OB[1] < 0:
+        end *= -1
+    if sweepflag and start > end:
+        end += 2 * pi
+    if (not sweepflag) and start < end:
+        end -= 2 * pi
+    NbSectors = int(abs(start - end) * 2 / pi) + 1
+    dTeta = (end - start) / NbSectors
+    v = 4 * tan(dTeta / 4.0) / 3.0
+    p = []
+    for i in range(0, NbSectors + 1, 1):
+        angle = start + i * dTeta
+        v1 = [
+            O[0] + cos(angle) - (-v) * sin(angle),
+            O[1] + sin(angle) + (-v) * cos(angle),
+        ]
+        pt = [O[0] + cos(angle), O[1] + sin(angle)]
+        v2 = [O[0] + cos(angle) - v * sin(angle), O[1] + sin(angle) + v * cos(angle)]
+        p.append([v1, pt, v2])
+    p[0][0] = p[0][1][:]
+    p[-1][2] = p[-1][1][:]
+    mat = matprod((rotmat(teta), [[rx, 0], [0, ry]], rotmat(-teta)))
+    for pts in p:
+        applymat(mat, pts[0])
+        applymat(mat, pts[1])
+        applymat(mat, pts[2])
+    return p
+
+inkex.paths.arc_to_path = _safe_arc_to_path
+
 
 def nonascii(c):
     """Returns True if the character is non-ASCII."""
@@ -1957,7 +2047,7 @@ def split_text(elem):
 
 
 def Version_Check(caller):
-    siv = "v1.4.24"  # Scientific Inkscape version
+    siv = "v1.4.25"  # Scientific Inkscape version
     maxsupport = "1.5.0"
     minsupport = "1.1.0"
 
