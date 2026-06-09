@@ -534,10 +534,10 @@ if guitype == 'gtk3.0':
             self.set_position(Gtk.WindowPosition.CENTER)
             
             # Pick a starting height based on monitor size
-            screen = self.get_screen()
-            monitor = screen.get_primary_monitor()
-            geo = screen.get_monitor_geometry(monitor)
-            target_height = min(800, int(0.85 * geo.height))   # 80% of screen, capped at 700px
+            display = self.get_display()
+            monitor = display.get_primary_monitor() or display.get_monitor(0)
+            geo = monitor.get_geometry()
+            target_height = min(800, int(0.85 * geo.height))   # 85% of screen, capped at 800px
             self.set_default_size(-1, target_height)
         
             self.notebook = Gtk.Notebook()
