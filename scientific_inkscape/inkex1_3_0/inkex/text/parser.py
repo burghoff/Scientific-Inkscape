@@ -82,6 +82,7 @@ from inkex.utils import debug
 
 DIFF_ADVANCES = True  # generate a differential advances table for each font?
 TEXTSIZE = 100  # size of rendered text
+AVG_SAMPLE = "The quick brown fox jumps over the lazy dog."  # for avg char width (tab fallback)
 DEPATHOLOGIZE = True  # clean up pathological atts not normally made by Inkscape
 XY_TOL = 1e-6
 
@@ -4346,8 +4347,25 @@ class CharacterTable:
             # the characters 'b' and 'y' in the Noto Sans font
             self.ctable = self.extract_characters()
 
+        self.fix_tab_widths()
         self.mults = dict()
         self._ftable = None
+
+    def fix_tab_widths(self):
+        """
+        Set the tab width to the font's average char width (mean advance over the
+        measured AVG_SAMPLE), matching how PangoFT2/Inkscape render a glyphless tab.
+        Backend-independent: runs after either measurement path.
+        """
+        for cps in self.ctable.values():
+            if "\t" not in cps:
+                continue
+            ws = [cps[c].charw for c in AVG_SAMPLE if c in cps and cps[c].charw is not None]
+            if ws:
+                tab = cps["\t"]
+                cps["\t"] = CProp(
+                    "\t", sum(ws) / len(ws), tab.spacew, tab.caph, tab.dadvs, tab.inkbb
+                )
 
     def collect_characters(self):
         """Finds all the characters in a list of elements."""
@@ -4361,6 +4379,12 @@ class CharacterTable:
                     fsty = font_style(sty)
                     fstyset.setdefault(fsty, set()).update(txt + " ")
                     txtfsty.append((txt, fsty))
+
+        # A glyphless tab renders at the font's average char width; where a tab
+        # occurs, measure a representative sample so fix_tab_widths can use it.
+        for chrs in fstyset.values():
+            if "\t" in chrs:
+                chrs.update(AVG_SAMPLE)
 
         cstys = dict()  # cstys[fsty][c] looks up a character's true style
         tstyset = dict()  # set of characters in a given true style
@@ -4402,7 +4426,7 @@ class CharacterTable:
         Direct extraction of character metrics from the font file using fonttools
         fonttools is pure Python, so this usually works
         """
-        badchars = {"\n", "\r"}
+        badchars = {"\n", "\r", "\t"}  # tab is set by fix_tab_widths; rest stay zero-width
         ret = dict()
         for sty, chrs in self.tstyset.items():
             if sty is not None:
