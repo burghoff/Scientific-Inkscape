@@ -1813,6 +1813,14 @@ class ParsedText:
         lines are drawn (this is imported conditionally).
         """
         self.lns = []
+
+        # Empty (non-displayed) flows have no characters to lay out. Bail out
+        # before trying to locate a flow region or line source, both of which
+        # assume there is text present (e.g. parse_lines(srcsonly=True) returns
+        # None for an empty element, which would otherwise raise downstream).
+        if not any(txt for _, _, _, _, txt in self.tree.dgenerator()):
+            return
+
         sty = self.textel.cspecified_style
         isflowroot = self.textel.tag == FRtag
         isshapeins = (
@@ -1822,6 +1830,10 @@ class ParsedText:
         isz = ipx(sty.get("inline-size"))
         isinlinesz = self.textel.tag == TEtag and isz
         # Inkscape ignores 0 and invalid inline-size
+        isjust = sty.get("text-align") == "justify"
+        # Justified text has per-character dx values that spread each line out
+        # to fill its width. Inkscape decides line breaks using the natural
+        # (un-spread) text width, so the dx must be excluded when wrapping.
 
         # Determine the flow region
         otp_support = self.textel.otp_support_prop
@@ -1967,9 +1979,15 @@ class ParsedText:
                     algn = sty.get("text-align", "start")
                     anch = sty.get("text-anchor", "start")
                     if not algn == "start" and anch == "start":
-                        anch = {"start": "start", "center": "middle", "end": "end"}[
-                            algn
-                        ]
+                        # Justified text is left-anchored; the per-character
+                        # justification spacing is already encoded as dx values,
+                        # which fill out each line.
+                        anch = {
+                            "start": "start",
+                            "center": "middle",
+                            "end": "end",
+                            "justify": "start",
+                        }[algn]
                     cln = TLine(
                         self,
                         [0],
@@ -2233,14 +2251,20 @@ class ParsedText:
                         hardbreak = False
                         strt = 0 if len(breaks) == 0 else breaks[-1] + 1
                         csleft = lncs[i][strt:]
+                        cumdx = 0.0  # justify dx accumulated since fcrun
                         for j, c in enumerate(csleft):
                             if j == 0:
                                 fcrun = c
+                            elif isjust:
+                                cumdx += c.dx
                             if not isflowroot and c.c == "\n":
                                 breakaft = j
                                 hardbreak = True
                                 break
-                            if c.pts_ut[3][0] - fcrun.pts_ut[0][0] > xlim[1]:
+                            if (
+                                c.pts_ut[3][0] - fcrun.pts_ut[0][0] - cumdx
+                                > xlim[1]
+                            ):
                                 spcs = [cv for cv in csleft[:j] if cv.c in breakcs]
                                 # inkex.utils.debug('Break on '+str((c.c,j)))
                                 if c.c == " ":
@@ -2344,6 +2368,32 @@ class ParsedText:
                             c.loc,
                             cln, c._dx, c._dy
                         )
+
+                    if isjust:
+                        # The justification spacing (dx) cached in the file can be
+                        # stale relative to the current layout. Redistribute the
+                        # remaining space so the line fills the flow region, the
+                        # way Inkscape re-justifies on load. Only lines that
+                        # already carry justification dx (filled, non-last lines)
+                        # are touched; lines that already fill exactly are left
+                        # unchanged.
+                        jc = cln.chrs
+                        gaps = [k for k in range(len(jc)) if jc[k].dx > 0.001]
+                        if gaps:
+                            wsum = 0.0
+                            for k, ch in enumerate(jc):
+                                wsum += ch.cwd + ch.dx
+                                if k > 0:
+                                    wsum += ch.lsp
+                                    if ch.dx == 0:
+                                        wsum += ch.dadvs(jc[k - 1], ch)
+                            if len(jc) > 1 and jc[-1].c in (" ", " "):
+                                wsum -= jc[-1].cwd  # trailing space is not rendered
+                            deficit = xlims[j][1] - wsum
+                            if abs(deficit) > 0.01:
+                                add = deficit / len(gaps)
+                                for k in gaps:
+                                    jc[k]._dx += add
 
                     if len(chrs) > 0:
                         anfr = cln.anchfrac
