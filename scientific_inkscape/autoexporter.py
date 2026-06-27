@@ -954,9 +954,14 @@ class Exporter():
                     bbs = self.split_stp(
                         fnm, missing_exports, 0, reserved=reserved, get_bbs = get_bbs
                     )
+                elif missing_exports[0].type=='imgo':
+                    # imgo acts can't be split (hide / export / unhide); the long
+                    # command line comes from hiding many overlaps. Pre-hide in a
+                    # temp SVG copy and export from there instead.
+                    bbs = missing_exports[0].export_prehidden(fnm, get_bbs=get_bbs)
                 else:
                     # Already simplified call as much as we can...
-                    raise Exception('FileNotFoundError and cannot split:\n'+str(acts))
+                    raise Exception('FileNotFoundError and cannot split:\n'+str([str(act) for act in acts]))
             elif len(missing_exports)>0:
                 acts1 = missing_exports[: math.ceil(len(missing_exports) / 2)]
                 acts2 = missing_exports[math.ceil(len(missing_exports) / 2) :]
@@ -2552,6 +2557,48 @@ class Act():
         act1 = Act('stp',self.els[:spl],self.exporter,intermediate_fn)
         act2 = Act('stp',self.els[spl:],self.exporter,self.fname)
         return act1, act2
+
+    def export_prehidden(self, fnm, get_bbs=True):
+        '''
+        Fallback export for an 'imgo' act whose --actions string is too long
+        for the OS command-line limit. An 'imgo' act hides every overlapping
+        element, then exports, then unhides; when an element overlaps very many
+        others this command line can exceed what the OS allows (and, unlike a
+        'stp' act, it cannot be split). Instead, write a temp copy of the source
+        with the overlapping elements pre-hidden and export from there, so the
+        command line only contains the export itself.
+        '''
+        exp = self.exporter
+        el = self.els[0]
+        elid = el.get_id()
+
+        # Temp copy of the source with the overlapping elements pre-hidden
+        svg = get_svg(fnm)
+        for ov in self.overlaps[el]:
+            oel = svg.getElementById(ov.get_id())
+            if oel is not None:
+                oel.cstyle['display'] = 'none'
+        prehidden = exp.tempbase + '_phide_' + elid + '.svg'
+        exp.check(dh.overwrite_svg, svg, prehidden)
+
+        # The hides are baked into the file, so only the export remains
+        actstr = (
+            "export-id:{0}; export-dpi:{1}; export-filename:{2}; "
+            "export-background-opacity:1.0; export-do; "
+        ).format(elid, int(exp.dpi), self.fname)
+        exp.check(
+            dh.wrapped_binary, filename=prehidden, inkscape_binary=exp.bfn,
+            extra_args=["--actions", actstr], get_bbs=False, cwd=exp.tempdir,
+        )
+
+        # Bounding boxes (if requested) must come from the unhidden source,
+        # since the pre-hidden copy is missing the hidden elements' boxes
+        if get_bbs:
+            return exp.check(
+                dh.wrapped_binary, filename=fnm, inkscape_binary=exp.bfn,
+                get_bbs=True, cwd=exp.tempdir,
+            )
+        return None
     
 from typing import Optional
 from pathlib import Path

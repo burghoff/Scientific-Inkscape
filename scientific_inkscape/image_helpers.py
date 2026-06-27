@@ -307,6 +307,11 @@ def absolute_href2(filename, svg_dir, default="~/"):
 try:
     from PIL import Image as ImagePIL
 
+    # Our rasterized images can legitimately be very large (e.g. a full page
+    # at high DPI), so disable Pillow's decompression-bomb check, which would
+    # otherwise emit a DecompressionBombWarning (and error at 2x the limit).
+    ImagePIL.MAX_IMAGE_PIXELS = None
+
     hasPIL = True
 except:
     hasPIL = False
