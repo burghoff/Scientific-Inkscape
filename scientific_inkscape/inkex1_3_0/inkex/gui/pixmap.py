@@ -310,7 +310,7 @@ class PixmapManager:
             loader.write(data)
             loader.close()
         except GLib.GError as err:
-            raise PixmapLoadError(f"Faled to load pixbuf from data: {err}")
+            raise PixmapLoadError(f"Failed to load pixbuf from data: {err}")
         return loader.get_pixbuf()
 
     def load_from_name(self, name):
