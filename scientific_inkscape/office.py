@@ -123,6 +123,136 @@ def _find_srcrect_crop(node):
     return (l, t, r, b), src_rect
 
 
+# Relative tolerance (fraction) used when comparing aspect ratios to decide
+# whether a picture frame still matches the SVG's insertion-time aspect. 2%
+# swallows PNG-pixel rounding and EMU quantization while ignoring only
+# imperceptible manual stretches.
+OFFICE_ASPECT_TOL = 0.02
+
+
+def _png_pixel_size(png_path):
+    """Return (width_px, height_px) from a PNG's IHDR, or None."""
+    try:
+        with open(png_path, "rb") as f:
+            if f.read(8) != b"\x89PNG\r\n\x1a\n":
+                return None
+            struct.unpack(">I", f.read(4))[0]  # IHDR length (unused)
+            if f.read(4) != b"IHDR":
+                return None
+            data = f.read(8)
+            if len(data) < 8:
+                return None
+            w, h = struct.unpack(">II", data)
+            return (w, h) if w > 0 and h > 0 else None
+    except Exception:
+        return None
+
+
+def _leading_float(s):
+    """Parse the leading numeric part of a length string (e.g. '100mm')."""
+    m = re.match(r"\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)", s or "")
+    if not m:
+        return None
+    try:
+        return float(m.group(1))
+    except ValueError:
+        return None
+
+
+def _svg_intrinsic_aspect(svg_path):
+    """Return the current width/height aspect ratio of an SVG's content.
+
+    Prefers the viewBox (this is what an Inkscape edit changes); falls back to
+    the width/height attributes when there is no viewBox. Returns None if the
+    aspect cannot be determined.
+    """
+    try:
+        root = ET.parse(svg_path, ET.XMLParser(huge_tree=True)).getroot()
+    except Exception:
+        return None
+    vbx = root.get("viewBox")
+    if vbx:
+        try:
+            parts = [float(v) for v in re.split(r"[ ,]+", vbx.strip()) if v != ""]
+            if len(parts) == 4 and parts[2] > 0 and parts[3] > 0:
+                return parts[2] / parts[3]
+        except (ValueError, TypeError):
+            pass
+    wv, hv = _leading_float(root.get("width")), _leading_float(root.get("height"))
+    if wv and hv and wv > 0 and hv > 0:
+        return wv / hv
+    return None
+
+
+def _scale_length(attr_val, factor):
+    """Scale the numeric part of a length string by ``factor``, keeping any
+    unit suffix (e.g. '100mm' * 2 -> '200mm'). Returns None if unparseable."""
+    m = re.match(r"\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*(.*)$", attr_val or "")
+    if not m:
+        return None
+    return f"{float(m.group(1)) * factor:g}{m.group(2) or ''}"
+
+
+def _write_padded_svg(svg_path, target_aspect, out_path):
+    """Write a copy of ``svg_path`` whose viewBox aspect equals
+    ``target_aspect`` (width/height), achieved by padding the deficient
+    dimension with centered margin — never by moving or scaling content. When
+    a renderer later stretches this SVG to fill a frame of that same aspect the
+    mapping is uniform, so the content is shown undistorted (letterboxed).
+
+    Returns True if a padded copy was written, False otherwise (no viewBox,
+    already the right aspect, or a parse error).
+    """
+    try:
+        tree = ET.parse(svg_path, ET.XMLParser(huge_tree=True))
+    except Exception:
+        return False
+    root = tree.getroot()
+    vbx = root.get("viewBox")
+    if not vbx:
+        return False
+    try:
+        parts = [float(v) for v in re.split(r"[ ,]+", vbx.strip()) if v != ""]
+    except (ValueError, TypeError):
+        return False
+    if len(parts) != 4 or parts[2] <= 0 or parts[3] <= 0:
+        return False
+    minx, miny, w, h = parts
+    av = w / h
+    if abs(av - target_aspect) <= OFFICE_ASPECT_TOL * target_aspect:
+        return False
+
+    old_w, old_h = w, h
+    if av < target_aspect:
+        # Too narrow: widen the viewBox, centering the content horizontally.
+        new_w = h * target_aspect
+        minx -= (new_w - w) / 2.0
+        w = new_w
+    else:
+        # Too wide: heighten the viewBox, centering the content vertically.
+        new_h = w / target_aspect
+        miny -= (new_h - h) / 2.0
+        h = new_h
+    root.set("viewBox", f"{minx:g} {miny:g} {w:g} {h:g}")
+
+    # Keep width/height attributes (if any) consistent with the grown viewBox
+    # so the intrinsic aspect matches for renderers that read them.
+    if w != old_w and root.get("width") is not None:
+        nv = _scale_length(root.get("width"), w / old_w)
+        if nv is not None:
+            root.set("width", nv)
+    if h != old_h and root.get("height") is not None:
+        nv = _scale_length(root.get("height"), h / old_h)
+        if nv is not None:
+            root.set("height", nv)
+
+    try:
+        tree.write(out_path, xml_declaration=True, encoding="UTF-8")
+    except Exception:
+        return False
+    return True
+
+
 def normalize_and_copy(source_path, media_dir):
     os.makedirs(media_dir, exist_ok=True)
     basename = os.path.basename(source_path)
@@ -250,6 +380,10 @@ class Unzipped_Office:
     def embed_linked(self):
         for slide in self.slides:
             slide.embed_linked()
+
+    def fix_viewbox_stretch(self):
+        for slide in self.slides:
+            slide.fix_viewbox_stretch()
 
     def delete_fallback_png(self):
         for slide in self.slides:
@@ -893,6 +1027,198 @@ class Slide_and_Rels:
         if changed_slide:
             self.slide_tree.write(
                 self.slide_path,
+                xml_declaration=True,
+                encoding="UTF-8",
+                pretty_print=False,
+            )
+
+    def fix_viewbox_stretch(self):
+        """Un-stretch *linked* SVG pictures whose frame no longer matches the
+        SVG's current aspect ratio *because the SVG's viewBox changed after it
+        was inserted* — while leaving deliberately-resized pictures untouched.
+
+        Only linked (externally-referenced) SVGs are considered: an embedded
+        SVG is frozen inside the document, so its viewBox cannot change after
+        insertion and the "stretched by a later edit" bug can't arise. The
+        linked-vs-embedded distinction is only visible before embed_linked()
+        runs (afterwards every reference looks embedded), so this MUST run
+        before embed_linked() — and before leave_fallback_png()/
+        delete_fallback_png(), which regenerate or remove the fallback PNG.
+
+        OOXML has no flag recording whether a frame was hand-resized. We
+        reconstruct that intent from the fallback raster Office renders for the
+        picture: its pixel aspect encodes the SVG aspect *when linked*.
+
+          * frame aspect == fallback aspect -> user never resized the frame;
+            any mismatch with the SVG's *current* viewBox is an implicit
+            stretch we correct.
+          * frame aspect != fallback aspect -> user hand-resized; leave alone.
+
+        The correction leaves the Word frame exactly as placed and instead pads
+        the linked SVG's viewBox (centered margin, deficient dimension) until
+        its aspect matches the frame, so the frame's stretch-to-fill becomes
+        uniform and the content is shown undistorted, letterboxed. The padded
+        copy is written to a temp file the relationship is repointed at; the
+        user's original SVG on disk is never modified. Cropped pictures
+        (srcRect) are skipped, since padding would shift what the crop cuts.
+        """
+        ns = {
+            "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+            "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+            "asvg": "http://schemas.microsoft.com/office/drawing/2016/SVG/main",
+        }
+        # Id -> (target, mode); mode == "External" marks a linked relationship.
+        rel_id_to = {
+            rel.attrib["Id"]: (
+                unquote(rel.attrib.get("Target", "")),
+                rel.attrib.get("TargetMode", ""),
+            )
+            for rel in self.rels_root
+            if rel.tag.endswith("Relationship")
+        }
+        source_part_path = (
+            self.rels_path.replace("\\_rels\\", "\\")
+            .replace("/_rels/", "/")
+            .rsplit(".rels", 1)[0]
+        )
+        part_dir = os.path.dirname(source_part_path)
+
+        def _abs(target, mode):
+            """Resolve a rel target to an absolute path, handling external
+            file: URIs and part-relative embedded targets alike."""
+            if not target:
+                return None
+            if mode == "External" or target.lower().startswith("file:"):
+                t = target
+                if t.startswith("file:///"):
+                    t = t[8:]
+                elif t.startswith("file://"):
+                    t = t[7:]
+                elif t.startswith("file:"):
+                    t = t[5:]
+                return os.path.normpath(t)
+            return os.path.normpath(os.path.join(part_dir, target))
+
+        rels_changed = False
+        for svgblip in list(self.slide_root.iter(f"{{{ns['asvg']}}}svgBlip")):
+            # The SVG lives in an extension inside the outer <a:blip> that owns
+            # the fallback raster: <a:blip>/<a:extLst>/<a:ext>/<asvg:svgBlip>.
+            ext = svgblip.getparent()
+            extLst = ext.getparent() if ext is not None else None
+            blip = extLst.getparent() if extLst is not None else None
+            if blip is None or blip.tag != f"{{{ns['a']}}}blip":
+                continue
+
+            # A linked SVG is referenced by r:link (external); an embedded one
+            # by r:embed. Restrict to linked.
+            svg_rid = svgblip.attrib.get(f"{{{ns['r']}}}link")
+            if svg_rid is None:
+                continue
+            svg_target, svg_mode = rel_id_to.get(svg_rid, ("", ""))
+            if svg_mode != "External":
+                continue
+            png_rid = blip.attrib.get(f"{{{ns['r']}}}embed") or blip.attrib.get(
+                f"{{{ns['r']}}}link"
+            )
+            png_target, png_mode = rel_id_to.get(png_rid, ("", ""))
+            # Need a PNG fallback (its pixels encode the insertion aspect) and
+            # the linked SVG (for its current aspect). An EMF fallback carries
+            # the aspect in its header but we can't read that here, so skip it.
+            if not png_target.lower().endswith(".png"):
+                continue
+            if not svg_target.lower().endswith(".svg"):
+                continue
+            png_abs, svg_abs = _abs(png_target, png_mode), _abs(svg_target, svg_mode)
+            if not (png_abs and svg_abs):
+                continue
+            if not (os.path.exists(png_abs) and os.path.exists(svg_abs)):
+                continue
+
+            px = _png_pixel_size(png_abs)
+            vb_aspect = _svg_intrinsic_aspect(svg_abs)
+            if not px or not vb_aspect:
+                continue
+
+            # Locate the picture frame's display box <a:xfrm><a:ext cx cy>.
+            pic = blip
+            while pic is not None and not pic.tag.endswith("}pic"):
+                pic = pic.getparent()
+            if pic is None:
+                continue
+            a_ext = pic.find(".//a:xfrm/a:ext", namespaces=ns)
+            if a_ext is None:
+                continue
+            try:
+                cx, cy = int(a_ext.get("cx")), int(a_ext.get("cy"))
+            except (TypeError, ValueError):
+                continue
+            if cx <= 0 or cy <= 0:
+                continue
+
+            # A srcRect crops the same source content for both the PNG and the
+            # SVG, so it scales both source aspects equally; fold it in so the
+            # comparisons (and the fix) are in terms of the visible box.
+            crop, _sr = _find_srcrect_crop(svgblip)
+            if crop:
+                l, t, r, b = crop
+                denom = 1.0 - t - b
+                cf = (1.0 - l - r) / denom if denom > 0 else 1.0
+            else:
+                cf = 1.0
+
+            insertion_aspect = (px[0] / px[1]) * cf  # aspect when linked
+            current_aspect = vb_aspect * cf          # aspect the frame should be
+            frame_aspect = cx / cy
+
+            # Frame deviates from the insertion aspect -> user hand-resized it.
+            if abs(frame_aspect - insertion_aspect) > OFFICE_ASPECT_TOL * insertion_aspect:
+                continue
+            # Frame still matches the current viewBox -> nothing to correct.
+            if abs(current_aspect - insertion_aspect) <= OFFICE_ASPECT_TOL * insertion_aspect:
+                continue
+
+            # Implicit stretch confirmed. Leave the Word frame exactly as the
+            # user placed it; instead pre-distort the SVG so Word's stretch to
+            # fill the frame becomes uniform. Pad the viewBox with centered
+            # margin until its aspect matches the frame: content keeps its true
+            # proportions, letterboxed inside the untouched frame.
+            if crop:
+                # Padding the viewBox moves what a srcRect crop cuts, so we
+                # can't pad a cropped picture safely -- leave it alone.
+                print(
+                    f"Skipping {os.path.basename(svg_abs)}: implicit stretch but "
+                    f"picture is cropped (srcRect); not safe to pad."
+                )
+                continue
+
+            svg_rel = next(
+                (r for r in self.rels_root if r.get("Id") == svg_rid), None
+            )
+            if svg_rel is None:
+                continue
+
+            self.uzo.nfiles += 1
+            out_svg = os.path.join(
+                self.uzo.temp_dir, f"_unstretched_{self.uzo.nfiles}.svg"
+            )
+            if not _write_padded_svg(svg_abs, frame_aspect, out_svg):
+                continue
+
+            # Repoint the (external) relationship at our padded copy; the user's
+            # original SVG on disk is never modified. embed_linked() then copies
+            # this into the document's media.
+            svg_rel.set("Target", "file:///" + out_svg.replace(os.sep, "/"))
+            svg_rel.set("TargetMode", "External")
+            rels_changed = True
+            print(
+                f"Un-stretched {os.path.basename(svg_abs)}: padded viewBox "
+                f"{vb_aspect:.4f} -> frame aspect {frame_aspect:.4f} "
+                f"(frame left unchanged)"
+            )
+
+        if rels_changed:
+            self.rels_tree.write(
+                self.rels_path,
                 xml_declaration=True,
                 encoding="UTF-8",
                 pretty_print=False,

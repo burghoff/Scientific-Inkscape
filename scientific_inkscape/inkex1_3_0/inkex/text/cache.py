@@ -984,7 +984,12 @@ class SvgDocumentElementCache(SvgDocumentElement):
                 elem.croot = svg  # do now to speed up later
                 if '{' not in elem.tag:
                     # Make sure tags have a namespace
-                    elem.tag = elem.ctag
+                    # (default-classed elements, e.g. undeclared-prefix tags from
+                    #  recover-mode parses, have no ctag and lxml rejects
+                    #  assignment of prefixed tag strings; leave them as-is)
+                    ctag = getattr(elem, 'ctag', None)
+                    if ctag is not None:
+                        elem.tag = ctag
 
                 # While we're iterating, we gather clips/masks/links
                 self.add_to_linkdict(elem, "clip-path")

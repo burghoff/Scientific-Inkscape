@@ -1334,8 +1334,13 @@ class Exporter():
         uzo_path = self.tempbase + '_uzo'
         from office import Unzipped_Office
         uzo = Unzipped_Office(original,uzo_path,aecaller=self)
+        # Correct linked images implicitly stretched by a viewbox change after
+        # linking. Must run before embed_linked() (which erases the linked-vs-
+        # embedded distinction) and before the fallback-png steps below (which
+        # regenerate/remove the raster that encodes each image's aspect).
+        uzo.fix_viewbox_stretch()
         uzo.embed_linked()
-        
+
         # self.finalizermode=7
         
         if self.finalizermode==3:
