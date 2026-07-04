@@ -304,6 +304,50 @@ def safe_extract_zip(file, temp_dir=None, retries=5, delay=0.5):
             time.sleep(delay * (2**attempt))  # exponential backoff
 
 
+def get_linked_images(doc_path):
+    """Return the set of absolute paths of images that a docx/pptx references
+    as *links* (TargetMode="External" or file: targets — the same criteria
+    Slide_and_Rels.embed_linked uses), reading the rels straight out of the
+    zip without extracting it. Returns an empty set if the archive cannot be
+    read (e.g. Office holds it mid-save); callers should retry later.
+    """
+    linked = set()
+    try:
+        with ZipFile(doc_path, "r") as z:
+            for name in z.namelist():
+                parts = name.split("/")
+                if (
+                    len(parts) < 2
+                    or parts[-2] != "_rels"
+                    or not name.endswith(".rels")
+                ):
+                    continue
+                try:
+                    root = ET.fromstring(z.read(name))
+                except Exception:
+                    continue
+                for rel in root:
+                    if not str(rel.tag).endswith("Relationship"):
+                        continue
+                    if not rel.get("Type", "").endswith("/image"):
+                        continue
+                    target = unquote(rel.get("Target", ""))
+                    mode = rel.get("TargetMode", "")
+                    if mode != "External" and not target.lower().startswith("file:"):
+                        continue
+                    if target.startswith("file:///"):
+                        target = target[8:]
+                    elif target.startswith("file://"):
+                        target = target[7:]
+                    elif target.startswith("file:"):
+                        target = target[5:]
+                    if target:
+                        linked.add(os.path.normpath(os.path.abspath(target)))
+    except Exception:
+        return set()
+    return linked
+
+
 class Unzipped_Office:
     def __init__(self, file, temp_dir=None, aecaller=None):
         safe_extract_zip(file, temp_dir)

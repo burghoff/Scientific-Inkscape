@@ -8,7 +8,7 @@ WINDOW_WIDTH = 450
 MARGIN = 10
 LABEL_WIDTH = 16
 
-import sys, platform, os, threading, copy, pickle, re, tempfile
+import sys, platform, os, threading, copy, pickle, re, tempfile, time
 
 systmpdir = os.path.abspath(tempfile.gettempdir())
 aes = os.path.join(systmpdir, "si_ae_settings.p")
@@ -178,13 +178,16 @@ from watchdog.events import FileSystemEventHandler
 class Watcher(FileSystemEventHandler):
     """Class that watches a folder for changes to SVGs"""
 
-    def __init__(self, directory_to_watch, createfcn=None, modfcn=None, deletefcn=None):
+    def __init__(self, directory_to_watch, createfcn=None, modfcn=None, deletefcn=None,
+                 filterfcn=None, recursive=True):
         super().__init__()
 
         self.directory_to_watch = directory_to_watch
         self.createfcn = createfcn
         self.modfcn = modfcn
         self.deletefcn = deletefcn
+        self.filterfcn = filterfcn if filterfcn is not None else is_target_file
+        self.recursive = recursive
         self.debounce_timers = {}
         self.file_mod_times = {}
         self.observer = PollingObserver(timeout=0.5)
@@ -192,7 +195,7 @@ class Watcher(FileSystemEventHandler):
 
     def start(self):
         self.initialize_mod_times(self.directory_to_watch)
-        self.observer.schedule(self, self.directory_to_watch, recursive=True)
+        self.observer.schedule(self, self.directory_to_watch, recursive=self.recursive)
         self.observer.start()
 
     def stop(self):
@@ -207,13 +210,22 @@ class Watcher(FileSystemEventHandler):
             return None
 
     def initialize_mod_times(self, directory):
-        for root, dirs, files in os.walk(directory):
-            for file in files:
-                file_path = os.path.join(root, file)
-                if os.path.isfile(file_path) and is_target_file(file_path):
-                    mod_time = self.get_mod_time(file_path)
-                    if mod_time is not None:
-                        self.file_mod_times[file_path] = mod_time
+        if self.recursive:
+            listing = (
+                os.path.join(root, file)
+                for root, dirs, files in os.walk(directory)
+                for file in files
+            )
+        else:
+            try:
+                listing = (os.path.join(directory, f) for f in os.listdir(directory))
+            except (FileNotFoundError, PermissionError):
+                listing = ()
+        for file_path in listing:
+            if os.path.isfile(file_path) and self.filterfcn(file_path):
+                mod_time = self.get_mod_time(file_path)
+                if mod_time is not None:
+                    self.file_mod_times[file_path] = mod_time
 
     def debounce(self, file_path):
         # mprint('Debounce '+file_path)
@@ -248,7 +260,7 @@ class Watcher(FileSystemEventHandler):
         if event.is_directory:
             return
         file_path = event.src_path
-        if not is_target_file(file_path):
+        if not self.filterfcn(file_path):
             return
 
         if file_path in self.debounce_timers:
@@ -300,8 +312,20 @@ class FileCheckerThread(threading.Thread):
         self.thread_queue = []
         self.running_threads = []
         self.finished_threads = []
+        # Linked-image finalization triggers: docs with linked images get
+        # re-finalized when a linked image changes.
+        self.doc_links = {}        # norm doc key -> (doc path, linked paths)
+        self.linked_to_docs = {}   # norm linked path -> set of doc paths
+        self.linked_watchers = {}  # dir -> non-recursive Watcher
+        self._linked_lock = threading.Lock()
+        self._linked_checked = 0.0
+        self._linked_fm = getattr(input_options, "finalizermode", 1)
 
     def queue_thread(self, f):
+        if self._is_office_doc(f):
+            # The doc changed (or is about to be re-finalized): its linked
+            # images may have changed too, so refresh its map entry.
+            self.update_doc_links(f)
         for t in self.thread_queue + self.running_threads:
             if t.file == f:
                 t.stopped = True
@@ -376,12 +400,111 @@ class FileCheckerThread(threading.Thread):
                 except (PermissionError, FileNotFoundError):
                     pass
 
+    # --- Linked-image watching ------------------------------------------
+    # Office docs that link images (typically the AE's own *_plain.svg
+    # exports) are re-finalized when a linked image changes. Each directory
+    # containing linked images gets its own non-recursive Watcher — linked
+    # SVGs usually share a common directory, so the pool stays small. The
+    # pool watchers filter on exact membership in the linked set, so files
+    # the main watcher excludes (like *_plain.svg) are seen here without
+    # loosening the main watcher's exclusions.
+
+    @staticmethod
+    def _norm_key(p):
+        return os.path.normcase(os.path.normpath(os.path.abspath(p)))
+
+    @staticmethod
+    def _is_office_doc(f):
+        return f.lower().endswith((".docx", ".pptx"))
+
+    def refresh_all_links(self):
+        """Rebuild the linked-image map from every office doc in the watch
+        directory and sync the watcher pool."""
+        docs = []
+        if getattr(input_options, "finalizermode", 1) > 1:
+            docs = [
+                f for f in (get_files(self.watchdir) or [])
+                if self._is_office_doc(f)
+            ]
+        from office import get_linked_images
+        with self._linked_lock:
+            self.doc_links = {
+                self._norm_key(doc): (os.path.abspath(doc), get_linked_images(doc))
+                for doc in docs
+            }
+            self._sync_linked_watchers()
+
+    def update_doc_links(self, doc, removed=False):
+        """Refresh (or drop) the linked-image map entry for one office doc."""
+        if getattr(input_options, "finalizermode", 1) <= 1:
+            return
+        with self._linked_lock:
+            if removed:
+                self.doc_links.pop(self._norm_key(doc), None)
+            else:
+                from office import get_linked_images
+                self.doc_links[self._norm_key(doc)] = (
+                    os.path.abspath(doc),
+                    get_linked_images(doc),
+                )
+            self._sync_linked_watchers()
+
+    def _sync_linked_watchers(self):
+        """Recompute linked_to_docs from doc_links, then start/stop pool
+        watchers to match (also replacing dead ones). Caller must hold
+        _linked_lock."""
+        self.linked_to_docs = {}
+        for doc, links in self.doc_links.values():
+            for lnk in links:
+                self.linked_to_docs.setdefault(self._norm_key(lnk), set()).add(doc)
+        needed = {
+            os.path.dirname(lnk)
+            for lnk in self.linked_to_docs
+            if os.path.isdir(os.path.dirname(lnk))
+        }
+        for d in list(self.linked_watchers):
+            if d not in needed:
+                self.linked_watchers.pop(d).stop()
+        lfcn = lambda x: self.linked_changed(os.path.abspath(x))
+        for d in needed:
+            existing = self.linked_watchers.get(d)
+            if existing is not None:
+                if existing.observer.is_alive():
+                    continue
+                self.linked_watchers.pop(d).stop()
+            self.linked_watchers[d] = Watcher(
+                d,
+                createfcn=lfcn,
+                modfcn=lfcn,
+                filterfcn=self._linked_filter,
+                recursive=False,
+            )
+
+    def _linked_filter(self, file_path):
+        return self._norm_key(file_path) in self.linked_to_docs
+
+    def linked_changed(self, file_path):
+        for doc in sorted(self.linked_to_docs.get(self._norm_key(file_path), ())):
+            if os.path.exists(doc):
+                self.queue_thread(doc)
+
+    def stop_linked_watchers(self):
+        with self._linked_lock:
+            for d in list(self.linked_watchers):
+                self.linked_watchers.pop(d).stop()
+
+    def file_deleted(self, f):
+        self.delete_exports_for(f)
+        if self._is_office_doc(f):
+            self.update_doc_links(f, removed=True)
+
     def start_watcher(self):
         if self.watcher is not None:  # Stop existing watcher
             self.watcher.stop()
         mfcn = lambda x: self.queue_thread(os.path.abspath(x))
-        dfcn = lambda x: self.delete_exports_for(os.path.abspath(x))
+        dfcn = lambda x: self.file_deleted(os.path.abspath(x))
         self.watcher = Watcher(self.watchdir, createfcn=mfcn, modfcn=mfcn, deletefcn=dfcn)
+        self.refresh_all_links()
 
     def run(self):
         self.start_watcher()
@@ -405,6 +528,22 @@ class FileCheckerThread(threading.Thread):
             restart_needed = (self.watcher is None) or (not self.watcher.observer.is_alive()) or (self.watcher.directory_to_watch != self.watchdir)
             if restart_needed and os.path.exists(self.watchdir):
                 self.start_watcher()
+
+            # Periodic health check on the linked-image watcher pool: revive
+            # dead watchers, pick up dirs that (re)appeared, and rebuild the
+            # map if the finalizer mode was toggled in the GUI.
+            if time.time() - self._linked_checked > 5:
+                self._linked_checked = time.time()
+                try:
+                    fm = getattr(input_options, "finalizermode", 1)
+                    if fm != self._linked_fm:
+                        self._linked_fm = fm
+                        self.refresh_all_links()
+                    else:
+                        with self._linked_lock:
+                            self._sync_linked_watchers()
+                except Exception:
+                    pass
 
             if self.ea:  # export all
                 self.ea = False
@@ -441,6 +580,7 @@ class FileCheckerThread(threading.Thread):
                 self.promptpending = False
 
         self.watcher.stop()
+        self.stop_linked_watchers()
         for t in self.running_threads:
             t.stopped = True
         for thr in reversed(self.running_threads):
