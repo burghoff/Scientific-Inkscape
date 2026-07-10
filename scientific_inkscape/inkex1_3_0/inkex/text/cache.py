@@ -1206,6 +1206,13 @@ class SvgDocumentElementCache(SvgDocumentElement):
             hvl, hun = (
                 inkex.units.parse_unit(hstr) if hstr is not None else (vbx[3], "px")
             )
+            # A zero width/height would make the uu<->px scale (uuw/uuh) zero and
+            # break pxtouu/uutopx (ZeroDivisionError). Treat it like an unset
+            # dimension and fall back to the viewBox size.
+            if not wvl and vbx[2]:
+                wvl, wun = vbx[2], "px"
+            if not hvl and vbx[3]:
+                hvl, hun = vbx[3], "px"
 
             def parse_preserve_aspect_ratio(par_str):
                 align, meet_or_slice = "xMidYMid", "meet"  # defaults

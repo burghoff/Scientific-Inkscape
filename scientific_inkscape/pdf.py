@@ -629,13 +629,23 @@ import os, sys
 
 here = os.path.dirname(os.path.abspath(__file__))
 pkgdir = os.path.join(here, "packages")
-try:
-    import typing_extensions # noqa
-    pypdf_path = os.path.join(pkgdir, "pypdf-6.1.3")
-except ImportError:
-    # v1.0 of Inkscape, use old pypdf
-    pypdf_path = os.path.join(pkgdir, "pypdf-2.0.0")
-    
+
+# On Python < 3.11, pypdf imports Self/TypeAlias/TypeGuard from
+# typing_extensions, which not every Inkscape-bundled Python ships (1.0 and
+# 1.2 do not). Fall back to the vendored copy only when the installed one is
+# absent or lacks those symbols, so a working installation is never shadowed.
+if sys.version_info < (3, 11):
+    try:
+        from typing_extensions import Self, TypeAlias, TypeGuard  # noqa: F401
+    except ImportError:
+        sys.modules.pop("typing_extensions", None)
+        te_path = os.path.join(pkgdir, "typing_extensions-4.13.2")
+        if te_path not in sys.path:
+            sys.path.insert(0, te_path)
+
+# pypdf 5.9.0 is the newest release that runs on all bundled Pythons
+# (pypdf >= 6.0 requires Python >= 3.9, but Inkscape 1.0 bundles 3.8)
+pypdf_path = os.path.join(pkgdir, "pypdf-5.9.0")
 if pypdf_path not in sys.path:
     sys.path.insert(0, pypdf_path)
 
@@ -644,47 +654,6 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ContentStream, NameObject, IndirectObject
 from pypdf.generic import FloatObject
 from pypdf.generic import DictionaryObject
-
-if 'pypdf-2.0.0' in pypdf_path:
-    # Endow old pypdf with dict-like properties
-    def _io_resolve(self):
-        try:
-            obj = self.get_object()
-            if isinstance(obj, dict):
-                return obj
-        except Exception:
-            pass
-        return {}
-    
-    def _io_contains(self, key):
-        return key in _io_resolve(self)
-
-    def _io_getitem(self, key):
-        return _io_resolve(self)[key]
-
-    def _io_iter(self):
-        return iter(_io_resolve(self))
-
-    IndirectObject.__contains__ = _io_contains
-    IndirectObject.__getitem__ = _io_getitem
-    IndirectObject.__iter__ = _io_iter
-        
-    def _io_get(self, key, default=None):
-        return _io_resolve(self).get(key, default)
-
-    def _io_keys(self):
-        return _io_resolve(self).keys()
-
-    def _io_items(self):
-        return _io_resolve(self).items()
-
-    def _io_values(self):
-        return _io_resolve(self).values()
-
-    IndirectObject.get    = _io_get
-    IndirectObject.keys   = _io_keys
-    IndirectObject.items  = _io_items
-    IndirectObject.values = _io_values
 
 # ---- Inkscape export (same conventions as AutoExporter) ----
 def _inkscape_bin():
@@ -1817,6 +1786,23 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
     in_reader = PdfReader(input_pdf_path)
     writer = PdfWriter()
 
+    # Undo damage from the legacy vendored pypdf's constructor: it calls
+    # set_need_appearances_writer(), which fabricates a dangling
+    # /AcroForm reference (it resolves to the /Info dictionary, the object
+    # occupying that slot) and writes /NeedAppearances through it into
+    # /Info. Scrub both; a real AcroForm from the source document is
+    # carried over by the catalog-preservation step before write().
+    try:
+        if "/AcroForm" in writer._root_object:
+            del writer._root_object[NameObject("/AcroForm")]
+        _winfo = getattr(writer, "_info", None) or getattr(writer, "_info_obj", None)
+        if _winfo is not None:
+            _winfo = _winfo.get_object()
+            if "/NeedAppearances" in _winfo:
+                del _winfo[NameObject("/NeedAppearances")]
+    except Exception:
+        pass
+
     _debug_copy(input_pdf_path, label="input_pdf")
 
     # Pre-export SVGs -> PDFs (once per unique SVG)
@@ -1900,6 +1886,49 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
             writer.add_metadata(in_reader.metadata)
     except Exception:
         pass
+
+    # Preserve document-level catalog entries from the source PDF. A fresh
+    # PdfWriter's catalog only has /Type and /Pages, so tagging
+    # (/StructTreeRoot, /MarkInfo), XMP metadata (/Metadata), language,
+    # forms (/AcroForm), and viewer settings would otherwise be dropped --
+    # or worse, leak in as stale references with source object numbers
+    # (an untranslated /AcroForm previously ended up pointing at the new
+    # file's /Info dictionary). Cloning after add_page reuses the pages
+    # already translated into the writer, so /Fields and /Pg references
+    # resolve to the cloned pages rather than duplicating them.
+    _PRESERVED_ROOT_KEYS = ("/AcroForm", "/Metadata", "/StructTreeRoot",
+                            "/MarkInfo", "/Lang", "/ViewerPreferences",
+                            "/OutputIntents", "/PageLayout", "/PageMode")
+    try:
+        src_root = in_reader.root_object
+    except AttributeError:  # very old pypdf
+        src_root = in_reader.trailer["/Root"].get_object()
+    for key in _PRESERVED_ROOT_KEYS:
+        if key in src_root:
+            try:
+                raw = src_root.raw_get(key)
+                if hasattr(raw, "clone"):
+                    raw = raw.clone(writer)
+                elif key in ("/StructTreeRoot", "/AcroForm"):
+                    # pypdf-2.0.0 fallback: its write()-time reference sweep
+                    # cannot handle these cyclic graphs (it leaves dangling
+                    # objects and corrupts the xref); drop them there.
+                    _debug_print("catalog preservation skipped for {} (legacy pypdf)".format(key))
+                    continue
+                # else (pypdf-2.0.0, acyclic keys): assign the reader-bound
+                # object/reference as-is; write()'s reference sweep imports
+                # foreign objects with translated numbering -- the same
+                # mechanism that makes add_page work on that version.
+                writer._root_object[NameObject(key)] = raw
+            except Exception as e:
+                _debug_print("catalog preservation failed for {}: {}".format(key, e))
+                try:  # never leave a stale/unresolvable reference behind
+                    del writer._root_object[NameObject(key)]
+                except Exception:
+                    pass
+        elif key in writer._root_object:
+            # key leaked into the fresh writer without a source counterpart
+            del writer._root_object[NameObject(key)]
 
     if output_pdf_path is None:
         root, ext = os.path.splitext(input_pdf_path)

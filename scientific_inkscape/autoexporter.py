@@ -795,7 +795,15 @@ class Exporter():
                 self.check(dh.overwrite_svg,svg, cfile)
 
             tmpstp = self.tempbase + "_stp.svg"
-            allacts += [Act('stp',tels + pels,self,tmpstp)]
+            stp_ids = tels + pels
+            if stp_ids:
+                allacts += [Act('stp',stp_ids,self,tmpstp)]
+            else:
+                # Nothing needs conversion. An empty selection would emit
+                # "select:;", which makes some binaries exit nonzero (1.3.1).
+                # Skip the act; also skip the later switch to tmpstp, which
+                # the act would have been responsible for writing.
+                do_stroketopaths = False
             
 
         # Rasterizations
@@ -827,7 +835,7 @@ class Exporter():
             
             bbs = self.split_acts(fnm=cfile, acts=allacts)
             
-            imgs = imgs_opqe | imgs_trnp
+            imgs = {**imgs_opqe, **imgs_trnp}  # dict-merge (| operator is 3.9+)
             missing_images = [t for t in imgs if not os.path.exists(os.path.join(self.tempdir, t)) and imgs[t] in bbs]
             if missing_images:
                 warnings.warn(

@@ -620,10 +620,14 @@ def wrapped_binary(
         keyv = str(line).split(",", maxsplit=1)[0]
         if keyv[0:2] == "b'":  # pre version 1.1
             keyv = keyv[2:]
-        if str(line)[2:52] == "WARNING: Requested update while update in progress":
-            continue
-            # skip warnings (version 1.0 only?)
-        data = [float(x.strip("'")) for x in str(line).split(",")[1:]]
+        try:
+            data = [float(x.strip("'")) for x in str(line).split(",")[1:]]
+        except ValueError:
+            continue  # not a bounding-box line, e.g. a console/status message
+            # such as v1.0's "WARNING: Requested update while update in
+            # progress, counter = %d" or "Unable to find: %s"
+        if len(data) < 4:
+            continue  # likewise; a short entry would break pxtouu downstream
         if keyv != "'":  # sometimes happens in v1.3
             bbs[keyv] = data
 
