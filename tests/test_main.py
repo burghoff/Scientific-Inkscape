@@ -74,6 +74,23 @@ sys.path += [os.path.join(vpaths[version],'lib\\python3.10')]
 os.environ['LINEPROFILE'] = str(lprofile)
 os.environ['USEPANGO']=str(usepango)
 
+# numpy's C-extension links mingw runtime DLLs (libopenblas, libgfortran, etc.).
+# If another tool on PATH (conda, MSYS2, Strawberry Perl, R...) has loaded a
+# same-named but ABI-incompatible copy first, Windows reuses it and numpy import
+# dies with fatal error 0xc0000139. Force this Inkscape version's own copies to
+# load first, by full path, so they win.
+if sys.platform == 'win32':
+    import ctypes
+    _vbin = os.path.join(vpaths[version], 'bin')
+    if os.path.isdir(_vbin):
+        os.add_dll_directory(_vbin)
+        for _dll in ('libwinpthread-1.dll', 'libgcc_s_seh-1.dll',
+                     'libquadmath-0.dll', 'libgfortran-5.dll', 'libopenblas.dll'):
+            try:
+                ctypes.WinDLL(os.path.join(_vbin, _dll))
+            except OSError:
+                pass
+
 
 from flatten_plots import FlattenPlots
 from scale_plots import ScalePlots

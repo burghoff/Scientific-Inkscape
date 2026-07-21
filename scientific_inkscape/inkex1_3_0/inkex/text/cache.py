@@ -92,6 +92,10 @@ class BaseElementCache(BaseElement):
             # fine for 'clip-path' & 'mask'
         else:
             urlv = self.get(typestr)
+            if urlv is None and typestr in hrefs:
+                # SVG2 allows plain 'href' in place of 'xlink:href'
+                for alt in hrefs - {typestr}:
+                    urlv = self.get(alt)
         if urlv is not None:
             if svg is None:
                 svg = self.croot  # need to specify svg for Styles but not BaseElements

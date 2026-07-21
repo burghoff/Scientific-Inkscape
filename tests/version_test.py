@@ -21,7 +21,11 @@ for version, pyexec in vpy.items():
     # Set the environment variable
     env = dict(os.environ)
     env['TESTMAINVERSION'] = version
-    
+    # Don't leak the parent's version-specific SI_FC_DIR (set at test_main import
+    # for the file's default version) into every subprocess -- it forces the wrong
+    # fontconfig/freetype and breaks Pango detection. Each subprocess sets its own.
+    env.pop('SI_FC_DIR', None)
+
     test_file = "test_main.py"
     cmd = [pyexec, "-m", "pytest", test_file]
     
@@ -41,16 +45,23 @@ for version, pyexec in vpy.items():
         os.remove(env_vars_file)
     
     lines = stdout.split('\n')
-    
+
+    pversion = version.ljust(version_col_width)
+    pango_info = f"{'Yes' if env.get('HASPANGO', 'N/A') == 'True' else 'No'}".ljust(pango_col_width - 1)
+    printed = False
     for line in lines:
         if line.endswith('%]'):
             if line.startswith('test_main.py '):
                 pline = line[len('test_main.py '):]
             else:
                 pline = line
-            pversion = version.ljust(version_col_width)
-            pango_info = f"{'Yes' if env.get('HASPANGO', 'N/A') == 'True' else 'No'}".ljust(pango_col_width - 1)
             print(f"{pversion} : {pango_info} : {pline}")
+            printed = True
+    if not printed:
+        # No pytest progress line means the run crashed/was killed before finishing
+        # (a soft test failure still prints one). Surface it instead of dropping the row.
+        tail = next((l for l in reversed(lines) if l.strip()), '')
+        print(f"{pversion} : {pango_info} : CRASHED (rc={process.returncode}, no summary) {tail[:60]}")
 
 # Delete the environment variable
 if 'TESTMAINVERSION' in os.environ:

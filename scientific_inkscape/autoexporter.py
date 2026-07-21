@@ -1848,11 +1848,146 @@ class Exporter():
     def get_markers(elem):
         """Returns valid marker keys and corresponding elements"""
         mkrd = dict()
+        # Use the specified style so markers set as presentation attributes
+        # (marker-end="url(#x)") are seen, not just those in the style attr
+        sty = elem.cspecified_style
         for mtyp in ["marker", "marker-start", "marker-mid", "marker-end"]:
-            mkrel = elem.cstyle.get_link(mtyp, elem.croot)
+            mkrel = sty.get_link(mtyp, elem.croot)
             if mkrel is not None:
                 mkrd[mtyp] = mkrel
         return mkrd
+
+    @staticmethod
+    def instantiate_markers(elem, mkrs):
+        """Convert an element's markers into real geometry placed in a
+        sibling group, then disable the markers on the element. This keeps
+        Inkscape's Stroke to Path from ever converting markers itself, which
+        crashes intermittently and outlines marker content with the element's
+        stroke, fattening arrowheads. Returns True on success; False means
+        the caller should fall back to the legacy Inkscape-based conversion
+        (e.g. markers using a viewBox).
+        """
+        if any(mkrel.get("viewBox") is not None for mkrel in mkrs.values()):
+            return False
+        try:
+            csp = elem.cpath.to_absolute().to_superpath()
+        except Exception:
+            return False
+
+        def sub(pta, ptb):
+            return (pta[0] - ptb[0], pta[1] - ptb[1])
+
+        def nz(vec):
+            return vec is not None and math.hypot(vec[0], vec[1]) > 1e-9
+
+        # Flatten into vertices with incoming/outgoing directions. Control
+        # points collapse onto nodes for line segments, so fall back to the
+        # neighboring node when a control-point direction is degenerate.
+        verts = []  # (x, y, in_dir, out_dir)
+        for spth in csp:
+            npt = len(spth)
+            for i in range(npt):
+                cin, node, cout = spth[i]
+                outd = None
+                if i < npt - 1:
+                    for cand in (sub(cout, node), sub(spth[i+1][0], node),
+                                 sub(spth[i+1][1], node)):
+                        if nz(cand):
+                            outd = cand
+                            break
+                ind = None
+                if i > 0:
+                    for cand in (sub(node, cin), sub(node, spth[i-1][2]),
+                                 sub(node, spth[i-1][1])):
+                        if nz(cand):
+                            ind = cand
+                            break
+                verts.append((node[0], node[1], ind, outd))
+        if len(verts) == 0:
+            return False
+
+        def tangent_deg(kind, ind, outd):
+            if kind == "start":
+                use = outd if nz(outd) else ind
+            elif kind == "end":
+                use = ind if nz(ind) else outd
+            else:  # mid: bisector of the unit in/out directions (per spec)
+                if nz(ind) and nz(outd):
+                    lin, lout = math.hypot(*ind), math.hypot(*outd)
+                    use = (ind[0] / lin + outd[0] / lout,
+                           ind[1] / lin + outd[1] / lout)
+                    if not nz(use):  # perfect reversal
+                        use = outd
+                else:
+                    use = outd if nz(outd) else ind
+            return math.degrees(math.atan2(use[1], use[0])) if nz(use) else 0.0
+
+        swv = dh.ipx(elem.cspecified_style.get("stroke-width", "1"))
+        if swv is None:
+            swv = 1.0
+
+        cont = inkex.Group()
+        elem.addnext(cont)
+        # Marker content inherits from the marker's own context, not from the
+        # element; reset the properties most likely to leak in the new spot
+        cont.set(
+            "style",
+            "fill:#000000;stroke:none;stroke-width:1px;stroke-dasharray:none",
+        )
+        if elem.ctransform is not None:
+            cont.ctransform = elem.ctransform
+        if elem.get("clip-path") is not None:
+            cont.set("clip-path", elem.get("clip-path"))
+        if elem.get("mask") is not None:
+            cont.set("mask", elem.get("mask"))
+        eopa = elem.cstyle.get("opacity")
+        if eopa is not None:
+            cont.cstyle["opacity"] = eopa
+
+        for i, (xpos, ypos, ind, outd) in enumerate(verts):
+            kind = ("start" if i == 0
+                    else ("end" if i == len(verts) - 1 else "mid"))
+            mkrel = mkrs.get("marker-" + kind, mkrs.get("marker"))
+            if mkrel is None:
+                continue
+            tang = tangent_deg(kind, ind, outd)
+            orient = mkrel.get("orient", "0")
+            if orient == "auto":
+                ang = tang
+            elif orient == "auto-start-reverse":
+                ang = tang + (180 if kind == "start" else 0)
+            else:
+                try:
+                    ang = float(orient)
+                except (TypeError, ValueError):
+                    ang = 0.0
+            unit = (
+                1.0
+                if mkrel.get("markerUnits", "strokeWidth") == "userSpaceOnUse"
+                else swv
+            )
+            refx = dh.ipx(mkrel.get("refX", "0")) or 0.0
+            refy = dh.ipx(mkrel.get("refY", "0")) or 0.0
+            grp = inkex.Group()
+            cont.append(grp)
+            grp.set(
+                "transform",
+                f"translate({xpos},{ypos}) rotate({ang}) scale({unit}) "
+                f"translate({-refx},{-refy})",
+            )
+            for kid in list(mkrel):
+                if isinstance(kid.tag, str):
+                    grp.append(kid.duplicate())
+
+        if len(cont) == 0:
+            cont.delete()
+        # Disable markers on the element; explicit none (rather than removal)
+        # also overrides markers inherited from an ancestor
+        for mtyp in ["marker", "marker-start", "marker-mid", "marker-end"]:
+            elem.cstyle[mtyp] = "none"
+            if elem.get(mtyp) is not None:
+                elem.set(mtyp, None)
+        return True
 
     @staticmethod
     def stroke_to_path_fixes(els):
@@ -1873,6 +2008,12 @@ class Exporter():
             svg = els[0].croot
         for elem in els:
             mkrs = Exporter.get_markers(elem)
+            if (
+                len(mkrs) > 0
+                and elem.tag in otp_support_tags
+                and Exporter.instantiate_markers(elem, mkrs)
+            ):
+                mkrs = dict()
             if isinstance(elem, inkex.Group) and len(mkrs) > 0:
                 dh.ungroup(elem)
             elif elem.tag in otp_support_tags:
@@ -1911,6 +2052,16 @@ class Exporter():
                         # scaleby = 1000
                         maxsz = max(bbx.w, bbx.h)
                         scaleby = 1000 / maxsz if maxsz > 0 else 1000
+                    elif any(
+                        mkr.get("markerUnits") == "userSpaceOnUse"
+                        for mkr in mkrs.values()
+                    ):
+                        # userSpaceOnUse markers scale with the element
+                        # transform but not stroke-width, so the scale trick
+                        # would resize them if STP fails and the element is
+                        # crash-skipped. Leave unscaled: correct on success
+                        # and untouched (still correct) on failure.
+                        scaleby = 1
                     else:
                         # For paths with markers, scale to make stroke-width=1
                         # Prevents incorrect marker size
