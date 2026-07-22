@@ -1003,6 +1003,24 @@ def _try_get_uniform_rgb_hex_from_ximage(ximg, name=None) -> Optional[str]:
         _debug_print("{}: rejected (metadata read failed: {})".format(label, e))
         return None
 
+    # Indexed-color images get their own decoder (OneNote's PDF export
+    # re-encodes the 9x9 marker PNGs as 4-bit /Indexed with a palette of
+    # [black, white, marker color]).
+    csr = cs
+    try:
+        if hasattr(csr, "get_object"):
+            csr = csr.get_object()
+    except Exception:
+        pass
+    if (isinstance(csr, (list, tuple)) and len(csr) == 4
+            and str(csr[0]) == "/Indexed"):
+        result = _uniform_hex_from_indexed_ximage(ximg)
+        if result is None:
+            _debug_print("{}: rejected (indexed, not uniform)".format(label))
+        else:
+            _debug_print("{}: uniform indexed color {}".format(label, result))
+        return result
+
     if not (w > 0 and h > 0 and bpc == 8):
         if DEBUG_PDF:
             reasons = []
@@ -1938,3 +1956,797 @@ def replace_color_markers_with_svgs(input_pdf_path: str,
     _debug_copy(output_pdf_path, label="output_pdf")
     _debug_print("replace_color_markers_with_svgs: wrote {}".format(output_pdf_path))
     return output_pdf_path
+
+# ---------------------------------------------------------------------------
+# OneNote page merging: recombine OneNote's per-page splits into one tall
+# PDF page per OneNote page, guided by the ruler office.py injects.
+# ---------------------------------------------------------------------------
+
+def _uniform_hex_from_indexed_ximage(ximg):
+    """Return 'rrggbb' if ximg is a uniform-color /Indexed image, else None.
+
+    Used by _try_get_uniform_rgb_hex_from_ximage for indexed colorspaces.
+    Deliberately narrow: no SMask, no predictor, base colorspace /DeviceRGB.
+    """
+    try:
+        w = int(ximg.get("/Width", 0))
+        h = int(ximg.get("/Height", 0))
+        bpc = int(ximg.get("/BitsPerComponent", 8))
+        cs = ximg.get("/ColorSpace")
+        if hasattr(cs, "get_object"):
+            cs = cs.get_object()
+        if ximg.get("/SMask") is not None:
+            return None
+        dp = ximg.get("/DecodeParms", {})
+        if isinstance(dp, dict) and int(dp.get("/Predictor", 0) or 0) > 1:
+            return None
+        if not (w > 0 and h > 0 and bpc in (1, 2, 4, 8)):
+            return None
+        if not (isinstance(cs, (list, tuple)) and len(cs) == 4
+                and str(cs[0]) == "/Indexed"):
+            return None
+        base = cs[1]
+        if hasattr(base, "get_object"):
+            base = base.get_object()
+        if str(base) != "/DeviceRGB":
+            return None
+        hival = int(cs[2])
+        lookup = cs[3]
+        if hasattr(lookup, "get_object"):
+            lookup = lookup.get_object()
+        if hasattr(lookup, "get_data"):
+            lookup = lookup.get_data()
+        lookup = bytes(lookup)
+
+        raw = ximg.get_data()
+        stride = (w * bpc + 7) // 8
+        if len(raw) < stride * h:
+            return None
+        mask = (1 << bpc) - 1
+        target = None
+        for row in range(h):
+            rowb = raw[row * stride:(row + 1) * stride]
+            for col in range(w):
+                bitpos = col * bpc
+                shift = 8 - bpc - (bitpos % 8)
+                idx = (rowb[bitpos // 8] >> shift) & mask
+                if target is None:
+                    target = idx
+                elif idx != target:
+                    return None
+        if target is None or target > hival or len(lookup) < (target + 1) * 3:
+            return None
+        r, g, b = lookup[target * 3:target * 3 + 3]
+        return "{:02x}{:02x}{:02x}".format(r, g, b)
+    except Exception:
+        return None
+
+
+def _median(vals):
+    vals = sorted(vals)
+    return vals[len(vals) // 2] if vals else None
+
+
+def _op_name(operator):
+    return operator.decode("latin1") if isinstance(
+        operator, (bytes, bytearray)) else operator
+
+
+def _hex_to_rgb01(color):
+    n = int(color.lstrip("#"), 16)
+    return (((n >> 16) & 0xFF) / 255.0, ((n >> 8) & 0xFF) / 255.0,
+            (n & 0xFF) / 255.0)
+
+
+def _filter_ruler_ops(operations, ruler_rgb):
+    """Drop text-showing operators drawn in the ruler's unique color."""
+    tol = 2.0 / 255.0
+
+    def _is_ruler(color):
+        return all(abs(c - r) <= tol for c, r in zip(color, ruler_rgb))
+
+    filtered = []
+    color = (0.0, 0.0, 0.0)
+    color_stack = []
+    for operands, operator in operations:
+        op = _op_name(operator)
+        try:
+            if op == "q":
+                color_stack.append(color)
+            elif op == "Q":
+                if color_stack:
+                    color = color_stack.pop()
+            elif op == "rg":
+                color = tuple(float(v) for v in operands[:3])
+            elif op == "g":
+                v = float(operands[0])
+                color = (v, v, v)
+            elif op == "k":
+                c, m, y, k = (float(v) for v in operands[:4])
+                color = ((1 - c) * (1 - k), (1 - m) * (1 - k),
+                         (1 - y) * (1 - k))
+            elif op in ("sc", "scn"):
+                vals = [float(v) for v in operands
+                        if isinstance(v, (int, float))]
+                if len(vals) >= 3:
+                    color = tuple(vals[:3])
+                elif len(vals) == 1:
+                    color = (vals[0],) * 3
+        except (TypeError, ValueError):
+            pass
+        if op in ("Tj", "TJ", "'", '"') and _is_ruler(color):
+            if op in ("'", '"'):
+                filtered.append(([], b"T*"))  # keep the line advance
+            continue
+        filtered.append((operands, operator))
+    return filtered
+
+
+def _scan_ruler_marks(page):
+    """Scan one published-PDF page for ruler strings and the OneNote footer.
+
+    Returns (marks, footer_ytd, text_bottom_ytd):
+        marks           : list of (onenote_page_idx, line_no, y_topdown)
+        footer_ytd      : top-down y of the '... Page N' footer, or None
+        text_bottom_ytd : deepest non-ruler, non-footer text baseline (0 if
+                          none) -- used to trim trailing whitespace
+
+    Text chunks are re-joined per baseline before matching so a ruler line
+    split across several show-text operators still matches.
+    """
+    from office import RULER_RE, ONENOTE_FOOTER_RE
+
+    height = float(page.mediabox.height)
+    rows = {}  # rounded ytd -> list of (x, text, precise ytd)
+
+    def _vis(text, cm, tm, font_dict, font_size):
+        if not text.strip():
+            return
+        x = cm[0] * tm[4] + cm[2] * tm[5] + cm[4]
+        y = cm[1] * tm[4] + cm[3] * tm[5] + cm[5]
+        ytd = height - y
+        rows.setdefault(round(ytd, 1), []).append((x, text, ytd))
+
+    page.extract_text(visitor_text=_vis)
+
+    marks = []
+    footer = None
+    text_bottom = 0.0
+    for ytd_r, chunks in rows.items():
+        chunks.sort()
+        joined = "".join(t for _x, t, _y in chunks).strip()
+        ytd = chunks[0][2]  # unrounded baseline of the leftmost chunk
+        m = RULER_RE.search(joined)
+        if m:
+            marks.append((int(m.group(1)), int(m.group(2)), ytd))
+        elif ytd > height - 30 and ONENOTE_FOOTER_RE.search(joined):
+            footer = ytd
+        elif ytd <= height - 12:
+            # rows inside the bottom print margin are footer decorations
+            # (timestamps etc.), never page content
+            text_bottom = max(text_bottom, ytd)
+    return marks, footer, text_bottom
+
+
+def _page_graphics_bottom(reader, page):
+    """Deepest top-down y touched by the page's non-decoration graphics.
+
+    Walks the content stream tracking the CTM and collects each painted
+    subpath's bounding box and each image placement. Decoration is
+    filtered out geometrically: notebook rule lines (nearly full-width),
+    the red margin line (nearly full-height), and the page background
+    (both). Clipping-only paths ('W .. n') are ignored.
+    """
+    width = float(page.mediabox.width)
+    height = float(page.mediabox.height)
+    ident = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+    def _mul(m, n):  # m then n, PDF row-vector convention
+        return (m[0] * n[0] + m[1] * n[2],
+                m[0] * n[1] + m[1] * n[3],
+                m[2] * n[0] + m[3] * n[2],
+                m[2] * n[1] + m[3] * n[3],
+                m[4] * n[0] + m[5] * n[2] + n[4],
+                m[4] * n[1] + m[5] * n[3] + n[5])
+
+    def _pt(m, x, y):
+        return (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
+
+    stack = [ident]
+    ctm = ident
+    path_pts = []   # device-space points of the current path
+    bottom = 0.0    # deepest included ytd
+
+    def _flush(painting):
+        nonlocal bottom, path_pts
+        if painting and path_pts:
+            xs = [p[0] for p in path_pts]
+            ys = [p[1] for p in path_pts]
+            wid, hgt = max(xs) - min(xs), max(ys) - min(ys)
+            full_w = wid > 0.85 * width
+            full_h = hgt > 0.85 * height
+            if not (full_w or full_h):
+                bottom = max(bottom, height - min(ys))
+        path_pts = []
+
+    try:
+        cs = ContentStream(page.get_contents(), page.pdf)
+        ops = cs.operations
+    except Exception:
+        return height  # unparseable: be conservative, claim full page
+
+    for operands, operator in ops:
+        op = _op_name(operator)
+        try:
+            if op == "q":
+                stack.append(ctm)
+            elif op == "Q":
+                if len(stack) > 1:
+                    ctm = stack.pop()
+            elif op == "cm":
+                a, b, c, d, e, f = (float(v) for v in operands)
+                ctm = _mul((a, b, c, d, e, f), ctm)
+            elif op in ("m", "l"):
+                path_pts.append(_pt(ctm, float(operands[0]), float(operands[1])))
+            elif op in ("c", "v", "y"):
+                vals = [float(v) for v in operands]
+                for i in range(0, len(vals), 2):
+                    path_pts.append(_pt(ctm, vals[i], vals[i + 1]))
+            elif op == "re":
+                x, y, w, h = (float(v) for v in operands)
+                for cx, cy in ((x, y), (x + w, y), (x, y + h), (x + w, y + h)):
+                    path_pts.append(_pt(ctm, cx, cy))
+            elif op in ("S", "s", "f", "F", "f*", "B", "B*", "b", "b*"):
+                _flush(True)
+            elif op == "n":
+                _flush(False)  # clip-only path
+            elif op == "Do":
+                for cx, cy in ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)):
+                    px, py = _pt(ctm, cx, cy)
+                    bottom = max(bottom, height - py)
+        except (TypeError, ValueError, IndexError):
+            continue
+    return bottom
+
+
+# Operators that make marks on the page. In a survivor block everything
+# else (state, positioning, clipping) is kept and only these are filtered.
+_MARKING_OPS = {"m", "l", "c", "v", "y", "re", "h",
+                "S", "s", "f", "F", "f*", "B", "B*", "b", "b*",
+                "Tj", "TJ", "'", '"', "Do", "sh", "INLINE IMAGE"}
+_PATH_PAINT_OPS = {"S", "s", "f", "F", "f*", "B", "B*", "b", "b*"}
+
+
+def _segment_units(ops, page_h, shift, page):
+    """Segment a page's operator list into drawable units for seam dedup.
+
+    Returns (units, clip_idx, window_clip_idx):
+        units    : list of dicts with kind ('path'|'text'|'xobj'), drop_idx
+                   (op indices that make the unit's marks), pts (global
+                   top-down coords), bbox, and key (coarse equality key)
+        clip_idx : op indices belonging to clipping paths ('W .. n'); these
+                   must never be dropped from the band block
+        window_clip_idx : the subset of clip_idx whose clip covers (almost)
+                   the whole page -- OneNote's page-window clip. Survivor
+                   blocks drop these: a straddling object's full geometry
+                   is emitted on every page it touches but cut to the page
+                   box by this clip, and the surviving copy must be free to
+                   draw across its whole union rect.
+    """
+    ident = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+    def _mul(m, n):
+        return (m[0] * n[0] + m[1] * n[2], m[0] * n[1] + m[1] * n[3],
+                m[2] * n[0] + m[3] * n[2], m[2] * n[1] + m[3] * n[3],
+                m[4] * n[0] + m[5] * n[2] + n[4], m[4] * n[1] + m[5] * n[3] + n[5])
+
+    def _pt(m, x, y):
+        return (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
+
+    def _gpt(m, x, y):
+        dx, dy = _pt(m, x, y)
+        return (dx, page_h - dy + shift)
+
+    def _rgb(vals):
+        return tuple(round(v, 3) for v in vals)
+
+    # Resolve an XObject name to a cross-page identity key
+    def _xobj_key(name):
+        try:
+            res = page.get("/Resources", {})
+            if hasattr(res, "get_object"):
+                res = res.get_object()
+            xo = res.get("/XObject", {})
+            if hasattr(xo, "get_object"):
+                xo = xo.get_object()
+            obj = xo[name]
+            if hasattr(obj, "get_object"):
+                obj = obj.get_object()
+            return (str(obj.get("/Subtype")), str(obj.get("/Width")),
+                    str(obj.get("/Height")), str(obj.get("/Length")))
+        except Exception:
+            return (str(name),)
+
+    def _sbytes(v):
+        if hasattr(v, "original_bytes"):
+            return v.original_bytes
+        if isinstance(v, str):
+            return v.encode("latin1", "replace")
+        return bytes(v)
+
+    page_w = float(page.mediabox.width)
+
+    units = []
+    clip_idx = set()
+    window_clip_idx = set()
+    stack = [ident]
+    ctm = ident
+    fill = (0.0, 0.0, 0.0)
+    stroke = (0.0, 0.0, 0.0)
+    lw = 1.0
+    state_stack = []
+    # current path accumulation
+    p_idx = []
+    p_pts = []
+    p_ops = []
+    # text block accumulation
+    in_text = False
+    t_shows = []      # (index, bytes, global pos)
+    tm = tlm = ident
+    tleading = 0.0
+
+    def _close_path(i, op):
+        if p_pts:
+            xs = [p[0] for p in p_pts]
+            ys = [p[1] for p in p_pts]
+            # only the state the paint op actually uses belongs in the key
+            if op in ("S", "s"):
+                state = (_rgb(stroke), round(lw, 2))
+            elif op in ("B", "B*", "b", "b*"):
+                state = (_rgb(fill), _rgb(stroke), round(lw, 2))
+            else:
+                state = (_rgb(fill),)
+            units.append({
+                "kind": "path",
+                "drop_idx": p_idx + [i],
+                "pts": list(p_pts),
+                "bbox": (min(xs), max(xs), min(ys), max(ys)),
+                "key": ("path", op, " ".join(p_ops), len(p_pts), state),
+            })
+
+    for i, (operands, operator) in enumerate(ops):
+        op = _op_name(operator)
+        try:
+            if op == "q":
+                stack.append(ctm)
+                state_stack.append((fill, stroke, lw))
+            elif op == "Q":
+                if len(stack) > 1:
+                    ctm = stack.pop()
+                if state_stack:
+                    fill, stroke, lw = state_stack.pop()
+            elif op == "cm":
+                a, b, c, d, e, f = (float(v) for v in operands)
+                ctm = _mul((a, b, c, d, e, f), ctm)
+            elif op == "w":
+                lw = float(operands[0])
+            elif op == "rg":
+                fill = tuple(float(v) for v in operands[:3])
+            elif op == "RG":
+                stroke = tuple(float(v) for v in operands[:3])
+            elif op == "g":
+                v = float(operands[0]); fill = (v, v, v)
+            elif op == "G":
+                v = float(operands[0]); stroke = (v, v, v)
+            elif op == "k":
+                c, m, y, k = (float(v) for v in operands[:4])
+                fill = ((1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k))
+            elif op == "K":
+                c, m, y, k = (float(v) for v in operands[:4])
+                stroke = ((1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k))
+            elif op in ("sc", "scn"):
+                vals = [float(v) for v in operands if isinstance(v, (int, float))]
+                if len(vals) >= 3:
+                    fill = tuple(vals[:3])
+                elif len(vals) == 1:
+                    fill = (vals[0],) * 3
+            elif op in ("SC", "SCN"):
+                vals = [float(v) for v in operands if isinstance(v, (int, float))]
+                if len(vals) >= 3:
+                    stroke = tuple(vals[:3])
+                elif len(vals) == 1:
+                    stroke = (vals[0],) * 3
+            elif op in ("m", "l"):
+                p_idx.append(i); p_ops.append(op)
+                p_pts.append(_gpt(ctm, float(operands[0]), float(operands[1])))
+            elif op in ("c", "v", "y"):
+                p_idx.append(i); p_ops.append(op)
+                vals = [float(v) for v in operands]
+                for j in range(0, len(vals), 2):
+                    p_pts.append(_gpt(ctm, vals[j], vals[j + 1]))
+            elif op == "re":
+                p_idx.append(i); p_ops.append(op)
+                x, y, w2, h2 = (float(v) for v in operands)
+                for cx, cy in ((x, y), (x + w2, y), (x, y + h2), (x + w2, y + h2)):
+                    p_pts.append(_gpt(ctm, cx, cy))
+            elif op == "h":
+                p_idx.append(i); p_ops.append(op)
+            elif op == "W" or op == "W*":
+                p_idx.append(i)  # part of the clip construction
+            elif op in _PATH_PAINT_OPS:
+                _close_path(i, op)
+                p_idx, p_pts, p_ops = [], [], []
+            elif op == "n":
+                clip_idx.update(p_idx)
+                clip_idx.add(i)
+                if p_pts:
+                    xs = [p[0] for p in p_pts]
+                    ys = [p[1] for p in p_pts]
+                    if (max(xs) - min(xs) > 0.8 * page_w
+                            and max(ys) - min(ys) > 0.8 * page_h):
+                        window_clip_idx.update(p_idx)
+                        window_clip_idx.add(i)
+                p_idx, p_pts, p_ops = [], [], []
+            elif op == "BT":
+                in_text = True
+                tm = tlm = ident
+                t_shows = []
+            elif op == "ET":
+                if t_shows:
+                    pts = [s[2] for s in t_shows]
+                    xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+                    units.append({
+                        "kind": "text",
+                        "drop_idx": [s[0] for s in t_shows],
+                        "pts": pts,
+                        "bbox": (min(xs), max(xs), min(ys), max(ys)),
+                        "key": ("text", tuple(s[1] for s in t_shows),
+                                _rgb(fill)),
+                    })
+                in_text = False
+                t_shows = []
+            elif in_text and op == "Tm":
+                a, b, c, d, e, f = (float(v) for v in operands)
+                tm = tlm = (a, b, c, d, e, f)
+            elif in_text and op in ("Td", "TD"):
+                tx, ty2 = float(operands[0]), float(operands[1])
+                if op == "TD":
+                    tleading = -ty2
+                tlm = _mul((1, 0, 0, 1, tx, ty2), tlm)
+                tm = tlm
+            elif in_text and op == "TL":
+                tleading = float(operands[0])
+            elif in_text and op == "T*":
+                tlm = _mul((1, 0, 0, 1, 0, -tleading), tlm)
+                tm = tlm
+            elif in_text and op in ("Tj", "TJ", "'", '"'):
+                if op in ("'", '"'):
+                    tlm = _mul((1, 0, 0, 1, 0, -tleading), tlm)
+                    tm = tlm
+                if op == "TJ":
+                    txt = b"".join(_sbytes(v) for v in operands[0]
+                                   if not isinstance(v, (int, float)))
+                elif op == '"':
+                    txt = _sbytes(operands[2])
+                else:
+                    txt = _sbytes(operands[0])
+                gp = _gpt(_mul(tm, ctm), 0.0, 0.0)
+                t_shows.append((i, txt, gp))
+            elif op == "Do":
+                corners = [_gpt(ctm, cx, cy)
+                           for cx, cy in ((0, 0), (1, 0), (0, 1), (1, 1))]
+                xs = [p[0] for p in corners]; ys = [p[1] for p in corners]
+                units.append({
+                    "kind": "xobj",
+                    "drop_idx": [i],
+                    "pts": corners,
+                    "bbox": (min(xs), max(xs), min(ys), max(ys)),
+                    "key": ("xobj", _xobj_key(operands[0])),
+                })
+        except (TypeError, ValueError, IndexError, KeyError):
+            continue
+    return units, clip_idx, window_clip_idx
+
+
+def _units_equal(u, v, tol=0.3):
+    if u["key"] != v["key"] or len(u["pts"]) != len(v["pts"]):
+        return False
+    return all(abs(p[0] - q[0]) <= tol and abs(p[1] - q[1]) <= tol
+               for p, q in zip(u["pts"], v["pts"]))
+
+
+def _build_page_content(cs, ops, width, band_rect, removed_idx,
+                        pre_blocks, post_blocks, clip_idx, window_clip_idx):
+    """Assemble a page's final content: survivor blocks that belong under
+    the page's band (decoration), then the band-clipped stream minus
+    removed/survivor units, then survivor blocks that belong on top
+    (content). band_rect / block rects are (y_bu, height).
+
+    Survivor blocks keep shaped clipping paths but drop the page-window
+    clip, so a survivor whose geometry spans several pages can draw across
+    its whole union rect instead of being cut at its page's box.
+    """
+
+    def _clip_prefix(rect):
+        return "q -5 {:.2f} {:.2f} {:.2f} re W n\n".format(
+            rect[0], width + 10, rect[1]).encode("latin1")
+
+    def _survivor_block(rect, keep_idx):
+        block = []
+        for i, (operands, operator) in enumerate(ops):
+            op = _op_name(operator)
+            if i in window_clip_idx and i not in keep_idx:
+                continue
+            if i in keep_idx or i in clip_idx or op not in _MARKING_OPS:
+                block.append((operands, operator))
+            elif op in ("'", '"'):
+                block.append(([], b"T*"))  # preserve the line advance
+        cs.operations = block
+        return _clip_prefix(rect) + cs.get_data() + b"\nQ\n"
+
+    out = b""
+    for rect, keep_idx in pre_blocks:
+        out += _survivor_block(rect, keep_idx)
+
+    main_ops = [(o, opr) for i, (o, opr) in enumerate(ops)
+                if i not in removed_idx]
+    cs.operations = main_ops
+    out += _clip_prefix(band_rect) + cs.get_data() + b"\nQ"
+
+    for rect, keep_idx in post_blocks:
+        out += b"\n" + _survivor_block(rect, keep_idx)
+    return out
+
+
+def merge_onenote_pages(raw_pdf, merged_pdf, ruler_color=None, prints=None):
+    """Merge each OneNote page's run of published PDF pages into one tall
+    page, using the ruler office.mark_onenote_images injected for grouping
+    and vertical alignment.
+
+    For every group: the ruler line pitch is fit by least squares over all
+    line numbers, each PDF page's canvas offset is chained through the
+    duplicated line numbers at the breaks, pages are clipped to bands that
+    meet at the midpoint of the overlap, objects OneNote duplicated across
+    a break are drawn once (content survivors keep the last copy, above
+    earlier pages' rule lines; rule-line survivors keep the first copy,
+    below everything), the '... Page N' footers fall outside every band and
+    their text ops are dropped, the ruler text is stripped by its color,
+    trailing whitespace is trimmed to the deepest real content (but never
+    below one natural page height), and the clipped pages are stacked onto
+    one page of the combined height. PDF pages with no ruler marks pass
+    through unchanged.
+    """
+    from pypdf import Transformation
+    from pypdf.generic import RectangleObject, StreamObject
+    from office import RULER_FALLBACK_PITCH
+
+    def _say(msg):
+        if prints:
+            prints(msg)
+
+    ruler_rgb = _hex_to_rgb01(ruler_color) if ruler_color else None
+    reader = PdfReader(raw_pdf)
+    infos = [_scan_ruler_marks(p) for p in reader.pages]
+
+    # Group consecutive PDF pages by the OneNote page their marks encode
+    groups = []  # (onenote_idx or None, [pdf page indices])
+    for i, (marks, _footer, _tb) in enumerate(infos):
+        gid = _median([m[0] for m in marks]) if marks else None
+        if gid is not None and groups and groups[-1][0] == gid:
+            groups[-1][1].append(i)
+        else:
+            groups.append((gid, [i]))
+
+    writer = PdfWriter()
+    for gid, idxs in groups:
+        if gid is None:
+            _say("  merge: page {} has no ruler marks; kept as-is".format(idxs[0]))
+            writer.add_page(reader.pages[idxs[0]])
+            continue
+
+        pages = [reader.pages[i] for i in idxs]
+        markss = [sorted((m[1], m[2]) for m in infos[i][0]) for i in idxs]
+        footers = [infos[i][1] for i in idxs]
+        text_bottoms = [infos[i][2] for i in idxs]
+
+        # Line pitch: within a page the ruler lines are laid out perfectly
+        # uniformly, so pool a least-squares slope over every page's marks.
+        # (A median of per-line deltas is quantized by coordinate precision;
+        # its error, multiplied by hundreds of lines, visibly misaligns the
+        # seams.)
+        num = den = 0.0
+        for marks in markss:
+            if len(marks) < 2:
+                continue
+            kbar = sum(k for k, _y in marks) / len(marks)
+            ybar = sum(y for _k, y in marks) / len(marks)
+            num += sum((k - kbar) * (y - ybar) for k, y in marks)
+            den += sum((k - kbar) ** 2 for k, _y in marks)
+        pitch = num / den if den else RULER_FALLBACK_PITCH
+
+        # Global (canvas) offset of each PDF page. The first page is
+        # anchored to global(k) = k*pitch; each later page is chained to
+        # its predecessor through the ruler lines OneNote duplicated across
+        # the break, which makes duplicated content coincide exactly. When
+        # a pair shares no line, the chain steps by pitch over the gap.
+        shifts = [_median([k * pitch - y for (k, y) in markss[0]])]
+        for a in range(1, len(pages)):
+            prev = dict(markss[a - 1])
+            dups = [kp for kp, _y in markss[a] if kp in prev]
+            if dups:
+                delta = _median([prev[k] - dict(markss[a])[k] for k in dups])
+            else:
+                kp, yp = markss[a - 1][-1]
+                kq, yq = markss[a][0]
+                delta = (yp - yq) + pitch * (kq - kp)
+            shifts.append(shifts[a - 1] + delta)
+
+        # Verification: duplicated lines must land at identical global
+        # positions, and all lines must sit on one straight line in k.
+        dup_err = 0.0
+        for a in range(1, len(pages)):
+            prev = dict(markss[a - 1])
+            for k, y in markss[a]:
+                if k in prev:
+                    dup_err = max(dup_err, abs(
+                        (shifts[a - 1] + prev[k]) - (shifts[a] + y)))
+        allg = [(k, shifts[a] + y)
+                for a in range(len(pages)) for k, y in markss[a]]
+        cbar = sum(g - k * pitch for k, g in allg) / len(allg)
+        lin_err = max(abs(g - k * pitch - cbar) for k, g in allg)
+        _say("  merge: alignment check: max duplicate mismatch {:.3f}pt, "
+             "max linearity residual {:.3f}pt".format(dup_err, lin_err))
+
+        # Band boundaries at the midpoint of the region shared/adjacent
+        # between consecutive pages
+        heights = [float(p.mediabox.height) for p in pages]
+        bounds = [shifts[0]]  # global top of the first page
+        for a in range(len(pages) - 1):
+            bottom_a = markss[a][-1][0] * pitch
+            top_b = markss[a + 1][0][0] * pitch
+            bounds.append((bottom_a + top_b) / 2.0)
+
+        # End of the merged page: just above the last footer, but trimmed
+        # to the deepest real content so the ruler's overshoot (and
+        # inflated declared extents) don't leave a blank tail.
+        last_foot = footers[-1] if footers[-1] is not None else heights[-1] - 25.0
+        footer_end = shifts[-1] + last_foot - 4.0
+        content_end = 0.0
+        for p in range(len(pages)):
+            depth = max(_page_graphics_bottom(reader, pages[p]),
+                        text_bottoms[p])
+            if depth <= 0:
+                continue  # ruler-only page: no content to preserve
+            foot = footers[p] if footers[p] is not None else heights[p] - 25.0
+            content_end = max(content_end, shifts[p] + min(depth, foot - 4.0))
+        end = min(footer_end, content_end + 8.0) if content_end else footer_end
+        # Never produce a page shorter than a natural page: for sub-page
+        # content, keep the full page (its footer text is stripped anyway).
+        end = max(end, bounds[0] + heights[0])
+        bounds = [min(b, end) for b in bounds] + [end]
+
+        top0 = bounds[0]
+        total_h = max(bounds[-1] - top0, 8.0)
+        width = max(float(p.mediabox.width) for p in pages)
+        if total_h > 14400:
+            _say("  merge: warning: page exceeds Acrobat's 14400pt "
+                 "page-size limit ({:.0f}pt); some viewers may not "
+                 "display it".format(total_h))
+        dest = writer.add_blank_page(width=width, height=total_h)
+        _say("  merge: OneNote page {}: {} PDF page(s) -> {:.0f}pt tall "
+             "(pitch {:.2f})".format(gid, len(pages), total_h, pitch))
+
+        # Parse each page's stream once; strip the ruler; segment into units
+        css, opss, unitss, clip_idxs, wclip_idxs = [], [], [], [], []
+        for p in range(len(pages)):
+            cs = ContentStream(pages[p].get_contents(), reader)
+            ops = list(cs.operations)
+            if ruler_rgb is not None:
+                ops = _filter_ruler_ops(ops, ruler_rgb)
+            un, ci, wci = _segment_units(ops, heights[p], shifts[p], pages[p])
+            css.append(cs); opss.append(ops)
+            unitss.append(un); clip_idxs.append(ci); wclip_idxs.append(wci)
+
+        # Objects OneNote duplicated across a break render identically at
+        # the same global position on both pages. Chain the copies (3+
+        # pages if needed) and keep one.
+        removed = [set() for _ in pages]
+        chains = {}       # id(unit) -> chain record
+        chain_recs = []
+        n_dup = 0
+        for a in range(1, len(pages)):
+            ov_top = shifts[a]                       # global top of page a
+            ov_bot = shifts[a - 1] + heights[a - 1]  # global bottom of a-1
+            if ov_bot <= ov_top:
+                continue
+            in_window = lambda u: (u["bbox"][3] >= ov_top - 0.5
+                                   and u["bbox"][2] <= ov_bot + 0.5)
+            cand_prev = [u for u in unitss[a - 1] if in_window(u)]
+            cand_cur = [u for u in unitss[a] if in_window(u)]
+            used = set()
+            for u in cand_prev:
+                for v in cand_cur:
+                    if id(v) in used or not _units_equal(u, v):
+                        continue
+                    used.add(id(v))
+                    rec = chains.get(id(u))
+                    if rec is None:
+                        rec = {"members": [(a - 1, u), (a, v)]}
+                        chains[id(u)] = rec
+                        chain_recs.append(rec)
+                    else:
+                        rec["members"].append((a, v))
+                    chains[id(v)] = rec
+                    n_dup += 1
+                    break
+
+        # One copy survives per chain. Z-order across pages matters: each
+        # page's band is drawn after all earlier pages', so page Q's rule
+        # lines would paint OVER a survivor kept with page P. Therefore
+        # content survivors keep the LAST copy and are drawn after their
+        # page's band (above every earlier page's decoration), while
+        # decoration survivors (full-width rule lines) keep the FIRST copy
+        # and are drawn before their page's band (below everything).
+        pre_blocks = [{} for _ in pages]   # (first,last) -> keep idx set
+        post_blocks = [{} for _ in pages]
+        for rec in chain_recs:
+            mem = rec["members"]
+            for p, u in mem:
+                removed[p].update(u["drop_idx"])
+            u0 = mem[0][1]
+            deco = (u0["kind"] == "path"
+                    and (u0["bbox"][1] - u0["bbox"][0]) > 0.85 * width
+                    and (u0["bbox"][3] - u0["bbox"][2]) < 3.0)
+            span = (mem[0][0], mem[-1][0])
+            kp, ku = mem[0] if deco else mem[-1]
+            tgt = pre_blocks if deco else post_blocks
+            tgt[kp].setdefault(span, set()).update(ku["drop_idx"])
+        if n_dup:
+            _say("  merge: deduplicated {} object(s) straddling "
+                 "seams".format(n_dup))
+
+        # The '... Page N' footers are clipped out of every band, but their
+        # text ops would remain in the searchable text layer; drop them too.
+        for p in range(len(pages)):
+            strip = shifts[p] + heights[p] - 12.0
+            for u in unitss[p]:
+                if u["kind"] == "text" and u["bbox"][2] > strip:
+                    removed[p].update(u["drop_idx"])
+
+        for p, page, shift, h in zip(range(len(pages)), pages, shifts, heights):
+            g0, g1 = bounds[p], bounds[p + 1]
+            if g1 <= g0 and not pre_blocks[p] and not post_blocks[p]:
+                continue
+            # band in local bottom-up coords
+            y_bu = h - (g1 - shift)
+
+            def _mk_blocks(spans):
+                blocks = []
+                for (fst, lst), keep in spans.items():
+                    ug0, ug1 = bounds[fst], bounds[lst + 1]
+                    blocks.append(((h - (ug1 - shift), max(ug1 - ug0, 0.0)),
+                                   keep))
+                return blocks
+
+            data = _build_page_content(css[p], opss[p], width,
+                                       (y_bu, max(g1 - g0, 0.0)),
+                                       removed[p], _mk_blocks(pre_blocks[p]),
+                                       _mk_blocks(post_blocks[p]),
+                                       clip_idxs[p], wclip_idxs[p])
+            stream = StreamObject()
+            stream._data = data
+            page.replace_contents(stream)
+            # merge_transformed_page clips to the source page's box; widen
+            # it so survivors whose geometry extends beyond their page
+            # (straddling objects) aren't cut -- our own clip rects govern.
+            big = RectangleObject((-10.0, -total_h - 10.0,
+                                   width + 10.0, h + total_h + 10.0))
+            page.mediabox = big
+            page.cropbox = big
+            ty = total_h - (shift - top0) - h
+            dest.merge_transformed_page(
+                page, Transformation().translate(0, ty))
+
+    with open(merged_pdf, "wb") as fh:
+        writer.write(fh)
+    return merged_pdf

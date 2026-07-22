@@ -2103,3 +2103,644 @@ def get_images_onenote(target_file, outputdir):
         print(f"Writing extracted file to: {target_path}")
         with target_path.open("wb") as outf:
             outf.write(file_data)
+
+# ---------------------------------------------------------------------------
+# OneNote (.one) finalization: page dump, marker injection, and publishing
+# ---------------------------------------------------------------------------
+#
+# The .one analogue of leave_fallback_png_simple + make_pdf_word. All OneNote
+# interaction goes through the supported COM API, driven through PowerShell
+# (no pywin32 dependency). Patching image blobs directly inside the .one
+# revision store does not work: OneNote refuses to load a section whose
+# FileDataStoreObject bytes were modified out-of-band (Publish fails with
+# 0x80042006 even for a single flipped byte), so images are swapped through
+# the page-XML route (GetPageContent piBinaryData -> edit base64 <one:Data>
+# -> UpdatePageContent).
+#
+# The section is opened inside a scratch *notebook* (OpenHierarchy with
+# cftNotebook on a temp folder) rather than standalone, because
+# CloseNotebook cannot close a standalone section (0x80042015) and every
+# run would otherwise leave a dead entry in OneNote's "Open Sections" list.
+
+import base64
+import glob
+import hashlib
+import subprocess
+import tempfile
+
+ONENOTE_NS = "http://schemas.microsoft.com/office/onenote/2013/onenote"
+
+# Raster formats that pdf._make_raster_marker_pdf can re-embed losslessly
+# (JPEG passthrough / PNG native / PIL fallback).
+ONENOTE_RASTER_EXTS = {".png", ".jpg", ".gif", ".tif", ".bmp"}
+# Metafile formats, replaced via a Word COM -> PDF conversion (OneNote's own
+# EMF rendering is poor, and Inkscape's EMF importer ignores EMF+ records).
+ONENOTE_METAFILE_EXTS = {".emf", ".wmf"}
+ONENOTE_REPLACEABLE_EXTS = ONENOTE_RASTER_EXTS | ONENOTE_METAFILE_EXTS
+
+# ---- page-merge ruler ----
+# OneNote's Publish splits each (infinitely tall) OneNote page into multiple
+# PDF pages. To let pdf.merge_onenote_pages recombine them into one tall
+# page per OneNote page, a "ruler" of numbered text lines is injected at the
+# left margin of every page before publishing: line k of page p reads
+# RULER_TEXT_FMT % (p, k). The published PDF is scanned for those strings;
+# the page index groups the PDF pages, and the line numbers give each PDF
+# page's vertical offset in the original canvas (line numbers OneNote
+# duplicates at a break reveal the overlap exactly). The text is set in a
+# color unused anywhere else in the document, chosen nearly white; the merge
+# strips it from the output by that color.
+RULER_FONT = "Calibri"
+RULER_FONT_PT = 10.0
+# OneNote lays these 10pt lines out at ~6.5-7.1pt pitch; the count uses an
+# even lower estimate so the ruler always reaches the bottom of the content
+# (a too-long ruler is only cosmetic and gets trimmed; a too-short one
+# breaks page grouping). The declared item extents the count is based on
+# can themselves be inflated (ink bounding boxes use a different scale).
+RULER_NLINES_PITCH = 6.0
+RULER_FALLBACK_PITCH = 7.0
+RULER_TEXT_FMT = "sipg{:02d}l{:04d}"
+RULER_RE = re.compile(r"sipg(\d\d)l(\d{4})")
+ONENOTE_FOOTER_RE = re.compile(r"[Pp]age \d+$")
+
+
+def _onenote_marker_png(rgb):
+    """Minimal 9x9 solid-color RGB PNG (same as the docx/pptx markers)."""
+    w, h = 9, 9
+    r, g, b = rgb
+
+    def _chunk(typ, data=b""):
+        crc = binascii.crc32(typ)
+        crc = binascii.crc32(data, crc) & 0xFFFFFFFF
+        return struct.pack(">I", len(data)) + typ + data + struct.pack(">I", crc)
+
+    sig = b"\x89PNG\r\n\x1a\n"
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+    one_row = bytes([0]) + bytes((r, g, b)) * w
+    comp = zlib.compress(one_row * h, level=9)
+    return sig + _chunk(b"IHDR", ihdr) + _chunk(b"IDAT", comp) + _chunk(b"IEND", b"")
+
+
+def _alloc_marker_color(n):
+    """Sequential marker color n (1-based) -> ('rrggbb', (r, g, b))."""
+    return ("{:06x}".format(n),
+            ((n >> 16) & 0xFF, (n >> 8) & 0xFF, n & 0xFF))
+
+
+def _detect_media_extension(file_data):
+    if file_data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if file_data.startswith(b"\xFF\xD8\xFF"):
+        return ".jpg"
+    if file_data.startswith(b"GIF87a") or file_data.startswith(b"GIF89a"):
+        return ".gif"
+    if file_data.startswith(b"II*\x00") or file_data.startswith(b"MM\x00*"):
+        return ".tif"
+    if file_data.startswith(b"BM"):
+        return ".bmp"
+    if len(file_data) >= 88:
+        (rt,) = struct.unpack("<I", file_data[0:4])
+        (sg,) = struct.unpack("<I", file_data[40:44])
+        if rt == 0x00000001 and sg == 0x464D4520:
+            return ".emf"
+    if len(file_data) >= 4:
+        if file_data.startswith(b"\xD7\xCD\xC6\x9A"):
+            return ".wmf"
+        if len(file_data) >= 18:
+            try:
+                type_, hsz, ver = struct.unpack("<HHH", file_data[0:6])
+                if type_ in (1, 2) and hsz == 9 and ver in (0x0300, 0x0100):
+                    return ".wmf"
+            except struct.error:
+                pass
+    return ".bin"
+
+
+# Phase A: create/open the scratch notebook, copy the section in, wait for
+# its pages to load, and dump each page's XML (with inline base64 image
+# data) to PagesDir. The notebook is left open for the publish phase.
+# Every GetHierarchy call is guarded by a non-empty ID check: with an empty
+# ID, GetHierarchy silently returns the user's ENTIRE hierarchy, which must
+# never be operated on.
+PS_ONENOTE_DUMP = r"""
+param(
+    [Parameter(Mandatory=$true)][string]$NotebookDir,
+    [Parameter(Mandatory=$true)][string]$SectionSource,
+    [Parameter(Mandatory=$true)][string]$PagesDir
+)
+$nbdir = [System.IO.Path]::GetFullPath($NotebookDir)
+$src = [System.IO.Path]::GetFullPath($SectionSource)
+if (-not (Test-Path -LiteralPath $PagesDir)) {
+    New-Item -ItemType Directory -Force $PagesDir | Out-Null
+}
+if (-not (Test-Path -LiteralPath $nbdir)) {
+    New-Item -ItemType Directory -Force $nbdir | Out-Null
+}
+try {
+    $on = New-Object -ComObject OneNote.Application
+} catch {
+    Write-Error "OneNote COM automation is unavailable: $_"
+    exit 3
+}
+
+$nbID = ""
+$on.OpenHierarchy($nbdir, "", [ref]$nbID, 1)   # cftNotebook = 1
+if ([string]::IsNullOrEmpty($nbID)) {
+    Write-Error "Failed to open scratch notebook."
+    exit 2
+}
+Write-Host "Notebook ID: $nbID"
+
+# Drop the section into the (empty) notebook folder and let OneNote find it
+Copy-Item -LiteralPath $src -Destination (Join-Path $nbdir ([System.IO.Path]::GetFileName($src))) -Force
+try { $on.SyncHierarchy($nbID) } catch {}
+
+# Page loading is asynchronous AND incremental: the hierarchy can report a
+# partial page list while the section is still loading. Wait until the
+# section stops saying areAllPagesAvailable="false" (the attribute is
+# omitted once everything is loaded) plus one stable confirmation, with a
+# long stability fallback in case the flag sticks.
+$pages = $null
+$h = $null
+$ns = $null
+$lastCount = -1
+$stable = 0
+for ($try = 0; $try -lt 300; $try++) {
+    $xml = ""
+    $on.GetHierarchy($nbID, 4, [ref]$xml)   # hsPages = 4
+    [xml]$h = $xml
+    $ns = New-Object Xml.XmlNamespaceManager($h.NameTable)
+    $ns.AddNamespace("one", $h.DocumentElement.NamespaceURI)
+    $pages = $h.SelectNodes("//one:Page", $ns)
+    $sec = $h.SelectSingleNode("//one:Section", $ns)
+    $allAvail = ($sec -ne $null) -and ($sec.GetAttribute("areAllPagesAvailable") -ne "false")
+    if ($pages.Count -gt 0) {
+        if ($pages.Count -eq $lastCount) { $stable++ } else { $stable = 0 }
+        if (($allAvail -and $stable -ge 1) -or ($stable -ge 15)) {
+            if (-not $allAvail) {
+                Write-Host "areAllPagesAvailable stayed false; page count stable at $($pages.Count)"
+            }
+            break
+        }
+    }
+    $lastCount = $pages.Count
+    try { $on.SyncHierarchy($nbID) } catch {}
+    Start-Sleep -Seconds 2
+}
+if ($pages.Count -eq 0) {
+    Write-Error "Section reported no pages (failed to load)."
+    try { $on.CloseNotebook($nbID) } catch {}
+    exit 2
+}
+Write-Host "Pages: $($pages.Count)"
+
+$i = 0
+foreach ($pg in $pages) {
+    $pxml = ""
+    $on.GetPageContent($pg.ID, [ref]$pxml, 1)   # piBinaryData = 1
+    $path = Join-Path $PagesDir ("page_{0:d3}.xml" -f $i)
+    [System.IO.File]::WriteAllText($path, $pxml,
+        (New-Object System.Text.UTF8Encoding $false))
+    Write-Host ("page {0}: '{1}' ({2} chars)" -f $i, $pg.name, $pxml.Length)
+    $i++
+}
+exit 0
+"""
+
+# Phase B: push edited pages back, publish the section to PDF, and close
+# the scratch notebook. Publish is retried because a freshly-updated
+# section may briefly report 0x80042006 until its content synchronizes.
+PS_ONENOTE_PUBLISH = r"""
+param(
+    [Parameter(Mandatory=$true)][string]$NotebookDir,
+    [Parameter(Mandatory=$true)][string]$PagesDir,
+    [Parameter(Mandatory=$true)][string]$OutputPath
+)
+$nbdir = [System.IO.Path]::GetFullPath($NotebookDir)
+$out = [System.IO.Path]::GetFullPath($OutputPath)
+$pfPDF = 3
+$on = New-Object -ComObject OneNote.Application
+
+$nbID = ""
+$on.OpenHierarchy($nbdir, "", [ref]$nbID, 1)   # cftNotebook = 1
+if ([string]::IsNullOrEmpty($nbID)) {
+    Write-Error "Failed to open scratch notebook."
+    exit 2
+}
+
+$exitcode = 0
+try {
+    $failed = 0
+    foreach ($f in Get-ChildItem -LiteralPath $PagesDir -Filter "*_marked.xml") {
+        $xml = [System.IO.File]::ReadAllText($f.FullName)
+        try {
+            $on.UpdatePageContent($xml, [DateTime]::MinValue)
+            Write-Host "Updated page from $($f.Name)"
+        } catch {
+            Write-Error "UpdatePageContent failed for $($f.Name): $($_.Exception.InnerException.Message)"
+            $failed++
+        }
+    }
+    if ($failed -gt 0) {
+        $exitcode = 2
+    } else {
+        try { $on.SyncHierarchy($nbID) } catch {}
+
+        # The scratch notebook contains exactly the one section we copied in
+        $xml = ""
+        $on.GetHierarchy($nbID, 1, [ref]$xml)   # hsChildren = 1
+        [xml]$h = $xml
+        $ns = New-Object Xml.XmlNamespaceManager($h.NameTable)
+        $ns.AddNamespace("one", $h.DocumentElement.NamespaceURI)
+        $sec = $h.SelectSingleNode("//one:Section", $ns)
+        if ($sec -eq $null) {
+            Write-Error "Scratch notebook has no section."
+            $exitcode = 2
+        } else {
+            if (Test-Path -LiteralPath $out) {
+                Remove-Item -LiteralPath $out -Force
+            }
+            $published = $false
+            for ($i = 1; $i -le 10; $i++) {
+                try {
+                    $on.Publish($sec.ID, $out, $pfPDF, "")
+                    $published = $true
+                    break
+                } catch {
+                    Write-Host "Publish attempt ${i} failed: $($_.Exception.InnerException.Message)"
+                    Start-Sleep -Seconds 3
+                }
+            }
+            if ($published -and (Test-Path -LiteralPath $out)) {
+                Write-Host "SUCCESS: PDF written to $out"
+            } else {
+                Write-Error "Publish failed."
+                $exitcode = 2
+            }
+        }
+    }
+} finally {
+    try { $on.CloseNotebook($nbID); Write-Host "Notebook closed" }
+    catch { Write-Host "CloseNotebook failed: $($_.Exception.InnerException.Message)" }
+}
+exit $exitcode
+"""
+
+# Best-effort close for cleanup paths where the publish phase never ran.
+PS_ONENOTE_CLOSE = r"""
+param([Parameter(Mandatory=$true)][string]$NotebookDir)
+$nbdir = [System.IO.Path]::GetFullPath($NotebookDir)
+try {
+    $on = New-Object -ComObject OneNote.Application
+    $nbID = ""
+    $on.OpenHierarchy($nbdir, "", [ref]$nbID, 1)
+    if (-not [string]::IsNullOrEmpty($nbID)) {
+        try { $on.CloseNotebook($nbID) } catch {}
+    }
+} catch {}
+exit 0
+"""
+
+# Convert metafiles (EMF/WMF) to single-image PDFs with Word COM. One Word
+# session converts every file in the list; each line of ListFile is
+# "source|destination". Word is the native renderer for Office metafiles
+# (including the EMF+ records Inkscape ignores), and its PDF export keeps
+# them vector. The page is sized to the picture's natural dimensions with
+# zero margins so the PDF page IS the image; a stray trailing-paragraph
+# overflow page is harmless because the replacement engine only reads
+# page 1.
+PS_ONENOTE_WORD_METAFILES = r"""
+param([Parameter(Mandatory=$true)][string]$ListFile)
+try {
+    $word = New-Object -ComObject Word.Application
+} catch {
+    Write-Error "Word COM automation is unavailable: $_"
+    exit 3
+}
+$word.Visible = $false
+$word.DisplayAlerts = 0   # wdAlertsNone (zero margins trigger a warning)
+$maxdim = 1584.0          # Word page-size ceiling, points (22 in)
+try {
+    foreach ($line in Get-Content -LiteralPath $ListFile) {
+        if (-not $line.Trim()) { continue }
+        $parts = $line -split '\|'
+        $src = $parts[0]; $dst = $parts[1]
+        $doc = $null
+        try {
+            $doc = $word.Documents.Add()
+            $ps = $doc.PageSetup
+            $ps.TopMargin = 0; $ps.BottomMargin = 0
+            $ps.LeftMargin = 0; $ps.RightMargin = 0
+            $rng = $doc.Range(0, 0)
+            $rng.ParagraphFormat.SpaceBefore = 0
+            $rng.ParagraphFormat.SpaceAfter = 0
+            $shape = $doc.InlineShapes.AddPicture($src, $false, $true, $rng)
+            $shape.LockAspectRatio = 0
+            $w = [double]$shape.Width; $h = [double]$shape.Height
+            if ($w -le 0 -or $h -le 0) { throw "picture has no size" }
+            $scale = [Math]::Min(1.0, [Math]::Min($maxdim / $w, $maxdim / $h))
+            $w = $w * $scale; $h = $h * $scale
+            $ps.PageWidth = $w; $ps.PageHeight = $h
+            $shape.Width = $w; $shape.Height = $h
+            if (Test-Path -LiteralPath $dst) {
+                Remove-Item -LiteralPath $dst -Force
+            }
+            $doc.ExportAsFixedFormat($dst, 17)   # wdExportFormatPDF
+            Write-Host "converted: $src"
+        } catch {
+            Write-Host "FAILED: ${src}: $($_.Exception.Message)"
+        } finally {
+            if ($doc -ne $null) { try { $doc.Close(0) } catch {} }
+        }
+    }
+} finally {
+    try { $word.Quit() } catch {}
+}
+exit 0
+"""
+
+
+# PowerShell params that name a filesystem path. The PS scripts resolve
+# these with [System.IO.Path]::GetFullPath, which anchors a relative path to
+# the PowerShell process's cwd (inherited, unset) -- not to the notebook or
+# script. Normalize to absolute here so a relative caller can never land the
+# scratch notebook / output PDF in the wrong directory (mirrors the
+# Path.resolve() guard make_pdf_office applies before its own GetFullPath).
+_ONENOTE_PATH_PARAMS = {"NotebookDir", "SectionSource", "PagesDir",
+                        "OutputPath", "ListFile"}
+
+
+def _run_onenote_powershell(script, args, timeout=1800, prints=None):
+    """Run an inline PowerShell script with named -Key Value arguments,
+    serialized through pdf.sema_office (Office COM is single-instance)."""
+    from pdf import sema_office  # lazy: office.py must not import pdf at load
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".ps1", delete=False) as f:
+        f.write(script)
+        ps1_path = f.name
+    cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+           "-File", ps1_path]
+    for key, val in args.items():
+        if key in _ONENOTE_PATH_PARAMS:
+            val = os.path.abspath(val)
+        cmd += ["-" + key, val]
+    try:
+        with sema_office:
+            result = subprocess.run(
+                cmd,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+    finally:
+        os.unlink(ps1_path)
+    if prints and result.stdout:
+        for ln in result.stdout.splitlines():
+            prints("  onenote: " + ln)
+    return result
+
+
+def dump_onenote_pages(notebook_dir, section_source, pages_dir, prints=None):
+    """Open section_source inside the scratch notebook at notebook_dir and
+    dump each page's XML into pages_dir.
+
+    Leaves the notebook open in OneNote (the publish step closes it).
+    Returns the list of page XML paths.
+    """
+    result = _run_onenote_powershell(
+        PS_ONENOTE_DUMP,
+        {"NotebookDir": notebook_dir, "SectionSource": section_source,
+         "PagesDir": pages_dir},
+        prints=prints)
+    if result.returncode != 0:
+        raise RuntimeError(
+            "OneNote page dump failed (rc={}).\nstdout:\n{}\nstderr:\n{}".format(
+                result.returncode, result.stdout, result.stderr))
+    pages = sorted(glob.glob(os.path.join(pages_dir, "page_[0-9]*.xml")))
+    if not pages:
+        raise RuntimeError("OneNote page dump produced no pages")
+    return pages
+
+
+def _pick_ruler_color(page_files):
+    """A near-white color not used anywhere in the dumped page XMLs."""
+    used = set()
+    for page_file in page_files:
+        with open(page_file, "r", encoding="utf-8", errors="replace") as fh:
+            used.update(c.lower() for c in re.findall(r"#([0-9a-fA-F]{6})", fh.read()))
+    for r in range(0xFD, 0xF0, -1):
+        for g in range(0xFE, 0xF0, -1):
+            cand = "{:02x}fe{:02x}".format(r, g)
+            if cand not in used:
+                return "#" + cand.upper()
+    return "#FDFEFC"  # unreachable in practice
+
+
+def _add_page_ruler(root, page_idx, color):
+    """Append the merge ruler to a page: an absolutely-positioned outline of
+    numbered single-line paragraphs spanning from the top of the content to
+    the bottom of the bottommost bounding box. Returns the line count."""
+    tops, bottoms = [], []
+    for child in root:
+        pos = child.find("{{{}}}Position".format(ONENOTE_NS))
+        size = child.find("{{{}}}Size".format(ONENOTE_NS))
+        if pos is None or size is None:
+            continue
+        try:
+            y = float(pos.get("y"))
+            hgt = float(size.get("height"))
+        except (TypeError, ValueError):
+            continue
+        tops.append(y)
+        bottoms.append(y + hgt)
+
+    y0 = min(tops) if tops else 36.0
+    ybot = max(bottoms) if bottoms else y0
+    nlines = max(3, min(9999, int((ybot - y0) / RULER_NLINES_PITCH) + 3))
+
+    outline = ET.SubElement(root, "{{{}}}Outline".format(ONENOTE_NS))
+    pos = ET.SubElement(outline, "{{{}}}Position".format(ONENOTE_NS))
+    pos.set("x", "36.0")
+    pos.set("y", "{:.2f}".format(y0))
+    size = ET.SubElement(outline, "{{{}}}Size".format(ONENOTE_NS))
+    size.set("width", "60.0")
+    size.set("height", "{:.2f}".format(max(ybot - y0, RULER_NLINES_PITCH)))
+    children = ET.SubElement(outline, "{{{}}}OEChildren".format(ONENOTE_NS))
+    style = "font-family:{};font-size:{:.1f}pt;color:{}".format(
+        RULER_FONT, RULER_FONT_PT, color)
+    for i in range(1, nlines + 1):
+        oe = ET.SubElement(children, "{{{}}}OE".format(ONENOTE_NS))
+        oe.set("style", style)
+        oe.set("spaceBefore", "0")
+        oe.set("spaceAfter", "0")
+        t = ET.SubElement(oe, "{{{}}}T".format(ONENOTE_NS))
+        t.text = ET.CDATA(RULER_TEXT_FMT.format(page_idx, i))
+    return nlines
+
+
+def mark_onenote_images(page_files, media_dir, add_rulers=False, prints=None):
+    """Replace every raster/metafile image in the dumped page XMLs with a
+    9x9 solid-color marker PNG.
+
+    Original image bytes are written to media_dir; duplicate images (same
+    bytes) share one marker color. Pages containing at least one replacement
+    are written next to the originals as *_marked.xml (the publish phase
+    only pushes those). With add_rulers, every page also gets the page-merge
+    ruler injected and is always written out as *_marked.xml.
+
+    Returns:
+        image_color_map : 'rrggbb' -> path of the saved original image
+        color_locations : 'rrggbb' -> list of (marked_xml_path, objectID),
+                          used to revert markers whose replacement content
+                          cannot be produced (e.g. a metafile Word fails on)
+        ruler_color     : the '#RRGGBB' used for the merge ruler (None when
+                          add_rulers is off); pdf.merge_onenote_pages strips
+                          text of this color from the published PDF
+    """
+    os.makedirs(media_dir, exist_ok=True)
+    image_color_map = {}
+    color_locations = {}
+    hash_to_color = {}
+    next_color = 1
+    ruler_color = _pick_ruler_color(page_files) if add_rulers else None
+    if add_rulers and prints:
+        prints("  merge-ruler color: {}".format(ruler_color))
+
+    for page_idx, page_file in enumerate(page_files):
+        tree = ET.parse(page_file)
+        root = tree.getroot()
+        marked = os.path.splitext(page_file)[0] + "_marked.xml"
+        n_replaced = 0
+
+        for img in root.iter("{{{}}}Image".format(ONENOTE_NS)):
+            data_el = img.find("{{{}}}Data".format(ONENOTE_NS))
+            if data_el is None or not data_el.text:
+                cb = img.find("{{{}}}CallbackID".format(ONENOTE_NS))
+                if cb is not None and prints:
+                    prints("  {}: image with CallbackID and no inline data; "
+                           "leaving as-is".format(os.path.basename(page_file)))
+                continue
+            try:
+                blob = base64.b64decode(data_el.text)
+            except (ValueError, binascii.Error):
+                continue
+            ext = _detect_media_extension(blob)
+            if ext not in ONENOTE_REPLACEABLE_EXTS:
+                continue
+
+            digest = hashlib.md5(blob).hexdigest()
+            if digest in hash_to_color:
+                color_hex = hash_to_color[digest]
+            else:
+                color_hex, _rgb = _alloc_marker_color(next_color)
+                next_color += 1
+                hash_to_color[digest] = color_hex
+                orig_path = os.path.join(
+                    media_dir, "img_{}{}".format(color_hex, ext))
+                with open(orig_path, "wb") as fh:
+                    fh.write(blob)
+                image_color_map[color_hex] = orig_path
+            n = int(color_hex, 16)
+            rgb = ((n >> 16) & 0xFF, (n >> 8) & 0xFF, n & 0xFF)
+            data_el.text = base64.b64encode(
+                _onenote_marker_png(rgb)).decode("ascii")
+            color_locations.setdefault(color_hex, []).append(
+                (marked, img.get("objectID")))
+            n_replaced += 1
+            if prints:
+                prints("  {}: {} ({}B) -> marker #{}".format(
+                    os.path.basename(page_file), ext, len(blob), color_hex))
+
+        if add_rulers:
+            _add_page_ruler(root, page_idx, ruler_color)
+        if n_replaced or add_rulers:
+            tree.write(marked, xml_declaration=True, encoding="utf-8")
+
+    return image_color_map, color_locations, ruler_color
+
+
+def _revert_onenote_marker(color_hex, orig_path, locations):
+    """Restore the original image data for one marker color in the marked
+    page XMLs (used when a metafile's PDF conversion fails, so the page
+    falls back to OneNote's own rendering instead of a colored square)."""
+    with open(orig_path, "rb") as fh:
+        orig_b64 = base64.b64encode(fh.read()).decode("ascii")
+    for marked_xml, object_id in locations:
+        if not os.path.exists(marked_xml):
+            continue
+        tree = ET.parse(marked_xml)
+        for img in tree.getroot().iter("{{{}}}Image".format(ONENOTE_NS)):
+            if object_id is not None and img.get("objectID") != object_id:
+                continue
+            data_el = img.find("{{{}}}Data".format(ONENOTE_NS))
+            if data_el is not None:
+                data_el.text = orig_b64
+        tree.write(marked_xml, xml_declaration=True, encoding="utf-8")
+
+
+def convert_onenote_metafiles(image_color_map, color_locations,
+                              timeout=1800, prints=None):
+    """Convert every EMF/WMF in image_color_map to a sibling .pdf via Word.
+
+    pdf.replace_color_markers_with_svgs picks up a sibling PDF that is
+    newer than its source automatically (its per-source cache), so nothing
+    else needs to know about the conversion. Colors whose conversion fails
+    are reverted in the marked page XMLs and dropped from the map.
+    """
+    metafiles = {hexcolor: path for hexcolor, path in image_color_map.items()
+                 if os.path.splitext(path)[1].lower() in ONENOTE_METAFILE_EXTS}
+    if not metafiles:
+        return
+
+    if prints:
+        prints("  converting {} metafile(s) to PDF with Word".format(
+            len(metafiles)))
+    listfile = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False)
+    with listfile as f:
+        for path in metafiles.values():
+            # Absolute src|dst so Word's AddPicture / ExportAsFixedFormat
+            # (whose cwd is unset) resolve them correctly.
+            src = os.path.abspath(path)
+            f.write("{}|{}.pdf\n".format(src, os.path.splitext(src)[0]))
+    try:
+        _run_onenote_powershell(PS_ONENOTE_WORD_METAFILES,
+                                {"ListFile": listfile.name},
+                                timeout=timeout, prints=prints)
+    finally:
+        os.unlink(listfile.name)
+
+    for hexcolor, path in metafiles.items():
+        pdf_path = os.path.splitext(path)[0] + ".pdf"
+        if os.path.isfile(pdf_path):
+            continue
+        if prints:
+            prints("  Word could not convert {}; reverting marker #{}".format(
+                os.path.basename(path), hexcolor))
+        _revert_onenote_marker(hexcolor, path, color_locations.get(hexcolor, []))
+        del image_color_map[hexcolor]
+
+
+def publish_onenote_pdf(notebook_dir, pages_dir, output_pdf,
+                        timeout=1800, prints=None):
+    """Push the *_marked.xml pages back into the section, publish the
+    section to PDF, and close the scratch notebook."""
+    result = _run_onenote_powershell(
+        PS_ONENOTE_PUBLISH,
+        {"NotebookDir": notebook_dir, "PagesDir": pages_dir,
+         "OutputPath": output_pdf},
+        timeout=timeout, prints=prints)
+    if result.returncode != 0 or not os.path.isfile(output_pdf):
+        raise RuntimeError(
+            "OneNote update/publish failed (rc={}).\nstdout:\n{}\nstderr:\n{}".format(
+                result.returncode, result.stdout, result.stderr))
+    return output_pdf
+
+
+def close_onenote_notebook(notebook_dir):
+    """Best-effort close of the scratch notebook (cleanup after failures)."""
+    try:
+        _run_onenote_powershell(PS_ONENOTE_CLOSE,
+                                {"NotebookDir": notebook_dir}, timeout=120)
+    except Exception:
+        pass

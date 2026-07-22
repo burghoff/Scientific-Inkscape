@@ -1333,7 +1333,12 @@ class SI_Config:
         return self._dmc
 
     def get_option(self, section, key, default=None):
-        return self.data.get(section, {}).get(key, default)
+        if not self.loaded:
+            self._load()
+        sec = self.data.get(section, {})
+        if not isinstance(sec, dict):
+            return default
+        return sec.get(key, default)
     
     def find_missing_links(self,missing_file):
         '''

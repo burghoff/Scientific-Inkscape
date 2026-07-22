@@ -11,5 +11,8 @@
 
   "_comment_dark_mode_colors": "Optional exact overrides for dark-mode inversion. Keys/values should be SVG color strings (hex #RRGGBB recommended). Alpha is ignored.",
   "_example_dark_mode_colors": {"#000000": "#FFFFFF","#FFFFFF": "#000000"},
-  "dark_mode_colors": {}
+  "dark_mode_colors": {},
+
+  "_comment_onenote": "OneNote (.one) finalization options. single_page: merge the PDF pages OneNote splits each OneNote page into back into one tall page per OneNote page (default true).",
+  "onenote": {"single_page": true}
 }

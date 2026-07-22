@@ -1331,10 +1331,13 @@ class Exporter():
         dh.clean_up_document(svg)  # Clean up
         
     def finalize(self):
+        if self.filein.lower().endswith(".one"):
+            return self.finalize_onenote()
+
         self.tempdir, self.temphead = dh.shared_temp('ae')
         self.tempbase = joinmod(self.tempdir,self.temphead)
         tic = time.time()
-        
+
         base, ext = os.path.splitext(self.filein)
         original = self.tempbase +  f"_original{ext}"
         shutil.copy2(self.filein, original)
@@ -1395,6 +1398,94 @@ class Exporter():
             actual_output = repeat_move(doc_finalized, output_doc)
             if actual_output != output_doc:
                 notes = f"\r(written to {os.path.basename(actual_output)})"
+
+        self.clear_temp()
+        fstr = f"Finalization complete ({str(round(1000 * (time.time()-tic)) / 1000)} s)"+notes
+        self.terminal_message(fstr)
+
+    def finalize_onenote(self):
+        """Finalize a OneNote .one section to a PDF with full-fidelity
+        images: office.py swaps every embedded raster/metafile for a color
+        marker through the OneNote COM API and publishes the section;
+        pdf.py optionally merges the split pages back into one tall page
+        per OneNote page (config onenote/single_page, default on) and swaps
+        the markers for the originals with the same engine as the docx/pptx
+        finalizer."""
+        import office
+        from pdf import merge_onenote_pages, replace_color_markers_with_svgs
+
+        self.tempdir, self.temphead = dh.shared_temp('ae')
+        self.tempbase = joinmod(self.tempdir, self.temphead)
+        tic = time.time()
+        # Route progress only to a real terminal; in the GUI these colon-
+        # containing lines would be mistaken for file-log entries, and the
+        # docx/pptx finalizer is silent there too. Debug forces them on.
+        verbose = (getattr(self, "guitype", None) == "terminal"
+                   or getattr(self, "debug", False))
+        prints = self.prints if (verbose and callable(self.prints)) else None
+
+        # The scratch notebook folder must start out empty; the dump phase
+        # copies the section in after OneNote creates the notebook.
+        notebook_dir = self.tempbase + "_onb"
+        if os.path.exists(notebook_dir):
+            shutil.rmtree(notebook_dir, ignore_errors=True)
+        pages_dir = self.tempbase + "_onepages"
+        media_dir = self.tempbase + "_onemedia"
+
+        base, _ = os.path.splitext(self.outtemplate)
+        output_pdf = f"{base}.pdf"
+        singlepage = bool(dh.si_config.get_option(
+            "onenote", "single_page", True))
+
+        published = False
+        try:
+            page_files = self.check(
+                office.dump_onenote_pages, notebook_dir, self.filein,
+                pages_dir, prints=prints, finalization=True)
+
+            color_map, color_locations, ruler_color = office.mark_onenote_images(
+                page_files, media_dir, add_rulers=singlepage, prints=prints)
+
+            # Metafiles must be converted before publishing so that a
+            # failed conversion can revert its marker in the pages.
+            self.check(office.convert_onenote_metafiles, color_map,
+                       color_locations, prints=prints, finalization=True)
+
+            raw_pdf = self.tempbase + "_oneraw.pdf"
+            self.check(office.publish_onenote_pdf, notebook_dir, pages_dir,
+                       raw_pdf, prints=prints, finalization=True)
+            published = True
+
+            src_pdf = raw_pdf
+            if singlepage:
+                try:
+                    src_pdf = merge_onenote_pages(
+                        raw_pdf, self.tempbase + "_onemerged.pdf",
+                        ruler_color=ruler_color, prints=prints)
+                except Exception as exc:
+                    if prints:
+                        prints("  page merge failed ({}); keeping OneNote's "
+                               "pagination".format(exc))
+                    src_pdf = raw_pdf
+
+            temppdf = self.tempbase + "_onereplaced.pdf"
+            if color_map:
+                color_to_src = {hexcolor: (path, None)
+                                for hexcolor, path in color_map.items()}
+                self.check(replace_color_markers_with_svgs, src_pdf,
+                           color_to_src, temppdf, self, finalization=True)
+            else:
+                shutil.copyfile(src_pdf, temppdf)
+        finally:
+            if not published:
+                office.close_onenote_notebook(notebook_dir)
+
+        actual_output = repeat_move(temppdf, output_pdf)
+        if actual_output is None:
+            raise RuntimeError(f"Conversion of {self.filein} failed.")
+        notes = ''
+        if actual_output != output_pdf:
+            notes = f"\r(written to {os.path.basename(actual_output)})"
 
         self.clear_temp()
         fstr = f"Finalization complete ({str(round(1000 * (time.time()-tic)) / 1000)} s)"+notes

@@ -89,7 +89,13 @@ def is_target_file(file_name):
         or flower.startswith('~$')
     ):
         return False
-    if input_options.finalizermode>1 and  (flower.endswith(".pptx") or flower.endswith(".docx")):
+    if input_options.finalizermode>1 and (flower.endswith(".pptx")
+            or flower.endswith(".docx")):
+        return True
+    # .one can only become a PDF (via OneNote+Word), so it is a target only
+    # for the Microsoft Office PDF mode -- not the embed-only modes (2-4) or
+    # LibreOffice (6, which cannot open .one).
+    if input_options.finalizermode==5 and flower.endswith(".one"):
         return True
     pattern = r"\.(\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.\d{1,6})\.svg$"
     if re.search(pattern, file_name):
@@ -159,6 +165,11 @@ def get_expected_exports(src_path, watchdir, writedir):
         elif fm in (2, 3, 4):
             # Finalized Office doc: "base finalized.ext"
             outputs.add(f"{base} finalized{ext}")
+
+    # OneNote sections: mirror Exporter.finalize_onenote (PDF, mode 5 only)
+    elif lower_ext == ".one":
+        if getattr(input_options, "finalizermode", 1) == 5:
+            outputs.add(base + ".pdf")
 
     return outputs
 
@@ -1027,6 +1038,7 @@ if guitype == 'gtk3.0':
             filter_ppt.add_pattern("*.svg")
             filter_ppt.add_pattern("*.docx")
             filter_ppt.add_pattern("*.pptx")
+            filter_ppt.add_pattern("*.one")
             native.add_filter(filter_ppt)
             response = native.run()
             if response == Gtk.ResponseType.ACCEPT:
@@ -1314,7 +1326,7 @@ elif guitype=='gtk4.0':
                 path = gfile.get_path()
                 if not path:
                     return
-                if path.lower().endswith(".svg") or path.lower().endswith(".docx") or path.lower().endswith(".pptx"):
+                if path.lower().endswith((".svg", ".docx", ".pptx", ".one")):
                     self.ct.selectedfile = path
                     self.ct.es = True
                 else:
