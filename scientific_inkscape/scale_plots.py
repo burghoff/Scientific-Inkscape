@@ -485,8 +485,8 @@ class ScalePlots(inkex.EffectExtension):
             r.cstyle = "fill-opacity:0.5"
             self.svg.append(r)
             dh.global_transform(r, gtr)
-            dh.debug("Largest vertical line: " + lvel)
-            dh.debug("Largest horizontal line: " + lhel)
+            dh.debug("Largest vertical line: " + (lvel.get_id() if lvel is not None else "None"))
+            dh.debug("Largest horizontal line: " + (lhel.get_id() if lhel is not None else "None"))
 
         # Apply transform and compute corrections (if needed)
         for el in pels:

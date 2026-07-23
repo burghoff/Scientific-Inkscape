@@ -270,7 +270,13 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                     warn_non_plot,
                 )
 
-                gbbs = {self.svg.getElementById(elid): geometric_bbox(el, fbb).sbb for elid, fbb in bbs.items()}
+                # Keyed by element (find_plot_area indexes gbbs[el]), and the
+                # geometric bbox must be computed from that same element.
+                gbbs = dict()
+                for elid, fbb in bbs.items():
+                    gel = self.svg.getElementById(elid)
+                    if gel is not None:
+                        gbbs[gel] = geometric_bbox(gel, fbb).sbb
                 for i0, g in enumerate(sel0):
                     pels = [k for k in g if k.get_id() in bbs]  # plot elements list
                     vl, hl, lvel, lhel = find_plot_area(pels, gbbs)
@@ -283,7 +289,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                     bbp = dh.bbox(None)
                     # plot area
                     for el in pels:
-                        if el.get_id() in [lvel, lhel]:
+                        if el in [lvel, lhel]:
                             bbp = bbp.union(gbbs[el])
                     for el in g.descendants2():
                         if el in tels:
