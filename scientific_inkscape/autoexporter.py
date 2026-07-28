@@ -250,21 +250,18 @@ class AutoExporter(inkex.EffectExtension):
             opts.logfile = dh.shared_temp(filename="si_ae_output.txt")
 
 
-            aes = os.path.join(
-                os.path.abspath(tempfile.gettempdir()), "si_ae_settings.p"
-            )
-            with open(aes, "wb") as file:
-                pickle.dump(opts, file)
+            import base64
+            opts_blob = base64.urlsafe_b64encode(pickle.dumps(opts)).decode()
             warnings.simplefilter("ignore", ResourceWarning)
             # prevent warning that process is open
 
             if opts.guitype.startswith("gtk"):
-                AutoExporter._gtk_call(pybin, aepy)
+                AutoExporter._gtk_call(pybin, aepy, opts_blob)
             else:
-                AutoExporter._terminal_call(pybin, aepy, pyloc)
-                
-            # Create a Windows batch launcher 
-            write_autoexporter_bat(aes, aepy, opts.guitype)
+                AutoExporter._terminal_call(pybin, aepy, pyloc, opts_blob)
+
+            # Create a Windows batch launcher
+            write_autoexporter_bat(opts_blob, aepy, opts.guitype)
 
         else:
             if not (self.options.testmode):
@@ -314,17 +311,19 @@ class AutoExporter(inkex.EffectExtension):
     # It detaches from Inkscape, allowing it to continue running after the
     # extension has finished
     @staticmethod
-    def _gtk_call(python_bin, python_script):
-        """Run a Python script using GTK terminal."""
+    def _gtk_call(python_bin, python_script, opts_blob):
+        """Run a Python script using GTK terminal. Settings ride along as a
+        base64 argument."""
         devnull_location = dh.shared_temp(filename="si_ae_output.txt")
         with open(devnull_location, "w") as devnull:
             subprocess.Popen(
-                [python_bin, python_script], stdout=devnull, stderr=devnull
+                [python_bin, python_script, opts_blob], stdout=devnull, stderr=devnull
             )
 
     @staticmethod
-    def _terminal_call(python_bin, python_script, python_wd):
-        """Run a Python script using a terminal."""
+    def _terminal_call(python_bin, python_script, python_wd, opts_blob):
+        """Run a Python script using a terminal. Settings ride along as a
+        base64 argument."""
 
         def escp(x):
             return x.replace(" ", "\\\\ ")
@@ -336,12 +335,14 @@ class AutoExporter(inkex.EffectExtension):
                 + escp(sys.executable)
                 + " "
                 + escp(python_script)
+                + " "
+                + escp(opts_blob)
                 + "\"' >/dev/null"
             )
         elif sys.platform == "win32":
             if "pythonw.exe" in python_bin:
                 python_bin = python_bin.replace("pythonw.exe", "python.exe")
-            subprocess.Popen([python_bin, python_script], shell=False, cwd=python_wd)
+            subprocess.Popen([python_bin, python_script, opts_blob], shell=False, cwd=python_wd)
 
         else:
             if sys.executable[0:4] == "/tmp":
@@ -424,7 +425,8 @@ class AutoExporter(inkex.EffectExtension):
             os.system(
                 linux_terminal_call.replace(
                     "%CMD",
-                    escp(sys.executable) + " " + escp(python_script) + " >/dev/null",
+                    escp(sys.executable) + " " + escp(python_script) + " "
+                    + escp(opts_blob) + " >/dev/null",
                 )
             )
 
@@ -3027,22 +3029,14 @@ def restore_relative(path):
                 return rel
     return path
 
-def write_autoexporter_bat(aes, aepy, guitype, batch_path=None):
+def write_autoexporter_bat(opts_blob, aepy, guitype, batch_path=None):
     """
-    Create or update Autoexporter.bat so it launches autoexporter_script.py
-    with the settings stored in the pickled file at `aes`.
+    Create or update Autoexporter.bat so it launches autoexporter_script.py with
+    the pickled settings (`opts_blob`, a urlsafe-base64 string) passed as a
+    command-line argument.
     """
     if not sys.platform.startswith("win"):
         return
-
-    python_cwd = os.getcwd()
-    pickled_file_path = aes
-
-    with open(pickled_file_path, "rb") as f:
-        pickled_data = f.read()
-
-    import base64
-    pickled_data_base64 = base64.b64encode(pickled_data).decode("utf-8")
 
     if batch_path:
         batch_file_path = os.path.abspath(batch_path)
@@ -3055,19 +3049,41 @@ def write_autoexporter_bat(aes, aepy, guitype, batch_path=None):
         # use console python for terminal mode
         py_for_bat = os.path.join(os.path.dirname(py_for_bat), "python.exe")
 
-    batch_content = (
-        '@echo off\n'
-        f'cd "{python_cwd}"\n\n'
-        'SET SI_AE_BATCH=%~f0\n'
-        f'SET PYBIN="{py_for_bat}"\n'
-        f'SET AEPY="{aepy}"\n'
-        'SET PICKLED_FILE="%TEMP%\\si_ae_settings.p"\n\n'
-        'REM Recreate the pickled settings from base64\n'
-        f'powershell -Command "[System.IO.File]::WriteAllBytes(\'%PICKLED_FILE%\', '
-        f'[Convert]::FromBase64String(\'{pickled_data_base64}\'))"\n\n'
-        'REM Launch the watcher in a detached process\n'
-        'start "" %PYBIN% %AEPY%\n'
-    )
+    # The bat and autoexporter_script.py live in the same folder, so cd to the
+    # bat's own location and launch the script by name (robust to the folder moving).
+    script_name = os.path.basename(aepy)
+
+    if guitype == "terminal":
+        # Terminal mode: the console IS the UI, so run attached in this window.
+        # No detach and no loading-indicator loop (terminal mode never signals
+        # ready, so the loop would just spin).
+        batch_content = (
+            '@echo off\n'
+            'cd /d "%~dp0"\n\n'
+            'SET SI_AE_BATCH=%~f0\n\n'
+            f'"{py_for_bat}" "{script_name}" "{opts_blob}"\n'
+        )
+    else:
+        # GUI mode: launch detached, then keep this window as a loading indicator
+        # until the GUI signals it is up (or we time out).
+        batch_content = (
+            '@echo off\n'
+            'cd /d "%~dp0"\n\n'
+            'SET SI_AE_BATCH=%~f0\n'
+            'SET SI_AE_READY=%TEMP%\\si_ae_ready.flag\n\n'
+            'del "%SI_AE_READY%" 2>nul\n'
+            'echo Loading Scientific Inkscape Autoexporter...\n'
+            f'start "" "{py_for_bat}" "{script_name}" "{opts_blob}"\n'
+            'set /a _si_tries=0\n'
+            ':si_wait\n'
+            'if exist "%SI_AE_READY%" goto si_ready\n'
+            'set /a _si_tries+=1\n'
+            'if %_si_tries% GEQ 120 goto si_ready\n'
+            'ping -n 2 127.0.0.1 >nul\n'
+            'goto si_wait\n'
+            ':si_ready\n'
+            'del "%SI_AE_READY%" 2>nul\n'
+        )
 
     with open(batch_file_path, "w") as batch_file:
         batch_file.write(batch_content)

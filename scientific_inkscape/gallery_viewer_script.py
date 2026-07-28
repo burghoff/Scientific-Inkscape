@@ -2,13 +2,42 @@
 # Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
 # Prints written to [temp]/si_gv_output.txt
 
-# Load the settings file
-import tempfile, os, pickle, sys
-settings = os.path.join(
-    os.path.abspath(tempfile.gettempdir()), "si_gv_settings.p"
-)
-with open(settings, "rb") as f:
-    input_options = pickle.load(f)
+# Settings are passed as a urlsafe-base64 pickle in argv[1]
+import tempfile, os, pickle, sys, base64
+
+# Force Inkscape's own mingw DLLs (libopenblas, etc.) to load before numpy so a
+# conflicting copy on PATH can't cause a fatal 0xc0000139. See autoexporter_script.
+if sys.platform == "win32":
+    import ctypes
+    _bindir = os.path.dirname(sys.executable)
+    if os.path.isdir(_bindir):
+        try:
+            os.add_dll_directory(_bindir)
+        except (OSError, AttributeError):
+            pass
+        for _dll in ("libwinpthread-1.dll", "libgcc_s_seh-1.dll",
+                     "libquadmath-0.dll", "libgfortran-5.dll", "libopenblas.dll"):
+            try:
+                ctypes.WinDLL(os.path.join(_bindir, _dll))
+            except OSError:
+                pass
+
+if len(sys.argv) < 2:
+    sys.exit("This Gallery Viewer launcher is out of date. Re-run the Gallery "
+             "Viewer from Inkscape (Extensions > Scientific) to regenerate the .bat.")
+input_options = pickle.loads(base64.urlsafe_b64decode(sys.argv[1]))
+
+SI_GV_READY = os.environ.get("SI_GV_READY")
+
+def signal_gui_ready():
+    """Touch the ready-flag file so the launcher bat can close its loading window
+    once the GUI is visible. Returns False so GLib.idle_add fires it only once."""
+    if SI_GV_READY:
+        try:
+            open(SI_GV_READY, "w").close()
+        except OSError:
+            pass
+    return False
 
 bfn = input_options.inkscape_bfn
 sys.path.extend([p for p in input_options.syspath if p not in sys.path])
@@ -1147,6 +1176,8 @@ if guitype == "gtk":
     win.connect("destroy", quit_and_close)
     win.show_all()
     win.set_keep_above(False)
+    from gi.repository import GLib
+    GLib.idle_add(signal_gui_ready)  # closes the launcher's loading window
     Gtk.main()
 elif guitype == "tkinter":
     root = tk.Tk()

@@ -9,14 +9,45 @@ MARGIN = 10
 LABEL_WIDTH = 16
 
 import sys, platform, os, threading, copy, pickle, re, tempfile, time
+import base64
 
-systmpdir = os.path.abspath(tempfile.gettempdir())
-aes = os.path.join(systmpdir, "si_ae_settings.p")
+# numpy's C-extension links mingw runtime DLLs that ship in Inkscape's bin. When
+# this script is launched from a shell whose PATH has a conflicting copy (conda,
+# MSYS2, Strawberry Perl, ...), Windows can load the wrong one and numpy import
+# dies with a fatal error 0xc0000139. Force Inkscape's own copies to load first.
+if sys.platform == "win32":
+    import ctypes
+    _bindir = os.path.dirname(sys.executable)
+    if os.path.isdir(_bindir):
+        try:
+            os.add_dll_directory(_bindir)
+        except (OSError, AttributeError):
+            pass
+        for _dll in ("libwinpthread-1.dll", "libgcc_s_seh-1.dll",
+                     "libquadmath-0.dll", "libgfortran-5.dll", "libopenblas.dll"):
+            try:
+                ctypes.WinDLL(os.path.join(_bindir, _dll))
+            except OSError:
+                pass
+
 SI_AE_BATCH = os.environ.get("SI_AE_BATCH")
+SI_AE_READY = os.environ.get("SI_AE_READY")
 
-with open(aes, "rb") as f:
-    input_options = pickle.load(f)
-os.remove(aes)
+def signal_gui_ready():
+    """Touch the ready-flag file so the launcher bat can close its loading window
+    once the GUI is visible. Returns False so GLib.idle_add fires it only once."""
+    if SI_AE_READY:
+        try:
+            open(SI_AE_READY, "w").close()
+        except OSError:
+            pass
+    return False
+
+# Settings are passed as a urlsafe-base64 pickle in argv[1]
+if len(sys.argv) < 2:
+    sys.exit("This Autoexporter launcher is out of date. Re-run the Autoexporter "
+             "from Inkscape (Extensions > Scientific) to regenerate the .bat file.")
+input_options = pickle.loads(base64.urlsafe_b64decode(sys.argv[1]))
 bfn = input_options.inkscape_bfn
 sys.path.extend([p for p in input_options.syspath if p not in sys.path])
 bfn_dir = os.path.dirname(bfn)
@@ -60,19 +91,16 @@ def get_files(dirin):
 
 def update_batch_from_options():
     """
-    Recreate the settings pickle from current input_options and
-    regenerate Autoexporter.bat (Windows only).
+    Re-encode the current input_options and regenerate Autoexporter.bat so a later
+    double-click relaunches with the updated settings (Windows only).
     """
     if not sys.platform.startswith("win"):
         return
 
-    # Write current options back to the temporary settings file
-    with open(aes, "wb") as f:
-        pickle.dump(input_options, f)
-
+    opts_blob = base64.urlsafe_b64encode(pickle.dumps(input_options)).decode()
     aepy = os.path.abspath(__file__)
     guitype_local = getattr(input_options, "guitype", "terminal")
-    write_autoexporter_bat(aes, aepy, guitype_local, batch_path=SI_AE_BATCH)    
+    write_autoexporter_bat(opts_blob, aepy, guitype_local, batch_path=SI_AE_BATCH)
 
 def is_target_file(file_name):
     flower = os.path.split(file_name)[1].lower()
@@ -512,9 +540,22 @@ class FileCheckerThread(threading.Thread):
     def start_watcher(self):
         if self.watcher is not None:  # Stop existing watcher
             self.watcher.stop()
-        mfcn = lambda x: self.queue_thread(os.path.abspath(x))
-        dfcn = lambda x: self.file_deleted(os.path.abspath(x))
-        self.watcher = Watcher(self.watchdir, createfcn=mfcn, modfcn=mfcn, deletefcn=dfcn)
+            self.watcher = None
+        # Only watch a directory that actually exists, and never let a
+        # watcher failure (invalid/unmounted/cloud-crashed watchdir) escape:
+        # it would kill run() before the loop -- which already tolerates a
+        # missing watchdir -- ever executes, leaving the whole UI inert
+        # (Export File/All included, since those just set flags this thread
+        # consumes). The run loop retries once the directory reappears.
+        if os.path.exists(self.watchdir):
+            mfcn = lambda x: self.queue_thread(os.path.abspath(x))
+            dfcn = lambda x: self.file_deleted(os.path.abspath(x))
+            try:
+                self.watcher = Watcher(
+                    self.watchdir, createfcn=mfcn, modfcn=mfcn, deletefcn=dfcn
+                )
+            except Exception:
+                self.watcher = None
         self.refresh_all_links()
 
     def run(self):
@@ -590,7 +631,10 @@ class FileCheckerThread(threading.Thread):
                     mprint(promptstring)
                 self.promptpending = False
 
-        self.watcher.stop()
+            time.sleep(0.05)  # sleep, not spin, so other threads aren't starved
+
+        if self.watcher is not None:
+            self.watcher.stop()
         self.stop_linked_watchers()
         for t in self.running_threads:
             t.stopped = True
@@ -1056,8 +1100,9 @@ if guitype == 'gtk3.0':
     fc.start()
     win.show_all()
     win.set_keep_above(False)
+    GLib.idle_add(signal_gui_ready)  # closes the launcher's loading window
     Gtk.main()
-    
+
 elif guitype=='gtk4.0':
     import gi
     gi.require_version("Gtk", "4.0") # Lock to GTK 4
@@ -1074,6 +1119,7 @@ elif guitype=='gtk4.0':
         def do_activate(self):
             if not self._win:
                 self.make_win()
+                GLib.idle_add(signal_gui_ready)  # closes the launcher's loading window
             self._win.present()
             
         def make_win(self):
@@ -1511,6 +1557,7 @@ elif guitype=='gtk4.0':
 else:
     try:
         import tkinter
+        import tkinter.filedialog  # submodule isn't pulled in by 'import tkinter'
 
         promptstring = ("\nEnter D to change directories, R to change DPI, F to"
         " export a file, A to export all now, and Q to quit: ")
@@ -1599,7 +1646,7 @@ else:
         fc.watchdir, fc.writedir = Get_Directories()
     fc.start()
     while fc.nf:  # wait until it's done initializing
-        pass
+        time.sleep(0.05)  # sleep, not spin: a busy-wait starves fc's thread
     t2 = PromptThread()
     t2.start()
     keeprunning = True
@@ -1636,6 +1683,7 @@ else:
                 t2 = PromptThread()
                 t2.start()
                 fc.promptpending = True
+        time.sleep(0.05)  # sleep, not spin, so the input() thread can run
 
     # On macOS close the terminal we opened
     # https://superuser.com/questions/158375/
