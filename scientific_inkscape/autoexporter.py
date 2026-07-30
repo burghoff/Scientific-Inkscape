@@ -247,7 +247,6 @@ class AutoExporter(inkex.EffectExtension):
             
             gtkv = inkex.inkscape_system_info.gtk_version
             opts.guitype = {"3.0":"gtk3.0", "4.0":"gtk4.0", None:"terminal"}[gtkv]
-            opts.logfile = dh.shared_temp(filename="si_ae_output.txt")
 
 
             import base64

@@ -1381,21 +1381,8 @@ def shared_temp(headprefix=None, filename=None):
     paths must be done here.
 
     """
-    if sys.executable[0:4] == "/tmp" or sys.executable[0:5] == "/snap":
-        si_dir = os.path.dirname(
-            os.path.realpath(__file__)
-        )  # in case si_dir is not loaded
-        system_temp = si_dir
-    else:
-        import tempfile
-
-        system_temp = tempfile.gettempdir()
-    if not os.path.exists(system_temp):
-        os.mkdir(system_temp)
-
-    tempdir = os.path.join(os.path.abspath(system_temp), "si_temp")
-    if not os.path.exists(tempdir):
-        os.mkdir(tempdir)
+    import si_tmp
+    tempdir = si_tmp.root()  # single source of truth for the si_temp location
 
     if headprefix is not None:
         if not hasattr(shared_temp, "_sema"):

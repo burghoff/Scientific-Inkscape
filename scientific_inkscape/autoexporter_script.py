@@ -55,7 +55,11 @@ if bfn_dir not in sys.path:
     sys.path.append(bfn_dir)
 guitype = input_options.guitype
 if sys.stderr is None:
-    sys.stdout = open(input_options.logfile, "w", encoding="utf-8", buffering=1)
+    # si_tmp is dependency-free and importable before the heavy dhelpers/inkex imports.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import si_tmp
+    sys.stdout = open(si_tmp.path("si_ae_output.txt"), "w",
+                      encoding="utf-8", buffering=1)
     sys.stderr = sys.stdout
 
 import dhelpers as dh  # noqa

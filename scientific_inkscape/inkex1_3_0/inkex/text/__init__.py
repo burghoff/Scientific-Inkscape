@@ -50,7 +50,11 @@ if not hasattr(inkex, "text"):
 
     mydir = os.path.dirname(os.path.abspath(__file__))
     myloc, myname = os.path.split(mydir)
-    oldpath = sys.path
+    # Copy, not reference: myloc is appended below only so import_module can
+    # find this dir as top-level `text`; sys.path is restored afterward. With
+    # a bare reference the restore is a no-op and each of this module's two
+    # executions (it re-imports itself as `text`) leaks a duplicate entry.
+    oldpath = list(sys.path)
     sys.path.append(myloc)
 
     in_import_module = in_import_module | ('text' in sys.modules)  
