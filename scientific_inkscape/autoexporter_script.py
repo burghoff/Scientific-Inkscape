@@ -285,6 +285,16 @@ class Watcher(FileSystemEventHandler):
             return
 
         # From here, new_mod_time is numeric
+        # If it changed but is still locked (open elsewhere / held by a cloud-sync
+        # client), retry later without recording the mtime, so it isn't lost.
+        if old_mod_time != new_mod_time:
+            try:
+                with open(file_path, "rb") as _f:
+                    _f.read(1)
+            except OSError:
+                self.debounce_timers[file_path] = Timer(1.0, self.debounce, [file_path])
+                self.debounce_timers[file_path].start()
+                return
         if old_mod_time is None:
             # Created: not seen before, now exists
             if self.createfcn:
