@@ -2161,6 +2161,10 @@ RULER_FALLBACK_PITCH = 7.0
 RULER_TEXT_FMT = "sipg{:02d}l{:04d}"
 RULER_RE = re.compile(r"sipg(\d\d)l(\d{4})")
 ONENOTE_FOOTER_RE = re.compile(r"[Pp]age \d+$")
+# Fallback printable width for _pin_outline_widths: Letter (612pt) minus the
+# 36pt margins OneNote uses on either side. The real value is derived from
+# the default printer's paper size when available.
+ONENOTE_PRINTABLE_WIDTH = 540.0
 
 
 def _onenote_marker_png(rgb):
@@ -2329,18 +2333,28 @@ if ([string]::IsNullOrEmpty($nbID)) {
 
 $exitcode = 0
 try {
+    # Some pages cannot round-trip through UpdatePageContent at all (e.g.
+    # 0x80042022 on certain table-heavy pages, even pushing their own
+    # GetPageContent output back verbatim). A failed page just keeps its
+    # original content -- OneNote's own rendering, no markers, no merge
+    # ruler (merge_onenote_pages passes ruler-less pages through) -- so
+    # warn and publish anyway. Only abort when every update failed, which
+    # indicates a systemic problem rather than a quirky page.
     $failed = 0
+    $total = 0
     foreach ($f in Get-ChildItem -LiteralPath $PagesDir -Filter "*_marked.xml") {
+        $total++
         $xml = [System.IO.File]::ReadAllText($f.FullName)
         try {
             $on.UpdatePageContent($xml, [DateTime]::MinValue)
             Write-Host "Updated page from $($f.Name)"
         } catch {
-            Write-Error "UpdatePageContent failed for $($f.Name): $($_.Exception.InnerException.Message)"
+            Write-Host "WARNING: UpdatePageContent failed for $($f.Name): $($_.Exception.InnerException.Message); page keeps its original content"
             $failed++
         }
     }
-    if ($failed -gt 0) {
+    if ($failed -gt 0 -and $failed -eq $total) {
+        Write-Error "Every page update failed."
         $exitcode = 2
     } else {
         try { $on.SyncHierarchy($nbID) } catch {}
@@ -2578,6 +2592,60 @@ def _add_page_ruler(root, page_idx, color):
     return nlines
 
 
+def _default_printable_width(prints=None):
+    """Printable width in points of the default printer's paper (width minus
+    OneNote's 72pt of combined margins), or ONENOTE_PRINTABLE_WIDTH when
+    there is no default printer or the query fails. OneNote publishes
+    <one:PageSize><one:Automatic/> pages onto this paper, so it is the width
+    its print engine re-wraps auto-width outlines to."""
+    from pdf import sema_office  # lazy: office.py must not import pdf at load
+
+    try:
+        with sema_office:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "Add-Type -AssemblyName System.Drawing; "
+                 "(New-Object System.Drawing.Printing.PrintDocument)"
+                 ".DefaultPageSettings.PaperSize.Width"],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                capture_output=True, text=True, timeout=60)
+        # PaperSize.Width is in hundredths of an inch
+        printable = float(result.stdout.strip()) * 72.0 / 100.0 - 72.0
+        if not 200.0 <= printable <= 2000.0:
+            raise ValueError(printable)
+    except (ValueError, OSError, subprocess.SubprocessError):
+        return ONENOTE_PRINTABLE_WIDTH
+    if prints and abs(printable - ONENOTE_PRINTABLE_WIDTH) > 1.0:
+        prints("  printable width from default printer: {:.1f}pt".format(
+            printable))
+    return printable
+
+
+def _pin_outline_widths(root, printable):
+    """Stamp isSetByUser="true" on every outline's Size, widening auto-width
+    outlines to the printable width first.
+
+    Publish-time workaround: when a page holds an image and any outline is
+    added to it (the merge ruler), OneNote's print engine re-wraps every
+    auto-width outline into a pathologically narrow column. User-set widths
+    are honored, so pin them all; widening auto outlines to the printable
+    width first reproduces what OneNote's own print does to them anyway
+    (their stored widths can be stale canvas artifacts far narrower than
+    any print would use)."""
+    for outline in root.iter("{{{}}}Outline".format(ONENOTE_NS)):
+        size = outline.find("{{{}}}Size".format(ONENOTE_NS))
+        if size is None:
+            continue
+        if size.get("isSetByUser") != "true":
+            try:
+                width = float(size.get("width"))
+            except (TypeError, ValueError):
+                width = printable
+            if width < printable:
+                size.set("width", "{:g}".format(printable))
+            size.set("isSetByUser", "true")
+
+
 def mark_onenote_images(page_files, media_dir, add_rulers=False, prints=None):
     """Replace every raster/metafile image in the dumped page XMLs with a
     9x9 solid-color marker PNG.
@@ -2603,11 +2671,12 @@ def mark_onenote_images(page_files, media_dir, add_rulers=False, prints=None):
     hash_to_color = {}
     next_color = 1
     ruler_color = _pick_ruler_color(page_files) if add_rulers else None
+    printable = _default_printable_width(prints) if add_rulers else None
     if add_rulers and prints:
         prints("  merge-ruler color: {}".format(ruler_color))
 
     for page_idx, page_file in enumerate(page_files):
-        tree = ET.parse(page_file)
+        tree = ET.parse(page_file, ET.XMLParser(huge_tree=True))
         root = tree.getroot()
         marked = os.path.splitext(page_file)[0] + "_marked.xml"
         n_replaced = 0
@@ -2653,6 +2722,7 @@ def mark_onenote_images(page_files, media_dir, add_rulers=False, prints=None):
 
         if add_rulers:
             _add_page_ruler(root, page_idx, ruler_color)
+            _pin_outline_widths(root, printable)
         if n_replaced or add_rulers:
             tree.write(marked, xml_declaration=True, encoding="utf-8")
 
@@ -2668,7 +2738,7 @@ def _revert_onenote_marker(color_hex, orig_path, locations):
     for marked_xml, object_id in locations:
         if not os.path.exists(marked_xml):
             continue
-        tree = ET.parse(marked_xml)
+        tree = ET.parse(marked_xml, ET.XMLParser(huge_tree=True))
         for img in tree.getroot().iter("{{{}}}Image".format(ONENOTE_NS)):
             if object_id is not None and img.get("objectID") != object_id:
                 continue
