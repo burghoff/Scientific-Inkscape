@@ -550,8 +550,16 @@ class Exporter():
         for elem in dh.visible_descendants(svg):
             if elem.cspecified_style.get("display") == "none":
                 elem.delete()
-            elif elem.tag==stag:
-                dh.deswitch(elem)
+            else:
+                if elem.tag==stag:
+                    dh.deswitch(elem)
+                # Strip the visibility property/attribute, which Inkscape ignores
+                # https://gitlab.com/inkscape/inbox/-/work_items/2177
+                # This could change at a later date if Inkscape ever supports it
+                if elem.cstyle.get("visibility") is not None:
+                    elem.cstyle["visibility"] = None
+                if elem.get("visibility") is not None:
+                    elem.set("visibility", None)
 
         # Embed linked images into the SVG. This should be done prior to clone unlinking
         # since some images may be cloned
