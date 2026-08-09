@@ -979,6 +979,12 @@ class Slide_and_Rels:
                 abs_path = os.path.normpath(target[7:])
             elif target.startswith("file:"):
                 abs_path = os.path.normpath(target[5:])
+            elif target.startswith("/") or target.startswith("\\"):
+                # Target beginning with '/' is package-root-relative
+                # ("/media/image.png"), not relative to the part's folder
+                abs_path = os.path.normpath(
+                    os.path.join(self.uzo.temp_dir, target.lstrip("/\\"))
+                )
             else:
                 rel_base = os.path.dirname(self.slide_path)
                 abs_path = os.path.normpath(os.path.join(rel_base, target))

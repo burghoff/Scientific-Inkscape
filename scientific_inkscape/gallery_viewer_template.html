@@ -22,6 +22,13 @@
             width: {{ image_width }}px;
             height: {{ image_height }}px;
         }
+        /* Backdrop for images whose content is mostly white-on-transparent
+           (e.g. white logos), which would be invisible on the white page.
+           Applied per-image by JS after analyzing the loaded thumbnail. */
+        div.gallery img.whiteimg {
+            background: repeating-conic-gradient(#484848 0% 25%, #5c5c5c 0% 50%)
+                        0 0 / 16px 16px;
+        }
         div.desc {
             padding: 15px;
             text-align: center;
@@ -45,6 +52,21 @@
         a.show-file svg {
             vertical-align: middle;
             /* Add any additional styling here */
+        }
+        /* Header action icons: plain glyphs, not styled as links */
+        a.hdr-action, a.hdr-action:link, a.hdr-action:visited,
+        a.hdr-action:hover, a.hdr-action:active {
+            text-decoration: none;
+            color: inherit;
+        }
+        a.hdr-action svg {
+            vertical-align: middle;
+            /* The icons have fractional CSS sizes (13.94 x 11.03) and an SVG
+               viewport clips to its bounds by default, so depending on where the
+               box lands on the pixel grid an edge can get shaved off ("cut off").
+               The drawing already sits inside the viewBox, so allowing overflow
+               changes nothing visually -- it only stops the clipping. */
+            overflow: visible;
         }
         @supports not (-ms-ime-align: auto) {
             details summary {
@@ -111,6 +133,48 @@
                 title.textContent = header;
                 title.style.margin = '0';  // Remove margin from group headers
                 summary.appendChild(title);
+
+                // For groups that are a file (pptx/docx/one/...), offer actions on
+                // the header itself: open it in its default app, and show it in the
+                // file browser. Distinct classes keep attachEventListeners (which
+                // clone-replaces a.open / a.show-file) from clobbering these.
+                if (group.header_uri) {
+                    const actions = document.createElement('span');
+                    actions.style.marginLeft = '8px';
+                    actions.innerHTML = `
+                        <a href="http://localhost:${port}/open_default?param=${encodeURIComponent(group.header_uri)}"
+                           class="hdr-action" title="Open in default application" style="margin-right:6px;">
+                            <!-- Open-external Icon -->
+                            <!-- stroke-width 0.86 renders 0.43px on screen (12/24 scale), the same
+                                 weight as the folder icon beside it, so the two match in tone -->
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="0.86" stroke-linecap="round" stroke-linejoin="round"
+                                 xmlns="http://www.w3.org/2000/svg">
+                                <path d="M14 3h7v7"/>
+                                <path d="M21 3l-9 9"/>
+                                <path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/>
+                            </svg>
+                        </a>
+                        <a href="http://localhost:${port}/show_file?param=${encodeURIComponent(group.header_uri)}"
+                           class="hdr-action" title="Show in file browser">
+                            <!-- Folder SVG Icon (identical to the one used on items) -->
+                            <svg width="13.938748" height="11.034863" viewBox="0 0 20.908124 16.552295" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                 style="font-variation-settings:normal;fill:none;fill-opacity:1;stroke:#000000;stroke-width:2.11176515;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;stop-color:#000000"
+                                 transform="matrix(0.3054317,0,0,0.3054317,-91.790233,-99.984673)"
+                                 d="m 311.31639,336.75961 c 0.96177,-2.24271 1.29727,-4.79155 2.33598,-5.87152 1.03871,-1.07997 4.14072,-0.95467 4.14072,-0.95467 l 9.7597,0.008 c 0,0 4.89538,-0.36509 6.05009,0.94701 1.15471,1.31211 1.64149,6.06092 1.64149,6.06092 m 30.25546,0.82173 c 1.14479,1.14479 0.80357,4.19344 0.80357,4.19344 v 37.09523 h -63.09438 v -37.43878 c 0,0 -0.33462,-2.75634 0.75893,-3.84989 1.09355,-1.09355 3.91132,-0.75893 3.91132,-0.75893 h 53.66265 c 0,0 2.81312,-0.38586 3.95791,0.75893 z" />
+                            </svg>
+                        </a>
+                    `;
+                    summary.appendChild(actions);
+                    actions.querySelectorAll('a.hdr-action').forEach(function (link) {
+                        link.addEventListener('click', function (event) {
+                            event.preventDefault();
+                            event.stopPropagation();  // don't toggle the <details>
+                            fetch(this.href).catch(error => console.error("Network error:", error));
+                        });
+                    });
+                }
                 details.appendChild(summary);
 
                 // Add processing text element
@@ -189,6 +253,35 @@
                     img.addEventListener('error', () => {
                         console.log(`Image failed to load in group "${header}". Marking group for refresh.`);
                         existingGroupNeedsRefresh[header] = true;
+                    });
+
+                    // Content that is invisible against the white page --
+                    // white-on-transparent logos, semi-transparent white
+                    // texture overlays, fully blank images -- gets a dark
+                    // backdrop. Criterion: composited on white, the total
+                    // "ink" (coverage-weighted darkness) is essentially nil.
+                    // Summing (rather than counting discernible pixels) is
+                    // conserved under downscaling, so thin-line figures
+                    // diluted by the 32x32 probe still register in every
+                    // browser's rasterizer.
+                    img.addEventListener('load', () => {
+                        try {
+                            const c = document.createElement('canvas');
+                            const w = c.width = 32, h = c.height = 32;
+                            const ctx = c.getContext('2d');
+                            ctx.drawImage(img, 0, 0, w, h);
+                            const d = ctx.getImageData(0, 0, w, h).data;
+                            let ink = 0;
+                            for (let i = 0; i < d.length; i += 4) {
+                                const darkest = Math.min(d[i], d[i + 1], d[i + 2]);
+                                // darkness against white, 0..255 scale,
+                                // scaled by coverage (alpha)
+                                ink += d[i + 3] * (255 - darkest);
+                            }
+                            if (ink < 255 * 24 * 0.01 * w * h) {
+                                img.classList.add('whiteimg');
+                            }
+                        } catch (e) {}  // e.g. tainted canvas; keep default look
                     });
 
                     const descDiv = document.createElement('div');
@@ -374,6 +467,14 @@
 
         // Function to check for refresh
         function checkForRefresh() {
+            // On refresh the browser can restore the checkbox's checked state
+            // without firing its onclick, leaving showRasterGraphics stale;
+            // resync whenever they disagree (restoration can also happen
+            // after DOMContentLoaded, so the load-time sync isn't enough).
+            const rasterCb = document.getElementById('show-raster-checkbox');
+            if (rasterCb && rasterCb.checked !== showRasterGraphics) {
+                toggleRasterGraphics();
+            }
             fetch('/check_for_refresh')
                 .then(response => response.json())
                 .then(data => {
@@ -401,6 +502,8 @@
 
         // Fetch gallery data on page load
         document.addEventListener('DOMContentLoaded', () => {
+            // Pick up a checkbox state the browser restored across a refresh
+            showRasterGraphics = document.getElementById('show-raster-checkbox').checked;
             fetchGalleryData();
             setInterval(checkForRefresh, 1000);  // Check for refresh every 1 second
         });
