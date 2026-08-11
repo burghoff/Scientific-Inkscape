@@ -199,6 +199,11 @@ try {
         $word.DisplayAlerts = 0
         # Open ReadOnly, no conversions
         $doc = $word.Documents.Open($in, [ref]$false, [ref]$true)
+        # Hide revision/comment markup so the PDF is the final rendition.
+        try {
+            $doc.ActiveWindow.View.ShowRevisionsAndComments = $false
+            $doc.ActiveWindow.View.RevisionsView = 0   # wdRevisionsViewFinal
+        } catch {}
         $doc.SaveAs2([ref]$out, [ref]$wdFormatPDF)
     }
     elseif ($ext -in @(".ppt", ".pptx")) {
