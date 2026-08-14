@@ -42,6 +42,73 @@ def run_python(python_bin, python_script, python_wd, opts_blob, interminal=False
         subprocess.Popen([python_bin, python_script, opts_blob], stdout=devnull, stderr=devnull)
 
 
+def default_opts_blob():
+    """A complete, shippable settings blob containing no user or machine
+    data: options come from the extension's argparse defaults with the
+    machine fields set to neutral values."""
+    import pickle, base64
+
+    opts = GalleryViewer().arg_parser.parse_args([])
+    for k in ("output", "input_file"):
+        if hasattr(opts, k):
+            delattr(opts, k)
+    if not opts.portnum:
+        opts.portnum = 5001  # the .inx default
+    opts.inkscape_bfn = r"C:\Program Files\Inkscape\bin\inkscape.exe"
+    opts.syspath = []
+    opts.inshell = False
+    return base64.urlsafe_b64encode(pickle.dumps(opts)).decode()
+
+
+def write_gallery_viewer_bat(opts_blob=None, batch_path=None):
+    """Create or update Gallery Viewer.bat. Pass opts_blob=None to write a
+    shippable bootstrap bat that carries only default settings and no user
+    or machine data: it discovers Inkscape, its Python, and the script
+    folder at run time, so it works on machines this extension has never
+    run on. With a blob (normal operation) the actual paths are baked in
+    as always."""
+    if not platform.system() == "Windows":
+        return
+    bootstrap = opts_blob is None
+    if bootstrap:
+        opts_blob = default_opts_blob()
+    if batch_path:
+        batch_file_path = os.path.abspath(batch_path)
+    else:
+        current_script_dir = os.path.dirname(os.path.abspath(__file__))
+        batch_file_path = os.path.join(current_script_dir, "Gallery Viewer.bat")
+    script_name = "gallery_viewer_script.py"
+    if bootstrap:
+        preamble = '@echo off\n' + dh.si_bat_discovery(script_name)
+        launcher = '"%SIPY%"'
+    else:
+        # The bat and gallery_viewer_script.py live in the same folder, so cd
+        # to the bat's own location and launch the script by name.
+        preamble = ('@echo off\n'
+                    'cd /d "%~dp0"\n')
+        launcher = f'"{sys.executable}"'
+    batch_content = (
+        preamble +
+        '\nSET SI_GV_READY=%TEMP%\\si_gv_ready.flag\n\n'
+        'REM Launch detached (settings passed as a base64 arg), then keep\n'
+        'REM this window as a loading indicator until the GUI is up.\n'
+        'del "%SI_GV_READY%" 2>nul\n'
+        'echo Loading Scientific Inkscape Gallery Viewer...\n'
+        f'start "" {launcher} "{script_name}" "{opts_blob}"\n'
+        'set /a _si_tries=0\n'
+        ':si_wait\n'
+        'if exist "%SI_GV_READY%" goto si_ready\n'
+        'set /a _si_tries+=1\n'
+        'if %_si_tries% GEQ 120 goto si_ready\n'
+        'ping -n 2 127.0.0.1 >nul\n'
+        'goto si_wait\n'
+        ':si_ready\n'
+        'del "%SI_GV_READY%" 2>nul\n'
+    )
+    with open(batch_file_path, "w") as batch_file:
+        batch_file.write(batch_content)
+
+
 class GalleryViewer(inkex.EffectExtension):
     def add_arguments(self, pars):
         pars.add_argument("--tab", help="The selected UI-tab when OK was pressed")
@@ -82,32 +149,7 @@ class GalleryViewer(inkex.EffectExtension):
         # Make a batch file that can run the Gallery Viewer directly on Windows
         # (settings passed as a base64 command-line arg)
         if platform.system() == "Windows":
-            current_script_dir = os.path.dirname(os.path.abspath(__file__))
-            batch_file_path = os.path.join(current_script_dir, "Gallery Viewer.bat")
-            # The bat and gallery_viewer_script.py live in the same folder, so cd to
-            # the bat's own location and launch the script by name (robust to moves).
-            script_name = os.path.basename(aepy)
-            batch_content = (
-                '@echo off\n'
-                'cd /d "%~dp0"\n\n'
-                'SET SI_GV_READY=%TEMP%\\si_gv_ready.flag\n\n'
-                'REM Launch detached (settings passed as a base64 arg), then keep\n'
-                'REM this window as a loading indicator until the GUI is up.\n'
-                'del "%SI_GV_READY%" 2>nul\n'
-                'echo Loading Scientific Inkscape Gallery Viewer...\n'
-                f'start "" "{sys.executable}" "{script_name}" "{opts_blob}"\n'
-                'set /a _si_tries=0\n'
-                ':si_wait\n'
-                'if exist "%SI_GV_READY%" goto si_ready\n'
-                'set /a _si_tries+=1\n'
-                'if %_si_tries% GEQ 120 goto si_ready\n'
-                'ping -n 2 127.0.0.1 >nul\n'
-                'goto si_wait\n'
-                ':si_ready\n'
-                'del "%SI_GV_READY%" 2>nul\n'
-            )
-            with open(batch_file_path, "w") as batch_file:
-                batch_file.write(batch_content)
+            write_gallery_viewer_bat(opts_blob)
 
 
         if dispprofile:

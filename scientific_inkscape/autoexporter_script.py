@@ -292,9 +292,20 @@ class Watcher(FileSystemEventHandler):
                 with open(file_path, "rb") as _f:
                     _f.read(1)
             except OSError:
-                self.debounce_timers[file_path] = Timer(1.0, self.debounce, [file_path])
-                self.debounce_timers[file_path].start()
-                return
+                # Plain reads are denied for as long as a document is open in
+                # Word from OneDrive (AutoSave holds a deny-read lock), but
+                # the export pipeline ingests files via shutil's kernel-level
+                # copy, which that lock permits. Only keep waiting if even a
+                # copy is impossible.
+                try:
+                    import si_tmp, uuid, shutil
+                    probe = si_tmp.path("ae_probe_" + uuid.uuid4().hex)
+                    shutil.copy2(file_path, probe)
+                    os.remove(probe)
+                except OSError:
+                    self.debounce_timers[file_path] = Timer(1.0, self.debounce, [file_path])
+                    self.debounce_timers[file_path].start()
+                    return
         if old_mod_time is None:
             # Created: not seen before, now exists
             if self.createfcn:

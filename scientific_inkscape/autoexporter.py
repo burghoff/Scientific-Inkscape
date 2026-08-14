@@ -439,7 +439,19 @@ class Exporter():
         if getattr(self, "original_file", None) is None:
             self.original_file = self.filein
         if getattr(self, "formats", None) and "psvg" in self.formats:
-            self.original_hash = hash_file(self.original_file)
+            # Hash a temp copy rather than the original: reading the original
+            # directly fails with a sharing violation when it is open in Word
+            # (OneDrive/AutoSave holds a deny-read lock), but shutil's
+            # kernel-level copy still succeeds.
+            import si_tmp, uuid
+            hcopy = si_tmp.path("ae_hash_" + uuid.uuid4().hex
+                                + os.path.splitext(self.original_file)[1])
+            try:
+                shutil.copy2(self.original_file, hcopy)
+                self.original_hash = hash_file(hcopy)
+            finally:
+                if os.path.exists(hcopy):
+                    os.remove(hcopy)
         if getattr(self, "display_name", None) is None:
             self.display_name = os.path.basename(self.original_file)
         
@@ -3036,14 +3048,52 @@ def restore_relative(path):
                 return rel
     return path
 
-def write_autoexporter_bat(opts_blob, aepy, guitype, batch_path=None):
+def default_opts_blob(guitype="gtk3.0"):
+    """A complete, shippable settings blob containing no user or machine
+    data: every option comes from the extension's own argparse defaults,
+    with the personal/machine fields blanked or set to neutral values.
+    The launcher scripts require every attribute to exist, so this must
+    mirror the post-processing effect() applies before pickling."""
+    import pickle, base64
+
+    opts = AutoExporter().arg_parser.parse_args([])
+    for k in ("output", "input_file"):
+        if hasattr(opts, k):
+            delattr(opts, k)
+    opts.reduce_images = opts.imagemode2
+    opts.exportnow = opts.exportwhat == 3
+    opts.watchhere = opts.exportwhat == 2
+    opts.writetowatch = opts.exportwhere == 2
+    opts.watchdir = ""
+    opts.writedir = ""
+    opts.inkscape_bfn = r"C:\Program Files\Inkscape\bin\inkscape.exe"
+    flags = [opts.usepdf, opts.usepng, opts.useemf, opts.useeps, opts.usepsvg]
+    opts.formats = [["pdf", "png", "emf", "eps", "psvg"][i]
+                    for i in range(len(flags)) if flags[i]]
+    opts.syspath = []
+    opts.guitype = guitype
+    return base64.urlsafe_b64encode(pickle.dumps(opts)).decode()
+
+
+def write_autoexporter_bat(opts_blob, aepy=None, guitype="gtk3.0",
+                           batch_path=None):
     """
     Create or update Autoexporter.bat so it launches autoexporter_script.py with
     the pickled settings (`opts_blob`, a urlsafe-base64 string) passed as a
-    command-line argument.
+    command-line argument. Pass opts_blob=None to write a shippable bat that
+    carries only default settings and no user or machine data.
     """
     if not sys.platform.startswith("win"):
         return
+    # Shippable bootstrap variant: no user/machine data at all -- default
+    # settings blob, and Inkscape/Python/the script folder discovered at run
+    # time so it works on machines the extension has never run on. Normal
+    # operation (a blob is provided) bakes the actual paths as always.
+    bootstrap = opts_blob is None
+    if bootstrap:
+        opts_blob = default_opts_blob(guitype)
+    if aepy is None:
+        aepy = "autoexporter_script.py"
 
     if batch_path:
         batch_file_path = os.path.abspath(batch_path)
@@ -3051,36 +3101,44 @@ def write_autoexporter_bat(opts_blob, aepy, guitype, batch_path=None):
         current_script_dir = os.path.dirname(os.path.abspath(__file__))
         batch_file_path = os.path.join(current_script_dir, "Autoexporter.bat")
 
-    py_for_bat = sys.executable
-    if guitype == "terminal":
-        # use console python for terminal mode
-        py_for_bat = os.path.join(os.path.dirname(py_for_bat), "python.exe")
-
-    # The bat and autoexporter_script.py live in the same folder, so cd to the
-    # bat's own location and launch the script by name (robust to the folder moving).
     script_name = os.path.basename(aepy)
+    if bootstrap:
+        preamble = ('@echo off\n'
+                    + dh.si_bat_discovery(script_name,
+                                          console=(guitype == "terminal"))
+                    + '\nSET SI_AE_BATCH=%~f0\n')
+        launcher = '"%SIPY%"'
+    else:
+        py_for_bat = sys.executable
+        if guitype == "terminal":
+            # use console python for terminal mode
+            py_for_bat = os.path.join(os.path.dirname(py_for_bat),
+                                      "python.exe")
+        # The bat and autoexporter_script.py live in the same folder, so cd
+        # to the bat's own location and launch the script by name (robust to
+        # the folder moving).
+        preamble = ('@echo off\n'
+                    'cd /d "%~dp0"\n\n'
+                    'SET SI_AE_BATCH=%~f0\n')
+        launcher = f'"{py_for_bat}"'
 
     if guitype == "terminal":
         # Terminal mode: the console IS the UI, so run attached in this window.
         # No detach and no loading-indicator loop (terminal mode never signals
         # ready, so the loop would just spin).
         batch_content = (
-            '@echo off\n'
-            'cd /d "%~dp0"\n\n'
-            'SET SI_AE_BATCH=%~f0\n\n'
-            f'"{py_for_bat}" "{script_name}" "{opts_blob}"\n'
+            preamble + '\n'
+            f'{launcher} "{script_name}" "{opts_blob}"\n'
         )
     else:
         # GUI mode: launch detached, then keep this window as a loading indicator
         # until the GUI signals it is up (or we time out).
         batch_content = (
-            '@echo off\n'
-            'cd /d "%~dp0"\n\n'
-            'SET SI_AE_BATCH=%~f0\n'
+            preamble +
             'SET SI_AE_READY=%TEMP%\\si_ae_ready.flag\n\n'
             'del "%SI_AE_READY%" 2>nul\n'
             'echo Loading Scientific Inkscape Autoexporter...\n'
-            f'start "" "{py_for_bat}" "{script_name}" "{opts_blob}"\n'
+            f'start "" {launcher} "{script_name}" "{opts_blob}"\n'
             'set /a _si_tries=0\n'
             ':si_wait\n'
             'if exist "%SI_AE_READY%" goto si_ready\n'

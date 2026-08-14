@@ -1370,6 +1370,67 @@ class SI_Config:
 
 si_config = SI_Config()
 
+def si_bat_discovery(script_name, console=False):
+    """Batch-file preamble that discovers everything a launcher needs on a
+    machine it has never run on: Inkscape (PATH, then the App Paths registry,
+    then Program Files), its bundled Python, and the folder holding
+    script_name (next to the bat itself, else under Inkscape's user
+    extensions directory -- asking Inkscape for its profile location so
+    relocated profiles work). Sets INK, INKBIN, SIPY, and SIDIR; prepends
+    INKBIN to PATH and exports SI_INKSCAPE_BFN so the launched script can
+    correct a stale pickled binary path. Errors pause so they can be read.
+
+    console=True prefers python.exe (attached console UI); otherwise
+    pythonw.exe (detached GUI)."""
+    py_a, py_b = (("python.exe", "pythonw.exe") if console
+                  else ("pythonw.exe", "python.exe"))
+    return (
+        'REM ---- locate Inkscape ------------------------------------------\n'
+        'set "INK="\n'
+        'for /f "delims=" %%I in (\'where inkscape.exe 2^>nul\') do if not defined INK set "INK=%%I"\n'
+        'if not defined INK for /f "tokens=2*" %%A in (\'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\inkscape.exe" /ve 2^>nul ^| findstr /i "REG_SZ"\') do set "INK=%%B"\n'
+        'if not defined INK for /f "tokens=2*" %%A in (\'reg query "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\inkscape.exe" /ve 2^>nul ^| findstr /i "REG_SZ"\') do set "INK=%%B"\n'
+        'if not defined INK if exist "%ProgramFiles%\\Inkscape\\bin\\inkscape.exe" set "INK=%ProgramFiles%\\Inkscape\\bin\\inkscape.exe"\n'
+        'if not defined INK if exist "%ProgramFiles(x86)%\\Inkscape\\bin\\inkscape.exe" set "INK=%ProgramFiles(x86)%\\Inkscape\\bin\\inkscape.exe"\n'
+        'if defined INK goto si_ink_found\n'
+        'echo ERROR: could not locate inkscape.exe ^(PATH, App Paths registry, or Program Files^).\n'
+        'pause\n'
+        'exit /b 1\n'
+        ':si_ink_found\n'
+        'for %%I in ("%INK%") do set "INKBIN=%%~dpI"\n'
+        '\n'
+        'REM ---- locate Inkscape\'s Python --------------------------------\n'
+        f'set "SIPY=%INKBIN%{py_a}"\n'
+        f'if not exist "%SIPY%" set "SIPY=%INKBIN%{py_b}"\n'
+        'if exist "%SIPY%" goto si_py_found\n'
+        'echo ERROR: no python under "%INKBIN%".\n'
+        'pause\n'
+        'exit /b 1\n'
+        ':si_py_found\n'
+        '\n'
+        'REM ---- locate the Scientific Inkscape scripts -------------------\n'
+        'set "SIDIR="\n'
+        f'if exist "%~dp0{script_name}" set "SIDIR=%~dp0"\n'
+        'if defined SIDIR goto si_dir_found\n'
+        'set "PROFDIR=%INKSCAPE_PROFILE_DIR%"\n'
+        'if not defined PROFDIR for /f "usebackq delims=" %%I in (`"%INKBIN%inkscape.com" --user-data-directory 2^>nul`) do set "PROFDIR=%%I"\n'
+        'if not defined PROFDIR set "PROFDIR=%APPDATA%\\inkscape"\n'
+        'set "EXTDIR=%PROFDIR%\\extensions"\n'
+        'if not exist "%EXTDIR%" set "EXTDIR=%APPDATA%\\inkscape\\extensions"\n'
+        f'if exist "%EXTDIR%\\{script_name}" set "SIDIR=%EXTDIR%"\n'
+        f'if not defined SIDIR for /d %%D in ("%EXTDIR%\\*") do if not defined SIDIR if exist "%%D\\{script_name}" set "SIDIR=%%D"\n'
+        'if defined SIDIR goto si_dir_found\n'
+        f'echo ERROR: could not find {script_name} next to this file or under "%EXTDIR%".\n'
+        'pause\n'
+        'exit /b 1\n'
+        ':si_dir_found\n'
+        '\n'
+        'set "PATH=%INKBIN%;%PATH%"\n'
+        'set "SI_INKSCAPE_BFN=%INK%"\n'
+        'cd /d "%SIDIR%"\n'
+    )
+
+
 def shared_temp(headprefix=None, filename=None):
     """
     Generate a temporary file in the system temp folder or SI's location
