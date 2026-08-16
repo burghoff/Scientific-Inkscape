@@ -390,7 +390,10 @@ class FileCheckerThread(threading.Thread):
             # The doc changed (or is about to be re-finalized): its linked
             # images may have changed too, so refresh its map entry.
             self.update_doc_links(f)
-        for t in self.thread_queue + self.running_threads:
+        # Supersede any pending conversion of this file. Slice-assign so the
+        # run loop's reference to the list stays valid.
+        self.thread_queue[:] = [t for t in self.thread_queue if t.file != f]
+        for t in self.running_threads:
             if t.file == f:
                 t.stopped = True
         fthr = AutoExporterThread()
@@ -639,16 +642,36 @@ class FileCheckerThread(threading.Thread):
                 for f in sorted(updatefiles):
                     self.queue_thread(f)
 
-                while len(self.thread_queue) > 0 and not self.stopped:
-                    self.thread_queue[0].start()
-                    self.running_threads.append(self.thread_queue[0])
-                    self.thread_queue.remove(self.thread_queue[0])
+                # Start queued threads, but never run on the same file twice
+                for fthr in list(self.thread_queue):
+                    if self.stopped:
+                        break
+                    if any(r.file == fthr.file and r.is_alive()
+                           for r in self.running_threads):
+                        continue
+                    # Claim the queue slot before starting: a superseding
+                    # event may have already removed this entry, in which
+                    # case its replacement is queued and this one is moot.
+                    try:
+                        self.thread_queue.remove(fthr)
+                    except ValueError:
+                        continue
+                    fthr.start()
+                    self.running_threads.append(fthr)
 
                 for thr in reversed(self.running_threads):
                     if not thr.is_alive():
                         self.running_threads.remove(thr)
                         self.finished_threads.append(thr)
                         self.promptpending = True
+                        # The source vanished while the conversion ran
+                        if not os.path.exists(thr.file):
+                            self.delete_exports_for(thr.file)
+                        # If cancelled and there is no output, redo it
+                        elif getattr(thr, "stopped", False) and not any(
+                                t.file == thr.file for t in
+                                self.thread_queue + self.running_threads):
+                            self.queue_thread(thr.file)
                 loopme = self.dm
 
             if self.promptpending and len(self.running_threads) + len(self.thread_queue) == 0:
@@ -717,7 +740,7 @@ class AutoExporterThread(threading.Thread):
             else: # non-svg: finalizing
                 Exporter(self.file, opts).finalize()
         except SystemExit:
-            pass
+            mprint(fname + ": conversion canceled (superseded or stopped)")
         except FileNotFoundError:
             import traceback
             error_message = f"Exception in {fname}\n"
