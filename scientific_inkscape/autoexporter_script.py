@@ -101,6 +101,59 @@ def update_batch_from_options():
     if not sys.platform.startswith("win"):
         return
 
+LINK_ICON_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}"'
+    ' viewBox="0 0 12 28"><g fill="none" stroke="{color}" stroke-width="2.4"'
+    ' stroke-linecap="round" stroke-linejoin="round">'
+    '<rect x="3.05" y="1.2" width="5.9" height="10.8" rx="2.95"/>'
+    '<rect x="3.05" y="16" width="5.9" height="10.8" rx="2.95"/>'
+    '</g></svg>'
+)
+
+
+def link_icon_pixbuf(height=28, color='#000000'):
+    """
+    Render the vertical chain-link icon (two stacked links) `height` px tall.
+    Built in memory so no icon file has to ship with the extension; returns
+    None if the SVG pixbuf loader is unavailable, so callers can fall back.
+    """
+    try:
+        from gi.repository import GdkPixbuf
+        svg = LINK_ICON_SVG.format(w=int(round(height * 3 / 7.0)), h=height,
+                                   color=color)
+        loader = GdkPixbuf.PixbufLoader.new_with_type('svg')
+        loader.write(svg.encode('utf-8'))
+        loader.close()
+        return loader.get_pixbuf()
+    except Exception:
+        return None
+
+
+def dir_display_name(folder):
+    """
+    The folder's own name, which is all the buttons show; the full path goes
+    in their tooltip. Drive roots have no basename, so they show as-is.
+    """
+    if not folder:
+        return ""
+    return os.path.basename(os.path.normpath(folder)) or folder
+
+
+def dirs_initially_linked():
+    """
+    The watch/write chain link starts on when the two directories agree,
+    or when the blob does not specify them, and off when they differ.
+    """
+    watchdir = getattr(input_options, "watchdir", None)
+    writedir = getattr(input_options, "writedir", None)
+    if not watchdir or not writedir:
+        return True
+    try:
+        return (os.path.normcase(os.path.abspath(watchdir))
+                == os.path.normcase(os.path.abspath(writedir)))
+    except (TypeError, ValueError):
+        return True
+
     opts_blob = base64.urlsafe_b64encode(pickle.dumps(input_options)).decode()
     aepy = os.path.abspath(__file__)
     guitype_local = getattr(input_options, "guitype", "terminal")
@@ -424,47 +477,13 @@ class FileCheckerThread(threading.Thread):
     def delete_exports_for(self, f):
         """
         Delete any exports that correspond to the given source file path,
-        including per-page variants with the AutoExporter page suffix.
+        including per-page variants, LaTeX sidecars, and " (N)" copies.
         """
         for out in get_expected_exports(f, self.watchdir, self.writedir):
-            base, ext = os.path.splitext(out)
-            dir_name = os.path.dirname(out)
-            base_name = os.path.basename(base)
-
-            # Also remove any page-suffixed outputs in the same directory
-            candidates = [out]
-            if dir_name and os.path.isdir(dir_name):
+            for _, path in autoexporter.output_cognates(out):
                 try:
-                    for fname in os.listdir(dir_name):
-                        if fname == os.path.basename(out):
-                            continue
-
-                        # Plain SVG case: foo_plain.svg → foo_page_1_plain.svg
-                        if base_name.endswith("_plain") and ext.lower() == ".svg":
-                            core = base_name[:-6]  # strip "_plain"
-                            if (
-                                fname.startswith(core + "_page_")
-                                and fname.endswith("_plain" + ext)
-                            ):
-                                candidates.append(os.path.join(dir_name, fname))
-
-                        # General case: foo.ext → foo_page_1.ext
-                        else:
-                            if (
-                                fname.startswith(base_name + "_page_")
-                                and fname.endswith(ext)
-                            ):
-                                candidates.append(os.path.join(dir_name, fname))
-                except (PermissionError, FileNotFoundError):
-                    # Directory may have disappeared; ignore
-                    pass
-
-            # Delete all candidates, ignoring failures
-            for path in set(candidates):
-                try:
-                    if os.path.exists(path):
-                        os.remove(path)
-                except (PermissionError, FileNotFoundError):
+                    os.remove(path)
+                except OSError:
                     pass
 
     # --- Linked-image watching ------------------------------------------
@@ -740,7 +759,7 @@ class AutoExporterThread(threading.Thread):
             else: # non-svg: finalizing
                 Exporter(self.file, opts).finalize()
         except SystemExit:
-            mprint(fname + ": conversion canceled (superseded or stopped)")
+            mprint(fname + ": Conversion canceled")
         except FileNotFoundError:
             import traceback
             error_message = f"Exception in {fname}\n"
@@ -769,7 +788,7 @@ if guitype == 'gtk3.0':
         import gi
 
         gi.require_version("Gtk", "3.0")
-        from gi.repository import Gtk, GLib, Gdk
+        from gi.repository import Gtk, GLib, Gdk, Pango
 
     class AutoexporterWindow(Gtk.Window):
         def __init__(self, ct):
@@ -837,31 +856,74 @@ if guitype == 'gtk3.0':
             separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
             tab1_box.pack_start(separator, False, True, 0)
         
-            # Watch directory
-            watch_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            # Watch/write directories, in a grid so the chain-link button
+            # can sit between their labels and span both rows
+            dir_grid = Gtk.Grid(column_spacing=6, row_spacing=10)
             watch_file_chooser_label = Gtk.Label(label="Watch directory", xalign=0.5)  # Center text
             watch_file_chooser_label.set_width_chars(LABEL_WIDTH)  # Set fixed width
-            self.watch_file_chooser_button = Gtk.FileChooserButton(title="Choose watch directory", action=Gtk.FileChooserAction.SELECT_FOLDER)
-            self.watch_file_chooser_button.set_filename(input_options.watchdir)  # Set the initial folder here
-            self.watch_file_chooser_button.connect("file-set", self.watch_folder_button_clicked)
-            self.watch_file_chooser_button.set_hexpand(True)
-            self.watch_file_chooser_button.set_halign(Gtk.Align.FILL)
-            watch_file_chooser_box.pack_start(watch_file_chooser_label, False, False, 0)
-            watch_file_chooser_box.pack_start(self.watch_file_chooser_button, True, True, 0)
-            tab1_box.pack_start(watch_file_chooser_box, False, False, 0)
-            
+            watch_file_chooser_label.set_margin_end(4)
+            self.watch_dir_button = Gtk.Button()
+            self.watch_dir_button.set_hexpand(True)
+            self.watch_dir_button.set_halign(Gtk.Align.FILL)
+            self.watch_dir_button.get_style_context().add_class("path-button")
+            self._watch_dir_lbl = Gtk.Label(xalign=0.0)
+            self._watch_dir_lbl.set_single_line_mode(True)
+            self._watch_dir_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+            watch_dir_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            watch_dir_box.pack_start(
+                Gtk.Image.new_from_icon_name("folder", Gtk.IconSize.BUTTON),
+                False, False, 0)
+            watch_dir_box.pack_start(self._watch_dir_lbl, True, True, 0)
+            self.watch_dir_button.add(watch_dir_box)
+            self.watch_dir_path = input_options.watchdir
+            self._watch_dir_lbl.set_text(dir_display_name(self.watch_dir_path)
+                                       or "Choose watch directory")
+            self.watch_dir_button.set_tooltip_text(self.watch_dir_path or "")
+            self.watch_dir_button.connect("clicked", self.watch_dir_clicked)
+            dir_grid.attach(watch_file_chooser_label, 0, 0, 1, 1)
+            dir_grid.attach(self.watch_dir_button, 1, 0, 1, 1)
+
             # Write directory
-            write_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
             write_file_chooser_label = Gtk.Label(label="Write directory", xalign=0.5)  # Center text
             write_file_chooser_label.set_width_chars(LABEL_WIDTH)  # Set fixed width
-            self.write_file_chooser_button = Gtk.FileChooserButton(title="Choose write directory", action=Gtk.FileChooserAction.SELECT_FOLDER)
-            self.write_file_chooser_button.set_filename(input_options.writedir)  # Set the initial folder here
-            self.write_file_chooser_button.connect("file-set", self.write_folder_button_clicked)
-            self.write_file_chooser_button.set_hexpand(True)
-            self.write_file_chooser_button.set_halign(Gtk.Align.FILL)
-            write_file_chooser_box.pack_start(write_file_chooser_label, False, False, 0)
-            write_file_chooser_box.pack_start(self.write_file_chooser_button, True, True, 0)
-            tab1_box.pack_start(write_file_chooser_box, False, False, 0)
+            write_file_chooser_label.set_margin_end(4)
+            self.write_dir_button = Gtk.Button()
+            self.write_dir_button.set_hexpand(True)
+            self.write_dir_button.set_halign(Gtk.Align.FILL)
+            self.write_dir_button.get_style_context().add_class("path-button")
+            self._write_dir_lbl = Gtk.Label(xalign=0.0)
+            self._write_dir_lbl.set_single_line_mode(True)
+            self._write_dir_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+            write_dir_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            write_dir_box.pack_start(
+                Gtk.Image.new_from_icon_name("folder", Gtk.IconSize.BUTTON),
+                False, False, 0)
+            write_dir_box.pack_start(self._write_dir_lbl, True, True, 0)
+            self.write_dir_button.add(write_dir_box)
+            self.write_dir_path = input_options.writedir
+            self._write_dir_lbl.set_text(dir_display_name(self.write_dir_path)
+                                       or "Choose write directory")
+            self.write_dir_button.set_tooltip_text(self.write_dir_path or "")
+            self.write_dir_button.connect("clicked", self.write_dir_clicked)
+            dir_grid.attach(write_file_chooser_label, 0, 1, 1, 1)
+            dir_grid.attach(self.write_dir_button, 1, 1, 1, 1)
+
+            # Chain link: while active, changing either directory changes both
+            self.link_dirs_button = Gtk.ToggleButton()
+            _linkpb = link_icon_pixbuf(28)
+            if _linkpb is not None:
+                self.link_dirs_button.set_image(Gtk.Image.new_from_pixbuf(_linkpb))
+            else:
+                self.link_dirs_button.set_image(Gtk.Image.new_from_icon_name("insert-link-symbolic", Gtk.IconSize.BUTTON))
+            self.link_dirs_button.set_tooltip_text("Keep the watch and write directories the same")
+            self.link_dirs_button.set_relief(Gtk.ReliefStyle.NONE)
+            self.link_dirs_button.set_valign(Gtk.Align.CENTER)
+            self.link_dirs_button.set_active(dirs_initially_linked())
+            self.link_dirs_button.connect("toggled", self.link_dirs_toggled)
+            self.link_dirs_button.get_style_context().add_class("link-button")
+            self.link_dirs_button.set_margin_end(6)
+            dir_grid.attach(self.link_dirs_button, 2, 0, 1, 2)
+            tab1_box.pack_start(dir_grid, False, False, 0)
         
             # Export all button
             self.ea_button = Gtk.Button(label="Export all")
@@ -889,7 +951,9 @@ if guitype == 'gtk3.0':
             self.notebook.append_page(tab2_box, Gtk.Label(label="Options"))
         
             css_provider = Gtk.CssProvider()
-            css_provider.load_from_data(b".label-bold { font-weight: bold; }")
+            css_provider.load_from_data(b".label-bold { font-weight: bold; } "
+                                        b".link-button { padding: 3px; min-width: 0px; min-height: 0px; } "
+                                        b".path-button { min-width: 0px; }")
             Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         
             # Formats to export
@@ -1099,23 +1163,64 @@ if guitype == 'gtk3.0':
         def exit_clicked(self, widget):
             self.destroy()
             
-        def watch_folder_button_clicked(self, widget):
-            selected_file = self.watch_file_chooser_button.get_filename()
-            # Check if selected_file is None, which indicates the user clicked 'Cancel'
-            if selected_file is not None:
-                self.ct.watchdir = selected_file
+        def set_watch_dir(self, folder):
+            self.watch_dir_path = folder
+            if getattr(self, "_watch_dir_lbl", None):
+                self._watch_dir_lbl.set_text(dir_display_name(folder)
+                                           or "Choose watch directory")
+                self.watch_dir_button.set_tooltip_text(folder or "")
+            self.ct.watchdir = folder
+            input_options.watchdir = folder
+
+        def set_write_dir(self, folder):
+            self.write_dir_path = folder
+            if getattr(self, "_write_dir_lbl", None):
+                self._write_dir_lbl.set_text(dir_display_name(folder)
+                                           or "Choose write directory")
+                self.write_dir_button.set_tooltip_text(folder or "")
+            self.ct.writedir = folder
+            input_options.writedir = folder
+
+        def link_dirs_toggled(self, widget):
+            """Turning the link on makes the write directory adopt the watch one."""
+            if not widget.get_active():
+                return
+            if self.watch_dir_path and self.watch_dir_path != self.write_dir_path:
+                self.set_write_dir(self.watch_dir_path)
                 self.ct.nf = True
-                input_options.watchdir = selected_file
                 update_batch_from_options()
-            
-        def write_folder_button_clicked(self, widget):
-            selected_file = self.write_file_chooser_button.get_filename()
-            # Check if selected_file is None, which indicates the user clicked 'Cancel'
-            if selected_file is not None:
-                self.ct.writedir = selected_file
-                self.ct.nf = True
-                input_options.writedir = selected_file
-                update_batch_from_options()
+
+        def choose_dir(self, title, current):
+            """Browse for a folder in one click, using the platform dialog."""
+            native = Gtk.FileChooserNative.new(
+                title, self, Gtk.FileChooserAction.SELECT_FOLDER, None, None
+            )
+            if current:
+                native.set_current_folder(current)
+            accepted = native.run() == Gtk.ResponseType.ACCEPT
+            folder = native.get_filename() if accepted else None
+            native.destroy()
+            return folder
+
+        def watch_dir_clicked(self, _btn):
+            folder = self.choose_dir("Choose watch directory", self.watch_dir_path)
+            if folder is None:
+                return
+            self.set_watch_dir(folder)
+            self.ct.nf = True
+            if self.link_dirs_button.get_active():
+                self.set_write_dir(folder)
+            update_batch_from_options()
+
+        def write_dir_clicked(self, _btn):
+            folder = self.choose_dir("Choose write directory", self.write_dir_path)
+            if folder is None:
+                return
+            self.set_write_dir(folder)
+            self.ct.nf = True
+            if self.link_dirs_button.get_active():
+                self.set_watch_dir(folder)
+            update_batch_from_options()
 
         def export_all_clicked(self, widget):
             self.ct.ea = True
@@ -1265,8 +1370,9 @@ elif guitype=='gtk4.0':
             separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
             tab1_box.append(separator)
             
-            # Watch directory
-            watch_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+            # Watch/write directories, in a grid so the chain-link button
+            # can sit between their labels and span both rows
+            dir_grid = Gtk.Grid(column_spacing=0, row_spacing=10)
             watch_file_chooser_label = Gtk.Label(label="Watch directory", xalign=10)
             watch_file_chooser_label.set_width_chars(LABEL_WIDTH)
             self.watch_dir_button = Gtk.Button()
@@ -1275,40 +1381,61 @@ elif guitype=='gtk4.0':
             self.watch_dir_button.add_css_class("path-button")  # CSS class for min-width override
             self._watch_dir_lbl = Gtk.Label(xalign=0.0)
             self._watch_dir_lbl.set_single_line_mode(True)
-            self._watch_dir_lbl.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
-            self._watch_dir_lbl.set_wrap(False)
-            self._watch_dir_lbl.set_width_chars(12)       # minimum hint
-            self._watch_dir_lbl.set_max_width_chars(60)   # natural width cap
-            self.watch_dir_button.set_child(self._watch_dir_lbl)
+            self._watch_dir_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+            self._watch_dir_lbl.set_hexpand(True)
+            watch_dir_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            watch_dir_box.append(Gtk.Image.new_from_icon_name("folder"))
+            watch_dir_box.append(self._watch_dir_lbl)
+            self.watch_dir_button.set_child(watch_dir_box)
             self.watch_dir_path = input_options.watchdir
-            self._watch_dir_lbl.set_text(self.watch_dir_path or "Choose watch directory")
+            self._watch_dir_lbl.set_text(dir_display_name(self.watch_dir_path)
+                                       or "Choose watch directory")
+            self.watch_dir_button.set_tooltip_text(self.watch_dir_path or "")
             self.watch_dir_button.connect("clicked", self.watch_dir_clicked)
-            watch_file_chooser_box.append(watch_file_chooser_label)
-            watch_file_chooser_box.append(self.watch_dir_button)
-            tab1_box.append(watch_file_chooser_box)
-
+            dir_grid.attach(watch_file_chooser_label, 0, 0, 1, 1)
+            dir_grid.attach(self.watch_dir_button, 1, 0, 1, 1)
 
             # Write directory
-            write_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
             write_file_chooser_label = Gtk.Label(label="Write directory", xalign=10.0)
             write_file_chooser_label.set_width_chars(LABEL_WIDTH)
             self.write_dir_button = Gtk.Button()               # no 'label=' here
             self.write_dir_button.set_hexpand(True)
             self.write_dir_button.set_halign(Gtk.Align.FILL)
-            self.write_dir_button.add_css_class("path-button") # we'll use CSS below
+            self.write_dir_button.add_css_class("path-button") # we will use CSS below
             self._write_dir_lbl = Gtk.Label(xalign=0.0)
             self._write_dir_lbl.set_single_line_mode(True)
-            self._write_dir_lbl.set_ellipsize(Pango.EllipsizeMode.MIDDLE)  # better for long paths
-            self._write_dir_lbl.set_wrap(False)
-            self._write_dir_lbl.set_width_chars(12)    # minimum it should try to keep
-            self._write_dir_lbl.set_max_width_chars(60) # cap natural width
-            self.write_dir_button.set_child(self._write_dir_lbl)
+            self._write_dir_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+            self._write_dir_lbl.set_hexpand(True)
+            write_dir_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            write_dir_box.append(Gtk.Image.new_from_icon_name("folder"))
+            write_dir_box.append(self._write_dir_lbl)
+            self.write_dir_button.set_child(write_dir_box)
             self.write_dir_path = input_options.writedir
-            self._write_dir_lbl.set_text(self.write_dir_path or "Choose write directory")
+            self._write_dir_lbl.set_text(dir_display_name(self.write_dir_path)
+                                       or "Choose write directory")
+            self.write_dir_button.set_tooltip_text(self.write_dir_path or "")
             self.write_dir_button.connect("clicked", self.write_dir_clicked)
-            write_file_chooser_box.append(write_file_chooser_label)
-            write_file_chooser_box.append(self.write_dir_button)
-            tab1_box.append(write_file_chooser_box)
+            dir_grid.attach(write_file_chooser_label, 0, 1, 1, 1)
+            dir_grid.attach(self.write_dir_button, 1, 1, 1, 1)
+
+            # Chain link: while active, changing either directory changes both
+            self.link_dirs_button = Gtk.ToggleButton()
+            _linkpb = link_icon_pixbuf(28)
+            if _linkpb is not None:
+                _linkimg = Gtk.Picture.new_for_paintable(Gdk.Texture.new_for_pixbuf(_linkpb))
+                self.link_dirs_button.set_child(_linkimg)
+            else:
+                self.link_dirs_button.set_icon_name("insert-link-symbolic")
+            self.link_dirs_button.set_tooltip_text("Keep the watch and write directories the same")
+            self.link_dirs_button.set_has_frame(False)
+            self.link_dirs_button.set_valign(Gtk.Align.CENTER)
+            self.link_dirs_button.set_active(dirs_initially_linked())
+            self.link_dirs_button.connect("toggled", self.link_dirs_toggled)
+            self.link_dirs_button.add_css_class("link-button")
+            self.link_dirs_button.set_margin_start(4)
+            self.link_dirs_button.set_margin_end(4)
+            dir_grid.attach(self.link_dirs_button, 2, 0, 1, 2)
+            tab1_box.append(dir_grid)
             
             # Export all button
             self.ea_button = Gtk.Button(label="Export all")
@@ -1351,6 +1478,33 @@ elif guitype=='gtk4.0':
             self.ct.stopped = True
             return False
 
+        def set_watch_dir(self, folder):
+            self.watch_dir_path = folder
+            if getattr(self, "_watch_dir_lbl", None):
+                self._watch_dir_lbl.set_text(dir_display_name(folder)
+                                           or "Choose watch directory")
+                self.watch_dir_button.set_tooltip_text(folder or "")
+            self.ct.watchdir = folder
+            input_options.watchdir = folder
+
+        def set_write_dir(self, folder):
+            self.write_dir_path = folder
+            if getattr(self, "_write_dir_lbl", None):
+                self._write_dir_lbl.set_text(dir_display_name(folder)
+                                           or "Choose write directory")
+                self.write_dir_button.set_tooltip_text(folder or "")
+            self.ct.writedir = folder
+            input_options.writedir = folder
+
+        def link_dirs_toggled(self, widget):
+            """Turning the link on makes the write directory adopt the watch one."""
+            if not widget.get_active():
+                return
+            if self.watch_dir_path and self.watch_dir_path != self.write_dir_path:
+                self.set_write_dir(self.watch_dir_path)
+                self.ct.nf = True
+                update_batch_from_options()
+
         def watch_dir_clicked(self, _btn):
             dlg = Gtk.FileDialog(title="Choose watch directory")
             if self.watch_dir_path:
@@ -1365,13 +1519,10 @@ elif guitype=='gtk4.0':
                     return
                 if not folder:
                     return
-                self.watch_dir_path = folder.get_path()
-                if getattr(self, "_watch_dir_lbl", None):
-                    self._watch_dir_lbl.set_text(self.watch_dir_path or "Choose watch directory")
-                # inline apply
-                self.ct.watchdir = self.watch_dir_path
+                self.set_watch_dir(folder.get_path())
                 self.ct.nf = True
-                input_options.watchdir = self.ct.watchdir
+                if self.link_dirs_button.get_active():
+                    self.set_write_dir(self.watch_dir_path)
                 update_batch_from_options()
             dlg.select_folder(self._win, None, _done)
     
@@ -1389,12 +1540,10 @@ elif guitype=='gtk4.0':
                     return
                 if not folder:
                     return
-                self.write_dir_path = folder.get_path()
-                if getattr(self, "_write_dir_lbl", None):
-                    self._write_dir_lbl.set_text(self.write_dir_path or "Choose write directory")
-                self.ct.writedir = self.write_dir_path
+                self.set_write_dir(folder.get_path())
                 self.ct.nf = True
-                input_options.writedir = self.ct.writedir
+                if self.link_dirs_button.get_active():
+                    self.set_watch_dir(self.write_dir_path)
                 update_batch_from_options()
             dlg.select_folder(self._win, None, _done)
         
@@ -1454,7 +1603,9 @@ elif guitype=='gtk4.0':
             
         def _build_options_tab(self, parent: Gtk.Box):
             css = Gtk.CssProvider()
-            css.load_from_data(b".label-bold { font-weight: bold; }")
+            css.load_from_data(b".label-bold { font-weight: bold; } "
+                               b".link-button { padding: 3px; min-width: 0px; min-height: 0px; } "
+                               b".path-button { min-width: 0px; }")
             Gtk.StyleContext.add_provider_for_display(
                 Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
             )

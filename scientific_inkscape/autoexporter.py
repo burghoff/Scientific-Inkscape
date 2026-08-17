@@ -1071,6 +1071,11 @@ class Exporter():
         if fformat == "psvg":
             myoutput = myoutput.replace(".psvg", "_plain.svg")
 
+        # Clear stale outputs (page variants, LaTeX sidecars, old " (N)"
+        # copies); anything held open elsewhere pushes us to the next " (N)".
+        wantedoutput = myoutput
+        myoutput = claim_output_name(myoutput)
+
         def overwrite_output(filein, fileout):
             if os.path.exists(fileout):
                 os.remove(fileout)
@@ -1152,8 +1157,7 @@ class Exporter():
                             if not (self.testmode or len(pgs) == 1)
                             else ""
                         )
-                        outparts = fileout.split(".")
-                        pgout = ".".join(outparts[:-1]) + addendum + "." + outparts[-1]
+                        pgout = with_page_suffix(fileout, addendum)
                         self.check(dh.overwrite_svg,psvg, pgout)
                         outputs.append(pgout)
                     self.made_outputs = outputs
@@ -1181,8 +1185,7 @@ class Exporter():
                         svgpgfn = self.tempbase + addendum + ".svg"
                         self.check(dh.overwrite_svg, svgpg, svgpgfn)
 
-                        outparts = fileout.split(".")
-                        pgout = ".".join(outparts[:-1]) + addendum + "." + outparts[-1]
+                        pgout = with_page_suffix(fileout, addendum)
                         overwrite_output(svgpgfn, pgout)
                         outputs.append(pgout)
                     self.made_outputs = outputs
@@ -1205,9 +1208,7 @@ class Exporter():
                 finalname = myoutput
                 if len(moutputs) > 1:
                     pnum, _ = os.path.splitext(mout.split("_page_")[-1])
-                    finalname = myoutput.replace(
-                        "_plain.svg", "_page_" + pnum + "_plain.svg"
-                    )
+                    finalname = with_page_suffix(myoutput, "_page_" + pnum)
                 self.check(dh.overwrite_svg,svg, finalname)
                 finalnames.append(finalname)
 
@@ -1234,12 +1235,18 @@ class Exporter():
                 except PermissionError:
                     pass
 
+        # Note the fallback name when the usual one was in use elsewhere
+        notes = ""
+        if myoutput != wantedoutput:
+            notes = "\r(written to " + os.path.basename(finalnames[0]) + (
+                " etc." if len(finalnames) > 1 else "") + ")"
+
         toc = time.time() - timestart
         self.terminal_message("Conversion to "
         + fformat
         + " done ("
         + str(round(1000 * toc) / 1000)
-        + " s)")
+        + " s)" + notes)
         return True, myoutput
 
     def postprocessing(self, svg):
@@ -2903,6 +2910,81 @@ def _with_numbered_suffix(path: str, n: int) -> str:
     """
     p = Path(path)
     return str(p.with_name(f"{p.stem} ({n}){p.suffix}"))
+
+def with_page_suffix(path: str, addendum: str) -> str:
+    """
+    Insert a page addendum into an output name, ahead of the '_plain'
+    marker and any ' (N)' collision suffix.
+    Example: 'fig_plain (1).svg' + '_page_2' -> 'fig_page_2_plain (1).svg'
+    """
+    root, ext = os.path.splitext(path)
+    lvl = ""
+    m = re.search(r" \(\d+\)$", root)
+    if m:
+        root, lvl = root[: m.start()], m.group(0)
+    if ext.lower() == ".svg" and root.endswith("_plain"):
+        root = root[:-6] + addendum + "_plain"
+    else:
+        root += addendum
+    return root + lvl + ext
+
+def output_cognates(myoutput: str):
+    """
+    Every existing file that an export to `myoutput` could have produced:
+    page variants (any label), LaTeX sidecars, and ' (N)' collision copies.
+    Returns (collision number, path) pairs.
+    """
+    root, ext = os.path.splitext(os.path.basename(myoutput))
+    tail = ""
+    if ext.lower() == ".svg" and root.endswith("_plain"):
+        root, tail = root[:-6], "_plain"
+    # An .svg export must not claim the psvg family's _plain.svg outputs
+    guard = "" if tail or ext.lower() != ".svg" else r"(?!.*_plain(?: \(\d+\))?\.svg$)"
+    pat = re.compile(
+        rf"^{guard}{re.escape(root)}(?:_page_.*?)?{re.escape(tail)}"
+        rf"(?: \((\d+)\))?{re.escape(ext)}(?:_tex)?$",
+        re.IGNORECASE,
+    )
+    directory = os.path.dirname(myoutput)
+    try:
+        entries = os.listdir(directory or ".")
+    except OSError:
+        return []
+    found = []
+    for fname in entries:
+        m = pat.match(fname)
+        if m:
+            found.append((int(m.group(1) or 0), os.path.join(directory, fname)))
+    return found
+
+def claim_output_name(myoutput: str, retries: int = 1, delay: float = 1.0) -> str:
+    """
+    Delete everything a previous export of the same file left behind, so a
+    switch between single-page and multipage output cannot orphan the old
+    names. Deletion doubles as the writability test: a file held open
+    elsewhere cannot be removed, so any ' (N)' level that fails to clear is
+    skipped in favor of the next one.
+    """
+    pending = output_cognates(myoutput)
+    for attempt in range(retries + 1):
+        failed = []
+        for n, path in pending:
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                failed.append((n, path))
+        pending = failed
+        if not pending or attempt == retries:
+            break
+        time.sleep(delay)
+
+    blocked = {n for n, _ in pending}
+    n = 0
+    while n in blocked:
+        n += 1
+    return myoutput if n == 0 else _with_numbered_suffix(myoutput, n)
 
 def _replace_or_copy_overwrite_once(src: str, dst: str) -> str:
     """
