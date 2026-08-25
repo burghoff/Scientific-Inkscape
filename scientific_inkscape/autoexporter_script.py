@@ -93,14 +93,6 @@ def get_files(dirin):
         return None
 
 
-def update_batch_from_options():
-    """
-    Re-encode the current input_options and regenerate Autoexporter.bat so a later
-    double-click relaunches with the updated settings (Windows only).
-    """
-    if not sys.platform.startswith("win"):
-        return
-
 LINK_ICON_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}"'
     ' viewBox="0 0 12 28"><g fill="none" stroke="{color}" stroke-width="2.4"'
@@ -154,6 +146,14 @@ def dirs_initially_linked():
     except (TypeError, ValueError):
         return True
 
+
+def update_batch_from_options():
+    """
+    Re-encode the current input_options and regenerate Autoexporter.bat so a later
+    double-click relaunches with the updated settings (Windows only).
+    """
+    if not sys.platform.startswith("win"):
+        return
     opts_blob = base64.urlsafe_b64encode(pickle.dumps(input_options)).decode()
     aepy = os.path.abspath(__file__)
     guitype_local = getattr(input_options, "guitype", "terminal")

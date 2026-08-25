@@ -1980,13 +1980,10 @@ class Exporter():
     def instantiate_markers(elem, mkrs):
         """Convert an element's markers into real geometry placed in a
         sibling group, then disable the markers on the element. This keeps
-        Inkscape's Stroke to Path from ever converting markers itself, which
-        crashes intermittently and outlines marker content with the element's
-        stroke, fattening arrowheads. Returns True on success; False means
-        the caller should fall back to the legacy Inkscape-based conversion
-        (e.g. markers using a viewBox).
+        Inkscape's Stroke to Path from ever converting markers itself).
         """
-        if any(mkrel.get("viewBox") is not None for mkrel in mkrs.values()):
+        if any(mkrel.get("preserveAspectRatio") == "none"
+               for mkrel in mkrs.values()):
             return False
         try:
             csp = elem.cpath.to_absolute().to_superpath()
@@ -2087,6 +2084,13 @@ class Exporter():
             )
             refx = dh.ipx(mkrel.get("refX", "0")) or 0.0
             refy = dh.ipx(mkrel.get("refY", "0")) or 0.0
+            # A viewBox adds its viewport scale; its origin and the
+            # preserveAspectRatio offset both cancel against the ref point
+            vbx = dh.listsplit(mkrel.get("viewBox") or "")
+            if len(vbx) == 4 and vbx[2] > 0 and vbx[3] > 0:
+                mwd = dh.ipx(mkrel.get("markerWidth", "3")) or 3.0
+                mht = dh.ipx(mkrel.get("markerHeight", "3")) or 3.0
+                unit *= min(mwd / vbx[2], mht / vbx[3])
             grp = inkex.Group()
             cont.append(grp)
             grp.set(
@@ -2219,8 +2223,14 @@ class Exporter():
                     if mstrt.get("orient") == "auto-start-reverse":
                         dup = mstrt.duplicate()
                         dup.set("orient", "auto")
+                        # Flip about the reference point, not the origin
+                        rfx = dh.ipx(mstrt.get("refX", "0")) or 0.0
+                        rfy = dh.ipx(mstrt.get("refY", "0")) or 0.0
+                        flip = Transform(
+                            f"translate({2 * rfx},{2 * rfy}) scale(-1)")
+                        dup.cstyle["overflow"] = "visible"
                         for dkid in list(dup):
-                            dkid.ctransform = Transform("scale(-1)") @ dkid.ctransform
+                            dkid.ctransform = flip @ dkid.ctransform
                         sty["marker-start"] = dup.get_id(as_url=2)
                         elem.cstyle = sty
         return path_els, dummy_groups
