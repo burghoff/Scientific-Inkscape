@@ -563,8 +563,8 @@ def extract_img_file(el, svg_dir, newpath):
 # renderer from replacing those pixels with black. This avoids the 'gray ring'
 # issue that can happen on PDF exports.
 def Set_Alpha0_RGB(img, imgref):
-    im1 = ImagePIL.open(img).convert("RGBA")
-    im2 = ImagePIL.open(imgref).convert("RGBA")
+    im1 = _open_image(img).convert("RGBA")
+    im2 = _open_image(imgref).convert("RGBA")
     import numpy as np
 
     d1 = np.asarray(im1)
@@ -585,11 +585,32 @@ def Set_Alpha0_RGB(img, imgref):
     return anyalpha0
 
 
+def _open_image(path):
+    """ImagePIL.open, but on Windows explain the usual cause of an
+    unreadable image before letting the error propagate: security software
+    can lock or truncate a file Inkscape has only just written."""
+    try:
+        return ImagePIL.open(path)
+    except getattr(ImagePIL, "UnidentifiedImageError", OSError):
+        if os.name == "nt":
+            import warnings
+
+            warnings.warn(
+                "PIL could not read " + str(path) + ". On Windows this is "
+                "usually security software locking or scanning a file that "
+                "was just written. Check Windows Security > Virus & threat "
+                "protection > Real-time protection and Controlled folder "
+                "access, or exclude Inkscape's temp folder from scanning.",
+                category=UserWarning,
+            )
+        raise
+
+
 # Crop a list of images based on the transparency of the first one
 # Returns the normalized bounding box, which we need later
 def crop_images(ims_in):
     bbox = None
-    with ImagePIL.open(ims_in[0]) as ref_im:
+    with _open_image(ims_in[0]) as ref_im:
         bbox = ref_im.getbbox()
         nsz = ref_im.size
 
@@ -602,7 +623,7 @@ def crop_images(ims_in):
             bbox[3] / nsz[1],
         ]  # normalize to original size
         for imf in ims_in:
-            with ImagePIL.open(imf) as im:
+            with _open_image(imf) as im:
                 im.crop(bbox).save(imf)
         return nbbox
     else:

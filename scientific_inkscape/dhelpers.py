@@ -155,6 +155,42 @@ if (
         GLib.log_set_writer_func(custom_log_writer, None)
 
 
+# Patch macOS bug on Inkscape 1.4.3 and 1.4.4
+# https://gitlab.com/inkscape/inkscape/-/work_items/6250
+if sys.platform == "darwin":
+    import importlib.machinery
+
+    class _PatchedSourceLoader:
+        def __init__(self, src, origin):
+            self.src, self.origin = src, origin
+
+        def create_module(self, spec):
+            return None  # default module creation
+
+        def exec_module(self, module):
+            exec(compile(self.src, self.origin, "exec"), module.__dict__)
+
+    class _GioUnixOverrideFinder:
+        NAME = "gi.overrides.GioUnix"
+        OLD = "< (2, 86):"
+        NEW = '< (2, 86) and hasattr(GioUnix, "DesktopAppInfo"):'
+
+        def find_spec(self, fullname, path, target=None):
+            if fullname != self.NAME:
+                return None
+            real = importlib.machinery.PathFinder.find_spec(fullname, path)
+            try:
+                with open(real.origin, encoding="utf-8") as f:
+                    src = f.read()
+            except (AttributeError, TypeError, OSError):
+                return None  # not found or unreadable: leave it to the normal import
+            if self.OLD not in src:
+                return None  # already fixed upstream: use the real file as-is
+            loader = _PatchedSourceLoader(src.replace(self.OLD, self.NEW, 1), real.origin)
+            return importlib.machinery.ModuleSpec(fullname, loader, origin=real.origin)
+
+    sys.meta_path.insert(0, _GioUnixOverrideFinder())
+
 # Replace an element with another one
 # Puts it in the same location, update the cache dicts
 def replace_element(el1, el2):
