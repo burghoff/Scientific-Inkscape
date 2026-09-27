@@ -429,6 +429,8 @@ class BaseElementCache(BaseElement):
                 ret = inkex.Path(self.get("d"))
             elif self.tag == BaseElementCache.rect_tag:
                 left, top, width, height = self.xywh()
+                if not (width > 0 and height > 0):
+                    return inkex.Path()   # Inkscape doesn't render zero-dim
                 rx = ipx(self.get("rx", self.get("ry", "0")))
                 ry = ipx(self.get("ry", self.get("rx", "0")))
                 right = left + width
@@ -535,7 +537,7 @@ class BaseElementCache(BaseElement):
             )
         val = self.get(att, "0")
         try:
-            return ipx(val)
+            return ipx(val) or 0
         except KeyError:
             if "%" in val and att in ["x", "width"]:
                 return self.croot.cdocsize.rawvb[2] * float(val.strip("%")) / 100

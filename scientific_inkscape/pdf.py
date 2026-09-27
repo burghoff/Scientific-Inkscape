@@ -1162,10 +1162,10 @@ def _try_get_uniform_rgb_hex_from_ximage(ximg, name=None) -> Optional[str]:
 
 
 def _emit_first_deviation(label, row_idx, target, rgb_row, w, through_smask=False):
-    """Find the first pixel in ``rgb_row`` that doesn't match ``target`` and
-    emit a debug rejection line that points at it. Used by the no-SMask fast
-    path and the all-alpha-255 fast path so the user gets the same kind of
-    diagnostic they'd get from the per-pixel slow path."""
+    """Find the first pixel in rgb_row that doesn't match target and print a
+    debug rejection line pointing at it. Used by the no-SMask fast path and
+    the all-alpha-255 fast path so they give the same diagnostic as the
+    per-pixel slow path."""
     if not DEBUG_PDF:
         return
     tr, tg, tb = target

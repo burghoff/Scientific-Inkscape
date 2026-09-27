@@ -70,7 +70,10 @@ def remove_kerning(
     justification=None,
     debugparser=False,
 ):
-    tels = [el for el in els if isinstance(el, (inkex.TextElement, inkex.FlowRoot))]
+    tetag = inkex.TextElement.ctag
+    frtag = inkex.FlowRoot.ctag
+    tptag = inkex.TextPath.ctag
+    tels = [el for el in els if el.tag in {tetag,frtag}]
     if tels:
         tels[0].croot.make_char_table(tels)
     if DEBUG_PARSER or debugparser:
@@ -78,7 +81,7 @@ def remove_kerning(
             el.parsed_text.make_highlights("char")
     else:
         # Do merges first (deciding based on original position)
-        tels = [el for el in els if isinstance(el, (inkex.TextElement,))]
+        tels = [el for el in els if el.tag==tetag and not(any(k.tag==tptag for k in el))]
         ptl = tp.ParsedTextList(tels)
         if removemanual:
             for pt in ptl:
