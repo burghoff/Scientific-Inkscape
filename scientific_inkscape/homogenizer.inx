@@ -24,6 +24,7 @@
                        <option value="7">Min selected</option>
                        <option value="8">Max selected</option>
                        <option value="4">Scale max to (pt)</option>
+                       <option value="9">Floor (pt)</option>
             </param>            
             <param name="fontsize" type="float" precision="1" min="0" max="10000"
                     gui-text="Font size value (if applicable)">8</param>

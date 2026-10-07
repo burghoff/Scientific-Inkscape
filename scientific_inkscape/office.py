@@ -1649,6 +1649,9 @@ class Slide_and_Rels:
             if elem.tag == f"{{{ns['asvg']}}}svgBlip":
                 svgblips.append(elem)
             elif elem.tag == f"{{{ns['a']}}}blip":
+                # The SVG extension takes precedence over the fallback, as in Word.
+                if elem.find(".//asvg:svgBlip", namespaces=ns) is not None:
+                    continue
                 rid = elem.attrib.get(f"{{{ns['r']}}}embed")
                 target = rel_id_to_target.get(rid, "").lower() if rid else ""
                 if target.endswith(".svg"):
@@ -1849,7 +1852,7 @@ class Slide_and_Rels:
             changed_rels = True
 
             # If this is an <asvg:svgBlip> nested in <a:blip>/<a:extLst>/<a:ext>
-            # whose outer <a:blip> has no r:embed, promote the new PNG rid onto
+            # promote the new PNG rid onto
             # the outer blip and drop the extLst. A plain parent.replace here
             # would leave the PNG reference buried inside the SVG-extension slot
             # and the outer blip still with no primary image, so PowerPoint
@@ -1861,8 +1864,7 @@ class Slide_and_Rels:
                 outer_blip = extLst.getparent() if extLst is not None else None
                 if (ext is not None and ext.tag == f"{{{ns['a']}}}ext"
                         and extLst is not None and extLst.tag == f"{{{ns['a']}}}extLst"
-                        and outer_blip is not None and outer_blip.tag == f"{{{ns['a']}}}blip"
-                        and not outer_blip.attrib.get(f"{{{ns['r']}}}embed")):
+                        and outer_blip is not None and outer_blip.tag == f"{{{ns['a']}}}blip"):
                     outer_blip.attrib[f"{{{ns['r']}}}embed"] = new_rid
                     outer_blip.remove(extLst)
                     promoted = True
