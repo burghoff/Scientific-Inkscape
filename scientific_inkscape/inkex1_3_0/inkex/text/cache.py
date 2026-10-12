@@ -43,7 +43,7 @@ from typing import Optional, List
 import inkex
 from inkex import Style
 from inkex import BaseElement, SvgDocumentElement
-from text.utils import shapetags, tags, ipx, list2, default_style_atts  # pylint: disable=import-error
+from inkex.text.utils import shapetags, tags, ipx, list2, default_style_atts  # pylint: disable=import-error
 import lxml
 
 EBget = lxml.etree.ElementBase.get

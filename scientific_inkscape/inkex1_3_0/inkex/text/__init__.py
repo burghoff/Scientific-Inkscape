@@ -38,51 +38,60 @@ svg.make_char_table(els). On the rare occasions this fails, a command call may
 be performed as a fallback.
 """
 
-# Give inkex an inkex.text submodule that refers to this directory
+# This package lives inside Scientific Inkscape's copy of inkex, so it is
+# imported as inkex.text. (It used to re-import itself as a top-level `text`
+# module as well, which executed the whole package twice.)
 import sys
-import os
-import inspect
+import types
 import inkex
 
-in_import_module = False
-if not hasattr(inkex, "text"):
-    import importlib
+# The import system only sets inkex.text once this module has finished, so
+# set it now for anything that refers to inkex.text.* during package init.
+inkex.text = sys.modules[__name__]
 
-    mydir = os.path.dirname(os.path.abspath(__file__))
-    myloc, myname = os.path.split(mydir)
-    # Copy, not reference: myloc is appended below only so import_module can
-    # find this dir as top-level `text`; sys.path is restored afterward. With
-    # a bare reference the restore is a no-op and each of this module's two
-    # executions (it re-imports itself as `text`) leaks a duplicate entry.
-    oldpath = list(sys.path)
-    sys.path.append(myloc)
+# Gives inkex elements some additional cached attributes, for further speedups
+import inkex.text.cache  # pylint: disable=wrong-import-position
 
-    in_import_module = in_import_module | ('text' in sys.modules)  
-    inkex.text = importlib.import_module(myname)
-    sys.modules["inkex.text"] = inkex.text
-    sys.path = oldpath
 
-if not in_import_module:
-    # Gives inkex elements some additional cached attributes, for further speedups
-    import inkex.text.cache  # pylint: disable=wrong-import-position
-    
-    def add_cache(base, derived):
-        """
-        Adds the cache capabilities from a derived class to a base class by dynamically
-        attaching methods, properties, and data descriptors that are unique to the derived
-        class to the base class.
-        """
-        predfn = (
-            lambda x: isinstance(x, property)
-            or inspect.isfunction(x)
-            or inspect.isdatadescriptor(x)
-        )
-        base_m = dict(inspect.getmembers(base, predicate=predfn))
-        for name, memb in inspect.getmembers(derived, predicate=predfn):
-            if memb not in base_m.values():
-                setattr(base, name, memb)
-    
-    
-    add_cache(inkex.BaseElement, inkex.text.cache.BaseElementCache)
-    add_cache(inkex.SvgDocumentElement, inkex.text.cache.SvgDocumentElementCache)
-    add_cache(inkex.Style, inkex.text.cache.StyleCache)
+def _members(cls):
+    """The properties, functions and data descriptors of cls, resolved with
+    getattr like inspect.getmembers does (inspect itself is slow to import)."""
+    out = {}
+    for name in dir(cls):
+        try:
+            val = getattr(cls, name)
+        except AttributeError:
+            # A descriptor whose __get__ fails on the class itself: use the
+            # raw descriptor, as inspect.getmembers does
+            for base in cls.__mro__:
+                if name in base.__dict__:
+                    val = base.__dict__[name]
+                    break
+            else:
+                continue
+        if isinstance(val, type):
+            continue
+        if (
+            isinstance(val, (property, types.FunctionType))
+            or hasattr(type(val), "__set__")
+            or hasattr(type(val), "__delete__")
+        ):
+            out[name] = val
+    return out
+
+
+def add_cache(base, derived):
+    """
+    Adds the cache capabilities from a derived class to a base class by dynamically
+    attaching methods, properties, and data descriptors that are unique to the derived
+    class to the base class.
+    """
+    base_m = _members(base)
+    for name, memb in _members(derived).items():
+        if memb not in base_m.values():
+            setattr(base, name, memb)
+
+
+add_cache(inkex.BaseElement, inkex.text.cache.BaseElementCache)
+add_cache(inkex.SvgDocumentElement, inkex.text.cache.SvgDocumentElementCache)
+add_cache(inkex.Style, inkex.text.cache.StyleCache)

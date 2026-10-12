@@ -20,11 +20,12 @@
 
 import inkex
 
-import inspect
 from functools import lru_cache
 
 
 def count_callers():
+    import inspect
+
     caller_frame = inspect.stack()[2]
     filename = caller_frame.filename
     line_number = caller_frame.lineno

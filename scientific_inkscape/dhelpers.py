@@ -25,24 +25,25 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 # Locate the installed Inkex so we can assess the version. Do not import!
-import pkgutil
-installed_inkex = None
-for finder in pkgutil.iter_importers():
-    if hasattr(finder, "find_spec"):
-        try:
-            spec = finder.find_spec("inkex")
-            if spec and spec.origin:
-                installed_inkex = spec.origin
-        except TypeError:
-            continue
-
-# Import the packaged version of Inkex (currently v1.3.0)
+# (Last entry on sys.path wins, same as pkgutil.iter_importers would give.)
 import sys, os
 
+installed_inkex = None
+for p in sys.path:
+    cand = os.path.join(p or os.getcwd(), "inkex", "__init__.py")
+    if os.path.isfile(cand):
+        installed_inkex = cand
+
+# Import the packaged version of Inkex (currently v1.3.0)
 inkex_to_use = "inkex1_3_0"
 si_dir = os.path.dirname(os.path.realpath(__file__))  # my install location
 sys.path.insert(0, os.path.join(si_dir, inkex_to_use))
 sys.path.insert(1, os.path.join(si_dir, inkex_to_use, "site-packages"))
+
+# Serve everything below from a bytecode cache and defer numpy (see fastimport)
+import fastimport
+
+fastimport.install(si_dir)
 import inkex
 
 # For SI we override Inkex's Style with a modified version, Style0
@@ -99,10 +100,9 @@ def list2(el):
 EBget = lxml.etree.ElementBase.get
 EBset = lxml.etree.ElementBase.set
 
-import inspect
-
-
 def count_callers():
+    import inspect
+
     caller_frame = inspect.stack()[2]
     filename = caller_frame.filename
     line_number = caller_frame.lineno
@@ -138,10 +138,8 @@ inkex.installed_ivp = inkex.vparse(vstr)  # type: ignore
 inkex.installed_haspages = inkex.installed_ivp[0] >= 1 and inkex.installed_ivp[1] >= 2
 
 # On v1.1-1.2.1 gi produces an error for some reason that is actually fine
-import platform
-
 if (
-    platform.system().lower() == "windows"
+    sys.platform == "win32"
     and inkex.installed_ivp[0:2] == [1, 1]
     or (inkex.installed_ivp[0:2] == [1, 2] and inkex.installed_ivp[2] < 2)
 ):
