@@ -85,6 +85,10 @@ class AutoExporter(inkex.EffectExtension):
         pars.add_argument("--watchdir", help="Watch directory")
         pars.add_argument("--writedir", help="Write directory")
         pars.add_argument(
+            "--watchsubdirs", type=inkex.Boolean, default=True,
+            help="Watch subdirectories too?",
+        )
+        pars.add_argument(
             "--usepdf", type=inkex.Boolean, default=False, help="Export PDF?"
         )
         pars.add_argument(

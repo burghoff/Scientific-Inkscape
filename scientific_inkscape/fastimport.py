@@ -184,13 +184,25 @@ _PASSTHROUGH = frozenset(
 )
 
 
+_executing = set()  # modules whose real code is currently running
+
+
 def _lazy_load(mod):
     with _lazy_lock:
         if _ModuleType.__getattribute__(mod, "__class__") is not _LazyModule:
             return
+        name = _ModuleType.__getattribute__(mod, "__name__")
+        if name in _executing:
+            return  # the module's own init reading itself; let it through
         spec = _ModuleType.__getattribute__(mod, "__spec__")
+        # Stay a stub until the module is fully built, so other threads keep
+        # hitting the lock above instead of reading a half-populated module
+        _executing.add(name)
+        try:
+            spec.loader.exec_module(mod)
+        finally:
+            _executing.discard(name)
         _ModuleType.__setattr__(mod, "__class__", _ModuleType)
-        spec.loader.exec_module(mod)
 
 
 class _LazyModule(_ModuleType):

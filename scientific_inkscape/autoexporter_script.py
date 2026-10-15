@@ -88,6 +88,8 @@ def get_files(dirin):
             for name in files:
                 if is_target_file(name):
                     result.append(os.path.join(os.path.abspath(root), name))
+            if not watch_subdirs():
+                break  # top level only
         return result
     except: # (FileNotFoundError, OSError):
         return None
@@ -119,6 +121,29 @@ def link_icon_pixbuf(height=28, color='#000000'):
         return loader.get_pixbuf()
     except Exception:
         return None
+
+
+def watch_subdirs():
+    """Whether the watch directory's subfolders are watched too; blobs
+    written before this option existed default to the old behavior"""
+    return getattr(input_options, "watchsubdirs", True)
+
+
+def subdirs_icon_pixbuf(base, stacked):
+    """Glyph for the subfolder toggle from the theme's 16 px folder icon:
+    stacked when on, single and dimmed when off, on a 20 px square so the
+    two states share a center"""
+    from gi.repository import GdkPixbuf
+
+    out = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 20, 20)
+    out.fill(0)
+    interp = GdkPixbuf.InterpType.NEAREST
+    if stacked:
+        base.composite(out, 4, 0, 16, 16, 4, 0, 1, 1, interp, 165)
+        base.composite(out, 0, 4, 16, 16, 0, 4, 1, 1, interp, 255)
+    else:
+        base.composite(out, 2, 2, 16, 16, 2, 2, 1, 1, interp, 110)
+    return out
 
 
 def dir_display_name(folder):
@@ -599,7 +624,8 @@ class FileCheckerThread(threading.Thread):
             dfcn = lambda x: self.file_deleted(os.path.abspath(x))
             try:
                 self.watcher = Watcher(
-                    self.watchdir, createfcn=mfcn, modfcn=mfcn, deletefcn=dfcn
+                    self.watchdir, createfcn=mfcn, modfcn=mfcn, deletefcn=dfcn,
+                    recursive=watch_subdirs(),
                 )
             except Exception:
                 self.watcher = None
@@ -624,7 +650,7 @@ class FileCheckerThread(threading.Thread):
                 # Deleted, cloud drive crash, etc.
                 self.watcher.stop()
                 self.watcher = None
-            restart_needed = (self.watcher is None) or (not self.watcher.observer.is_alive()) or (self.watcher.directory_to_watch != self.watchdir)
+            restart_needed = (self.watcher is None) or (not self.watcher.observer.is_alive()) or (self.watcher.directory_to_watch != self.watchdir) or (self.watcher.recursive != watch_subdirs())
             if restart_needed and os.path.exists(self.watchdir):
                 self.start_watcher()
 
@@ -881,7 +907,18 @@ if guitype == 'gtk3.0':
             self.watch_dir_button.set_tooltip_text(self.watch_dir_path or "")
             self.watch_dir_button.connect("clicked", self.watch_dir_clicked)
             dir_grid.attach(watch_file_chooser_label, 0, 0, 1, 1)
-            dir_grid.attach(self.watch_dir_button, 1, 0, 1, 1)
+            # Fused toggle for watching the directory's subfolders too
+            watch_row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+            watch_row_box.get_style_context().add_class("linked")
+            watch_row_box.set_hexpand(True)
+            watch_row_box.pack_start(self.watch_dir_button, True, True, 0)
+            self.subdirs_button = Gtk.ToggleButton()
+            self.subdirs_button.set_tooltip_text("Also watch subfolders")
+            self.subdirs_button.set_active(watch_subdirs())
+            self.set_subdirs_icon()
+            self.subdirs_button.connect("toggled", self.subdirs_toggled)
+            watch_row_box.pack_start(self.subdirs_button, False, False, 0)
+            dir_grid.attach(watch_row_box, 1, 0, 1, 1)
 
             # Write directory
             write_file_chooser_label = Gtk.Label(label="Write directory", xalign=0.5)  # Center text
@@ -1163,6 +1200,21 @@ if guitype == 'gtk3.0':
         def exit_clicked(self, widget):
             self.destroy()
             
+        def set_subdirs_icon(self):
+            on = self.subdirs_button.get_active()
+            try:
+                base = Gtk.IconTheme.get_default().load_icon("folder", 16, 0)
+                img = Gtk.Image.new_from_pixbuf(subdirs_icon_pixbuf(base, on))
+            except Exception:
+                img = Gtk.Image.new_from_icon_name("folder", Gtk.IconSize.BUTTON)
+            self.subdirs_button.set_image(img)
+
+        def subdirs_toggled(self, widget):
+            # The watcher thread restarts itself when this changes
+            input_options.watchsubdirs = widget.get_active()
+            self.set_subdirs_icon()
+            update_batch_from_options()
+
         def set_watch_dir(self, folder):
             self.watch_dir_path = folder
             if getattr(self, "_watch_dir_lbl", None):
@@ -1393,7 +1445,18 @@ elif guitype=='gtk4.0':
             self.watch_dir_button.set_tooltip_text(self.watch_dir_path or "")
             self.watch_dir_button.connect("clicked", self.watch_dir_clicked)
             dir_grid.attach(watch_file_chooser_label, 0, 0, 1, 1)
-            dir_grid.attach(self.watch_dir_button, 1, 0, 1, 1)
+            # Fused toggle for watching the directory's subfolders too
+            watch_row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+            watch_row_box.add_css_class("linked")
+            watch_row_box.set_hexpand(True)
+            watch_row_box.append(self.watch_dir_button)
+            self.subdirs_button = Gtk.ToggleButton()
+            self.subdirs_button.set_tooltip_text("Also watch subfolders")
+            self.subdirs_button.set_active(watch_subdirs())
+            self.set_subdirs_icon()
+            self.subdirs_button.connect("toggled", self.subdirs_toggled)
+            watch_row_box.append(self.subdirs_button)
+            dir_grid.attach(watch_row_box, 1, 0, 1, 1)
 
             # Write directory
             write_file_chooser_label = Gtk.Label(label="Write directory", xalign=10.0)
@@ -1477,6 +1540,27 @@ elif guitype=='gtk4.0':
         def close_requested(self, *args):
             self.ct.stopped = True
             return False
+
+        def set_subdirs_icon(self):
+            on = self.subdirs_button.get_active()
+            try:
+                from gi.repository import GdkPixbuf
+                theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+                ipath = theme.lookup_icon("folder", None, 16, 1,
+                                          Gtk.TextDirection.NONE, 0).get_file().get_path()
+                base = GdkPixbuf.Pixbuf.new_from_file_at_size(ipath, 16, 16)
+                img = Gtk.Image.new_from_paintable(
+                    Gdk.Texture.new_for_pixbuf(subdirs_icon_pixbuf(base, on)))
+                img.set_pixel_size(20)
+                self.subdirs_button.set_child(img)
+            except Exception:
+                self.subdirs_button.set_icon_name("folder")
+
+        def subdirs_toggled(self, widget):
+            # The watcher thread restarts itself when this changes
+            input_options.watchsubdirs = widget.get_active()
+            self.set_subdirs_icon()
+            update_batch_from_options()
 
         def set_watch_dir(self, folder):
             self.watch_dir_path = folder
