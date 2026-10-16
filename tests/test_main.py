@@ -6,6 +6,7 @@
 # Avenir, Avenir Next, Helvetica
 
 STORE_REFS = False
+PROFILE = False      
 OPEN_COMPARISON = True
 fname = 'Other_tests.svg'
 fname2 = 'Other_tests_nonuniform.svg'
@@ -73,6 +74,8 @@ sys.path += [os.path.join(os.path.split(os.path.split(os.path.abspath(__file__))
 sys.path += [os.path.join(vpaths[version],'lib\\python3.10')]
 os.environ['LINEPROFILE'] = str(lprofile)
 os.environ['USEPANGO']=str(usepango)
+if PROFILE:
+    os.environ['SI_PROFILE'] = '1'
 
 # numpy's C-extension links mingw runtime DLLs (libopenblas, libgfortran, etc.).
 # If another tool on PATH (conda, MSYS2, Strawberry Perl, R...) has loaded a

@@ -299,6 +299,11 @@ class InkscapeSystemInfo:
         """
 
         program = inkex.command.INKSCAPE_EXECUTABLE_NAME
+        # Inkscape's bundled Python lives next to the binary, so check there
+        # before paying for a PATH search
+        sibling = os.path.join(os.path.dirname(sys.executable), program)
+        if not os.path.isabs(program) and os.path.isfile(sibling):
+            return sibling
         try:
             return inkex.command.which(program)
         except inkex.command.CommandNotFound as excp:

@@ -164,6 +164,27 @@ if sys.platform == "win32":
         )
 
 
+class LazyCharSet:
+    """A font's character set, read straight from its fontconfig pattern.
+    Membership is one C call; decoding the whole set (as pattern.get does)
+    takes milliseconds per font and is only done if someone iterates."""
+
+    def __init__(self, pat):
+        self.pat = pat  # keeps the charset alive
+        ptr = ctypes.c_void_p()
+        status = fc.fc.FcPatternGetCharSet(pat._fcobj, b"charset", 0, ctypes.byref(ptr))
+        self.ptr = ptr if status == fc.FC.ResultMatch else None
+        self.chars = None
+
+    def __contains__(self, c):
+        return self.ptr is not None and bool(fc.fc.FcCharSetHasChar(self.ptr, c))
+
+    def __iter__(self):
+        if self.chars is None:
+            self.chars = self.pat.get(fc.PROP.CHARSET, 0)[0]
+        return iter(self.chars)
+
+
 class FontConfig:
     """
     Class to handle FontConfig functionalities.
@@ -203,7 +224,7 @@ class FontConfig:
                 truefont = FontConfig.fcfont_to_css(found)
                 self.truefonts[fontsty] = truefont
                 self.truefontsfc[fontsty] = found
-                self.fontcharsets[truefont] = found.get(fc.PROP.CHARSET, 0)[0]
+                self.fontcharsets[truefont] = LazyCharSet(found)
             return self.truefonts[fontsty]
 
     def get_true_font_fullname(self, fontsty):
@@ -235,7 +256,7 @@ class FontConfig:
                 for fnt in found:
                     truefont = FontConfig.fcfont_to_css(fnt)
                     if truefont not in self.fontcharsets:
-                        self.fontcharsets[truefont] = fnt.get(fc.PROP.CHARSET, 0)[0]
+                        self.fontcharsets[truefont] = LazyCharSet(fnt)
                     cset = self.fontcharsets[truefont]
                     cd2 = {k: truefont for k in chars if ord(k) in cset and k not in cd1}
                     cd1.update(cd2)

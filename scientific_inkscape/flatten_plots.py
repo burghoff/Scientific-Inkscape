@@ -41,7 +41,7 @@ from inkex import (
 )
 
 from inkex.text.utils import isrectangle
-import lxml
+import lxml, os
 from remove_kerning import remove_kerning
 
 
@@ -153,9 +153,12 @@ class FlattenPlots(inkex.EffectExtension):
             if not hasattr(self.options, "enabled_profile"):
                 self.options.enabled_profile = True
                 self.options.lyr1 = self.duplicate_layer1()
-                dh.ctic()
+                profile = os.getenv("SI_PROFILE") == "1"
+                if profile:
+                    dh.ctic()
                 self.effect()
-                dh.ctoc()
+                if profile:
+                    dh.ctoc()
                 return
             else:
                 sel = self.options.lyr1

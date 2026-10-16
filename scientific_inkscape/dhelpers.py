@@ -1717,10 +1717,7 @@ def Run_SI_Extension(effext, name):
 
     alreadyran = False
     lprofile = os.getenv("LINEPROFILE") == "True"
-    batexists = os.path.exists(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "cprofile open.bat")
-    )
-    cprofile = batexists if not lprofile else False
+    cprofile = os.getenv("SI_PROFILE") == "1" and not lprofile
     if cprofile or lprofile:
         profiledir = get_script_path()
         if cprofile:
