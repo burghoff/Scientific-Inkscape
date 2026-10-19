@@ -39,7 +39,8 @@
             <param name="reversions" type="bool"  gui-text="Revert known paths to characters">true</param>
             <param name="removetextclips" type="bool"  gui-text="Remove text clips and masks">true</param>
             <param name="justification" type="optiongroup" appearance="combo"
-                    gui-text="Final text justification">
+                    gui-text="Final text justification"
+                    gui-description="Sets the anchor of flattened text without moving it. Auto infers each line's justification from how it lines up with neighboring text. Unchanged leaves the anchors as-is.">
                        <option value="5">Auto</option>
                        <option value="1">Centered</option>
                        <option value="2">Left</option>
