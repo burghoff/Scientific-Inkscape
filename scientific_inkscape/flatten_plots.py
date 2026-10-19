@@ -115,7 +115,7 @@ class FlattenPlots(inkex.EffectExtension):
             "--replacement", type=str, default="Arial", help="Missing font replacement"
         )
         pars.add_argument(
-            "--justification", type=int, default=1, help="Text justification"
+            "--justification", type=int, default=5, help="Text justification"
         )
         pars.add_argument("--markexc", type=int, default=1, help="Exclude objects")
         pars.add_argument(
@@ -398,7 +398,7 @@ class FlattenPlots(inkex.EffectExtension):
                         dh.deswitch(el)
                 ngs = [el for el in ngs if el.getparent() is not None]
                 
-                jdict = {1: "middle", 2: "start", 3: "end", 4: None}
+                jdict = {1: "middle", 2: "start", 3: "end", 4: None, 5: "auto"}
                 justification = jdict[self.options.justification]
                 ngs = remove_kerning(
                     ngs,

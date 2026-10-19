@@ -4220,6 +4220,7 @@ class TChar:
             self.tfs = tfsz
             self.cwd = self.prop.charw * self.utfs
             self.chk.cwd[self.windex] = self.cwd
+            self.spw = self.prop.spacew * self.utfs
             self.caph = self.prop.caph * self.utfs
             self.chk.caph[self.windex] = self.caph
             self.chk.charpos = None

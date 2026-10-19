@@ -167,17 +167,131 @@ def Make_All_Editable(els):
         el.parsed_text.make_editable()
     return els
 
+AUTO_JUST_TOL = 0.10  # fraction of a space within which edges must line up
+AUTO_JUST_VDIST = 10  # only compare lines within this many font sizes vertically
+AUTO_JUST_FSTOL = 0.10  # lines must match in font size to this fraction
+SIGNS = re.compile(r"[+\-−–]")  # plus, hyphen-minus, minus, en dash
+
+
+def _line_font(ln):
+    """The font family fontconfig actually renders most of a line with"""
+    fams = [c.tsty.get("font-family") for c in ln.chrs if c.c.strip()]
+    return max(set(fams), key=fams.count) if fams else None
+
+
+def _components(adj):
+    """Connected-component label of each node of a symmetric boolean
+    adjacency matrix (label propagation; no scipy needed)."""
+    n = len(adj)
+    adj = np.logical_or(adj, np.identity(n, dtype=bool))
+    lab = np.arange(n)
+    while True:
+        new = np.where(adj, lab[None, :], n).min(axis=1)
+        if np.array_equal(new, lab):
+            return lab
+        lab = new
+
+
+def Auto_Justification(lines):
+    """
+    Pick an anchor for each line from its original (parsed) position.
+    Same-angle lines whose left or right edges line up (within
+    AUTO_JUST_TOL of a space) are taken to be one column of text, e.g. the
+    labels along an axis, and the column is justified as a whole. Two lines
+    that line up on one edge but not the other are evidence for that side;
+    lines that line up on both edges are merely the same width and say
+    nothing. The side with more evidence wins. A tie with some evidence
+    goes right if the column is mostly numbers (tick labels), and columns
+    with no evidence at all are centered. Only lines in the same font (as
+    rendered) and within AUTO_JUST_FSTOL of the same size can be linked,
+    and never lines further apart vertically than AUTO_JUST_VDIST font
+    sizes, since they rarely share a margin on purpose. Returns
+    {line: anchor}.
+    """
+    lines = [
+        ln for ln in lines
+        if ln.chrs and all(c.parsed_pts_ut is not None for c in ln.chrs)
+        and ln.transform.a * ln.transform.d != ln.transform.b * ln.transform.c
+    ]  # (degenerate transforms cannot be inverted below)
+    if not lines:
+        return dict()
+    # Each line's edges in its own coordinate system, and the same edges in
+    # document coordinates (taken from the character that attains them)
+    lchrs = [min(ln.chrs, key=lambda c: c.parsed_pts_ut[0][0]) for ln in lines]
+    rchrs = [max(ln.chrs, key=lambda c: c.parsed_pts_ut[3][0]) for ln in lines]
+    lft = np.array([c.parsed_pts_ut[0][0] for c in lchrs])
+    rgt = np.array([c.parsed_pts_ut[3][0] for c in rchrs])
+    lpt = np.array([c.parsed_pts_t[0] for c in lchrs])  # (n, 2)
+    rpt = np.array([c.parsed_pts_t[3] for c in rchrs])
+    tol = np.array([max(c.spw for c in ln.chrs) * AUTO_JUST_TOL for ln in lines])
+
+    # Every line's edges expressed in every other line's coordinate system:
+    # row i applies line i's inverse transform to all of column j's points
+    inv = np.array([(-ln.transform).matrix for ln in lines])  # (n, 2, 3)
+    a, c, e = inv[:, 0, 0, None], inv[:, 0, 1, None], inv[:, 0, 2, None]
+    lx_in_i = a * lpt[None, :, 0] + c * lpt[None, :, 1] + e
+    rx_in_i = a * rpt[None, :, 0] + c * rpt[None, :, 1] + e
+
+    # Vertical separation, also in line i's system, against the larger of
+    # the two font sizes expressed in that system
+    b, d, f = inv[:, 1, 0, None], inv[:, 1, 1, None], inv[:, 1, 2, None]
+    y_in_i = b * lpt[None, :, 0] + d * lpt[None, :, 1] + f
+    yut = np.array([c.parsed_pts_ut[0][1] for c in lchrs])
+    utfs = np.array([max(c.utfs for c in ln.chrs) for ln in lines])
+    tfs = np.array([max(c.tfs for c in ln.chrs) for ln in lines])
+    yscl = np.array([math.hypot(ln.transform.c, ln.transform.d) for ln in lines])
+    fsmax = np.maximum(utfs[:, None], tfs[None, :] / yscl[:, None])
+    near = abs(y_in_i - yut[:, None]) < AUTO_JUST_VDIST * fsmax
+
+    angles = np.array([[ln.angle for ln in lines]])
+    others = np.logical_and(abs(angles - angles.T) < 0.001,
+                            np.identity(len(lines)) == 0)
+    others = np.logical_and(others, near)
+    fonts = np.array([_line_font(ln) for ln in lines], dtype=object)
+    others = np.logical_and(others, fonts[:, None] == fonts[None, :])
+    tfsmax = np.maximum(tfs[:, None], tfs[None, :])
+    others = np.logical_and(others, abs(tfs[:, None] - tfs[None, :]) <= AUTO_JUST_FSTOL * tfsmax)
+    lmatch = np.logical_and(others, abs(lx_in_i - lft[:, None]) < tol[:, None])
+    rmatch = np.logical_and(others, abs(rx_in_i - rgt[:, None]) < tol[:, None])
+    lmatch = np.logical_or(lmatch, lmatch.T)  # a match is a property of the pair
+    rmatch = np.logical_or(rmatch, rmatch.T)
+    lonly = np.logical_and(lmatch, ~rmatch)
+    ronly = np.logical_and(rmatch, ~lmatch)
+
+    comp = _components(np.logical_or(lmatch, rmatch))
+    numeric = np.array([isnumeric(SIGNS.sub("", ln.txt)) for ln in lines])
+    ret = dict()
+    for k in np.unique(comp):
+        m = comp == k
+        nl = lonly[m][:, m].sum()  # pairs, each counted twice; same for nr
+        nr = ronly[m][:, m].sum()
+        if nl > nr:
+            anch = "start"
+        elif nr > nl or (m.sum() > 1 and numeric[m].mean() > 0.5):
+            anch = "end"
+        else:
+            anch = "middle"
+        for i in np.where(m)[0]:
+            ret[lines[i]] = anch
+    return ret
+
+
 def Change_Justification(els, justification):
     if justification is not None:
+        auto = dict()
+        if justification == "auto":
+            auto = Auto_Justification([ln for el in els for ln in el.parsed_text.lns])
         for ptxt in [el.parsed_text for el in els]:
             if not (ptxt.ismlinkscape) and not (
                 ptxt.isflow
             ):  # skip Inkscape-generated text
+                anch = dflt = "middle" if justification == "auto" else justification
                 for line in ptxt.lns:
-                    line.change_alignment(justification)
+                    anch = auto.get(line, dflt)
+                    line.change_alignment(anch)
                 alignd = {"start": "start", "middle": "center", "end": "end"}
                 ptxt.textel.cstyle.__setitem__(
-                    "text-anchor", justification, "text-align", alignd[justification]
+                    "text-anchor", anch, "text-align", alignd[anch]
                 )
     return els
 

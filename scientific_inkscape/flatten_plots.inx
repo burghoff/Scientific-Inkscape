@@ -40,6 +40,7 @@
             <param name="removetextclips" type="bool"  gui-text="Remove text clips and masks">true</param>
             <param name="justification" type="optiongroup" appearance="combo"
                     gui-text="Final text justification">
+                       <option value="5">Auto</option>
                        <option value="1">Centered</option>
                        <option value="2">Left</option>
                        <option value="3">Right</option>
