@@ -379,7 +379,7 @@ class Watcher(FileSystemEventHandler):
                     import si_tmp, uuid, shutil
                     probe = si_tmp.path("ae_probe_" + uuid.uuid4().hex)
                     shutil.copy2(file_path, probe)
-                    os.remove(probe)
+                    si_tmp.remove(probe)
                 except OSError:
                     self.debounce_timers[file_path] = Timer(1.0, self.debounce, [file_path])
                     self.debounce_timers[file_path].start()

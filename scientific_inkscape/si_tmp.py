@@ -58,3 +58,15 @@ def path(filename):
     """Absolute path to ``filename`` inside the ``si_temp`` directory (the
     directory is ensured to exist)."""
     return os.path.join(root(), filename)
+
+
+def remove(path):
+    """Delete a temp file, clearing the read-only attribute first: a copy of
+    a read-only source inherits it (Box sets the attribute while syncing),
+    and Windows will not delete a read-only file."""
+    try:
+        import stat
+        os.chmod(path, stat.S_IWRITE)
+    except OSError:
+        pass
+    os.remove(path)

@@ -617,6 +617,296 @@ unrendered.update(
 )
 
 
+class InkscapeShell:
+    """
+    A small pool of persistent `inkscape --shell` processes.
+
+    Starting Inkscape costs a few seconds whatever the document, so a
+    long-running caller (the Autoexporter) sets InkscapeShell.enabled = True
+    and routes its binary calls through inkscape_cli(), which hands each one
+    to an idle shell from the pool (up to POOL of them, so concurrent
+    exports still overlap) instead of launching the binary. Shells are
+    closed after IDLE seconds unused and at exit, and anything that goes
+    wrong falls back to a one-shot launch of that call.
+
+    Export settings persist for the life of a shell, so commands() starts
+    every call from the state a fresh launch would have. The export area is
+    the subtle one: whole-document exports need the page area, export-id
+    exports need the drawing area (which any id export also leaves behind),
+    and both are switched explicitly. That only takes effect on Inkscape 1.3
+    and later (1.1's shell also hangs on quit), so older binaries are always
+    launched one-shot.
+    """
+
+    enabled = False
+    POOL = 1 if sys.platform == "darwin" else 3  # maximum number of resident shells
+    IDLE = 3600  # seconds unused after which a shell is closed
+    TIMEOUT = 600  # seconds to wait for one call
+    MIN_VERSION = (1, 3)
+    PROMPT = b"> "
+
+    _cv = None  # threading.Condition guarding the pool
+    _free = []  # idle shells
+    _busy = 0  # shells currently running a call
+    _timer = None  # idle timer
+
+    # ------------------------------------------------------------ one shell
+    def __init__(self, binary, cwd):
+        import subprocess, threading, queue, time
+
+        self.cwd = cwd
+        self.proc = subprocess.Popen(
+            [binary, "--shell"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            cwd=cwd,
+            env=dict(os.environ, SELF_CALL="true"),
+        )
+        self.q = queue.Queue()
+        threading.Thread(target=self._reader, daemon=True).start()
+        self._wait(120)  # banner
+        self.last_used = time.monotonic()
+
+    def _reader(self):
+        while True:
+            b = self.proc.stdout.read1(65536)
+            if not b:
+                return
+            self.q.put(b)
+
+    def _wait(self, timeout):
+        """Collect output until the next prompt"""
+        import queue, time
+
+        buf = b""
+        end = time.monotonic() + timeout
+        while not buf.endswith(self.PROMPT):
+            if self.proc.poll() is not None and self.q.empty():
+                raise RuntimeError("Inkscape shell exited")
+            try:
+                buf += self.q.get(timeout=min(1.0, max(0.0, end - time.monotonic())))
+            except queue.Empty:
+                if time.monotonic() > end:
+                    raise TimeoutError("Inkscape shell timed out")
+        return buf
+
+    def run(self, cmds, timeout=None):
+        """Run a list of actions as one shell line; returns their output"""
+        line = "; ".join(c.strip() for c in cmds if c.strip())
+        self.proc.stdin.write((line + "\n").encode("utf-8"))
+        self.proc.stdin.flush()
+        out = self._wait(timeout or self.TIMEOUT).decode("utf-8", "replace")
+        out = out[: -len(self.PROMPT)]
+        if out.startswith(line):  # the shell echoes the command
+            out = out[len(line):]
+        return out.lstrip("\r\n")
+
+    def close(self):
+        try:
+            self.proc.stdin.write(b"quit\n")
+            self.proc.stdin.flush()
+            self.proc.wait(timeout=5)
+        except Exception:
+            self.proc.kill()
+            self.proc.wait(timeout=5)
+        for f in (self.proc.stdin, self.proc.stdout):
+            try:
+                f.close()
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------- the pool
+    @classmethod
+    def usable(cls):
+        """Shell mode needs Inkscape >= MIN_VERSION: before that, switching
+        the export area between page and drawing does not take effect, and
+        1.1's shell hangs on quit. Decided from the installed files where
+        possible (see InkscapeSystemInfo.get_binary_version); the binary
+        is the installation whose inkex is loaded, as everywhere else."""
+        try:
+            ver = inkex.vparse(inkex.inkscape_system_info.binary_version)
+        except (TypeError, ValueError):  # unknown or development build
+            ver = inkex.installed_ivp
+        return tuple(ver[:2]) >= cls.MIN_VERSION
+
+    @staticmethod
+    def commands(opts):
+        """Translate command-line options (input file last) into shell actions"""
+        cmds = [
+            "file-open:" + opts[-1],
+            "export-id:",
+            "export-id-only:false",
+            "export-area-page",
+            "export-plain-svg:false",
+            "export-latex:false",
+        ]
+        nprefix = len(cmds)
+        export = False
+        opts = list(opts[:-1])
+        while opts:
+            o = opts.pop(0)
+            if not o.startswith("--"):
+                continue
+            name, _, val = o[2:].partition("=")
+            if not val and opts and not opts[0].startswith("--"):
+                val = opts.pop(0)
+            if name == "actions":
+                cmds += [c for c in val.split(";") if c.strip()]
+            else:
+                cmds.append(name + ":" + val if val else name)
+                export = export or name.startswith("export-")
+        if export and not any(c.strip() == "export-do" for c in cmds):
+            cmds.append("export-do")
+        for i in range(nprefix, len(cmds)):
+            if cmds[i].strip().startswith("export-id"):
+                cmds.insert(i, "export-area-drawing")
+                break
+        return cmds + ["file-close"]
+
+    @classmethod
+    def call(cls, args, cwd=None):
+        """Run command-line style arguments (binary first, input file last)
+        through the pool, or one-shot if that is not possible. Returns an
+        object with .stdout, like subprocess_repeat."""
+        if not (cls.enabled and cls.usable()):
+            return subprocess_repeat(args, cwd=cwd)
+        import types
+
+        shell = None
+        try:
+            shell = cls._acquire(args[0], cwd)
+            out = shell.run(cls.commands(args[1:]))
+            cls._release(shell)
+            return types.SimpleNamespace(stdout=out, returncode=0)
+        except Exception:
+            if shell is not None:
+                cls._release(shell, discard=True)
+            return subprocess_repeat(args, cwd=cwd)
+
+    @classmethod
+    def _acquire(cls, binary, cwd):
+        """An idle shell (any cwd if none is asked for), a new one while the
+        pool has room, or wait for one to be released"""
+        import threading, atexit
+
+        if cls._cv is None:
+            cls._cv = threading.Condition()
+            atexit.register(cls.close_all)
+        with cls._cv:
+            while True:
+                for s in cls._free:
+                    if s.proc.poll() is None and (cwd is None or s.cwd == cwd):
+                        cls._free.remove(s)
+                        cls._busy += 1
+                        return s
+                for s in [s for s in cls._free if s.proc.poll() is not None]:
+                    cls._free.remove(s)  # died while idle
+                if len(cls._free) + cls._busy < cls.POOL:
+                    break
+                if cls._free:  # all idle ones are in the wrong cwd: replace one
+                    cls._free.pop().close()
+                    break
+                cls._cv.wait()
+            cls._busy += 1
+        try:
+            return cls(binary, cwd)  # started outside the lock: takes seconds
+        except Exception:
+            with cls._cv:
+                cls._busy -= 1
+                cls._cv.notify()
+            raise
+
+    @classmethod
+    def _release(cls, shell, discard=False):
+        import time
+
+        with cls._cv:
+            cls._busy -= 1
+            if discard or shell.proc.poll() is not None:
+                shell.close()
+            else:
+                shell.last_used = time.monotonic()
+                cls._free.append(shell)
+                if cls._timer is None:
+                    cls._arm_timer(cls.IDLE)
+            cls._cv.notify()
+
+    @classmethod
+    def _arm_timer(cls, delay):
+        import threading
+
+        cls._timer = threading.Timer(delay, cls._idle_check)
+        cls._timer.daemon = True  # never keeps the process alive
+        cls._timer.start()
+
+    @classmethod
+    def _idle_check(cls):
+        """Timer callback: close shells idle for IDLE seconds, then come back
+        when the next one would be due"""
+        import time
+
+        with cls._cv:
+            cls._timer = None
+            now = time.monotonic()
+            for s in list(cls._free):
+                if now - s.last_used >= cls.IDLE:
+                    cls._free.remove(s)
+                    s.close()
+            if cls._free:
+                cls._arm_timer(max(1.0, min(cls.IDLE - (now - s.last_used) for s in cls._free)))
+
+    @classmethod
+    def close_all(cls):
+        if cls._cv is None:
+            return
+        with cls._cv:
+            for s in cls._free:
+                s.close()
+            cls._free.clear()
+
+
+def inkscape_cli(args, cwd=None):
+    """Run the Inkscape binary with command-line style arguments (binary
+    first, input file last), through the shell pool when enabled. Returns an
+    object with .stdout, like subprocess_repeat."""
+    return InkscapeShell.call(args, cwd=cwd)
+
+
+def vacuum_defs(svg):
+    """Remove <defs> children nothing refers to, like Inkscape's --vacuum-defs
+    (which has no shell-mode equivalent). Repeats until nothing changes,
+    since definitions can refer to each other."""
+    import re
+
+    refre = re.compile(r"url\(\s*#([^)\s'\"]+)\s*\)|^#(\S+)$")
+    deftag = inkex.Defs.ctag
+    keep = {inkex.addNS(t, "svg") for t in ("font", "font-face", "style", "script")}
+    # Like Inkscape, only the direct children of outermost <defs> are
+    # candidates, and one stays if it or anything inside it is referenced
+    topdefs = [
+        d for d in svg.iter(deftag)
+        if not any(a.tag == deftag for a in d.iterancestors())
+    ]
+    while True:
+        used = set()
+        for el in svg.iter("*"):
+            for v in el.attrib.values():
+                for m in refre.finditer(v):
+                    used.add(m.group(1) or m.group(2))
+        gone = [
+            d
+            for defs in topdefs
+            for d in defs
+            if isinstance(d.tag, str) and d.tag not in keep
+            and not any(e.get("id") in used for e in d.iter("*"))
+        ]
+        if not gone:
+            return
+        for d in gone:
+            d.getparent().remove(d)
+
+
 def wrapped_binary(
     filename, inkscape_binary=None, extra_args=None, svg=None, get_bbs=True, cwd=None
 ):
@@ -640,10 +930,10 @@ def wrapped_binary(
 
     if get_bbs:
         arg2 = [inkscape_binary, "--query-all"] + extra_args + [filename]
-        proc = subprocess_repeat(arg2, cwd=cwd)
+        proc = inkscape_cli(arg2, cwd=cwd)
     else:
         arg2 = [inkscape_binary] + extra_args + [filename]
-        proc = subprocess_repeat(arg2, cwd=cwd)
+        proc = inkscape_cli(arg2, cwd=cwd)
         return None
     tfstr = proc.stdout
 
@@ -1514,6 +1804,120 @@ grouplike_tags = tags(
 grouplike_tags.add(mask_tag)
 
 
+def path_bbox(pth, rough=False):
+    """
+    Bounding box (x1, y1, x2, y2) of an inkex Path, or None if it has no
+    points. Every segment becomes four cubic control points in one flat
+    list and the extrema are taken with numpy, instead of inkex's walk over
+    per-segment Vector2d objects. rough=True returns the control-point hull,
+    an upper bound that skips the extrema.
+    """
+    import numpy as np
+
+    cp = []  # x0,y0, x1,y1, x2,y2, x3,y3 for each cubic piece
+    cx = cy = sx = sy = 0.0
+    kx = ky = qx = qy = None  # last cubic / quadratic control, for S and T
+    curved = False  # lines only: the hull is already exact
+    for seg in pth:
+        L = seg.letter
+        a = seg.args
+        l = L.upper()
+        ox, oy = (cx, cy) if L.islower() else (0.0, 0.0)
+        if l == "M":
+            cx, cy = ox + a[0], oy + a[1]
+            sx, sy = cx, cy
+            cp += [cx, cy] * 4
+            kx = qx = None
+        elif l == "Z":
+            cp += [cx, cy, cx, cy, sx, sy, sx, sy]
+            cx, cy = sx, sy
+            kx = qx = None
+        elif l in "LHV":
+            nx, ny = cx, cy
+            if l == "L":
+                nx, ny = ox + a[0], oy + a[1]
+            elif l == "H":
+                nx = ox + a[0]
+            else:
+                ny = oy + a[0]
+            cp += [cx, cy, cx, cy, nx, ny, nx, ny]
+            cx, cy = nx, ny
+            kx = qx = None
+        elif l in "CS":
+            if l == "C":
+                x1, y1, x2, y2, nx, ny = (ox + a[0], oy + a[1], ox + a[2],
+                                          oy + a[3], ox + a[4], oy + a[5])
+            else:
+                x1, y1 = (2 * cx - kx, 2 * cy - ky) if kx is not None else (cx, cy)
+                x2, y2, nx, ny = ox + a[0], oy + a[1], ox + a[2], oy + a[3]
+            cp += [cx, cy, x1, y1, x2, y2, nx, ny]
+            curved = True
+            kx, ky = x2, y2
+            cx, cy = nx, ny
+            qx = None
+        elif l in "QT":
+            if l == "Q":
+                x1, y1, nx, ny = ox + a[0], oy + a[1], ox + a[2], oy + a[3]
+            else:
+                x1, y1 = (2 * cx - qx, 2 * cy - qy) if qx is not None else (cx, cy)
+                nx, ny = ox + a[0], oy + a[1]
+            cp += [cx, cy, cx + (x1 - cx) * 2 / 3, cy + (y1 - cy) * 2 / 3,
+                   nx + (x1 - nx) * 2 / 3, ny + (y1 - ny) * 2 / 3, nx, ny]
+            curved = True
+            qx, qy = x1, y1
+            cx, cy = nx, ny
+            kx = None
+        elif l == "A":
+            nx, ny = ox + a[5], oy + a[6]
+            nodes = inkex.paths.arc_to_path([cx, cy], (a[0], a[1], a[2], a[3], a[4], nx, ny))
+            for n0, n1 in zip(nodes, nodes[1:]):
+                cp += [n0[1][0], n0[1][1], n0[2][0], n0[2][1],
+                       n1[0][0], n1[0][1], n1[1][0], n1[1][1]]
+            curved = True
+            cx, cy = nx, ny
+            kx = qx = None
+    if not cp:
+        return None
+    if len(cp) < 400:  # small paths: plain Python beats numpy's call overhead
+        if rough or not curved:
+            xs, ys = cp[0::2], cp[1::2]
+            return (min(xs), min(ys), max(xs), max(ys))
+        xs, ys = cp[0::8] + cp[6::8], cp[1::8] + cp[7::8]  # endpoints
+        for i in range(0, len(cp), 8):
+            for p0, p1, p2, p3, out in ((cp[i], cp[i + 2], cp[i + 4], cp[i + 6], xs),
+                                        (cp[i + 1], cp[i + 3], cp[i + 5], cp[i + 7], ys)):
+                a, b, c = 3 * (p3 - p0 + 3 * (p1 - p2)), 6 * (p0 - 2 * p1 + p2), 3 * (p1 - p0)
+                if abs(a) > 1e-12:
+                    d = b * b - 4 * a * c
+                    ts = [(-b + d ** 0.5) / (2 * a), (-b - d ** 0.5) / (2 * a)] if d >= 0 else []
+                else:
+                    ts = [-c / b] if abs(b) > 1e-12 else []
+                for t in ts:
+                    if 0 < t < 1:
+                        u = 1 - t
+                        out.append(u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3)
+        return (min(xs), min(ys), max(xs), max(ys))
+    P = np.array(cp).reshape(-1, 4, 2)
+    if rough or not curved:
+        lo, hi = P.min(axis=(0, 1)), P.max(axis=(0, 1))
+    else:
+        p0, p1, p2, p3 = P[:, 0], P[:, 1], P[:, 2], P[:, 3]
+        lo, hi = np.minimum(p0, p3).min(axis=0), np.maximum(p0, p3).max(axis=0)
+        # interior extrema: roots of the derivative a t^2 + b t + c in (0, 1)
+        a, b, c = 3 * (p3 - p0 + 3 * (p1 - p2)), 6 * (p0 - 2 * p1 + p2), 3 * (p1 - p0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            disc = np.sqrt(np.maximum(b * b - 4 * a * c, 0))
+            roots = [(-b + disc) / (2 * a), (-b - disc) / (2 * a), -c / b]
+        for t in roots:
+            ok = (t > 0) & (t < 1)
+            t = np.where(ok, t, 0.5)
+            v = ((1 - t) ** 3 * p0 + 3 * (1 - t) ** 2 * t * p1
+                 + 3 * (1 - t) * t ** 2 * p2 + t ** 3 * p3)
+            lo = np.minimum(lo, np.where(ok, v, np.inf).min(axis=0))
+            hi = np.maximum(hi, np.where(ok, v, -np.inf).max(axis=0))
+    return (float(lo[0]), float(lo[1]), float(hi[0]), float(hi[1]))
+
+
 def bounding_box2(
     self,
     dotransform=True,
@@ -1559,30 +1963,17 @@ def bounding_box2(
                                 max(y) - min(y) + swd,
                             ]
                         )
-                    elif not roughpath:
-                        bbx = pth.bounding_box()
-                        ret = bbox(
-                            [
-                                bbx.left - swd / 2,
-                                bbx.top - swd / 2,
-                                bbx.width + swd,
-                                bbx.height + swd,
-                            ]
-                        )
                     else:
-                        anyarc = any(s.letter in ["a", "A"] for s in pth)
-                        pth = inkex.Path(inkex.CubicSuperPath(pth)) if anyarc else pth
-                        pts = list(pth.control_points)
-                        x = [p.x for p in pts]
-                        y = [p.y for p in pts]
-                        ret = bbox(
-                            [
-                                min(x) - swd / 2,
-                                min(y) - swd / 2,
-                                max(x) - min(x) + swd,
-                                max(y) - min(y) + swd,
-                            ]
-                        )
+                        bb = path_bbox(pth, rough=roughpath)
+                        if bb is not None:
+                            ret = bbox(
+                                [
+                                    bb[0] - swd / 2,
+                                    bb[1] - swd / 2,
+                                    bb[2] - bb[0] + swd,
+                                    bb[3] - bb[1] + swd,
+                                ]
+                            )
 
             elif self.tag in grouplike_tags:
                 for kid in list2(self):

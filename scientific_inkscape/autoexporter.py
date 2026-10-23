@@ -54,6 +54,7 @@ import lxml
 import threading
 
 import dhelpers as dh
+dh.InkscapeShell.enabled = True
 import inkex
 from inkex import TextElement, Transform, Vector2d
 from inkex.text.utils import default_style_atts
@@ -455,13 +456,17 @@ class Exporter():
                 self.original_hash = hash_file(hcopy)
             finally:
                 if os.path.exists(hcopy):
-                    os.remove(hcopy)
+                    try:
+                        si_tmp.remove(hcopy)
+                    except OSError:
+                        pass  # the hash is in hand; a stray copy is harmless
         if getattr(self, "display_name", None) is None:
             self.display_name = os.path.basename(self.original_file)
         
     sema_temp = threading.Semaphore(1)
     def export_all(self):
         """Export all files in specified formats."""
+        self.timestart = time.time()  # reported by export_file
         # Make a temp directory
         self.tempdir, self.temphead = dh.shared_temp('ae')
         self.tempbase = joinmod(self.tempdir,self.temphead)
@@ -511,6 +516,8 @@ class Exporter():
             tmps = []
             for t in os.listdir(self.tempdir):
                 tmp = joinmod(self.tempdir, t)
+                if t.startswith("si_imports_"):
+                    continue  # fastimport's bytecode caches are not ours to age out
                 try:
                     one_day_ago = time.time() - 24 * 60 * 60
                     if os.path.getmtime(tmp) < one_day_ago:
@@ -528,7 +535,8 @@ class Exporter():
                             if os.path.isdir(tmp):
                                 shutil.rmtree(tmp, ignore_errors=True)
                             else:
-                                os.remove(tmp)
+                                import si_tmp
+                                si_tmp.remove(tmp)
                             deleted = True
                         except PermissionError:
                             time.sleep(1)
@@ -887,9 +895,11 @@ class Exporter():
                     if os.path.exists(img_trnp):
                         anyalpha0 = False
                         if ih.hasPIL:
-                            bbox = ih.crop_images([img_trnp, img_opqe])
-                            anyalpha0 = ih.Set_Alpha0_RGB(img_trnp, img_opqe)
-                            if elem.get_id() in jpgs:
+                            isjpg = elem.get_id() in jpgs
+                            bbox, anyalpha0 = ih.crop_and_fix_images(
+                                img_trnp, img_opqe, keep_ref=isjpg
+                            )
+                            if isjpg:
                                 tmpjpg = img_trnp.replace(".png", ".jpg")
                                 ih.to_jpeg(img_opqe, tmpjpg)
                                 img_trnp = copy.copy(tmpjpg)
@@ -1056,7 +1066,7 @@ class Exporter():
         """Use the Inkscape binary to export the file"""
         myoutput = os.path.splitext(self.outtemplate)[0] + "." + fformat
         # self.terminal_message("Converting to " + fformat)
-        timestart = time.time()
+        timestart = getattr(self, "timestart", time.time())
 
         ispsvg = fformat == "psvg"
         notpng = not (fformat == "png")
@@ -1107,12 +1117,17 @@ class Exporter():
                     + ["--export-plain-svg"]
                     + args[5:]
                 )
-            self.check(dh.subprocess_repeat,args)
+            self.check(dh.inkscape_cli, args)
 
         def make_output(filein, fileout):
             if fileout.endswith(".svg"):
                 if not (self.testmode):
                     overwrite_output(filein, fileout)
+                    if dh.InkscapeShell.enabled:
+                        # --vacuum-defs has no shell equivalent; do it here
+                        vsvg = get_svg(fileout)
+                        dh.vacuum_defs(vsvg)
+                        self.check(dh.overwrite_svg, vsvg, fileout)
                 else:
                     shutil.copy(filein, fileout)  # skip conversion
                 self.made_outputs = [fileout]
@@ -1122,9 +1137,31 @@ class Exporter():
                 pgs = osvg.cdocsize.pgs
                 haspgs = inkex.installed_haspages
                 if (haspgs or self.testmode) and len(pgs) > 0:
-                    # bbs = dh.BB2(type("DummyClass", (), {"svg": osvg}))
-                    bbs = dh.BB2(osvg)
+                    # Control-point boxes are cheap upper bounds; on_page()
+                    # falls back to the exact box only at a page edge
+                    # Reuse the preprocessing boxes; only elements made since
+                    # (stroke-to-path output, duplicates) need computing. Text
+                    # is included so the character table covers the whole doc
+                    bbs = {}
+                    for k, v in getattr(self, "first_bbs", {}).items():
+                        el = osvg.getElementById(k)
+                        if el is not None and dh.hasbbox(el):  # may have moved into a clip since
+                            bbs[k] = v
+                    tt = (inkex.TextElement.ctag, inkex.FlowRoot.ctag)
+                    new = [d for d in osvg.descendants2()
+                           if d.get("id") not in bbs or d.tag in tt]
+                    bbs.update(dh.BB2(osvg, new, roughpath=True))
                     dlbl = {k:v for k,v in self.duplicatelabels.items() if v is not None}
+
+                    def on_page(k, pgbb):
+                        bb = dh.bbox(bbs[k])
+                        hit = bb.intersect(pgbb)
+                        if hit and not (bb.x1 >= pgbb.x1 and bb.y1 >= pgbb.y1
+                                        and bb.x2 <= pgbb.x2 and bb.y2 <= pgbb.y2):
+                            exact = dh.bounding_box2(osvg.getElementById(k))
+                            hit = not exact.isnull and dh.bbox(exact.sbb).intersect(pgbb)
+                        return hit
+
                     outputs = []
                     pgiis = (
                         range(len(pgs)) if not (self.testmode) else [self.testpage - 1]
@@ -1144,12 +1181,11 @@ class Exporter():
 
                         # Delete content not on current page
                         pgbb = dh.bbox(psvg.cdocsize.effvb)
-                        for k, bbx in bbs.items():
-                            removeme = not (dh.bbox(bbx).intersect(pgbb))
+                        for k in bbs:
+                            removeme = not on_page(k, pgbb)
                             if k in dlbl:
                                 removeme = not (
-                                    dlbl[k] in bbs
-                                    and dh.bbox(bbs[dlbl[k]]).intersect(pgbb)
+                                    dlbl[k] in bbs and on_page(dlbl[k], pgbb)
                                 )
                             if removeme and psvg.getElementById(k) is not None:
                                 psvg.getElementById(k).delete()
@@ -2267,17 +2303,25 @@ class Exporter():
             # No usable pages: treat the effective viewbox as a single page
             page_bbs.append(dh.bbox(svg.cdocsize.effvb))
 
-        # Bounding boxes for all elements, same as in make_output
-        bbs = dh.BB2(svg)
+        # Bounding boxes for all elements. Control-point boxes are an upper
+        # bound, which is all an off-page test needs, and much cheaper
+        bbs = dh.BB2(svg, roughpath=True)
+        self.first_bbs = bbs  # reused by make_output's per-page split
         outside = []
         for el in els:
             elid = el.get_id()
             if elid not in bbs:
                 continue
-            bbx = bbs[elid]
+            bb = dh.bbox(bbs[elid])
             on_any_page = False
             for pgbb in page_bbs:
-                in_page = dh.bbox(bbx).intersect(pgbb)
+                in_page = bb.intersect(pgbb)
+                if in_page and not (bb.x1 >= pgbb.x1 and bb.y1 >= pgbb.y1
+                                    and bb.x2 <= pgbb.x2 and bb.y2 <= pgbb.y2):
+                    # Straddles the page edge, where an upper bound is not
+                    # enough: use the exact box
+                    exact = dh.bounding_box2(el)
+                    in_page = not exact.isnull and dh.bbox(exact.sbb).intersect(pgbb)
 
                 # If this element has a duplicate label, treat it as on-page
                 # if the labeled element intersects instead.
