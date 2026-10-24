@@ -369,6 +369,10 @@ def group(el_list, moveTCM=False):
         el.set_link("clip-path", None)
         g.set_link("mask", el.get("mask"))
         el.set_link("mask", None)
+        # A clip/mask the element gets from a CSS class would still apply;
+        # override it with an id rule (see fix_css_clipmask)
+        fix_css_clipmask(el)
+        fix_css_clipmask(el, mask=True)
     return g
 
 
@@ -433,16 +437,13 @@ def fix_css_clipmask(el, mask=False):
     svg = el.croot
     if svg is not None:
         mycss = svg.cssdict.get(el.get_id())
-        if (
-            mycss is not None
-            and mycss.get(cm) is not None
-            and mycss.get(cm) != el.get(cm)
-        ):
+        val = el.get(cm) or "none"  # no attribute means no clip/mask
+        if mycss is not None and mycss.get(cm) is not None and mycss.get(cm) != val:
             sty = el.croot.crootsty
             sty.text = (sty.text or "") + "\n#{0}{{{1}:{2}}}".format(
-                el.get_id(), cm, el.get(cm)
+                el.get_id(), cm, val
             )
-            mycss[cm] = el.get(cm)
+            mycss[cm] = val
     if el.cstyle.get(cm) is not None:  # also clear local style
         el.cstyle[cm] = None
 
@@ -1009,9 +1010,12 @@ def BB2(svg, els=None, forceupdate=False, roughpath=False, parsed=False):
                 for d in els:
                     d.cbbox = None
                     d.parsed_text = None
-            if not hasattr(svg, "_char_table"):
+            ctable = getattr(svg, "_char_table", None)
+            if ctable is None or not set(tels) <= set(ctable.els):
+                # No table yet, or text was added since it was built
                 from inkex.text import parser  # noqa
 
+                svg.char_table = None
                 svg.make_char_table(els=tels)
                 # pts = [el.parsed_text for el in tels]
                 ptl = parser.ParsedTextList(tels)
@@ -1101,9 +1105,10 @@ def bb_intersects(bbs, bb2s=None):
 
 
 # Return list of objects on top of other objects
-def overlapping_els(svg, tocheck):
+def overlapping_els(svg, tocheck, bbs=None):
     els = [el for el in svg.iter('*') if isdrawn(el)]
-    bbs = BB2(svg, els, roughpath=True, parsed=True)
+    if bbs is None:
+        bbs = BB2(svg, els, roughpath=True, parsed=True)
     bbs = [bbox(bbs.get(el.get_id())) for el in els]
 
     chki = [i for i, el in enumerate(els) if el in tocheck]
@@ -1113,9 +1118,9 @@ def overlapping_els(svg, tocheck):
     ret = {el: [] for el in tocheck}
     for j, ci in enumerate(chki):
         elj = els[ci]
+        ds = set(elj.descendants2())
         for i in range(ci + 1, len(els)):
             eli = els[i]
-            ds = elj.descendants2()
             if intrscts[i, j] and eli not in ds:
                 ret[elj].append(eli)
 
@@ -1942,7 +1947,14 @@ def bounding_box2(
         try:
             ret = bbox(None)
             if self.tag in ttags:
-                ret = self.parsed_text.get_full_extent(parsed=parsed)
+                # The character walk depends only on parsed; share it across
+                # the transform/stroke/rough/clip variants of the key
+                tkey = ("text", parsed)
+                if tkey not in self._cbbox:
+                    self._cbbox[tkey] = self.parsed_text.get_full_extent(
+                        parsed=parsed
+                    )
+                ret = self._cbbox[tkey]
             elif self.tag in cpath_support_tags:
                 pth = self.cpath
                 if len(pth) > 0:

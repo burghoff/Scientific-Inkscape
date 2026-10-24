@@ -48,7 +48,6 @@ import warnings
 import pickle
 import math
 import shutil
-import tempfile
 import hashlib
 import lxml
 import threading
@@ -437,6 +436,9 @@ class AutoExporter(inkex.EffectExtension):
 class Exporter():
     def __init__(self,fin,opts):
         self.filein = fin
+        # Trees of temp files we wrote, so the next step can use them instead
+        # of reparsing. Entries are single-use (popped) since steps mutate them.
+        self.svgs = dict()
         self.__dict__.update(vars(opts))
         
         # filein is the file being exported right now (possibly a temp file)
@@ -501,6 +503,7 @@ class Exporter():
                 newfiles.append(myo)
 
         # Remove temporary outputs and directory
+        self.svgs.clear()
         failed_to_delete = None
         if not (self.debug):
             self.clear_temp()
@@ -567,7 +570,7 @@ class Exporter():
 
         # SVG modifications that should be done prior to any binary calls
         cfile = fin
-        svg = get_svg(cfile)
+        svg = self.svgs.pop(cfile) if cfile in self.svgs else get_svg(cfile)
 
         # Prune hidden items and remove language switching
         stag = inkex.addNS("switch", "svg")
@@ -600,6 +603,7 @@ class Exporter():
         frtag = inkex.FlowRoot.ctag
         ttags = {tetag,frtag}
         self.duplicatelabels = dict()
+        self.first_bbs = None  # boxes from elements_not_on_any_page, reused later
         raster_ids, image_ids, jpgs = [], [], []
         for elem in vds:
             # Unlink any clones for the PDF image and marker fixes
@@ -794,7 +798,7 @@ class Exporter():
         
         allacts = []
         if do_stroketopaths:
-            svg = get_svg(cfile)
+            svg = self.svgs.pop(cfile) if cfile in self.svgs else get_svg(cfile)
             vdd = dh.visible_descendants(svg)
 
 
@@ -842,13 +846,13 @@ class Exporter():
         # Rasterizations
         actts, actos  = [], []
         if do_rasterizations:
-            svg = get_svg(cfile)
+            svg = self.svgs.pop(cfile) if cfile in self.svgs else get_svg(cfile)
 
             vds = dh.visible_descendants(svg)
             els = [el for el in vds if el.get_id() in list(set(raster_ids + image_ids))]
             if len(els) > 0:
                 
-                overlaps = dh.overlapping_els(svg,els)
+                overlaps = dh.overlapping_els(svg, els, self.reuse_bbs(svg))
                 for elem in els:
                     elid = elem.get_id()
                     actts.append(Act('imgt',elem,self))
@@ -881,7 +885,7 @@ class Exporter():
                 cfile = tmpstp
 
         if do_rasterizations:
-            svg = get_svg(cfile)
+            svg = self.svgs.pop(cfile) if cfile in self.svgs else get_svg(cfile)
             vds = dh.visible_descendants(svg)
             els = [el for el in vds if el.get_id() in list(set(raster_ids + image_ids))]
             if len(els) > 0:
@@ -926,7 +930,7 @@ class Exporter():
                 cfile = tmp
 
         if do_stroketopaths:
-            svg = get_svg(cfile)
+            svg = self.svgs.pop(cfile) if cfile in self.svgs else get_svg(cfile)
             # Remove temporary groups
             if self.stroketopath:
                 for elid in dgroups:
@@ -954,6 +958,8 @@ class Exporter():
         if func == dh.overwrite_svg:
             stopcheck()
             ret = func(*args, **kwargs)
+            if args[1].startswith(self.tempbase):
+                self.svgs[args[1]] = args[0]
             stopcheck()
             return ret
         with sema_finalize if finalization else sema_export:
@@ -1073,7 +1079,7 @@ class Exporter():
 
         cfile = fin
         if self.thinline and notpng:
-            svg = get_svg(cfile)
+            svg = self.svgs.pop(cfile) if cfile in self.svgs else get_svg(cfile)
             if fformat in ["pdf", "eps"]:
                 Exporter.thinline_dehancement(svg, "bezier",self.duplicatelabels)
             else:
@@ -1091,6 +1097,7 @@ class Exporter():
         myoutput = claim_output_name(myoutput)
 
         def overwrite_output(filein, fileout):
+            self.svgs.pop(fileout, None)
             if os.path.exists(fileout):
                 os.remove(fileout)
             args = [
@@ -1132,25 +1139,14 @@ class Exporter():
                     shutil.copy(filein, fileout)  # skip conversion
                 self.made_outputs = [fileout]
 
-                osvg = get_svg(filein)
+                osvg = self.svgs.pop(filein) if filein in self.svgs else get_svg(filein)
 
                 pgs = osvg.cdocsize.pgs
                 haspgs = inkex.installed_haspages
                 if (haspgs or self.testmode) and len(pgs) > 0:
                     # Control-point boxes are cheap upper bounds; on_page()
                     # falls back to the exact box only at a page edge
-                    # Reuse the preprocessing boxes; only elements made since
-                    # (stroke-to-path output, duplicates) need computing. Text
-                    # is included so the character table covers the whole doc
-                    bbs = {}
-                    for k, v in getattr(self, "first_bbs", {}).items():
-                        el = osvg.getElementById(k)
-                        if el is not None and dh.hasbbox(el):  # may have moved into a clip since
-                            bbs[k] = v
-                    tt = (inkex.TextElement.ctag, inkex.FlowRoot.ctag)
-                    new = [d for d in osvg.descendants2()
-                           if d.get("id") not in bbs or d.tag in tt]
-                    bbs.update(dh.BB2(osvg, new, roughpath=True))
+                    bbs = self.reuse_bbs(osvg)
                     dlbl = {k:v for k,v in self.duplicatelabels.items() if v is not None}
 
                     def on_page(k, pgbb):
@@ -1166,9 +1162,11 @@ class Exporter():
                     pgiis = (
                         range(len(pgs)) if not (self.testmode) else [self.testpage - 1]
                     )
+                    base = self.svgs.pop(fileout, None)  # copying beats reparsing
                     for i in pgiis:
                         # match the viewbox to each page and delete them
-                        psvg = get_svg(fileout)
+                        psvg = (copy.deepcopy(base.getroottree()).getroot()
+                                if base is not None else get_svg(fileout))
                         # plain SVG has no pages
                         pgs2 = psvg.cdocsize.pgs
 
@@ -1202,7 +1200,7 @@ class Exporter():
                         outputs.append(pgout)
                     self.made_outputs = outputs
             else:
-                svg = get_svg(filein)
+                svg = self.svgs.pop(filein) if filein in self.svgs else get_svg(filein)
                 pgs = svg.cdocsize.pgs
 
                 haspgs = inkex.installed_haspages
@@ -1213,7 +1211,7 @@ class Exporter():
                     )
                     for i in pgiis:
                         # match the viewbox to each page and delete them
-                        svgpg = get_svg(filein)
+                        svgpg = copy.deepcopy(svg.getroottree()).getroot()
                         pgs2 = svgpg.cdocsize.pgs
                         Exporter.change_viewbox_to_page(svgpg, pgs[i])
                         for j in reversed(range(len(pgs2))):
@@ -1243,7 +1241,7 @@ class Exporter():
             moutputs = self.made_outputs
             finalnames = []
             for mout in moutputs:
-                svg = get_svg(mout)
+                svg = self.svgs.pop(mout) if mout in self.svgs else get_svg(mout)
                 self.postprocessing(svg)
                 finalname = myoutput
                 if len(moutputs) > 1:
@@ -2275,6 +2273,24 @@ class Exporter():
                         elem.cstyle = sty
         return path_els, dummy_groups
 
+    def reuse_bbs(self, svg):
+        """
+        Rough boxes for every element of svg, reusing the preprocessing
+        pass's boxes where the element still exists and is still drawn (it
+        may have moved into a clip since). Elements made since (stroke-to-path
+        output, duplicates) are computed, as is all text, so that the
+        character table covers the whole document.
+        """
+        bbs = {}
+        for k, v in (self.first_bbs or {}).items():
+            el = svg.getElementById(k)
+            if el is not None and dh.hasbbox(el):
+                bbs[k] = v
+        tt = (inkex.TextElement.ctag, inkex.FlowRoot.ctag)
+        new = [d for d in svg.descendants2() if d.get("id") not in bbs or d.tag in tt]
+        bbs.update(dh.BB2(svg, new, roughpath=True))
+        return bbs
+
     def elements_not_on_any_page(self, els):
         """
         Given a list of elements, return those whose bounding boxes do not
@@ -2306,7 +2322,7 @@ class Exporter():
         # Bounding boxes for all elements. Control-point boxes are an upper
         # bound, which is all an off-page test needs, and much cheaper
         bbs = dh.BB2(svg, roughpath=True)
-        self.first_bbs = bbs  # reused by make_output's per-page split
+        self.first_bbs = bbs
         outside = []
         for el in els:
             elid = el.get_id()
