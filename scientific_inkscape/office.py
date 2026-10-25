@@ -24,27 +24,6 @@ EMU_PER_INCH = 914400  # Office EMUs
 import sys
 import dhelpers as dh
 
-bfn = dh.inkex.inkscape_system_info.binary_location
-
-
-def overwrite_output(filein, fileout):
-    if os.path.exists(fileout):
-        os.remove(fileout)
-    args = [
-        bfn,
-        "--export-background",
-        "#ffffff",
-        "--export-background-opacity",
-        "0.0",
-        "--export-dpi",
-        str(600),
-        "--export-filename",
-        fileout,
-        filein,
-    ]
-    dh.subprocess_repeat(args)
-
-
 import os
 import shutil
 from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo, BadZipFile
@@ -436,10 +415,27 @@ class Unzipped_Office:
     def svg_to_png(self, svg_path, png_path):
         print(f"Exporting {svg_path}")
 
+        def export_png(filein, fileout):
+            if os.path.exists(fileout):
+                os.remove(fileout)
+            args = [
+                dh.inkex.inkscape_system_info.binary_location,
+                "--export-background",
+                "#ffffff",
+                "--export-background-opacity",
+                "0.0",
+                "--export-dpi",
+                str(600),
+                "--export-filename",
+                fileout,
+                filein,
+            ]
+            dh.inkscape_cli(args, priority=1)  # SVG exports go first
+
         if self.aecaller is not None:
-            self.aecaller.check(overwrite_output, svg_path, png_path,finalization=True)
+            self.aecaller.check(export_png, svg_path, png_path)
         else:
-            overwrite_output(svg_path, png_path)
+            export_png(svg_path, png_path)
 
     def queue_svg_to_png(self, svg_path, png_path):
         key = os.path.normcase(os.path.abspath(os.path.normpath(png_path)))

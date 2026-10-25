@@ -65,7 +65,6 @@ from inkex.text.utils import (
     composed_width,
     unique,
     isrectangle,
-    subprocess_repeat,
     tags,
     bbox,
     ipx,
@@ -355,7 +354,7 @@ def group(el_list, moveTCM=False):
     g = inkex.Group()
     if not el_list:
         return g
-    myi = list(el_list[0].getparent()).index(el_list[0])
+    myi = el_list[0].getparent().index(el_list[0])
     el_list[0].getparent().insert(myi + 1, g)
     for el in el_list:
         g.append(el)
@@ -618,40 +617,206 @@ unrendered.update(
 )
 
 
+# the Inkscape binary
+import threading
+
+# Inkscape processes we run at once: resident shells (InkscapeShell) and
+# one-shot launches (subprocess_repeat) each keep to this many
+MAX_THREADS = 1 if sys.platform == "darwin" else 3
+
+
+class _Slots:
+    """Admission for up to n concurrent Inkscape launches. priority 0 is the
+    default and the most urgent; a waiter only takes a free slot when no
+    waiter with a smaller priority number is queued, so the Autoexporter's
+    SVG exports go ahead of the finalizer's PNG conversions."""
+
+    def __init__(self, n):
+        self.n, self.busy, self.waiting = n, 0, []
+        self.cv = threading.Condition()
+
+    def acquire(self, priority=0):
+        with self.cv:
+            self.waiting.append(priority)
+            try:
+                while self.busy >= self.n or min(self.waiting) < priority:
+                    self.cv.wait()
+            finally:
+                self.waiting.remove(priority)
+            self.busy += 1
+            self.cv.notify_all()  # others re-check now that the queue changed
+
+    def release(self):
+        with self.cv:
+            self.busy -= 1
+            self.cv.notify_all()
+
+
+inkscape_slots = _Slots(MAX_THREADS)
+
+
+def subprocess_repeat(argin, cwd=None, priority=0):
+    """
+    In the event of a timeout, repeats a subprocess call several times.
+
+    Parameters:
+        argin (list): The command and arguments to run in the subprocess.
+        priority (int): 0 (default) goes ahead of any queued call with a
+            larger number; see _Slots.
+
+    Returns:
+        CompletedProcess: The result from the subprocess call.
+    """
+    base_timeout = 60
+    nattempts = 6
+    import subprocess
+
+    nfails = 0
+    ntime = 0
+    inkscape_slots.acquire(priority)  # held across the retries: one slot per call
+    try:
+        for i in range(nattempts):
+            timeout = base_timeout * 2**i
+            try:
+                os.environ["SELF_CALL"] = "true"  # seems to be needed for 1.3
+                proc = subprocess.run(
+                    argin,
+                    shell=False,
+                    timeout=timeout,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    check=True, cwd=cwd
+                )
+                break
+            except subprocess.TimeoutExpired:
+                nfails += 1
+                ntime += timeout
+    finally:
+        inkscape_slots.release()
+    if nfails == nattempts:
+        raise TimeoutError(
+            "\nThe call to the Inkscape binary timed out "
+            + str(nattempts)
+            + " times in "
+            + str(ntime)
+            + " seconds.\n\n"
+            + "This may be a temporary issue; try running the extension again."
+        )
+    else:
+        return proc
+
+
+# Sizes of a few files that change between Inkscape releases, used to read the
+# installed release off its files instead of running the binary (inkex's
+# __version__ only tracks the minor series, and is absent before 1.1.1). Text
+# files are measured with CRLF folded to LF, since Windows builds from 1.3.2
+# on ship them CRLF while macOS and Linux ship LF; binary files use their raw
+# size. Generated from every official release from 1.0 to 1.4.4 and checked
+# against the macOS builds.
+INKSCAPE_RELEASE_PROBES = (
+    'screens/start-welcome.png',
+    'extensions/inkex/elements/_base.py',
+    'ui/menus.xml',
+)
+INKSCAPE_RELEASE_TABLE = {
+    (1, 0, 0): {'screens/start-welcome.png': None, 'extensions/inkex/elements/_base.py': 17487, 'ui/menus.xml': 12918},
+    (1, 0, 1): {'screens/start-welcome.png': None, 'extensions/inkex/elements/_base.py': 20018, 'ui/menus.xml': 12895},
+    (1, 0, 2): {'screens/start-welcome.png': None, 'extensions/inkex/elements/_base.py': 20018, 'ui/menus.xml': 12954},
+    (1, 1, 0): {'screens/start-welcome.png': 64600, 'extensions/inkex/elements/_base.py': 21612, 'ui/menus.xml': 13570},
+    (1, 1, 1): {'screens/start-welcome.png': 64600, 'extensions/inkex/elements/_base.py': 21612, 'ui/menus.xml': 13610},
+    (1, 1, 2): {'screens/start-welcome.png': 64600, 'extensions/inkex/elements/_base.py': 21408, 'ui/menus.xml': 13610},
+    (1, 2, 0): {'screens/start-welcome.png': 111618, 'extensions/inkex/elements/_base.py': 24770, 'ui/menus.xml': None},
+    (1, 2, 1): {'screens/start-welcome.png': 111618, 'extensions/inkex/elements/_base.py': 26897, 'ui/menus.xml': None},
+    (1, 2, 2): {'screens/start-welcome.png': 111618, 'extensions/inkex/elements/_base.py': 26917, 'ui/menus.xml': None},
+    (1, 3, 0): {'screens/start-welcome.png': 147598, 'extensions/inkex/elements/_base.py': 29053, 'ui/menus.xml': None},
+    (1, 3, 1): {'screens/start-welcome.png': 150356, 'extensions/inkex/elements/_base.py': 29053, 'ui/menus.xml': None},
+    (1, 3, 2): {'screens/start-welcome.png': 147977, 'extensions/inkex/elements/_base.py': 29053, 'ui/menus.xml': None},
+    (1, 4, 0): {'screens/start-welcome.png': 173863, 'extensions/inkex/elements/_base.py': 33264, 'ui/menus.xml': None},
+    (1, 4, 1): {'screens/start-welcome.png': 173863, 'extensions/inkex/elements/_base.py': 33472, 'ui/menus.xml': None},
+    (1, 4, 2): {'screens/start-welcome.png': 172776, 'extensions/inkex/elements/_base.py': 33472, 'ui/menus.xml': None},
+    (1, 4, 3): {'screens/start-welcome.png': 174042, 'extensions/inkex/elements/_base.py': 33472, 'ui/menus.xml': None},
+    (1, 4, 4): {'screens/start-welcome.png': 173867, 'extensions/inkex/elements/_base.py': 33472, 'ui/menus.xml': None},
+}
+
+
+
+@lru_cache(maxsize=None)
+def inkscape_binary_version():
+    """
+    The installed Inkscape's version, read from the sizes of a few files in
+    its share folder (INKSCAPE_RELEASE_TABLE, fast) or, when nothing matches
+    (a development build, a release newer than the table, a Snap/AppImage
+    launcher with no share folder nearby), by running it with --version
+    """
+    binary = inkex.inkscape_system_info.binary_location
+    prefix = os.path.dirname(os.path.dirname(os.path.abspath(binary)))
+    for share_dir in (
+        os.path.join(prefix, "share", "inkscape"),
+        os.path.join(prefix, "Resources", "share", "inkscape"),  # macOS app
+    ):
+        if os.path.isdir(share_dir):
+            observed = dict()
+            for rel in INKSCAPE_RELEASE_PROBES:
+                path = os.path.join(share_dir, *rel.split("/"))
+                try:
+                    if rel.endswith((".png", ".svgz")):
+                        observed[rel] = os.path.getsize(path)
+                    else:
+                        with open(path, "rb") as f:
+                            observed[rel] = len(f.read().replace(b"\r\n", b"\n"))
+                except OSError:
+                    observed[rel] = None
+            hits = [v for v, row in INKSCAPE_RELEASE_TABLE.items() if row == observed]
+            if len(hits) == 1:
+                return ".".join(str(v) for v in hits[0])
+            break
+
+    proc = subprocess_repeat([binary, "--version"])
+
+    match = re.search(r"Inkscape\s+(\S+)\s+\(", str(proc.stdout))
+    return match.group(1) if match else None
+
+
 class InkscapeShell:
     """
     A small pool of persistent `inkscape --shell` processes.
 
-    Starting Inkscape costs a few seconds whatever the document, so a
-    long-running caller (the Autoexporter) sets InkscapeShell.enabled = True
-    and routes its binary calls through inkscape_cli(), which hands each one
-    to an idle shell from the pool (up to POOL of them, so concurrent
-    exports still overlap) instead of launching the binary. Shells are
+    Starting Inkscape costs a few seconds whatever the document, so
+    inkscape_cli() hands each binary call to an idle shell from the pool (up
+    to MAX_THREADS of them, so concurrent exports still overlap) instead of
+    launching the binary; a caller that wants a one-shot launch calls
+    subprocess_repeat directly. Shells are
     closed after IDLE seconds unused and at exit, and anything that goes
     wrong falls back to a one-shot launch of that call.
 
     Export settings persist for the life of a shell, so commands() starts
     every call from the state a fresh launch would have. The export area is
-    the subtle one: whole-document exports need the page area, export-id
-    exports need the drawing area (which any id export also leaves behind),
-    and both are switched explicitly. That only takes effect on Inkscape 1.3
-    and later (1.1's shell also hangs on quit), so older binaries are always
-    launched one-shot.
+    the subtle one. On 1.3 and later, whole-document exports need the page
+    area, export-id exports need the drawing area (which any id export also
+    leaves behind), and both are switched explicitly. Before 1.3 the page
+    area is sticky once set and the drawing area cannot undo it, while with
+    neither ever sent every export already gets the right area, so there the
+    area actions are simply omitted. Shells before 1.3 are closed by killing
+    them (1.1 hangs on quit), and COLUMNS keeps 1.2's readline from wrapping
+    its echo of long lines into the output. Before 1.2 the shell is not
+    safe: after a stroke-to-path its selection outlives the objects the
+    conversion replaced and the next selection action crashes it, and even
+    plain select/unselect lines sometimes crash or hang (1.1 less often than
+    1.0). The fallback keeps the output right, but a hang first costs the
+    whole TIMEOUT, so those versions stay one-shot.
     """
 
-    enabled = False
-    POOL = 1 if sys.platform == "darwin" else 3  # maximum number of resident shells
     IDLE = 3600  # seconds unused after which a shell is closed
     TIMEOUT = 600  # seconds to wait for one call
-    MIN_VERSION = (1, 3)
+    MIN_VERSION = (1, 2)  # see the docstring for why not lower
     PROMPT = b"> "
 
     _cv = None  # threading.Condition guarding the pool
     _free = []  # idle shells
-    _busy = 0  # shells currently running a call
+    _slots = _Slots(MAX_THREADS)  # admission to the pool, by priority
     _timer = None  # idle timer
 
-    # ------------------------------------------------------------ one shell
+    # one shell
     def __init__(self, binary, cwd):
         import subprocess, threading, queue, time
 
@@ -662,7 +827,7 @@ class InkscapeShell:
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             cwd=cwd,
-            env=dict(os.environ, SELF_CALL="true"),
+            env=dict(os.environ, SELF_CALL="true", COLUMNS="100000"),
         )
         self.q = queue.Queue()
         threading.Thread(target=self._reader, daemon=True).start()
@@ -705,6 +870,8 @@ class InkscapeShell:
 
     def close(self):
         try:
+            if self.version() < (1, 3):
+                raise RuntimeError("old shells hang on quit")
             self.proc.stdin.write(b"quit\n")
             self.proc.stdin.flush()
             self.proc.wait(timeout=5)
@@ -717,31 +884,34 @@ class InkscapeShell:
             except Exception:
                 pass
 
-    # ------------------------------------------------------------- the pool
+    # the pool
     @classmethod
-    def usable(cls):
-        """Shell mode needs Inkscape >= MIN_VERSION: before that, switching
-        the export area between page and drawing does not take effect, and
-        1.1's shell hangs on quit. Decided from the installed files where
-        possible (see InkscapeSystemInfo.get_binary_version); the binary
-        is the installation whose inkex is loaded, as everywhere else."""
+    def version(cls):
+        """(major, minor) of the binary; a development build falls back to
+        the inkex version"""
         try:
-            ver = inkex.vparse(inkex.inkscape_system_info.binary_version)
+            ver = inkex.vparse(inkscape_binary_version())
         except (TypeError, ValueError):  # unknown or development build
             ver = inkex.installed_ivp
-        return tuple(ver[:2]) >= cls.MIN_VERSION
+        return tuple(ver[:2])
 
-    @staticmethod
-    def commands(opts):
+    @classmethod
+    def usable(cls):
+        return cls.version() >= cls.MIN_VERSION
+
+    @classmethod
+    def commands(cls, opts):
         """Translate command-line options (input file last) into shell actions"""
+        area = cls.version() >= (1, 3)  # see the class docstring
         cmds = [
             "file-open:" + opts[-1],
             "export-id:",
             "export-id-only:false",
-            "export-area-page",
             "export-plain-svg:false",
             "export-latex:false",
         ]
+        if area:
+            cmds.insert(3, "export-area-page")
         nprefix = len(cmds)
         export = False
         opts = list(opts[:-1])
@@ -760,62 +930,55 @@ class InkscapeShell:
         if export and not any(c.strip() == "export-do" for c in cmds):
             cmds.append("export-do")
         for i in range(nprefix, len(cmds)):
-            if cmds[i].strip().startswith("export-id"):
+            if area and cmds[i].strip().startswith("export-id"):
                 cmds.insert(i, "export-area-drawing")
                 break
         return cmds + ["file-close"]
 
     @classmethod
-    def call(cls, args, cwd=None):
+    def call(cls, args, cwd=None, priority=0):
         """Run command-line style arguments (binary first, input file last)
-        through the pool, or one-shot if that is not possible. Returns an
-        object with .stdout, like subprocess_repeat."""
-        if not (cls.enabled and cls.usable()):
-            return subprocess_repeat(args, cwd=cwd)
+        through the pool, or one-shot if that is not possible. priority as
+        in subprocess_repeat. Returns an object with .stdout, like
+        subprocess_repeat."""
+        if not cls.usable():
+            return subprocess_repeat(args, cwd=cwd, priority=priority)
         import types
 
         shell = None
         try:
-            shell = cls._acquire(args[0], cwd)
+            shell = cls._acquire(args[0], cwd, priority)
             out = shell.run(cls.commands(args[1:]))
             cls._release(shell)
             return types.SimpleNamespace(stdout=out, returncode=0)
         except Exception:
             if shell is not None:
                 cls._release(shell, discard=True)
-            return subprocess_repeat(args, cwd=cwd)
+            return subprocess_repeat(args, cwd=cwd, priority=priority)
 
     @classmethod
-    def _acquire(cls, binary, cwd):
-        """An idle shell (any cwd if none is asked for), a new one while the
-        pool has room, or wait for one to be released"""
+    def _acquire(cls, binary, cwd, priority=0):
+        """A slot in the pool (urgent calls get free slots first), then an
+        idle shell (any cwd if none is asked for) or a new one"""
         import threading, atexit
 
         if cls._cv is None:
             cls._cv = threading.Condition()
             atexit.register(cls.close_all)
+        cls._slots.acquire(priority)
         with cls._cv:
-            while True:
-                for s in cls._free:
-                    if s.proc.poll() is None and (cwd is None or s.cwd == cwd):
-                        cls._free.remove(s)
-                        cls._busy += 1
-                        return s
-                for s in [s for s in cls._free if s.proc.poll() is not None]:
-                    cls._free.remove(s)  # died while idle
-                if len(cls._free) + cls._busy < cls.POOL:
-                    break
-                if cls._free:  # all idle ones are in the wrong cwd: replace one
-                    cls._free.pop().close()
-                    break
-                cls._cv.wait()
-            cls._busy += 1
+            for s in cls._free:
+                if s.proc.poll() is None and (cwd is None or s.cwd == cwd):
+                    cls._free.remove(s)
+                    return s
+            for s in [s for s in cls._free if s.proc.poll() is not None]:
+                cls._free.remove(s)  # died while idle
+            if cls._free and len(cls._free) + cls._slots.busy > MAX_THREADS:
+                cls._free.pop().close()  # idle ones are in the wrong cwd: replace one
         try:
             return cls(binary, cwd)  # started outside the lock: takes seconds
         except Exception:
-            with cls._cv:
-                cls._busy -= 1
-                cls._cv.notify()
+            cls._slots.release()
             raise
 
     @classmethod
@@ -823,7 +986,6 @@ class InkscapeShell:
         import time
 
         with cls._cv:
-            cls._busy -= 1
             if discard or shell.proc.poll() is not None:
                 shell.close()
             else:
@@ -831,7 +993,7 @@ class InkscapeShell:
                 cls._free.append(shell)
                 if cls._timer is None:
                     cls._arm_timer(cls.IDLE)
-            cls._cv.notify()
+        cls._slots.release()
 
     @classmethod
     def _arm_timer(cls, delay):
@@ -867,11 +1029,12 @@ class InkscapeShell:
             cls._free.clear()
 
 
-def inkscape_cli(args, cwd=None):
+def inkscape_cli(args, cwd=None, priority=0):
     """Run the Inkscape binary with command-line style arguments (binary
-    first, input file last), through the shell pool when enabled. Returns an
-    object with .stdout, like subprocess_repeat."""
-    return InkscapeShell.call(args, cwd=cwd)
+    first, input file last), through the shell pool when the binary supports
+    it. priority as in subprocess_repeat. Returns an object with .stdout,
+    like subprocess_repeat."""
+    return InkscapeShell.call(args, cwd=cwd, priority=priority)
 
 
 def vacuum_defs(svg):
@@ -1163,7 +1326,16 @@ def overwrite_svg(svg, fileout):
     # idebug(inkex)
     import inkex.command  # needed for a weird bug in v1.1
 
-    inkex.command.write_svg(svg, fileout)
+    for attempt in range(3):
+        try:
+            inkex.command.write_svg(svg, fileout)
+            return
+        except PermissionError:
+            # Windows only: a file written moments ago (by Inkscape, say)
+            # can still be held briefly by real-time scanning or indexing
+            if attempt == 2:
+                raise
+            time.sleep(0.5)
 
 
 global debugs

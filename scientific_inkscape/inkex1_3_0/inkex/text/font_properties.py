@@ -1029,117 +1029,120 @@ class FontToolsFontInstance:
 
     def get_char_advances(self, chars, pchars):
         """Get the advance width and bounding boxes of characters."""
-        units_per_em = self.head.unitsPerEm
-        if self.cmap is None:
-            self.cmap = self.font.getBestCmap()
-        if self.hmtx is None:
-            self.hmtx = self.font["hmtx"]
-        if self.kern is None:
-            self.kern = self.font["kern"] if "kern" in self.font else None
-        if self.gsub is None:
-            self.gsub = self.font["GSUB"] if "GSUB" in self.font else None
-        if self.glyf is None:
-            self.glyf = self.font["glyf"] if "glyf" in self.font else None
-        if self.glyph_names is None:
-            self.glyph_names = self.font.getGlyphNames()
+        # FontTools decompiles tables lazily and is not thread-safe while it
+        # does so; serialize like the Pango path (measure_text)
+        with _font_lock:
+            units_per_em = self.head.unitsPerEm
+            if self.cmap is None:
+                self.cmap = self.font.getBestCmap()
+            if self.hmtx is None:
+                self.hmtx = self.font["hmtx"]
+            if self.kern is None:
+                self.kern = self.font["kern"] if "kern" in self.font else None
+            if self.gsub is None:
+                self.gsub = self.font["GSUB"] if "GSUB" in self.font else None
+            if self.glyf is None:
+                self.glyf = self.font["glyf"] if "glyf" in self.font else None
+            if self.glyph_names is None:
+                self.glyph_names = self.font.getGlyphNames()
 
-        if self.cmap is None:
-            # Certain symbol fonts don't have a cmap table
-            self.cmap = dict()
-            for table in self.font["cmap"].tables:
-                if table.isUnicode():
-                    for codepoint, name in table.cmap.items():
-                        self.cmap[codepoint] = name
-                        self.cmap[codepoint - 15 * 4096] = name
+            if self.cmap is None:
+                # Certain symbol fonts don't have a cmap table
+                self.cmap = dict()
+                for table in self.font["cmap"].tables:
+                    if table.isUnicode():
+                        for codepoint, name in table.cmap.items():
+                            self.cmap[codepoint] = name
+                            self.cmap[codepoint - 15 * 4096] = name
 
-        advs = dict()
-        bbs = dict()
-        for c in chars:
-            glyph1 = self.cmap.get(ord(c))
-            if glyph1 is not None:
-                if glyph1 in self.hmtx.metrics:
-                    advance_width, _ = self.hmtx.metrics[glyph1]
-                    advs[c] = advance_width / units_per_em
+            advs = dict()
+            bbs = dict()
+            for c in chars:
+                glyph1 = self.cmap.get(ord(c))
+                if glyph1 is not None:
+                    if glyph1 in self.hmtx.metrics:
+                        advance_width, _ = self.hmtx.metrics[glyph1]
+                        advs[c] = advance_width / units_per_em
 
-                try:
-                    glyph = self.glyf[glyph1]
-                    bbx = [
-                        glyph.xMin,
-                        -glyph.yMax,
-                        glyph.xMax - glyph.xMin,
-                        glyph.yMax - glyph.yMin,
-                    ]
-                    bbs[c] = [v / units_per_em for v in bbx]
-                except (AttributeError, TypeError):
-                    bbs[c] = [0, 0, 0, 0]
-            else:
-                advs[c] = None
-
-        # Get ligature table (made with LLM help)
-        # Reference: https://learn.microsoft.com/en-us/typography/opentype/spec/gsub
-        if self.ligatures is None:
-            if self.gsub:
-                gsub_table = self.gsub.table
-                self.ligatures = dict()
-
-                # Helper function to check if a feature tag is in the list
-                def has_feature_tag(feature_tag, lookup_index):
-                    for feature in gsub_table.FeatureList.FeatureRecord:
-                        if feature.FeatureTag == feature_tag:
-                            if lookup_index in feature.Feature.LookupListIndex:
-                                return True
-                    return False
-
-                for lookup_index, lookup in enumerate(gsub_table.LookupList.Lookup):
-                    for subtable in lookup.SubTable:
-                        if lookup.LookupType == 7:  # Extension substitutions
-                            ext_subtable = subtable.ExtSubTable
-                            lookup_type = ext_subtable.LookupType
-                        else:
-                            ext_subtable = subtable
-                            lookup_type = lookup.LookupType
-
-                        if lookup_type == 4:  # Ligature substitutions
-                            # Check if the lookup is for discretionary ligatures
-                            if has_feature_tag("liga", lookup_index):
-                                for (
-                                    first_glyph,
-                                    ligature_set,
-                                ) in ext_subtable.ligatures.items():
-                                    for ligature in ligature_set:
-                                        component_glyphs = [
-                                            first_glyph
-                                        ] + ligature.Component
-                                        ligature_glyph = ligature.LigGlyph
-                                        self.ligatures[tuple(component_glyphs)] = (
-                                            ligature_glyph
-                                        )
-
-            else:
-                self.ligatures = dict()
-
-        dadvs = dict()
-        for c in pchars:
-            glyph2 = self.cmap.get(ord(c))
-            for pchar in pchars[c]:
-                glyph1 = self.cmap.get(ord(pchar))
-                kerning_value = None
-                if (glyph1, glyph2) in self.ligatures:
-                    ligglyph = self.ligatures[(glyph1, glyph2)]
-                    awlig, _ = self.hmtx.metrics[ligglyph]
-                    aw1, _ = self.hmtx.metrics[glyph1]
-                    aw2, _ = self.hmtx.metrics[glyph2]
-                    kerning_value = awlig - aw1 - aw2
+                    try:
+                        glyph = self.glyf[glyph1]
+                        bbx = [
+                            glyph.xMin,
+                            -glyph.yMax,
+                            glyph.xMax - glyph.xMin,
+                            glyph.yMax - glyph.yMin,
+                        ]
+                        bbs[c] = [v / units_per_em for v in bbx]
+                    except (AttributeError, TypeError):
+                        bbs[c] = [0, 0, 0, 0]
                 else:
-                    if self.kern is not None:
-                        for subtable in self.kern.kernTables:
-                            kerning_value = subtable.kernTable.get((glyph1, glyph2))
-                            if kerning_value is not None:
-                                break
-                if kerning_value is None:
-                    kerning_value = 0
-                dadvs[(pchar, c)] = kerning_value / units_per_em
-        return advs, dadvs, bbs
+                    advs[c] = None
+
+            # Get ligature table (made with LLM help)
+            # Reference: https://learn.microsoft.com/en-us/typography/opentype/spec/gsub
+            if self.ligatures is None:
+                if self.gsub:
+                    gsub_table = self.gsub.table
+                    self.ligatures = dict()
+
+                    # Helper function to check if a feature tag is in the list
+                    def has_feature_tag(feature_tag, lookup_index):
+                        for feature in gsub_table.FeatureList.FeatureRecord:
+                            if feature.FeatureTag == feature_tag:
+                                if lookup_index in feature.Feature.LookupListIndex:
+                                    return True
+                        return False
+
+                    for lookup_index, lookup in enumerate(gsub_table.LookupList.Lookup):
+                        for subtable in lookup.SubTable:
+                            if lookup.LookupType == 7:  # Extension substitutions
+                                ext_subtable = subtable.ExtSubTable
+                                lookup_type = ext_subtable.LookupType
+                            else:
+                                ext_subtable = subtable
+                                lookup_type = lookup.LookupType
+
+                            if lookup_type == 4:  # Ligature substitutions
+                                # Check if the lookup is for discretionary ligatures
+                                if has_feature_tag("liga", lookup_index):
+                                    for (
+                                        first_glyph,
+                                        ligature_set,
+                                    ) in ext_subtable.ligatures.items():
+                                        for ligature in ligature_set:
+                                            component_glyphs = [
+                                                first_glyph
+                                            ] + ligature.Component
+                                            ligature_glyph = ligature.LigGlyph
+                                            self.ligatures[tuple(component_glyphs)] = (
+                                                ligature_glyph
+                                            )
+
+                else:
+                    self.ligatures = dict()
+
+            dadvs = dict()
+            for c in pchars:
+                glyph2 = self.cmap.get(ord(c))
+                for pchar in pchars[c]:
+                    glyph1 = self.cmap.get(ord(pchar))
+                    kerning_value = None
+                    if (glyph1, glyph2) in self.ligatures:
+                        ligglyph = self.ligatures[(glyph1, glyph2)]
+                        awlig, _ = self.hmtx.metrics[ligglyph]
+                        aw1, _ = self.hmtx.metrics[glyph1]
+                        aw2, _ = self.hmtx.metrics[glyph2]
+                        kerning_value = awlig - aw1 - aw2
+                    else:
+                        if self.kern is not None:
+                            for subtable in self.kern.kernTables:
+                                kerning_value = subtable.kernTable.get((glyph1, glyph2))
+                                if kerning_value is not None:
+                                    break
+                    if kerning_value is None:
+                        kerning_value = 0
+                    dadvs[(pchar, c)] = kerning_value / units_per_em
+            return advs, dadvs, bbs
 
 
 # pylint:enable=import-outside-toplevel

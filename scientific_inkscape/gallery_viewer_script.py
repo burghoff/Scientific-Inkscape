@@ -455,8 +455,6 @@ def Make_Flask_App():
 
 temp_dir, temp_head = dh.shared_temp("gv")
 temp_base = os.path.join(temp_dir,temp_head)
-MAXTHREADS = 10
-conv_sema = threading.Semaphore(MAXTHREADS)
 
 # Opens a file with unknown encoding, trying utf-8 first
 # chardet can be slow
@@ -707,19 +705,20 @@ class ConversionThread(threading.Thread):
                     conv_path,
                     fname,
                 ]
-                # Execute the conversion command
-                with conv_sema:
-                    print('Inkscape export of '+fname)
-                    try:
-                        dh.subprocess_repeat(args)
-                    except subprocess.CalledProcessError:
-                        ws = os.path.join(dh.si_dir,'pngs','cannot_display.png')
-                        shutil.copy(ws, conv_path)
+                # Execute the conversion command. inkscape_cli uses the shell
+                # pool when it can (EMF conversion is otherwise all startup);
+                # a metafile that crashes Inkscape still ends in CalledProcessError
+                print('Inkscape export of '+fname)
+                try:
+                    dh.inkscape_cli(args)
+                except subprocess.CalledProcessError:
+                    ws = os.path.join(dh.si_dir,'pngs','cannot_display.png')
+                    shutil.copy(ws, conv_path)
                     
-                    if not os.path.exists(conv_path):
-                        # Still no png, probably a blank file
-                        ws = os.path.join(dh.si_dir,'pngs','white_square.png')
-                        shutil.copy(ws, conv_path)
+                if not os.path.exists(conv_path):
+                    # Still no png, probably a blank file
+                    ws = os.path.join(dh.si_dir,'pngs','white_square.png')
+                    shutil.copy(ws, conv_path)
 
             # Move the converted file to the final destination
             shutil.move(conv_path, self.fileout)

@@ -737,7 +737,7 @@ def export_svg_to_pdf(svg_path: str, exporter: Exporter) -> str:
             "--export-filename", pdf_path,
             svg_path,
         ]
-        exporter.check(dh.subprocess_repeat, args, finalization=True)
+        exporter.check(dh.inkscape_cli, args, priority=1)  # SVG exports go first
         _debug_copy(pdf_path, label="svg_out_ae")
         return pdf_path
 

@@ -53,7 +53,6 @@ import lxml
 import threading
 
 import dhelpers as dh
-dh.InkscapeShell.enabled = True
 import inkex
 from inkex import TextElement, Transform, Vector2d
 from inkex.text.utils import default_style_atts
@@ -72,9 +71,6 @@ DISPPROFILE = False
 
 
 MAXATTEMPTS = 2
-MAX_THREADS = 10;
-sema_export = threading.Semaphore(MAX_THREADS)
-sema_finalize = threading.Semaphore(MAX_THREADS)
 
 class AutoExporter(inkex.EffectExtension):
     """Automates exporting of SVG files in multiple formats."""
@@ -789,8 +785,7 @@ class Exporter():
                     
         if (
             (self.stroketopath or len(stps) > 0)
-            and inkex.installed_ivp[0] >= 1
-            and inkex.installed_ivp[1] > 0
+            and dh.InkscapeShell.version() >= (1, 1)  # the binary's, not inkex's
         ):
             self.stpact = "object-stroke-to-path"
         else:
@@ -921,9 +916,10 @@ class Exporter():
                         )  # clipping and masking
                         embedimg = (nsz < osz) or (anyalpha0 or hasmaskclip)
                         if embedimg:
-                            Exporter.replace_with_raster(
-                                elem, img_trnp, bbs[elem.get_id()], bbox
-                            )
+                            # old Inkscapes omit some clipped images from
+                            # query-all; our own box is in the same frame
+                            bbx = bbs.get(elem.get_id()) or dh.bounding_box2(elem).sbb
+                            Exporter.replace_with_raster(elem, img_trnp, bbx, bbox)
 
                 tmp = self.tempbase + "_eimg.svg"
                 self.check(dh.overwrite_svg, svg, tmp)
@@ -947,10 +943,10 @@ class Exporter():
         # + " s)")
         return cfile
 
-    def check(self, func, *args, finalization=False, **kwargs):
+    def check(self, func, *args, **kwargs):
         """Wraps a call with a stopped-thread check; if stopped, clear temp and exit.
-        Different semas are used for finalization and export.
-        dh.overwrite_svg is pure-Python and bypasses semaphores entirely."""
+        Inkscape calls are limited by the shell pool and subprocess_repeat
+        themselves, with the finalizer's at low priority."""
         def stopcheck():
             if hasattr(self, "aeThread") and self.aeThread.stopped is True:
                 self.clear_temp()
@@ -962,11 +958,10 @@ class Exporter():
                 self.svgs[args[1]] = args[0]
             stopcheck()
             return ret
-        with sema_finalize if finalization else sema_export:
-            stopcheck()
-            ret = func(*args, **kwargs)
-            stopcheck()
-            return ret
+        stopcheck()
+        ret = func(*args, **kwargs)
+        stopcheck()
+        return ret
 
     def split_acts(self, fnm, acts, reserved=None, get_bbs=True):
         """Split actions and run."""
@@ -1130,7 +1125,7 @@ class Exporter():
             if fileout.endswith(".svg"):
                 if not (self.testmode):
                     overwrite_output(filein, fileout)
-                    if dh.InkscapeShell.enabled:
+                    if dh.InkscapeShell.usable():  # the shell has no vacuum action
                         # --vacuum-defs has no shell equivalent; do it here
                         vsvg = get_svg(fileout)
                         dh.vacuum_defs(vsvg)
@@ -1445,12 +1440,12 @@ class Exporter():
 
             from pdf import make_pdf_libreoffice, make_pdf_word, replace_color_markers_with_svgs
             if self.finalizermode==6:
-                self.check(make_pdf_libreoffice,doc_finalized, temppdf,finalization=True)
+                self.check(make_pdf_libreoffice,doc_finalized, temppdf)
                 actual_output = repeat_move(temppdf, output_pdf)
             else:
-                self.check(make_pdf_word,doc_finalized, temppdf,self,finalization=True)
+                self.check(make_pdf_word,doc_finalized, temppdf,self)
                 temppdf2 = self.tempbase+'_replaced.pdf'
-                self.check(replace_color_markers_with_svgs,temppdf,uzo.svg_color_map,temppdf2,self,finalization=True)
+                self.check(replace_color_markers_with_svgs,temppdf,uzo.svg_color_map,temppdf2,self)
                 # temppdf3 = os.path.join(os.path.split(self.tempbase)[0],'tmp.pdf')
                 # shutil.copyfile(temppdf, temppdf3)
                 # self.prints(temppdf3)
@@ -1507,7 +1502,7 @@ class Exporter():
         try:
             page_files = self.check(
                 office.dump_onenote_pages, notebook_dir, self.filein,
-                pages_dir, prints=prints, finalization=True)
+                pages_dir, prints=prints)
 
             color_map, color_locations, ruler_color = office.mark_onenote_images(
                 page_files, media_dir, add_rulers=singlepage, prints=prints)
@@ -1515,11 +1510,11 @@ class Exporter():
             # Metafiles must be converted before publishing so that a
             # failed conversion can revert its marker in the pages.
             self.check(office.convert_onenote_metafiles, color_map,
-                       color_locations, prints=prints, finalization=True)
+                       color_locations, prints=prints)
 
             raw_pdf = self.tempbase + "_oneraw.pdf"
             self.check(office.publish_onenote_pdf, notebook_dir, pages_dir,
-                       raw_pdf, prints=prints, finalization=True)
+                       raw_pdf, prints=prints)
             published = True
 
             src_pdf = raw_pdf
@@ -1539,7 +1534,7 @@ class Exporter():
                 color_to_src = {hexcolor: (path, None)
                                 for hexcolor, path in color_map.items()}
                 self.check(replace_color_markers_with_svgs, src_pdf,
-                           color_to_src, temppdf, self, finalization=True)
+                           color_to_src, temppdf, self)
             else:
                 shutil.copyfile(src_pdf, temppdf)
         finally:

@@ -241,39 +241,6 @@ def isrectangle(elem, includingtransform=True):
             ret = False
     return ret
 
-# Sizes of a few files that change between Inkscape releases, used to read the
-# installed release off its files instead of running the binary (inkex's
-# __version__ only tracks the minor series, and is absent before 1.1.1). Text
-# files are measured with CRLF folded to LF, since Windows builds from 1.3.2
-# on ship them CRLF while macOS and Linux ship LF; binary files use their raw
-# size. Generated from every official release from 1.0 to 1.4.4 and checked
-# against the macOS builds.
-INKSCAPE_RELEASE_PROBES = (
-    'screens/start-welcome.png',
-    'extensions/inkex/elements/_base.py',
-    'ui/menus.xml',
-)
-INKSCAPE_RELEASE_TABLE = {
-    (1, 0, 0): {'screens/start-welcome.png': None, 'extensions/inkex/elements/_base.py': 17487, 'ui/menus.xml': 12918},
-    (1, 0, 1): {'screens/start-welcome.png': None, 'extensions/inkex/elements/_base.py': 20018, 'ui/menus.xml': 12895},
-    (1, 0, 2): {'screens/start-welcome.png': None, 'extensions/inkex/elements/_base.py': 20018, 'ui/menus.xml': 12954},
-    (1, 1, 0): {'screens/start-welcome.png': 64600, 'extensions/inkex/elements/_base.py': 21612, 'ui/menus.xml': 13570},
-    (1, 1, 1): {'screens/start-welcome.png': 64600, 'extensions/inkex/elements/_base.py': 21612, 'ui/menus.xml': 13610},
-    (1, 1, 2): {'screens/start-welcome.png': 64600, 'extensions/inkex/elements/_base.py': 21408, 'ui/menus.xml': 13610},
-    (1, 2, 0): {'screens/start-welcome.png': 111618, 'extensions/inkex/elements/_base.py': 24770, 'ui/menus.xml': None},
-    (1, 2, 1): {'screens/start-welcome.png': 111618, 'extensions/inkex/elements/_base.py': 26897, 'ui/menus.xml': None},
-    (1, 2, 2): {'screens/start-welcome.png': 111618, 'extensions/inkex/elements/_base.py': 26917, 'ui/menus.xml': None},
-    (1, 3, 0): {'screens/start-welcome.png': 147598, 'extensions/inkex/elements/_base.py': 29053, 'ui/menus.xml': None},
-    (1, 3, 1): {'screens/start-welcome.png': 150356, 'extensions/inkex/elements/_base.py': 29053, 'ui/menus.xml': None},
-    (1, 3, 2): {'screens/start-welcome.png': 147977, 'extensions/inkex/elements/_base.py': 29053, 'ui/menus.xml': None},
-    (1, 4, 0): {'screens/start-welcome.png': 173863, 'extensions/inkex/elements/_base.py': 33264, 'ui/menus.xml': None},
-    (1, 4, 1): {'screens/start-welcome.png': 173863, 'extensions/inkex/elements/_base.py': 33472, 'ui/menus.xml': None},
-    (1, 4, 2): {'screens/start-welcome.png': 172776, 'extensions/inkex/elements/_base.py': 33472, 'ui/menus.xml': None},
-    (1, 4, 3): {'screens/start-welcome.png': 174042, 'extensions/inkex/elements/_base.py': 33472, 'ui/menus.xml': None},
-    (1, 4, 4): {'screens/start-welcome.png': 173867, 'extensions/inkex/elements/_base.py': 33472, 'ui/menus.xml': None},
-}
-
-
 class InkscapeSystemInfo:
     """
     Discovers and caches Inkscape System info.
@@ -286,7 +253,6 @@ class InkscapeSystemInfo:
         self._language = self._UNSET
         self._preferences = self._UNSET
         self._binary_location = self._UNSET
-        self._binary_version = self._UNSET
         self._gtk_version = self._UNSET
 
     @property
@@ -309,49 +275,6 @@ class InkscapeSystemInfo:
         if self._binary_location is self._UNSET:
             self._binary_location = self.get_binary_location()
         return self._binary_location
-
-    @property
-    def binary_version(self):
-        """Get the Inkscape binary version."""
-        if self._binary_version is self._UNSET:
-            self._binary_version = self.get_binary_version()
-        return self._binary_version
-
-    def get_binary_version(self):
-        """
-        Gets the binary version from the sizes of a few files in its share
-        folder, matched against INKSCAPE_RELEASE_TABLE (fast), or by calling
-        the binary with --version when nothing matches (slow), e.g. for a
-        development build, a release newer than the table, or a Snap/AppImage
-        launcher with no share folder nearby
-        """
-        binary = self.binary_location
-        prefix = os.path.dirname(os.path.dirname(os.path.abspath(binary)))
-        for share_dir in (
-            os.path.join(prefix, "share", "inkscape"),
-            os.path.join(prefix, "Resources", "share", "inkscape"),  # macOS app
-        ):
-            if os.path.isdir(share_dir):
-                observed = dict()
-                for rel in INKSCAPE_RELEASE_PROBES:
-                    path = os.path.join(share_dir, *rel.split("/"))
-                    try:
-                        if rel.endswith((".png", ".svgz")):
-                            observed[rel] = os.path.getsize(path)
-                        else:
-                            with open(path, "rb") as f:
-                                observed[rel] = len(f.read().replace(b"\r\n", b"\n"))
-                    except OSError:
-                        observed[rel] = None
-                hits = [v for v, row in INKSCAPE_RELEASE_TABLE.items() if row == observed]
-                if len(hits) == 1:
-                    return ".".join(str(v) for v in hits[0])
-                break
-
-        proc = subprocess_repeat([binary, "--version"])
-
-        match = re.search(r"Inkscape\s+(\S+)\s+\(", str(proc.stdout))
-        return match.group(1) if match else None
 
     @staticmethod
     def get_binary_location():
@@ -558,51 +481,6 @@ class InkscapeSystemInfo:
         
 
 inkex.inkscape_system_info = InkscapeSystemInfo()  # type: ignore
-
-
-def subprocess_repeat(argin,cwd=None):
-    """
-    In the event of a timeout, repeats a subprocess call several times.
-
-    Parameters:
-        argin (list): The command and arguments to run in the subprocess.
-
-    Returns:
-        CompletedProcess: The result from the subprocess call.
-    """
-    base_timeout = 60
-    nattempts = 6
-    import subprocess
-
-    nfails = 0
-    ntime = 0
-    for i in range(nattempts):
-        timeout = base_timeout * 2**i
-        try:
-            os.environ["SELF_CALL"] = "true"  # seems to be needed for 1.3
-            proc = subprocess.run(
-                argin,
-                shell=False,
-                timeout=timeout,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                check=True, cwd=cwd
-            )
-            break
-        except subprocess.TimeoutExpired:
-            nfails += 1
-            ntime += timeout
-    if nfails == nattempts:
-        raise TimeoutError(
-            "\nThe call to the Inkscape binary timed out "
-            + str(nattempts)
-            + " times in "
-            + str(ntime)
-            + " seconds.\n\n"
-            + "This may be a temporary issue; try running the extension again."
-        )
-    else:
-        return proc
 
 
 # Get default style attributes
