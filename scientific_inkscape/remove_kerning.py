@@ -503,23 +503,54 @@ def External_Merges(els, mergenearby, mergesupersub):
         if ptxt.lns is not None:
             chks += ptxt.chks
 
+    # Per-chunk values the pair loop needs, computed once
+    txts = [w.txt for w in chks]
+    nonempty = [bool(wstrip(t)) for t in txts]
+    spws = [w.spw for w in chks]
+    mchs = [w.mch for w in chks]
+    fss = [(w.utfs * math.sqrt(w.transform.a**2 + w.transform.b**2),
+            w.utfs * math.sqrt(w.transform.c**2 + w.transform.d**2)) for w in chks]
+    # (x size, y size) (not including angle)
+    # Each chunk's leftmost character (its parsed_pts_t, document coordinates)
+    # and rightmost character (its parsed_pts_ut), as get_ut_pts picks them
+    starts, ends = [], []
+    for w in chks:
+        minv, maxv, imin, imax = float("inf"), float("-inf"), None, None
+        for i, c in enumerate(w.chrs):
+            ut = c.parsed_pts_ut
+            if ut is not None:
+                if ut[0][0] < minv:
+                    minv, imin = ut[0][0], i
+                if ut[3][0] > maxv:
+                    maxv, imax = ut[3][0], i
+        starts.append(w.chrs[imin].parsed_pts_t)
+        ends.append(w.chrs[imax].parsed_pts_ut)
+
     pbbs = [None]*len(chks)
     for ii, w in enumerate(chks):
         cx = [v[0] for c in w.chrs for v in c.parsed_pts_t]
         cy = [v[1] for c in w.chrs for v in c.parsed_pts_t]
         pbbs[ii] = tp.bbox([min(cx),min(cy),max(cx)-min(cx),max(cy)-min(cy)]);
-    
+
     for ii, w in enumerate(chks):
         dx = (
-            w.spw * w.scf * (NUM_SPACES + XTOLEXT)
+            spws[ii] * w.scf * (NUM_SPACES + XTOLEXT)
         )  # a big bounding box that includes the extra space
-        
+        t = w.transform
+        if abs(t.b) < 1e-9 and abs(t.c) < 1e-9 and t.a > 0 and t.d > 0:
+            # Unrotated: a partner starts at most xtol left of my end or dx
+            # right of it and within ytol of my box vertically, so the box
+            # need not extend further (twice the tolerances for safety)
+            dxl = 2 * XTOLEXT * spws[ii] * w.scf
+            dy = 2 * YTOLEXT * mchs[ii] * t.d
+        else:
+            dxl = dy = dx
         w.bb_big = tp.bbox(
             [
-                pbbs[ii].x1 - dx,
-                pbbs[ii].y1 - dx,
-                pbbs[ii].w + 2 * dx,
-                pbbs[ii].h + 2 * dx,
+                pbbs[ii].x1 - dxl,
+                pbbs[ii].y1 - dy,
+                pbbs[ii].w + dxl + dx,
+                pbbs[ii].h + 2 * dy,
             ]
         )
         w.mw = []
@@ -540,26 +571,25 @@ def External_Merges(els, mergenearby, mergesupersub):
     goodl = np.argwhere(potentials)
 
     for ii in range(goodl.shape[0]):
-        w = chks[goodl[ii, 0]]
-        w2 = chks[goodl[ii, 1]]
-        trl_spcs, ldg_spcs = trailing_leading(w.txt, w2.txt)
+        i1, i2 = goodl[ii, 0], goodl[ii, 1]
+        w = chks[i1]
+        w2 = chks[i2]
+        trl_spcs, ldg_spcs = trailing_leading(txts[i1], txts[i2])
 
-        dx = w.spw * (NUM_SPACES - trl_spcs - ldg_spcs)
-        xtol = XTOLEXT * w.spw
-        ytol = YTOLEXT * w.mch
-        
-        
-        w1fs = (w.utfs *math.sqrt(w.transform.a**2 +w.transform.b**2),
-                w.utfs *math.sqrt(w.transform.c**2 +w.transform.d**2))
-        w2fs = (w2.utfs*math.sqrt(w2.transform.a**2+w2.transform.b**2),
-                w2.utfs*math.sqrt(w2.transform.c**2+w2.transform.d**2))
-        # (x size, y size) (not including angle)
+        dx = spws[i1] * (NUM_SPACES - trl_spcs - ldg_spcs)
+        xtol = XTOLEXT * spws[i1]
+        ytol = YTOLEXT * mchs[i1]
+        w1fs = fss[i1]
+        w2fs = fss[i2]
 
-        # calculate 2's coords in 1's system
-        tr1, br1, tl2, bl2 = w.get_ut_pts(w2)
+        # calculate 2's coords in 1's system (what get_ut_pts does)
+        tr1, br1 = ends[i1][2], ends[i1][3]
+        m = w.transform.matrix
+        bl2 = tp.vmultinv(m, starts[i2][0][0], starts[i2][0][1])
+        tl2 = tp.vmultinv(m, starts[i2][1][0], starts[i2][1][1])
         xpenmatch = br1[0] - xtol <= bl2[0] <= br1[0] + dx + xtol
-        neitherempty = wstrip(w.txt) and wstrip(w2.txt)
-        if xpenmatch and neitherempty and not twospaces(w.txt, w2.txt):
+        neitherempty = nonempty[i1] and nonempty[i2]
+        if xpenmatch and neitherempty and not twospaces(txts[i1], txts[i2]):
             weight_match = w.chrs[-1].tsty['font-weight'] == w2.chrs[0].tsty['font-weight']
             # Don't sub/super merge when differences in font-weight
             # Helps prevent accidental merges of subfigure label to tick

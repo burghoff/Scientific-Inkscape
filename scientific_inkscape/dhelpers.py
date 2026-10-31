@@ -40,7 +40,8 @@ si_dir = os.path.dirname(os.path.realpath(__file__))  # my install location
 sys.path.insert(0, os.path.join(si_dir, inkex_to_use))
 sys.path.insert(1, os.path.join(si_dir, inkex_to_use, "site-packages"))
 
-# Serve everything below from a bytecode cache and defer numpy (see fastimport)
+# Serve everything below from a bytecode cache and defer numpy, cssselect and
+# traceback until first use (see fastimport)
 import fastimport
 
 fastimport.install(si_dir)
@@ -326,16 +327,16 @@ def ungroup(g, removetextclip=False):
     # Ungroup a group, preserving style, clipping, and masking
     # Remove any comments
     if g.croot is not None:
+        # The group's properties
+        gtransform = g.ctransform
+        gclip = g.get_link("clip-path", llget=True)
+        gmask = g.get_link("mask", llget=True)
+        gstyle = g.ccascaded_style
+        gxmlspace = EBget(g,xmlspace)
         for el in reversed(list(g)):
             if el.tag == ctag:  # remove comments
                 g.remove(el)
             if el.tag not in unungroupable:
-                gtransform = g.ctransform
-                gclip = g.get_link("clip-path", llget=True)
-                gmask = g.get_link("mask", llget=True)
-                gstyle = g.ccascaded_style
-                gxmlspace = EBget(g,xmlspace)
-                
                 clippedout = compose_all(
                     el, gclip, gmask, gtransform, gstyle, removetextclip=removetextclip
                 )
@@ -609,6 +610,8 @@ unrendered = tags(
 unrendered.update(
     {
         masktag,
+        inkex.addNS("title", "svg"),  # one of these otherwise sends the whole
+        inkex.addNS("desc", "svg"),  # document to the Inkscape binary in BB2
         inkex.addNS("RDF", "rdf"),
         inkex.addNS("Work", "cc"),
         inkex.addNS("format", "dc"),
@@ -1132,23 +1135,31 @@ def wrapped_binary(
 
 
 # Determine if object has a bbox
-@lru_cache(maxsize=None)
+# Memoized on the element itself (like cspecified_style) so the record dies
+# with its document
 def hasbbox(el):
-    myp = el.getparent()
-    if myp is None:
-        return el.tag == svgtag
-    else:
-        return el.tag not in unrendered if hasbbox(myp) else False
+    ret = el.__dict__.get("_hasbbox")
+    if ret is None:
+        myp = el.getparent()
+        if myp is None:
+            ret = el.tag == svgtag
+        else:
+            ret = el.tag not in unrendered if hasbbox(myp) else False
+        el._hasbbox = ret
+    return ret
 
 
 # Determine if object itself is drawn
-@lru_cache(maxsize=None)
 def isdrawn(el):
-    return (
-        el.tag not in grouplike_tags
-        and hasbbox(el)
-        and el.cspecified_style.get("display") != "none"
-    )
+    ret = el.__dict__.get("_isdrawn")
+    if ret is None:
+        ret = (
+            el.tag not in grouplike_tags
+            and hasbbox(el)
+            and el.cspecified_style.get("display") != "none"
+        )
+        el._isdrawn = ret
+    return ret
 
 
 # A wrapper that replaces get_bounding_boxes with Pythonic calls only if possible
@@ -1981,118 +1992,246 @@ grouplike_tags = tags(
 grouplike_tags.add(mask_tag)
 
 
-def path_bbox(pth, rough=False):
+def path_bbox(el, rough=False):
     """
-    Bounding box (x1, y1, x2, y2) of an inkex Path, or None if it has no
-    points. Every segment becomes four cubic control points in one flat
-    list and the extrema are taken with numpy, instead of inkex's walk over
-    per-segment Vector2d objects. rough=True returns the control-point hull,
-    an upper bound that skips the extrema.
+    Bounding box (x1, y1, x2, y2) of a path-like element, or None if it has
+    no points. A path whose d is made only of M, L, H, V, Z and C commands
+    (what the PDF importer and most drawing programs write) is read straight
+    from the attribute, without building segment objects. Anything else goes
+    through el.cpath: every segment becomes four cubic control points in one
+    flat list and the extrema are taken with numpy. Both routes form every
+    coordinate with the same float operations, so they agree exactly.
+    rough=True returns the control-point hull, an upper bound that skips the
+    extrema.
     """
     import numpy as np
 
-    cp = []  # x0,y0, x1,y1, x2,y2, x3,y3 for each cubic piece
-    cx = cy = sx = sy = 0.0
-    kx = ky = qx = qy = None  # last cubic / quadratic control, for S and T
-    curved = False  # lines only: the hull is already exact
-    for seg in pth:
-        L = seg.letter
-        a = seg.args
-        l = L.upper()
-        ox, oy = (cx, cy) if L.islower() else (0.0, 0.0)
-        if l == "M":
-            cx, cy = ox + a[0], oy + a[1]
-            sx, sy = cx, cy
-            cp += [cx, cy] * 4
-            kx = qx = None
-        elif l == "Z":
-            cp += [cx, cy, cx, cy, sx, sy, sx, sy]
-            cx, cy = sx, sy
-            kx = qx = None
-        elif l in "LHV":
-            nx, ny = cx, cy
-            if l == "L":
-                nx, ny = ox + a[0], oy + a[1]
-            elif l == "H":
-                nx = ox + a[0]
-            else:
-                ny = oy + a[0]
-            cp += [cx, cy, cx, cy, nx, ny, nx, ny]
-            cx, cy = nx, ny
-            kx = qx = None
-        elif l in "CS":
-            if l == "C":
-                x1, y1, x2, y2, nx, ny = (ox + a[0], oy + a[1], ox + a[2],
-                                          oy + a[3], ox + a[4], oy + a[5])
-            else:
-                x1, y1 = (2 * cx - kx, 2 * cy - ky) if kx is not None else (cx, cy)
-                x2, y2, nx, ny = ox + a[0], oy + a[1], ox + a[2], oy + a[3]
-            cp += [cx, cy, x1, y1, x2, y2, nx, ny]
-            curved = True
-            kx, ky = x2, y2
-            cx, cy = nx, ny
-            qx = None
-        elif l in "QT":
-            if l == "Q":
-                x1, y1, nx, ny = ox + a[0], oy + a[1], ox + a[2], oy + a[3]
-            else:
-                x1, y1 = (2 * cx - qx, 2 * cy - qy) if qx is not None else (cx, cy)
-                nx, ny = ox + a[0], oy + a[1]
-            cp += [cx, cy, cx + (x1 - cx) * 2 / 3, cy + (y1 - cy) * 2 / 3,
-                   nx + (x1 - nx) * 2 / 3, ny + (y1 - ny) * 2 / 3, nx, ny]
-            curved = True
-            qx, qy = x1, y1
-            cx, cy = nx, ny
-            kx = None
-        elif l == "A":
-            nx, ny = ox + a[5], oy + a[6]
-            nodes = inkex.paths.arc_to_path([cx, cy], (a[0], a[1], a[2], a[3], a[4], nx, ny))
-            for n0, n1 in zip(nodes, nodes[1:]):
-                cp += [n0[1][0], n0[1][1], n0[2][0], n0[2][1],
-                       n1[0][0], n1[0][1], n1[1][0], n1[1][1]]
-            curved = True
-            cx, cy = nx, ny
-            kx = qx = None
-    if not cp:
-        return None
-    if len(cp) < 400:  # small paths: plain Python beats numpy's call overhead
-        if rough or not curved:
-            xs, ys = cp[0::2], cp[1::2]
-            return (min(xs), min(ys), max(xs), max(ys))
-        xs, ys = cp[0::8] + cp[6::8], cp[1::8] + cp[7::8]  # endpoints
-        for i in range(0, len(cp), 8):
-            for p0, p1, p2, p3, out in ((cp[i], cp[i + 2], cp[i + 4], cp[i + 6], xs),
-                                        (cp[i + 1], cp[i + 3], cp[i + 5], cp[i + 7], ys)):
-                a, b, c = 3 * (p3 - p0 + 3 * (p1 - p2)), 6 * (p0 - 2 * p1 + p2), 3 * (p1 - p0)
-                if abs(a) > 1e-12:
-                    d = b * b - 4 * a * c
-                    ts = [(-b + d ** 0.5) / (2 * a), (-b - d ** 0.5) / (2 * a)] if d >= 0 else []
+    def coord(rel, e, chg, isM, isZ):
+        """
+        One coordinate of the current point after each segment of a d
+        attribute. e: that coordinate of the segment's end argument; chg:
+        whether the segment sets it (H leaves y alone, V leaves x alone).
+        Absolute segments reset it to 0.0 + e, Z to the subpath start, and
+        relative segments add to it in sequence, each run of additions a
+        single cumulative sum so the float operations match the segment walk
+        """
+        T = len(e)
+        c = np.zeros(T)
+        absset = chg & ~rel
+        c[absset] = 0.0 + e[absset]
+        known = absset.copy()
+        relchg = rel & chg
+        if relchg.any() or isZ.any():
+            reset = absset | isZ
+            starts = np.flatnonzero(reset)
+            if len(starts) == 0 or starts[0] != 0:
+                starts = np.concatenate(([0], starts))  # the path starts at 0.0
+            ends = np.concatenate((starts[1:], [T]))
+            mstart = np.flatnonzero(isM)
+            todo = np.add.reduceat(relchg.astype(int), starts) > 0
+            for g in np.flatnonzero(todo | isZ[starts]):
+                b, nb = starts[g], ends[g]
+                if isZ[b]:
+                    i = np.searchsorted(mstart, b) - 1
+                    c[b] = c[mstart[i]] if i >= 0 else 0.0
+                    known[b] = True
+                    v0, first = c[b], b + 1
+                elif reset[b]:
+                    v0, first = c[b], b + 1
                 else:
-                    ts = [-c / b] if abs(b) > 1e-12 else []
-                for t in ts:
-                    if 0 < t < 1:
-                        u = 1 - t
-                        out.append(u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3)
-        return (min(xs), min(ys), max(xs), max(ys))
-    P = np.array(cp).reshape(-1, 4, 2)
-    if rough or not curved:
-        lo, hi = P.min(axis=(0, 1)), P.max(axis=(0, 1))
-    else:
-        p0, p1, p2, p3 = P[:, 0], P[:, 1], P[:, 2], P[:, 3]
-        lo, hi = np.minimum(p0, p3).min(axis=0), np.maximum(p0, p3).max(axis=0)
-        # interior extrema: roots of the derivative a t^2 + b t + c in (0, 1)
-        a, b, c = 3 * (p3 - p0 + 3 * (p1 - p2)), 6 * (p0 - 2 * p1 + p2), 3 * (p1 - p0)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            disc = np.sqrt(np.maximum(b * b - 4 * a * c, 0))
-            roots = [(-b + disc) / (2 * a), (-b - disc) / (2 * a), -c / b]
-        for t in roots:
-            ok = (t > 0) & (t < 1)
-            t = np.where(ok, t, 0.5)
-            v = ((1 - t) ** 3 * p0 + 3 * (1 - t) ** 2 * t * p1
-                 + 3 * (1 - t) * t ** 2 * p2 + t ** 3 * p3)
-            lo = np.minimum(lo, np.where(ok, v, np.inf).min(axis=0))
-            hi = np.maximum(hi, np.where(ok, v, -np.inf).max(axis=0))
-    return (float(lo[0]), float(lo[1]), float(hi[0]), float(hi[1]))
+                    v0, first = 0.0, b
+                idx = np.flatnonzero(relchg[first:nb]) + first
+                if len(idx):
+                    c[idx] = np.cumsum(np.concatenate(([v0], e[idx])))[1:]
+                    known[idx] = True
+        if not known.all():  # segments that leave this coordinate as it was
+            last = np.maximum.accumulate(np.where(known, np.arange(T), -1))
+            c = np.where(last >= 0, c[np.maximum(last, 0)], 0.0)
+        return c
+
+    def from_d(d):
+        """
+        The d attribute route. Returns None when it cannot help: a short
+        path, other commands, numbers after a Z, an incomplete command, or a
+        curved path with rough=False, where the segment walk finds the exact
+        extrema
+        """
+        if len(d) < 2000:  # numpy's call overhead outweighs the parse on short paths
+            return None
+        nargs = (2, 2, 1, 1, 6, 0)  # M L H V C Z
+        info = {L: (k, L.islower()) for k, LL in enumerate("MLHVCZ") for L in (LL, LL.lower())}
+        rk, rr, rn, toks = [], [], [], []  # per run: kind, relative, segments
+        curved = False
+        for L, chunk in speedups.LEX_REX.findall(d):
+            try:
+                k, rel = info[L]
+            except KeyError:
+                return None
+            nums = speedups.NUMBER_REX.findall(chunk)
+            n = len(nums)
+            if k == 5:
+                if n:
+                    return None
+                rk.append(5)
+                rr.append(False)
+                rn.append(1)
+                continue
+            if n == 0:
+                continue
+            if n % nargs[k]:
+                return None
+            toks += nums
+            if k == 0:  # a move, then implicit lines
+                rk += [0, 1]
+                rr += [rel, rel]
+                rn += [1, n // 2 - 1]
+            else:
+                rk.append(k)
+                rr.append(rel)
+                rn.append(n // nargs[k])
+                curved = curved or k == 4
+        if not rk or (curved and not rough):
+            return None
+        rk, rr, rn = np.array(rk), np.array(rr, dtype=bool), np.array(rn)
+        kind, rel = np.repeat(rk, rn), np.repeat(rr, rn)
+        T = len(kind)
+        na = np.array(nargs)[rk]
+        nv = rn * na
+        N = int(nv.sum())
+        A = np.zeros((T, 6))  # each segment's arguments
+        if N:
+            run = np.repeat(np.arange(len(rk)), nv)
+            pos = np.arange(N) - np.repeat(np.cumsum(nv) - nv, nv)
+            kk = na[run]
+            A[(np.cumsum(rn) - rn)[run] + pos // kk, pos % kk] = np.array(toks, dtype=float)
+        isM, isH, isV, isC, isZ = (kind == i for i in (0, 2, 3, 4, 5))
+        ex = np.where(isC, A[:, 4], A[:, 0])
+        ey = np.where(isC, A[:, 5], np.where(isV, A[:, 0], A[:, 1]))
+        cx = coord(rel, ex, ~isV & ~isZ, isM, isZ)
+        cy = coord(rel, ey, ~isH & ~isZ, isM, isZ)
+        xs, ys = [cx[~isV & ~isZ]], [cy[~isH & ~isZ]]
+        if isC.any():  # control points, relative to the segment's start
+            bx = np.where(rel[isC], np.concatenate(([0.0], cx[:-1]))[isC], 0.0)
+            by = np.where(rel[isC], np.concatenate(([0.0], cy[:-1]))[isC], 0.0)
+            xs += [bx + A[isC, 0], bx + A[isC, 2]]
+            ys += [by + A[isC, 1], by + A[isC, 3]]
+        if kind[0] != 0:  # the segment walk starts at the origin
+            xs.append(np.zeros(1))
+            ys.append(np.zeros(1))
+        xs, ys = np.concatenate(xs), np.concatenate(ys)
+        return (float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()))
+
+    def from_path(pth):
+        """
+        The segment walk over el.cpath, for every path
+        """
+        cp = []  # x0,y0, x1,y1, x2,y2, x3,y3 for each cubic piece
+        cx = cy = sx = sy = 0.0
+        kx = ky = qx = qy = None  # last cubic / quadratic control, for S and T
+        curved = False  # lines only: the hull is already exact
+        for seg in pth:
+            L = seg.letter
+            a = seg.args
+            l = L.upper()
+            ox, oy = (cx, cy) if L.islower() else (0.0, 0.0)
+            if l == "M":
+                cx, cy = ox + a[0], oy + a[1]
+                sx, sy = cx, cy
+                cp += [cx, cy] * 4
+                kx = qx = None
+            elif l == "Z":
+                cp += [cx, cy, cx, cy, sx, sy, sx, sy]
+                cx, cy = sx, sy
+                kx = qx = None
+            elif l in "LHV":
+                nx, ny = cx, cy
+                if l == "L":
+                    nx, ny = ox + a[0], oy + a[1]
+                elif l == "H":
+                    nx = ox + a[0]
+                else:
+                    ny = oy + a[0]
+                cp += [cx, cy, cx, cy, nx, ny, nx, ny]
+                cx, cy = nx, ny
+                kx = qx = None
+            elif l in "CS":
+                if l == "C":
+                    x1, y1, x2, y2, nx, ny = (ox + a[0], oy + a[1], ox + a[2],
+                                              oy + a[3], ox + a[4], oy + a[5])
+                else:
+                    x1, y1 = (2 * cx - kx, 2 * cy - ky) if kx is not None else (cx, cy)
+                    x2, y2, nx, ny = ox + a[0], oy + a[1], ox + a[2], oy + a[3]
+                cp += [cx, cy, x1, y1, x2, y2, nx, ny]
+                curved = True
+                kx, ky = x2, y2
+                cx, cy = nx, ny
+                qx = None
+            elif l in "QT":
+                if l == "Q":
+                    x1, y1, nx, ny = ox + a[0], oy + a[1], ox + a[2], oy + a[3]
+                else:
+                    x1, y1 = (2 * cx - qx, 2 * cy - qy) if qx is not None else (cx, cy)
+                    nx, ny = ox + a[0], oy + a[1]
+                cp += [cx, cy, cx + (x1 - cx) * 2 / 3, cy + (y1 - cy) * 2 / 3,
+                       nx + (x1 - nx) * 2 / 3, ny + (y1 - ny) * 2 / 3, nx, ny]
+                curved = True
+                qx, qy = x1, y1
+                cx, cy = nx, ny
+                kx = None
+            elif l == "A":
+                nx, ny = ox + a[5], oy + a[6]
+                nodes = inkex.paths.arc_to_path([cx, cy], (a[0], a[1], a[2], a[3], a[4], nx, ny))
+                for n0, n1 in zip(nodes, nodes[1:]):
+                    cp += [n0[1][0], n0[1][1], n0[2][0], n0[2][1],
+                           n1[0][0], n1[0][1], n1[1][0], n1[1][1]]
+                curved = True
+                cx, cy = nx, ny
+                kx = qx = None
+        if not cp:
+            return None
+        if len(cp) < 400:  # small paths: plain Python beats numpy's call overhead
+            if rough or not curved:
+                xs, ys = cp[0::2], cp[1::2]
+                return (min(xs), min(ys), max(xs), max(ys))
+            xs, ys = cp[0::8] + cp[6::8], cp[1::8] + cp[7::8]  # endpoints
+            for i in range(0, len(cp), 8):
+                for p0, p1, p2, p3, out in ((cp[i], cp[i + 2], cp[i + 4], cp[i + 6], xs),
+                                            (cp[i + 1], cp[i + 3], cp[i + 5], cp[i + 7], ys)):
+                    a, b, c = 3 * (p3 - p0 + 3 * (p1 - p2)), 6 * (p0 - 2 * p1 + p2), 3 * (p1 - p0)
+                    if abs(a) > 1e-12:
+                        d = b * b - 4 * a * c
+                        ts = [(-b + d ** 0.5) / (2 * a), (-b - d ** 0.5) / (2 * a)] if d >= 0 else []
+                    else:
+                        ts = [-c / b] if abs(b) > 1e-12 else []
+                    for t in ts:
+                        if 0 < t < 1:
+                            u = 1 - t
+                            out.append(u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3)
+            return (min(xs), min(ys), max(xs), max(ys))
+        P = np.array(cp).reshape(-1, 4, 2)
+        if rough or not curved:
+            lo, hi = P.min(axis=(0, 1)), P.max(axis=(0, 1))
+        else:
+            p0, p1, p2, p3 = P[:, 0], P[:, 1], P[:, 2], P[:, 3]
+            lo, hi = np.minimum(p0, p3).min(axis=0), np.maximum(p0, p3).max(axis=0)
+            # interior extrema: roots of the derivative a t^2 + b t + c in (0, 1)
+            a, b, c = 3 * (p3 - p0 + 3 * (p1 - p2)), 6 * (p0 - 2 * p1 + p2), 3 * (p1 - p0)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                disc = np.sqrt(np.maximum(b * b - 4 * a * c, 0))
+                roots = [(-b + disc) / (2 * a), (-b - disc) / (2 * a), -c / b]
+            for t in roots:
+                ok = (t > 0) & (t < 1)
+                t = np.where(ok, t, 0.5)
+                v = ((1 - t) ** 3 * p0 + 3 * (1 - t) ** 2 * t * p1
+                     + 3 * (1 - t) * t ** 2 * p2 + t ** 3 * p3)
+                lo = np.minimum(lo, np.where(ok, v, np.inf).min(axis=0))
+                hi = np.maximum(hi, np.where(ok, v, -np.inf).max(axis=0))
+        return (float(lo[0]), float(lo[1]), float(hi[0]), float(hi[1]))
+
+    bb = from_d(el.get("d", "")) if el.tag == BaseElementCache.path_tag else None
+    if bb is None:
+        bb = from_path(el.cpath)
+    return bb
 
 
 def bounding_box2(
@@ -2128,36 +2267,28 @@ def bounding_box2(
                     )
                 ret = self._cbbox[tkey]
             elif self.tag in cpath_support_tags:
-                pth = self.cpath
-                if len(pth) > 0:
+                if self.tag == line_tag:
+                    bb = None
+                    if len(self.cpath) > 0:
+                        x = [ipx(self.get("x1", "0")), ipx(self.get("x2", "0"))]
+                        y = [ipx(self.get("y1", "0")), ipx(self.get("y2", "0"))]
+                        bb = (min(x), min(y), max(x), max(y))
+                else:
+                    bb = path_bbox(self, rough=roughpath)
+                if bb is not None:
                     swd = ipx(self.cspecified_style.get("stroke-width", "0px"))
                     if self.cspecified_style.get("stroke") in NONES or not (
                         includestroke
                     ):
                         swd = 0
-
-                    if self.tag == line_tag:
-                        x = [ipx(self.get("x1", "0")), ipx(self.get("x2", "0"))]
-                        y = [ipx(self.get("y1", "0")), ipx(self.get("y2", "0"))]
-                        ret = bbox(
-                            [
-                                min(x) - swd / 2,
-                                min(y) - swd / 2,
-                                max(x) - min(x) + swd,
-                                max(y) - min(y) + swd,
-                            ]
-                        )
-                    else:
-                        bb = path_bbox(pth, rough=roughpath)
-                        if bb is not None:
-                            ret = bbox(
-                                [
-                                    bb[0] - swd / 2,
-                                    bb[1] - swd / 2,
-                                    bb[2] - bb[0] + swd,
-                                    bb[3] - bb[1] + swd,
-                                ]
-                            )
+                    ret = bbox(
+                        [
+                            bb[0] - swd / 2,
+                            bb[1] - swd / 2,
+                            bb[2] - bb[0] + swd,
+                            bb[3] - bb[1] + swd,
+                        ]
+                    )
 
             elif self.tag in grouplike_tags:
                 for kid in list2(self):

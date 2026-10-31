@@ -717,7 +717,7 @@ class BaseElementCache(BaseElement):
             # If set, remove empty ancestor groups
             myp = self.getparent()
             BaseElementCache.BE_delete(self)
-            if myp is not None and len(myp) == 0:
+            if myp is not None and next(iter(myp), None) is None:  # len() walks every child
                 BaseElementCache.delete(myp, True)
         else:
             BaseElementCache.BE_delete(self)

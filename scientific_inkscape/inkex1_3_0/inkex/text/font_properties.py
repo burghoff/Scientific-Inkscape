@@ -793,16 +793,13 @@ class PR: # PangoRenderer
         Scale extents and return extents as standard bboxes
         (0:logical, 1:ink, 2: ink relative to anchor/baseline)
         """
-        logr = ext.logical_rect
-        logr = [
-            self.putd(v) / self.pangosize
-            for v in [logr.x, logr.y, logr.width, logr.height]
-        ]
-        inkr = ext.ink_rect
-        inkr = [
-            self.putd(v) / self.pangosize
-            for v in [inkr.x, inkr.y, inkr.width, inkr.height]
-        ]
+        # Divides by Pango.SCALE directly, which is what units_to_double
+        # does: this runs once per cluster and gi calls are slow
+        scl, psz = self.scale, self.pangosize
+        r = ext.logical_rect
+        logr = [r.x / scl / psz, r.y / scl / psz, r.width / scl / psz, r.height / scl / psz]
+        r = ext.ink_rect
+        inkr = [r.x / scl / psz, r.y / scl / psz, r.width / scl / psz, r.height / scl / psz]
         ir_rel = [inkr[0] - logr[0], inkr[1] - logr[1] - ascent, inkr[2], inkr[3]]
         return logr, inkr, ir_rel
 

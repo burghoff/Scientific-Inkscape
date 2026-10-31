@@ -266,7 +266,7 @@ class AutoExporter(inkex.EffectExtension):
             if not (self.options.testmode):
                 pth = dh.Get_Current_File(self, "To do a direct export, ")
             else:
-                pth = self.options.input_file
+                pth = os.path.normpath(self.options.input_file)
             opts.original_file = pth
             opts.debug = DEBUGGING
             opts.prints = False

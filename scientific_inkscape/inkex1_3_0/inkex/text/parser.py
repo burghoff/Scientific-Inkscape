@@ -4587,18 +4587,18 @@ class CharacterTable:
         for sty, chrs in validtstyset.items():
             prefix, suffix, empty, pistr = ixes[sty]
             ctbl[sty] = dict()
+            # Characters that precede each character in this style, looked up
+            # once per style (hashing a style walks its items)
+            stypchrs = self.pchrset.get(sty, dict()) if DIFF_ADVANCES else dict()
             for myc in chrs:
                 t = make_string(prefix + effc(myc) + suffix, sty)
                 tbare = make_string(effc(myc), sty)
                 bareids.append(tbare)
                 dadv = dict()
-                if DIFF_ADVANCES:
+                mypchrs = stypchrs.get(myc)
+                if mypchrs:
                     for pchr in chrs:
-                        if (
-                            sty in self.pchrset
-                            and myc in self.pchrset[sty]
-                            and pchr in self.pchrset[sty][myc]
-                        ):
+                        if pchr in mypchrs:
                             tpc = make_string(
                                 prefix + effc(pchr) + effc(myc) + suffix, sty
                             )

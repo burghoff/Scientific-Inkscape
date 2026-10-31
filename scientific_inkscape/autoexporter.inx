@@ -7,7 +7,7 @@
         <label>Launches the Autoexporter, a background program that watches a directory for file changes and exports them in the selected formats.</label>
         <label>If security prompts appear, please allow access.</label>
         <label appearance="header">SVG exporter</label>
-        <label>Converts SVGs into the selected formats.</label>
+        <label>Converts SVGs into copies that can be inserted into documents</label>
         <param name="usepdf" type="bool" gui-text="PDF"
          gui-description="Filters and gradients will be rasterized. ">true</param>   
         <param name="usepng" type="bool" gui-text="PNG">false</param>    
@@ -17,8 +17,8 @@
           gui-description="Plain SVG that has been optimized for compatibility with Microsoft Office and LibreOffice">false</param> 
         
         
-        <label appearance="header">Document finalizer</label>
-        <label>Modifies documents that contain SVGs.</label>
+        <label appearance="header">Office document finalizer</label>
+        <label>Converts Office files that contain SVGs into presentable copies</label>
         <param name="finalizermode" type="optiongroup" appearance="combo"
                 gui-text=""
                 gui-description="Currently supports: .docx, .pptx&#13;Embed linked images: Move a copy of linked images inside file&#13;Embed and convert SVGs to PNGs: Replaces SVGs with embedded PNGs&#13;Embed and delete backup PNGs: Removes backup PNGs for lower file sizes&#13;Conversion to PDF: Requires an installation of Microsoft Office or LibreOffice">

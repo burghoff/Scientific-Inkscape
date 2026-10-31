@@ -210,15 +210,13 @@ class FlattenPlots(inkex.EffectExtension):
             seldefs = [el for el in seld if el.tag == defstag]
             for el in seldefs:
                 self.svg.cdefs.append(el)
-                for d in el.iter('*'):
-                    if d in seld:
-                        seld.remove(d)  # no longer selected
+            moved = {d for el in seldefs for d in el.iter('*')}
+            seld = [el for el in seld if el not in moved]  # no longer selected
             selcm = [el for el in seld if el.tag in clipmask]
             for el in selcm:
                 self.svg.cdefs.append(el)
-                for d in el.iter('*'):
-                    if d in seld:
-                        seld.remove(d)  # no longer selected
+            moved = {d for el in selcm for d in el.iter('*')}
+            seld = [el for el in seld if el not in moved]  # no longer selected
 
         gtag = inkex.Group.ctag
         gigtags = dh.tags((NamedView, Defs, Metadata, ForeignObject) + (Group,))
@@ -243,8 +241,8 @@ class FlattenPlots(inkex.EffectExtension):
                         oels.append(el)
             for nel in nels:
                 seld += list(nel.iter('*'))
-            for oel in oels:
-                seld.remove(oel)
+            oels = set(oels)
+            seld = [el for el in seld if el not in oels]
             gs = [el for el in seld if el.tag == gtag]
             ngs = [el for el in seld if el.tag not in gigtags]
 
@@ -400,15 +398,24 @@ class FlattenPlots(inkex.EffectExtension):
                 
                 jdict = {1: "middle", 2: "start", 3: "end", 4: None, 5: "auto"}
                 justification = jdict[self.options.justification]
+                # Hidden text is left alone: it is never drawn, so there is
+                # nothing to measure or merge (the Autoexporter's markers are
+                # hundreds of display:none texts stacked on one spot)
+                tftags = {TE_TAG, inkex.FlowRoot.ctag}
+                hidden = [
+                    el for el in ngs
+                    if el.tag in tftags and el.cspecified_style.get("display") == "none"
+                ]
+                hset = set(hidden)
                 ngs = remove_kerning(
-                    ngs,
+                    [el for el in ngs if el not in hset],
                     removemanualkerning,
                     mergesubsuper,
                     splitdistant,
                     mergenearby,
                     justification,
                     self.options.debugparser,
-                )
+                ) + hidden
             if removetextclips:
                 for el in ngs:
                     if el.tag in dh.ttags:
@@ -443,27 +450,30 @@ class FlattenPlots(inkex.EffectExtension):
                     bottom = top + height
                     size = np.maximum(width, height)
                     is_empty = (width == 0) | (height == 0)
-                    left_diff = np.abs(left[:, np.newaxis] - left[np.newaxis, :])
-                    top_diff = np.abs(top[:, np.newaxis] - top[np.newaxis, :])
-                    right_diff = np.abs(right[:, np.newaxis] - right[np.newaxis, :])
-                    bottom_diff = np.abs(bottom[:, np.newaxis] - bottom[np.newaxis, :])
-                    size_i = size[:, np.newaxis]
-                    size_j = size[np.newaxis, :]
-                    size_max = np.maximum(size_i, size_j)
-                    tol = 1e-6 * size_max
-                    is_empty_pair = is_empty[:, np.newaxis] | is_empty[np.newaxis, :]
-                    equal = (~is_empty_pair) & \
-                            (left_diff <= tol) & \
-                            (top_diff <= tol) & \
-                            (right_diff <= tol) & \
-                            (bottom_diff <= tol)
+                    # Candidate pairs (ii < jj) from a sorted sweep on the sum
+                    # of the four edges. The window exceeds 4x any pair's
+                    # tolerance plus rounding, so every pair the exact test
+                    # below accepts is among the candidates
+                    key = left + top + right + bottom
+                    order = np.argsort(key, kind="stable")
+                    ks = key[order]
+                    win = 8e-6 * size.max() + 1e-9 * (1 + np.abs(ks[0]) + np.abs(ks[-1]))
+                    counts = np.searchsorted(ks, ks + win, side="right") - np.arange(len(ks)) - 1
+                    p = np.repeat(np.arange(len(ks)), counts)
+                    q = np.arange(counts.sum()) - np.repeat(np.cumsum(counts) - counts, counts) + p + 1
+                    iis, jjs = np.minimum(order[p], order[q]), np.maximum(order[p], order[q])
+                    tol = 1e-6 * np.maximum(size[iis], size[jjs])
+                    equal = (
+                        ~(is_empty[iis] | is_empty[jjs])
+                        & (np.abs(left[iis] - left[jjs]) <= tol)
+                        & (np.abs(top[iis] - top[jjs]) <= tol)
+                        & (np.abs(right[iis] - right[jjs]) <= tol)
+                        & (np.abs(bottom[iis] - bottom[jjs]) <= tol)
+                    )
+                    iis, jjs = iis[equal], jjs[equal]
                 else:
-                    equal = np.zeros((0, 0), dtype=bool)
-                        
-                # for jj in reversed(range(len(els))):
-                #     for ii in range(jj):
-                #         if equal[ii,jj]:
-                iis, jjs = np.nonzero(np.triu(equal, k=1))  # strict upper triangle
+                    iis = jjs = np.zeros(0, dtype=int)
+
                 order = np.lexsort((iis, -jjs))  # sort by -jj, then ii
                 iis, jjs = iis[order], jjs[order]
                 removed = set()
@@ -495,9 +505,9 @@ class FlattenPlots(inkex.EffectExtension):
                     if mypth!=othpth and mypth!=othpth.reverse():
                         continue
                     els[ii].delete(deleteup=True)
-                    equal[ii,:] = False
-                    if els[ii] in ngs2:
-                        ngs2.remove(els[ii])
+                    removed.add(ii)
+                dels = {els[ii] for ii in removed}
+                ngs2 = [el for el in ngs2 if el not in dels]
             
             if self.options.removerectw:
                 ngs3 = [el for el in ngs2 if el.get_id() in bbs]
@@ -517,15 +527,16 @@ class FlattenPlots(inkex.EffectExtension):
         ctag = inkex.ClipPath.ctag
         mtag = inkex.addNS("mask", "svg")
         if hasattr(self.svg, "newclips"):
-            potential_orphans = set(self.svg.newclips)
+            newclips = set(self.svg.newclips)  # a list, and there can be thousands
+            potential_orphans = set(newclips)
             while len(potential_orphans)>0:
                 deleted_cms = set()
                 for po in potential_orphans:
-                    if po in self.svg.newclips and (
+                    if po in newclips and (
                         (po.tag == ctag and po.get_id() not in self.svg.iddict.clips) or 
                         (po.tag == mtag and po.get_id() not in self.svg.iddict.masks)):
                         oldcms = [ddv.get_link(cm) for ddv in po.iter('*') for cm in ['clip-path','mask']]
-                        deleted_cms.update({v for v in oldcms if v is not None and v in self.svg.newclips})
+                        deleted_cms.update({v for v in oldcms if v is not None and v in newclips})
                         po.delete(deleteup=True)
                 potential_orphans = deleted_cms
 

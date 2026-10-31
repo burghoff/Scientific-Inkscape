@@ -1077,7 +1077,7 @@ if guitype == 'gtk3.0':
             tab2_box.pack_start(self.omit_text_check, False, False, 5)
             
             # Finalizer options
-            finalizer_label = Gtk.Label(label="Document finalizer", xalign=0)
+            finalizer_label = Gtk.Label(label="Office document finalizer", xalign=0)
             finalizer_label.get_style_context().add_class("label-bold")
             tab2_box.pack_start(finalizer_label, False, False, 0)
             self.finalizer_combo = Gtk.ComboBoxText()
@@ -1821,7 +1821,7 @@ elif guitype=='gtk4.0':
             _bind_check(self.omit_text_check, "latexpdf")
         
             # --- Finalizer options ---
-            parent.append(_hdr("Document finalizer"))
+            parent.append(_hdr("Office document finalizer"))
             self.finalizer_combo = Gtk.ComboBoxText()
             # IDs match stored int values for simple binding
             self.finalizer_combo.append("1", "Do not finalize")

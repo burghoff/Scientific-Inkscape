@@ -8,10 +8,13 @@
 # overhead in two ways:
 #
 # 1. A bytecode cache. The first run records every file-backed module the
-#    process imported into one marshal file (in si_temp). Later runs install a
-#    meta-path finder that serves those modules from the cache: no path search
-#    and no file reads, just the code objects. Modules keep their real __file__,
-#    so tracebacks, importlib.resources and the like are unaffected.
+#    process imported into one file (in si_temp): a small marshalled index
+#    followed by the modules' raw code. Later runs read the index, validate
+#    it, keep the file open and install a meta-path finder that serves those
+#    modules from it, reading and unmarshalling each only when it is
+#    imported: no path search, and nothing read for modules the run never
+#    touches. Modules keep their real __file__, so tracebacks,
+#    importlib.resources and the like are unaffected.
 #    The cache is keyed on the Python executable and version, and the SI
 #    source directories are validated by name/size/mtime on every start (one
 #    scandir per directory), so edits to SI are always picked up. Vendored
@@ -22,11 +25,11 @@
 #    in sys.modules as None, which makes the import fail at once instead of
 #    searching every sys.path entry again.
 #
-# 2. A lazy numpy. inkex imports numpy at module level but never touches it
-#    until something actually computes, so numpy is replaced by a stub that
-#    executes it on first attribute access. (importlib.util.LazyLoader can't be
-#    used for this: a plain `import numpy` statement reads the module's
-#    __spec__ and would trigger it.)
+# 2. Lazy modules. inkex imports numpy, cssselect and traceback at module
+#    level but never touches them until something actually computes, so each
+#    is replaced by a stub that executes it on first attribute access.
+#    (importlib.util.LazyLoader can't be used for this: a plain `import numpy`
+#    statement reads the module's __spec__ and would trigger it.)
 #
 # Only builtin/frozen modules are used on the hot path, so the accelerator
 # itself costs nothing to import. Everything is pure Python and platform
@@ -40,10 +43,13 @@ import _thread
 import _frozen_importlib as _bootstrap
 import _frozen_importlib_external as _bootstrap_external
 
-_VERSION = 2
+_VERSION = 3
 _enabled = os.environ.get("SI_FASTIMPORT", "1") != "0"
-_cache = None       # dict loaded from disk, or None
+_cache = None       # index dict loaded from disk, or None
 _cache_file = None
+_blob = None        # the open cache file; each module's code is read from it on demand
+_blob_base = 0      # where the code blob starts in it
+_blob_lock = _thread.allocate_lock()
 _finder = None
 _si_dir = None
 _vendored = ()      # SI subfolders that are not validated
@@ -126,24 +132,31 @@ def _is_watched(origin):
 
 
 # ------------------------------------------------------------------ loaders
+def _read_code(off, size):
+    """A module's marshalled code from the open cache file"""
+    with _blob_lock:
+        _blob.seek(_blob_base + off)
+        return _blob.read(size)
+
+
 class _CachedSourceLoader(_bootstrap_external.SourceFileLoader):
     """SourceFileLoader whose code comes from the cache instead of the file"""
 
-    def __init__(self, fullname, path, code):
+    def __init__(self, fullname, path, off, size):
         super().__init__(fullname, path)
-        self._cached_code = code
+        self._cached_code = (off, size)
 
     def get_code(self, fullname):
-        return marshal.loads(self._cached_code)
+        return marshal.loads(_read_code(*self._cached_code))
 
 
 class _CachedSourcelessLoader(_bootstrap_external.SourcelessFileLoader):
-    def __init__(self, fullname, path, code):
+    def __init__(self, fullname, path, off, size):
         super().__init__(fullname, path)
-        self._cached_code = code
+        self._cached_code = (off, size)
 
     def get_code(self, fullname):
-        return marshal.loads(self._cached_code)
+        return marshal.loads(_read_code(*self._cached_code))
 
 
 class _Finder:
@@ -159,13 +172,13 @@ class _Finder:
             if path is None:
                 self.misses.add(fullname)
             return None
-        kind, origin, is_pkg, locs, code = ent
+        kind, origin, is_pkg, locs, off, size = ent
         if kind == "ext":
             loader = _bootstrap_external.ExtensionFileLoader(fullname, origin)
         elif kind == "src":
-            loader = _CachedSourceLoader(fullname, origin, code)
+            loader = _CachedSourceLoader(fullname, origin, off, size)
         else:
-            loader = _CachedSourcelessLoader(fullname, origin, code)
+            loader = _CachedSourcelessLoader(fullname, origin, off, size)
         return _bootstrap_external.spec_from_file_location(
             fullname, origin, loader=loader,
             submodule_search_locations=list(locs) if is_pkg else None,
@@ -317,21 +330,45 @@ def _snapshot():
                 d = os.path.dirname(ent[1])
                 if d not in dirs:
                     dirs[d] = _dir_signature(d)
-        data = {"key": _key(), "dirs": dirs, "mods": mods, "neg": sorted(neg)}
+        # Sources edited while this process ran: the entries carried over
+        # from the old file would be stamped with the new signatures, so
+        # leave the file alone and let the next start rebuild it
+        if _cache and any(dirs.get(d, sig) != sig for d, sig in _cache["dirs"].items()):
+            return
+        # The index holds each module's offset and length in the code blob
+        # that follows it. Entries from the old file carry offsets into it
+        # (6 items); this run's new ones carry their bytes (5 items).
+        index, chunks, off = {}, [], 0
+        for name, ent in mods.items():
+            if len(ent) == 6:
+                code = _read_code(ent[4], ent[5]) if ent[5] else None
+            else:
+                code = ent[4]
+            size = len(code) if code is not None else 0
+            index[name] = ent[:4] + (off, size)
+            if size:
+                chunks.append(code)
+                off += size
+        head = marshal.dumps({"key": _key(), "dirs": dirs, "mods": index, "neg": sorted(neg)})
         tmp = cache_file + ".%d.tmp" % os.getpid()
         with open(tmp, "wb") as f:
-            marshal.dump(data, f)
+            f.write(len(head).to_bytes(4, "little"))
+            f.write(head)
+            f.writelines(chunks)
+        if _blob is not None:
+            _blob.close()  # Windows will not replace a file we hold open
         os.replace(tmp, cache_file)
     except Exception:
         pass
 
 
 # ----------------------------------------------------------------- install
-def install(si_dir, lazy=("numpy",)):
+def install(si_dir, lazy=("numpy", "cssselect", "traceback")):
     """Call once, before importing inkex. si_dir is the Scientific Inkscape
     folder; its sources (but not its vendored packages) are validated against
-    the cache on every start."""
-    global _cache, _cache_file, _si_dir, _vendored, _finder
+    the cache on every start. lazy names top-level modules that are stubbed
+    until first use."""
+    global _cache, _cache_file, _blob, _blob_base, _si_dir, _vendored, _finder
     if not _enabled or _si_dir is not None:
         return
     _si_dir = os.path.normcase(os.path.abspath(si_dir))
@@ -343,18 +380,22 @@ def install(si_dir, lazy=("numpy",)):
     try:
         _cache_file = _cache_path(False)
         if _cache_file is not None:
-            with open(_cache_file, "rb") as f:
-                data = marshal.load(f)
-            ok = data.get("key") == _key()
-            if ok:
-                for d, sig in data["dirs"].items():
-                    if _dir_signature(d) != sig:
-                        ok = False
-                        break
-            if ok:
-                _cache = data
-                for name in data.get("neg", ()):
-                    sys.modules.setdefault(name, None)
+            f = open(_cache_file, "rb")
+            try:
+                data = marshal.loads(f.read(int.from_bytes(f.read(4), "little")))
+                ok = data.get("key") == _key()
+                if ok:
+                    for d, sig in data["dirs"].items():
+                        if _dir_signature(d) != sig:
+                            ok = False
+                            break
+                if ok:
+                    _cache, _blob, _blob_base = data, f, f.tell()
+                    for name in data.get("neg", ()):
+                        sys.modules.setdefault(name, None)
+            finally:
+                if _blob is not f:
+                    f.close()
     except Exception:
         _cache = None
     # Installed even without a usable cache so that misses are recorded

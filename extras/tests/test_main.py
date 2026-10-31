@@ -106,7 +106,7 @@ from inkex.tester import ComparisonMixin, TestCase
 # from inkex.tester.filters import CompareWithoutIds
 os.environ['SI_TESTING_VERSION'] = version   # needed to avoid circular imports
 import tester_mods  # noqa
-from tester_mods import CompareNumericFuzzy2, CompareImages
+from tester_mods import CompareNumericFuzzy2, CompareImages, CompareAEMarker
 
 if testflattentext:
     class TestFlattenerText(ComparisonMixin, TestCase):
@@ -266,13 +266,13 @@ if testaemp:
     class TestAutoExporterMP1(ComparisonMixin, TestCase):
         effect_class = AutoExporter
         compare_filters = [CompareNumericFuzzy2(),
-                           CompareImages()]
+                           CompareImages(), CompareAEMarker()]
         compare_file = ['svg/'+aepages]
         comparisons = [aeargs+("--testpage=1",)]
     class TestAutoExporterMP2(ComparisonMixin, TestCase):
         effect_class = AutoExporter
         compare_filters = [CompareNumericFuzzy2(),
-                           CompareImages()]
+                           CompareImages(), CompareAEMarker()]
         compare_file = ['svg/'+aepages]
         comparisons = [aeargs+("--testpage=2",)]  
  
@@ -281,7 +281,7 @@ if testae:
     class TestAutoExporter(ComparisonMixin, TestCase):
         effect_class = AutoExporter
         compare_filters = [CompareNumericFuzzy2(),
-                           CompareImages()]
+                           CompareImages(), CompareAEMarker()]
         compare_file = ['svg/'+aename]
         comparisons = [aeargs]  
         

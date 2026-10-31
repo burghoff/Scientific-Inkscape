@@ -283,7 +283,15 @@ def _xmldiff(xml1, xml2, delta, memo1, memo2):
             _xmldiff(child_a, child_b, delta, memo1, memo2)
             
 
-from inkex.tester.filters import Compare 
+from inkex.tester.filters import Compare
+class CompareAEMarker(Compare):
+    """Blank the path in the Autoexporter's original-file marker: it is the
+    absolute input path, so it depends on the machine, the checkout and even
+    the launching shell's separators. The hash after it is still compared."""
+    @staticmethod
+    def filter(contents):
+        return re.sub(rb"si_ae_original_filename: .*?, hash:", rb"si_ae_original_filename: PATH, hash:", contents)
+
 # Replace all ids contained in urls in the order they appear in the document
 # class CompareURLs(Compare):
 #     @staticmethod
