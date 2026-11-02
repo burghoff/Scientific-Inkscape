@@ -1625,28 +1625,40 @@ def global_transform(el, trnsfrm, irange=None, trange=None, preserveStroke=True)
 
 # Combines a group of path-like elements
 def combine_paths(els, mergeii=0):
-    pnew = Path()
-    si = []
-    # start indices
-    for el in els:
-        pth = el.cpath.to_absolute().transform(el.ccomposed_transform)
-        if el.get("inkscape-scientific-combined-by-color") is None:
-            si.append(len(pnew))
-        else:
-            cbc = el.get(
-                "inkscape-scientific-combined-by-color"
-            )  # take existing ones and weld them
-            cbc = [int(v) for v in cbc.split()]
-            si += [v + len(pnew) for v in cbc[0:-1]]
-        for p in pth:
-            pnew.append(p)
-    si.append(len(pnew))
+    import numpy as np
+
+    mel = els[mergeii]
+    ds = [el.get("d") for el in els]
+    parts = None  # each element's segments, absolute and transformed
+    if None not in ds and sum(map(len, ds)) >= 2000:  # the segment walk below is slow on long paths
+        try:
+            parts = [DAttr(d).absolute(el.ccomposed_transform) for d, el in zip(ds, els)]
+        except ValueError:
+            pass
+    if parts is None:
+        parts = [el.cpath.to_absolute().transform(el.ccomposed_transform) for el in els]
+    si = []  # start indices
+    n = 0  # segments so far
+    for el, p in zip(els, parts):
+        cbc = el.get("inkscape-scientific-combined-by-color")
+        if cbc is None:
+            si.append(n)
+        else:  # take existing ones and weld them
+            si += [int(v) + n for v in cbc.split()[0:-1]]
+        n += len(p)
+    si.append(n)
 
     # Set the path on the mergeiith element
-    mel = els[mergeii]
     if mel.get("d") is None:  # Polylines and lines have to be converted to a path
         mel.object_to_path()
-    mel.set("d", str(pnew.transform(-mel.ccomposed_transform)))
+    if isinstance(parts[0], Path):
+        pnew = Path()
+        for p in parts:
+            pnew.extend(p)
+        dnew = str(pnew.transform(-mel.ccomposed_transform))
+    else:
+        dnew = DAttr.to_d(DAttr.transformed(np.concatenate(parts), -mel.ccomposed_transform))
+    mel.set("d", dnew)
 
     # Release clips/masks
     mel.set_link("clip-path", "none")
@@ -1992,20 +2004,73 @@ grouplike_tags = tags(
 grouplike_tags.add(mask_tag)
 
 
-def path_bbox(el, rough=False):
+class DAttr:
     """
-    Bounding box (x1, y1, x2, y2) of a path-like element, or None if it has
-    no points. A path whose d is made only of M, L, H, V, Z and C commands
-    (what the PDF importer and most drawing programs write) is read straight
-    from the attribute, without building segment objects. Anything else goes
-    through el.cpath: every segment becomes four cubic control points in one
-    flat list and the extrema are taken with numpy. Both routes form every
-    coordinate with the same float operations, so they agree exactly.
-    rough=True returns the control-point hull, an upper bound that skips the
-    extrema.
+    The d attribute of a path made only of M, L, H, V, C and Z commands
+    (what the PDF importer and most drawing programs write), parsed into
+    numpy arrays without building segment objects. Raises ValueError for
+    anything it cannot read: other commands, numbers after a Z, an
+    incomplete command, or no commands at all. Every coordinate is formed
+    with the same float operations as inkex's segment walk, so results
+    agree with it exactly.
     """
-    import numpy as np
 
+    nargs = (2, 2, 1, 1, 6, 0)  # M L H V C Z
+    info = {L: (k, L.islower()) for k, LL in enumerate("MLHVCZ") for L in (LL, LL.lower())}
+
+    def __init__(self, d):
+        import numpy as np
+
+        rk, rr, rn, toks = [], [], [], []  # per run: kind, relative, segments
+        for L, chunk in speedups.LEX_REX.findall(d):
+            try:
+                k, rel = self.info[L]
+            except KeyError:
+                raise ValueError(L)
+            nums = speedups.NUMBER_REX.findall(chunk)
+            n = len(nums)
+            if k == 5:
+                if n:
+                    raise ValueError("numbers after Z")
+                rk.append(5)
+                rr.append(False)
+                rn.append(1)
+                continue
+            if n == 0:
+                continue
+            if n % self.nargs[k]:
+                raise ValueError("incomplete command")
+            toks += nums
+            if k == 0:  # a move, then implicit lines
+                rk += [0, 1]
+                rr += [rel, rel]
+                rn += [1, n // 2 - 1]
+            else:
+                rk.append(k)
+                rr.append(rel)
+                rn.append(n // self.nargs[k])
+        if not rk:
+            raise ValueError("no commands")
+        rk, rr, rn = np.array(rk), np.array(rr, dtype=bool), np.array(rn)
+        self.kind, self.rel = kind, rel = np.repeat(rk, rn), np.repeat(rr, rn)
+        T = len(kind)
+        na = np.array(self.nargs)[rk]
+        nv = rn * na
+        N = int(nv.sum())
+        self.A = A = np.zeros((T, 6))  # each segment's arguments
+        if N:
+            run = np.repeat(np.arange(len(rk)), nv)
+            pos = np.arange(N) - np.repeat(np.cumsum(nv) - nv, nv)
+            kk = na[run]
+            A[(np.cumsum(rn) - rn)[run] + pos // kk, pos % kk] = np.array(toks, dtype=float)
+        isM, isH, isV, isC, isZ = (kind == i for i in (0, 2, 3, 4, 5))
+        ex = np.where(isC, A[:, 4], A[:, 0])
+        ey = np.where(isC, A[:, 5], np.where(isV, A[:, 0], A[:, 1]))
+        # the current point after each segment (the subpath start after a Z)
+        self.cx = self.coord(rel, ex, ~isV & ~isZ, isM, isZ)
+        self.cy = self.coord(rel, ey, ~isH & ~isZ, isM, isZ)
+
+    @staticmethod
     def coord(rel, e, chg, isM, isZ):
         """
         One coordinate of the current point after each segment of a d
@@ -2015,6 +2080,8 @@ def path_bbox(el, rough=False):
         relative segments add to it in sequence, each run of additions a
         single cumulative sum so the float operations match the segment walk
         """
+        import numpy as np
+
         T = len(e)
         c = np.zeros(T)
         absset = chg & ~rel
@@ -2049,66 +2116,18 @@ def path_bbox(el, rough=False):
             c = np.where(last >= 0, c[np.maximum(last, 0)], 0.0)
         return c
 
-    def from_d(d):
+    def bbox(self, rough=False):
         """
-        The d attribute route. Returns None when it cannot help: a short
-        path, other commands, numbers after a Z, an incomplete command, or a
-        curved path with rough=False, where the segment walk finds the exact
-        extrema
+        (x1, y1, x2, y2) of the path, or None for a curved path with
+        rough=False, where the segment walk finds the exact extrema.
+        rough=True returns the control-point hull, an upper bound
         """
-        if len(d) < 2000:  # numpy's call overhead outweighs the parse on short paths
+        import numpy as np
+
+        kind, rel, A, cx, cy = self.kind, self.rel, self.A, self.cx, self.cy
+        isH, isV, isC, isZ = (kind == i for i in (2, 3, 4, 5))
+        if isC.any() and not rough:
             return None
-        nargs = (2, 2, 1, 1, 6, 0)  # M L H V C Z
-        info = {L: (k, L.islower()) for k, LL in enumerate("MLHVCZ") for L in (LL, LL.lower())}
-        rk, rr, rn, toks = [], [], [], []  # per run: kind, relative, segments
-        curved = False
-        for L, chunk in speedups.LEX_REX.findall(d):
-            try:
-                k, rel = info[L]
-            except KeyError:
-                return None
-            nums = speedups.NUMBER_REX.findall(chunk)
-            n = len(nums)
-            if k == 5:
-                if n:
-                    return None
-                rk.append(5)
-                rr.append(False)
-                rn.append(1)
-                continue
-            if n == 0:
-                continue
-            if n % nargs[k]:
-                return None
-            toks += nums
-            if k == 0:  # a move, then implicit lines
-                rk += [0, 1]
-                rr += [rel, rel]
-                rn += [1, n // 2 - 1]
-            else:
-                rk.append(k)
-                rr.append(rel)
-                rn.append(n // nargs[k])
-                curved = curved or k == 4
-        if not rk or (curved and not rough):
-            return None
-        rk, rr, rn = np.array(rk), np.array(rr, dtype=bool), np.array(rn)
-        kind, rel = np.repeat(rk, rn), np.repeat(rr, rn)
-        T = len(kind)
-        na = np.array(nargs)[rk]
-        nv = rn * na
-        N = int(nv.sum())
-        A = np.zeros((T, 6))  # each segment's arguments
-        if N:
-            run = np.repeat(np.arange(len(rk)), nv)
-            pos = np.arange(N) - np.repeat(np.cumsum(nv) - nv, nv)
-            kk = na[run]
-            A[(np.cumsum(rn) - rn)[run] + pos // kk, pos % kk] = np.array(toks, dtype=float)
-        isM, isH, isV, isC, isZ = (kind == i for i in (0, 2, 3, 4, 5))
-        ex = np.where(isC, A[:, 4], A[:, 0])
-        ey = np.where(isC, A[:, 5], np.where(isV, A[:, 0], A[:, 1]))
-        cx = coord(rel, ex, ~isV & ~isZ, isM, isZ)
-        cy = coord(rel, ey, ~isH & ~isZ, isM, isZ)
         xs, ys = [cx[~isV & ~isZ]], [cy[~isH & ~isZ]]
         if isC.any():  # control points, relative to the segment's start
             bx = np.where(rel[isC], np.concatenate(([0.0], cx[:-1]))[isC], 0.0)
@@ -2120,6 +2139,141 @@ def path_bbox(el, rough=False):
             ys.append(np.zeros(1))
         xs, ys = np.concatenate(xs), np.concatenate(ys)
         return (float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()))
+
+    def fused(self, transf):
+        """
+        The d attribute that fuseTransform's round trip through
+        CubicSuperPath writes after applying transf: absolute M, L, C and Z.
+        The round trip writes a curve as a line when its handles are
+        retracted or lie on the chord (CubicSuperPath.is_line), and a
+        subpath's last line as Z when it returns to the start within
+        tolerance; it tests both before and after the transform, so both are
+        reproduced here. None for a path that does not start with M, or a Z
+        followed by anything but M: there the round trip drops or merges
+        segments in ways the arrays do not reproduce
+        """
+        import numpy as np
+
+        kind = self.kind
+        T = len(kind)
+        isM, isC, isZ = kind == 0, kind == 4, kind == 5
+        after_z = np.flatnonzero(isZ) + 1
+        if kind[0] != 0 or not isM[after_z[after_z < T]].all():
+            return None
+        first = np.flatnonzero(isM)  # each subpath's M
+        last = np.concatenate((first[1:], [T])) - 1  # and its final segment
+        m = transf.matrix
+
+        def tf(x, y):
+            return m[0][0] * x + m[0][1] * y + m[0][2], m[1][0] * x + m[1][1] * y + m[1][2]
+
+        def closes(px, py, qx, qy):  # Vector2d.is_close(p, q) with its default tolerances
+            dx, dy = px - qx, py - qy
+            return np.sqrt(dx * dx + dy * dy) < 1e-8 + 1e-5 * np.sqrt(qx * qx + qy * qy)
+
+        def on(ax, ay, bx, by, cx, cy):  # CubicSuperPath.is_on: a on the chord from b to c
+            col = np.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) < 1e-8
+            wx = ((bx <= ax) & (ax <= cx)) | ((cx <= ax) & (ax <= bx))
+            wy = ((by <= ay) & (ay <= cy)) | ((cy <= ay) & (ay <= by))
+            return col & np.where(ax != bx, wx, wy)
+
+        def is_line(px, py, h1x, h1y, h2x, h2y, nx, ny):  # CubicSuperPath.is_line, curve p to n
+            retracted = closes(px, py, h1x, h1y) & closes(h2x, h2y, nx, ny)
+            return retracted | (on(h2x, h2y, nx, ny, h1x, h1y) & on(h1x, h1y, px, py, h2x, h2y))
+
+        x, y = self.cx, self.cy
+        X, Y = tf(x, y)
+        lpre = ~isM & ~isZ  # written as a line before the transform (L, H, V always)
+        lpost = lpre.copy()  # and after it
+        ci = np.flatnonzero(isC)
+        if len(ci):
+            A, rel = self.A[ci], self.rel[ci]
+            px, py = x[ci - 1], y[ci - 1]  # the curve's start
+            h1x, h1y = np.where(rel, px + A[:, 0], A[:, 0]), np.where(rel, py + A[:, 1], A[:, 1])
+            h2x, h2y = np.where(rel, px + A[:, 2], A[:, 2]), np.where(rel, py + A[:, 3], A[:, 3])
+            lpre[ci] = is_line(px, py, h1x, h1y, h2x, h2y, x[ci], y[ci])
+            H1X, H1Y = tf(h1x, h1y)
+            H2X, H2Y = tf(h2x, h2y)
+            lpost[ci] = is_line(X[ci - 1], Y[ci - 1], H1X, H1Y, H2X, H2Y, X[ci], Y[ci])
+        line = lpre | lpost
+        # a subpath's last segment closes it when it is a line back to the start:
+        # a line before the transform is tested at both stages, a curve that
+        # became a line only after it is tested after
+        fi = first[last > first]
+        la = last[last > first]
+        cpre = closes(x[la], y[la], x[fi], y[fi])
+        cpost = closes(X[la], Y[la], X[fi], Y[fi])
+        isZ = isZ.copy()
+        isZ[la[np.where(lpre[la], cpre | cpost, lpost[la] & cpost)]] = True
+        rows = np.zeros((T, 7))
+        rows[:, 0] = np.where(isM, 0, np.where(isZ, 5, np.where(isC & ~line, 4, 1)))
+        rows[:, 5], rows[:, 6] = X, Y
+        if len(ci):
+            rows[ci, 1], rows[ci, 2], rows[ci, 3], rows[ci, 4] = H1X, H1Y, H2X, H2Y
+        return self.to_d(rows)
+
+    def absolute(self, transf):
+        """
+        One row per segment, (kind, x1, y1, x2, y2, x, y), as
+        el.cpath.to_absolute().transform(transf) leaves it: kind 0 for M,
+        1 for L (H and V become lines), 4 for C with its handles in x1..y2,
+        5 for Z; x, y the end point
+        """
+        import numpy as np
+
+        kind, A, rel = self.kind, self.A, self.rel
+        rows = np.zeros((len(kind), 7))
+        rows[:, 0] = np.where((kind == 2) | (kind == 3), 1, kind)
+        rows[:, 5], rows[:, 6] = self.cx, self.cy
+        ci = np.flatnonzero(kind == 4)
+        if len(ci):
+            # the start of each curve, (0, 0) before the first segment
+            start = np.where((ci > 0)[:, None], np.column_stack((self.cx, self.cy, self.cx, self.cy))[ci - 1], 0.0)
+            rows[ci, 1:5] = np.where(rel[ci, None], start + A[ci, :4], A[ci, :4])
+        return self.transformed(rows, transf)
+
+    @staticmethod
+    def transformed(rows, transf):
+        """
+        Rows from absolute() with transf applied to every point, in the
+        float operations of Transform.apply_to_point
+        """
+        m = transf.matrix
+        X, Y = rows[:, 1::2], rows[:, 2::2]
+        out = rows.copy()
+        out[:, 1::2] = m[0][0] * X + m[0][1] * Y + m[0][2]
+        out[:, 2::2] = m[1][0] * X + m[1][1] * Y + m[1][2]
+        return out
+
+    @staticmethod
+    def to_d(rows):
+        """
+        The d attribute for rows from absolute(), as str(Path) writes it
+        """
+        import numpy as np
+
+        kind = rows[:, 0]
+        segs = [
+            f"{L} {x:.6g} {y:.6g}"
+            for L, x, y in zip(np.where(kind == 0, "M", "L").tolist(), rows[:, 5].tolist(), rows[:, 6].tolist())
+        ]
+        for i, (a, b, c, d, e, f) in zip(np.flatnonzero(kind == 4).tolist(), rows[kind == 4, 1:].tolist()):
+            segs[i] = f"C {a:.6g} {b:.6g} {c:.6g} {d:.6g} {e:.6g} {f:.6g}"
+        for i in np.flatnonzero(kind == 5).tolist():
+            segs[i] = "Z"
+        return " ".join(segs)
+
+
+def path_bbox(el, rough=False):
+    """
+    Bounding box (x1, y1, x2, y2) of a path-like element, or None if it has
+    no points. A long path element whose d DAttr can read is measured from
+    its arrays, without building segment objects. Anything else goes
+    through el.cpath: every segment becomes four cubic control points in
+    one flat list and the extrema are taken with numpy. rough=True returns
+    the control-point hull, an upper bound that skips the extrema.
+    """
+    import numpy as np
 
     def from_path(pth):
         """
@@ -2228,7 +2382,14 @@ def path_bbox(el, rough=False):
                 hi = np.maximum(hi, np.where(ok, v, -np.inf).max(axis=0))
         return (float(lo[0]), float(lo[1]), float(hi[0]), float(hi[1]))
 
-    bb = from_d(el.get("d", "")) if el.tag == BaseElementCache.path_tag else None
+    bb = None
+    if el.tag == BaseElementCache.path_tag:
+        d = el.get("d", "")
+        if len(d) >= 2000:  # numpy's call overhead outweighs the parse on short paths
+            try:
+                bb = DAttr(d).bbox(rough)
+            except ValueError:
+                pass
     if bb is None:
         bb = from_path(el.cpath)
     return bb
