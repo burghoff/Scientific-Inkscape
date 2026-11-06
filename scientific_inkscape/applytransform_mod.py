@@ -90,6 +90,7 @@ poly_tags = {inkex.Polygon.ctag, inkex.Polyline.ctag}
 round_tags = {inkex.Ellipse.ctag, inkex.Circle.ctag}
 line_tag = inkex.Line.ctag
 rect_tag = inkex.Rectangle.ctag
+pattern_tag = inkex.addNS("pattern", "svg")
 
 
 def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
@@ -98,6 +99,17 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
     # Without it, it is applied to the points only
 
     if el.tag in BaseElementCache.otp_support_tags:  # supported types
+        sty = el.cspecified_style
+        for sf in ["fill", "stroke"]:
+            if "url(" in (sty.get(sf) or ""):
+                sfel = sty.get_link(sf, svg=el.croot)
+                if sfel is not None and sfel.tag == pattern_tag:
+                    # A pattern lies in the coordinate system of the element
+                    # it paints, as does the element's clip, so the
+                    # transform stays on the element
+                    el.ctransform = Transform(transf) @ el.ctransform
+                    return
+
         # Since transforms apply to an object's clips, before applying the transform
         # we will need to duplicate the clip path and transform it
         transform_clipmask(el, mask=False)

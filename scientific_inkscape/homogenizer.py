@@ -254,7 +254,15 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                             [ct.b * sqrtdet / magv, ct.a * sqrtdet * signdet / magv, ct.f],
                         ]
                     )
-                    dh.global_transform(el, (ctnew @ (-ct)))
+                    tfm = ctnew @ (-ct)
+                    lns = el.parsed_text.lns if el in tels else []
+                    if lns and lns[0].x and lns[0].y:
+                        # About the anchor of the first line, so that it stays
+                        # where it is, as it does when the font size changes
+                        ax, ay = ct.apply_to_point((lns[0].x[0], lns[0].y[0]))
+                        px, py = tfm.apply_to_point((ax, ay))
+                        tfm = Transform("translate({0}, {1})".format(ax - px, ay - py)) @ tfm
+                    dh.global_transform(el, tfm)
 
         if setfontfamily:
             from inkex.text.font_properties import inkscape_spec_to_css

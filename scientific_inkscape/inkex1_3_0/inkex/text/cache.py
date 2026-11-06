@@ -701,13 +701,13 @@ class BaseElementCache(BaseElement):
                 svg.iddict.remove(ddv)
 
                 # Remove any clips/masks that refer to this element so as not
-                # to leave behind orphan references
-                if did in svg.iddict.clips:
-                    for el in svg.iddict.clips[did]:
-                        el.set_link("clip-path", None)
-                if did in svg.iddict.masks:
-                    for el in svg.iddict.masks[did]:
-                        el.set_link("mask", None)
+                # to leave behind orphan references. set_link() mutates the
+                # linkdict sets (and deletes the key when emptied), so iterate
+                # over a snapshot rather than the live set.
+                for el in list(svg.iddict.clips.get(did, ())):
+                    el.set_link("clip-path", None)
+                for el in list(svg.iddict.masks.get(did, ())):
+                    el.set_link("mask", None)
 
             ddv.croot = None
         if hasattr(svg, "_cd2"):

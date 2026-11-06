@@ -35,16 +35,9 @@ for version, pyexec in vpy.items():
     process.wait()
     toc = time.time()-tic
     
-    env_vars_file = "env_vars.txt"
-    env = dict()
-    if os.path.exists(env_vars_file):
-        with open(env_vars_file, "r") as f:
-            for env_line in f:
-                key, value = env_line.strip().split("=")
-                env[key] = value
-        os.remove(env_vars_file)
-    
     lines = stdout.split('\n')
+    # test_main.py prints HASPANGO=... after pytest finishes
+    env = dict(line.strip().split('=', 1) for line in lines if line.startswith('HASPANGO='))
 
     pversion = version.ljust(version_col_width)
     pango_info = f"{'Yes' if env.get('HASPANGO', 'N/A') == 'True' else 'No'}".ljust(pango_col_width - 1)

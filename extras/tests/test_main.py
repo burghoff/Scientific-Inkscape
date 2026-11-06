@@ -74,6 +74,10 @@ sys.path += [os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.pat
 sys.path += [os.path.join(vpaths[version],'lib\\python3.10')]
 os.environ['LINEPROFILE'] = str(lprofile)
 os.environ['USEPANGO']=str(usepango)
+if 'pytest' in sys.modules:  # not when a runner script imports this file for vpaths
+    # Printed once pytest has released its capture, for the Pango column of version_test.py
+    import atexit
+    atexit.register(lambda: print('HASPANGO=' + os.environ.get('HASPANGO', 'N/A')))
 if PROFILE:
     os.environ['SI_PROFILE'] = '1'
 

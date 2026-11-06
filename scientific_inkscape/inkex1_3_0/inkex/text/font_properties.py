@@ -624,9 +624,6 @@ class PR: # PangoRenderer
         if pangoenv in ["True", "False"]:
             os.environ["HASPANGO"] = str(cls.HASPANGO)
             os.environ["HASPANGOFT2"] = str(cls.HASPANGOFT2)
-            with open("env_vars.txt", "w") as f:
-                f.write(f"HASPANGO={os.environ['HASPANGO']}")
-                f.write(f"\nHASPANGOFT2={os.environ['HASPANGOFT2']}")
         
         
         

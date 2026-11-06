@@ -7,6 +7,8 @@ from inkex.tester.xmldiff import xmldiff,xml,text_compare
 hasxpath_ids = hasattr(inkex.tester.xmldiff,'xpath_ids')
     
 def mod_xmldiff(data_a,data_b):
+    if data_a == data_b:  # identical bytes: nothing to parse or walk
+        return "", DeltaLogger()
     if not hasxpath_ids:
         diff_xml, delta = xmldiff_xpath(data_a, data_b)
     else:
@@ -26,6 +28,18 @@ def mod_xmldiff(data_a,data_b):
             except:
                 pass
         elif value_a is not None and value_b is not None and len(value_a)>2 and len(value_b)>2 and \
+           value_a[1]=='transform' and value_b[1]=='transform' and \
+           value_a[2].startswith('matrix(') and value_b[2].startswith('matrix('):
+            # Like x and y, the translation may differ by up to 1 pixel
+            try:
+                ma = [float(v) for v in value_a[2][7:-1].split()]
+                mb = [float(v) for v in value_b[2][7:-1].split()]
+                if len(ma)==len(mb)==6 and ma[:4]==mb[:4] and \
+                   all(abs(va-vb)<=1 for va, vb in zip(ma[4:], mb[4:])):
+                    toremove.append((value_a, value_b))
+            except ValueError:
+                pass
+        elif value_a is not None and value_b is not None and len(value_a)>2 and len(value_b)>2 and \
             'Cambria' in value_a[2]:
             if value_a[2].replace('Cambria Math','Cambria')==value_b[2].replace('Cambria Math','Cambria'):
                 toremove.append((value_a, value_b))
@@ -42,6 +56,37 @@ def mod_xmldiff(data_a,data_b):
         delta.remove(r)
     return diff_xml, delta
 inkex.tester.xmldiff = mod_xmldiff
+
+
+# Reference files pass through the compare filters on every run, which costs
+# about as much as filtering the output. The filtered reference is kept in the
+# temp directory, keyed by its contents, the filters and this file, so it is
+# only filtered again when one of those changes. assertCompare passes
+# is_saving=False for the reference file only.
+_apply_compare_filters = inkex.tester.ComparisonMixin._apply_compare_filters
+def cached_compare_filters(self, data, is_saving=None):
+    if is_saving is not False or not isinstance(data, bytes):
+        return _apply_compare_filters(self, data, is_saving)
+    import hashlib, tempfile
+    key = hashlib.sha1(data)
+    key.update(repr([(type(f).__name__, f.options) for f in self.compare_filters]).encode("utf-8"))
+    with open(__file__, "rb") as f:
+        key.update(f.read())
+    cdir = os.path.join(tempfile.gettempdir(), "si_tests_filtered_refs")
+    cfile = os.path.join(cdir, key.hexdigest())
+    try:
+        with open(cfile, "rb") as f:
+            return f.read()
+    except FileNotFoundError:
+        pass
+    data = _apply_compare_filters(self, data, is_saving)
+    os.makedirs(cdir, exist_ok=True)
+    tmp = cfile + "." + str(os.getpid())  # written whole, then renamed, so that concurrent runs never read a partial file
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, cfile)
+    return data
+inkex.tester.ComparisonMixin._apply_compare_filters = cached_compare_filters
         
 
 
@@ -419,66 +464,33 @@ def matrix_to_transform(matrix, precision_abcd=3, precision_ef=0):
     return transform.encode('utf-8')
 
 # Replace a list of spans with a list of replacement strings
-def Replace_Spans(string,spans,repls):
-    # Sort in order
-    zipped = zip(spans, repls)
-    sorted_zipped = sorted(zipped, key=lambda x: x[0][0])
-    if sorted_zipped:
-        spans, repls = zip(*sorted_zipped)
-        
-    repls = iter(repls)
-    result = []
-    last_end = 0
-    for start, end in spans:
-        result.append(string[last_end:start])
-        result.append(next(repls))
-        last_end = end
-    result.append(string[last_end:])
-    return rb''.join(result)
-    
 # Turn numbers into shorter standard formats
 class CompareNumericFuzzy2(Compare):
+    tfm_pattern = rb'\btransform\s*=\s*(["\'])(.+?)\1'
+    # a transform, or a decimal number outside one
+    tfm_or_num = re.compile(tfm_pattern + rb"|(-?\d+\.\d+(?:e[+-]\d+)?)")
+
     @staticmethod
     def filter(contents):
         prec_else   = 0;
         prec_trfm = 3;
         
         # Standardize transforms to matrix()
-        spans = []; repls = []
-        tfm_pattern = rb'\btransform\s*=\s*(["\'])(.+?)\1';
-        tfms = list(re.finditer(tfm_pattern,contents))
-        for m in tfms:
-            spans.append(m.span())
-            tcnts = m.group(1) # contents of transform tag
+        def tfm(m):
+            tcnts = m.group(2) # contents of transform tag
             newstr= matrix_to_transform(transform_to_matrix(tcnts),
                        precision_abcd=prec_trfm, precision_ef=prec_else)
-            repls.append(b'transform="' + newstr + b'"')
-        contents2 = Replace_Spans(contents,spans,repls)
+            return b'transform="' + newstr + b'"'
+        contents = re.sub(CompareNumericFuzzy2.tfm_pattern, tfm, contents)
         
         # Round other numbers to 0 digits, ignoring numbers in transforms
-        nums = list(re.finditer(rb"-?\d+\.\d+(e[+-]\d+)?", contents2));
-        tfms = list(re.finditer(tfm_pattern,               contents2))
-        tfms = [mt.span() for mt in tfms]
-        spans = []; repls = []
-        ti=0;  # current transform we are looking at
-        for m in nums:
-            s, e = m.span()
-            while ti<len(tfms) and tfms[ti][1] <= e:
-                ti+=1
-            intfm = ti<len(tfms) and s>tfms[ti][0] and e<tfms[ti][1]  # in next tfm
-            # print((m.group(0),intfm))
-            if not(intfm):
-                fmt = b"%." + f"{prec_else}".encode('utf-8') + b"f";
-                repl = fmt % (float(m.group(0))+0) # Adding 0 changes -0 to 0
-                spans.append((s,e))
-                # if contents2[s-3:s] in (b'x="',b'y="'):
-                #     print((contents2[s-3:e+1],repl))
-                repls.append(repl)
-        contents3 = Replace_Spans(contents2,spans,repls)
-        contents = contents3
+        fmt = b"%." + f"{prec_else}".encode('utf-8') + b"f";
+        def num(m):
+            if m.group(3) is None:
+                return m.group(0)  # a transform
+            return fmt % (float(m.group(3))+0) # Adding 0 changes -0 to 0
+        contents = CompareNumericFuzzy2.tfm_or_num.sub(num, contents)
         
-        # func = lambda m: b"%.1f" % (float(m.group(0))) 
-        # contents = re.sub(rb"\d+\.\d+(e[+-]\d+)?", func, contents)
         contents = re.sub(rb"(\d\.\d+?)0+\b", rb"\1", contents)
         contents = re.sub(rb"(\d)\.0+(?=\D|\b)", rb"\1", contents)
         
