@@ -52,7 +52,7 @@ sys.stdout = open(si_tmp.path("si_gv_output.txt"), "w",
                   encoding="utf-8", errors="replace")
 sys.stderr = sys.stdout
 
-import sys, subprocess, threading, time, chardet
+import sys, subprocess, threading, time, chardet, socket
 import random
 import webbrowser, pathlib
 from urllib import parse
@@ -70,6 +70,7 @@ import inkex
 from autoexporter import ORIG_KEY
 from autoexporter import DUP_KEY
 from autoexporter import hash_file
+from autoexporter import Exporter
 
 WHILESLEEP = 0.25
 IMAGE_WIDTH = 175
@@ -212,12 +213,13 @@ truepath_lock = threading.Lock();
 
 app = None
 app_lock = threading.Lock();
+app_started = None  # when the server was launched
 def Make_Flask_App():
     warnings.simplefilter("ignore", DeprecationWarning)
     # prevent warning that process is open
     from flask import Flask, request, url_for, jsonify, send_from_directory, render_template, abort
 
-    global app
+    global app, app_started
     app = Flask(__name__, template_folder='.')
 
     @app.route("/images/<folder>/<path:path>")
@@ -452,6 +454,13 @@ def Make_Flask_App():
 
     thread = Thread(target=run_flask)
     thread.start()
+    app_started = time.monotonic()
+
+def start_server():
+    """Builds the Flask app and starts serving, once; safe to call from any thread"""
+    with app_lock:
+        if app is None:
+            Make_Flask_App()
 
 temp_dir, temp_head = dh.shared_temp("gv")
 temp_base = os.path.join(temp_dir,temp_head)
@@ -931,7 +940,11 @@ class Processor(threading.Thread):
                         raise(f'Could not open {fn}')
                     if re.search(r"<\s*inkscape:page[\s\S]*?>", contents):
                         svg = dh.svg_from_file(fn)
+                        Exporter.add_viewbox_page(svg, False)  # a viewbox no page matches becomes page 0
                         pgs = svg.cdocsize.pgs
+                        pnames = [pg.get("inkscape:label") or str(i + 1) for i, pg in enumerate(pgs)]  # as the Autoexporter names them
+                        order = sorted(range(len(pgs)), key=lambda i: pnames[i] != "0")  # the viewbox page first
+                        pgs, pnames = [pgs[i] for i in order], [pnames[i] for i in order]
                         haspgs = inkex.installed_haspages
                         # If the file has multiple pages, split it
                         if haspgs and len(pgs) > 0:
@@ -948,7 +961,7 @@ class Processor(threading.Thread):
                 nfiles = [DisplayedFile(fn) for t in svg_pgs]
                 for i, n in enumerate(nfiles):
                     n.thumbnail = svg_pgs[i]
-                    n.pagenum = i+1
+                    n.pagenum = pnames[i]
                 self.files[ii:ii + 1] = nfiles
                 trigger_refresh()
                 ii += len(nfiles)
@@ -1028,12 +1041,19 @@ class Processor(threading.Thread):
                 thread.start()                
 
     def run(self):
+        start_server()  # already running if the GUI started it early
+        global openedgallery
         with app_lock:
-            if app is None:
-                Make_Flask_App()
-                time.sleep(1)
-                # wait to see if check_for_refresh called
-                global openedgallery
+            if not (openedgallery):
+                # Wait until the server answers, and until a gallery page
+                # from an earlier run has had a second to check in
+                for _ in range(100):
+                    try:
+                        socket.create_connection(("127.0.0.1", PORTNUMBER), timeout=0.05).close()
+                        break
+                    except OSError:
+                        time.sleep(0.05)
+                time.sleep(max(0.0, 1 - (time.monotonic() - app_started)))
                 if not (openedgallery):
                     webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
                     openedgallery = True
@@ -1405,6 +1425,7 @@ if guitype == "gtk":
     win.set_keep_above(False)
     from gi.repository import GLib
     GLib.idle_add(signal_gui_ready)  # closes the launcher's loading window
+    Thread(target=start_server).start()  # so the gallery opens at once when something is added
     Gtk.main()
 elif guitype == "tkinter":
     root = tk.Tk()
@@ -1429,6 +1450,7 @@ elif guitype == "tkinter":
     end_button = tk.Button(root, text="End Program", command=end_program)
     end_button.pack()
     root.protocol("WM_DELETE_WINDOW", end_program)
+    Thread(target=start_server).start()  # so the gallery opens at once when something is added
     root.mainloop()
 
 print("Finishing")

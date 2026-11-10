@@ -473,12 +473,14 @@ class Exporter():
             if self.prints:
                 self.prints("\n    " + joinmod(self.tempdir, ""))
 
-        # Add a document margin
+        # Add a page for the viewbox if it needs one, and a document margin
         cfile = self.filein # current file we're working on
-        if self.margin != 0:
-            svg = get_svg(cfile)
+        svg = get_svg(cfile)
+        vbpage = Exporter.add_viewbox_page(svg, self.testmode)
+        if self.margin != 0 or vbpage:
             tmp = self.tempbase + "_marg.svg"
-            Exporter.add_margin(svg, self.margin, self.testmode)
+            if self.margin != 0:
+                Exporter.add_margin(svg, self.margin, self.testmode)
             self.check(dh.overwrite_svg, svg, tmp)
             cfile = copy.copy(tmp)
 
@@ -1953,6 +1955,30 @@ class Exporter():
             elem.set("width", str((imgbbox[2] - imgbbox[0]) * myw))
             elem.set("height", str((imgbbox[3] - imgbbox[1]) * myh))
         dh.ungroup(grp)
+
+    @staticmethod
+    def add_viewbox_page(svg, testmode):
+        """When Pages are in use and none of them is the viewbox, the
+        viewbox's content would never be exported: append it as page 0.
+        Returns whether a page was added."""
+        haspgs = inkex.installed_haspages or testmode
+        dsz = svg.cdocsize
+        if not haspgs or len(dsz.pgs) == 0:
+            return False
+        evb = dsz.effvb
+        tol = 1e-3 * max(evb[2], evb[3])
+        for page in dsz.pgs:
+            if all(abs(a - b) < tol for a, b in zip(dsz.pxtouu(page.bbpx), evb)):
+                return False
+        # A copy of the last page, placed after it, with the viewbox's
+        # position and size in page coordinates
+        page = dsz.pgs[-1].duplicate()
+        vbpg = dsz.pxtouupgs(dsz.uutopx(evb))
+        for k, v in zip(["x", "y", "width", "height"], vbpg):
+            page.set(k, str(v))
+        page.set("inkscape:label", "0")
+        svg.cdocsize = None
+        return True
 
     @staticmethod
     def add_margin(svg, amt_mm, testmode):
