@@ -1297,19 +1297,23 @@ class SvgDocumentElementCache(SvgDocumentElement):
 
             # Get Pages
             nvs = [elem for elem in list(self) if isinstance(elem, inkex.NamedView)]
-            pgs = [
+            vtag = inkex.addNS("view", "svg")
+            pgs = [elem for elem in self.iter(vtag) if elem.get("viewBox")] + [
                 elem
                 for nv in nvs
                 for elem in list(nv)
                 if elem.tag == inkex.addNS("page", "inkscape")
             ]
             for pgv in pgs:
-                pgv.bbuu = [
-                    ipx(pgv.get("x")),
-                    ipx(pgv.get("y")),
-                    ipx(pgv.get("width")),
-                    ipx(pgv.get("height")),
-                ]
+                if pgv.tag == vtag:
+                    pgv.bbuu = [float(v) for v in pgv.get("viewBox").replace(",", " ").split()]
+                else:
+                    pgv.bbuu = [
+                        ipx(pgv.get("x")),
+                        ipx(pgv.get("y")),
+                        ipx(pgv.get("width")),
+                        ipx(pgv.get("height")),
+                    ]
                 pgv.bbpx = [
                     pgv.bbuu[0] * xfr,
                     pgv.bbuu[1] * yfr,
@@ -1385,14 +1389,21 @@ class SvgDocumentElementCache(SvgDocumentElement):
                         x[3] * self.rawyf,
                     ]
 
-                def pxtouupgs(self, x):
-                    """Version that applies to Pages"""
-                    return [
+                def pxtouupgs(self, x, page=None):
+                    """Version that applies to Pages. Given a page, also makes
+                    the result that page's box, in the form the page keeps it"""
+                    ret = [
                         x[0] / self.rawxf,
                         x[1] / self.rawyf,
                         x[2] / self.rawxf,
                         x[3] / self.rawyf,
                     ]
+                    if page is not None and page.get("viewBox") is not None:
+                        page.set("viewBox", " ".join(str(v) for v in ret))
+                    elif page is not None:
+                        for k, v in zip(["x", "y", "width", "height"], ret):
+                            page.set(k, str(v))
+                    return ret
 
                 def __repr__(self):
                     return (
@@ -1443,11 +1454,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
         # Update Pages appropriately
         self.cdocsize = None
         for i, pgv in enumerate(self.cdocsize.pgs):
-            newbbuu = self.cdocsize.pxtouupgs(pgbbs[i])
-            pgv.set("x", str(newbbuu[0]))
-            pgv.set("y", str(newbbuu[1]))
-            pgv.set("width", str(newbbuu[2]))
-            pgv.set("height", str(newbbuu[3]))
+            self.cdocsize.pxtouupgs(pgbbs[i], pgv)
 
     # Add char_table property to SVGs, which are used to collect all of the
     # properties of fonts in the document. Alternatively, calling make_char_table

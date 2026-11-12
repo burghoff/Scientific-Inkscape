@@ -938,7 +938,7 @@ class Processor(threading.Thread):
                         contents = f.read()
                     except OSError:
                         raise(f'Could not open {fn}')
-                    if re.search(r"<\s*inkscape:page[\s\S]*?>", contents):
+                    if re.search(r"<\s*(inkscape:page|view|svg:view)\b[\s\S]*?>", contents):
                         svg = dh.svg_from_file(fn)
                         Exporter.add_viewbox_page(svg, False)  # a viewbox no page matches becomes page 0
                         pgs = svg.cdocsize.pgs

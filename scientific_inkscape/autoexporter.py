@@ -1973,9 +1973,7 @@ class Exporter():
         # A copy of the last page, placed after it, with the viewbox's
         # position and size in page coordinates
         page = dsz.pgs[-1].duplicate()
-        vbpg = dsz.pxtouupgs(dsz.uutopx(evb))
-        for k, v in zip(["x", "y", "width", "height"], vbpg):
-            page.set(k, str(v))
+        dsz.pxtouupgs(dsz.uutopx(evb), page)
         page.set("inkscape:label", "0")
         svg.cdocsize = None
         return True
@@ -1991,18 +1989,15 @@ class Exporter():
         if haspgs and len(svg.cdocsize.pgs) > 0:
             # Has Pages
             for page in svg.cdocsize.pgs:
-                newbbuu = svg.cdocsize.pxtouupgs(
+                svg.cdocsize.pxtouupgs(
                     [
                         page.bbpx[0] - mrgn,
                         page.bbpx[1] - mrgn,
                         page.bbpx[2] + 2 * mrgn,
                         page.bbpx[3] + 2 * mrgn,
-                    ]
+                    ],
+                    page,
                 )
-                page.set("x", str(newbbuu[0]))
-                page.set("y", str(newbbuu[1]))
-                page.set("width", str(newbbuu[2]))
-                page.set("height", str(newbbuu[3]))
             svg.cdocsize = None
 
         else:

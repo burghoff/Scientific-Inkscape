@@ -706,8 +706,7 @@ def _strip_inkscape_pages(in_svg_path: str, out_svg_path: str) -> None:
     and visible_descendants to crash on `list(svg)`."""
     import dhelpers as dh
     svg = get_svg(in_svg_path)
-    INK_PAGE = "{http://www.inkscape.org/namespaces/inkscape}page"
-    for pg in list(svg.iter(INK_PAGE)):
+    for pg in svg.cdocsize.pgs:
         parent = pg.getparent()
         if parent is not None:
             parent.remove(pg)
