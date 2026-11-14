@@ -307,6 +307,11 @@ def absolute_href2(filename, svg_dir, default="~/"):
 try:
     from PIL import Image as ImagePIL
 
+    # Our rasterized images can legitimately be very large (e.g. a full page
+    # at high DPI), so disable Pillow's decompression-bomb check, which would
+    # otherwise emit a DecompressionBombWarning (and error at 2x the limit).
+    ImagePIL.MAX_IMAGE_PIXELS = None
+
     hasPIL = True
 except:
     hasPIL = False
@@ -558,8 +563,8 @@ def extract_img_file(el, svg_dir, newpath):
 # renderer from replacing those pixels with black. This avoids the 'gray ring'
 # issue that can happen on PDF exports.
 def Set_Alpha0_RGB(img, imgref):
-    im1 = ImagePIL.open(img).convert("RGBA")
-    im2 = ImagePIL.open(imgref).convert("RGBA")
+    im1 = _open_image(img).convert("RGBA")
+    im2 = _open_image(imgref).convert("RGBA")
     import numpy as np
 
     d1 = np.asarray(im1)
@@ -580,11 +585,66 @@ def Set_Alpha0_RGB(img, imgref):
     return anyalpha0
 
 
+def _open_image(path):
+    """ImagePIL.open, but on Windows explain the usual cause of an
+    unreadable image before letting the error propagate: security software
+    can lock or truncate a file Inkscape has only just written."""
+    try:
+        return ImagePIL.open(path)
+    except getattr(ImagePIL, "UnidentifiedImageError", OSError):
+        if os.name == "nt":
+            import warnings
+
+            warnings.warn(
+                "PIL could not read " + str(path) + ". On Windows this is "
+                "usually security software locking or scanning a file that "
+                "was just written. Check Windows Security > Virus & threat "
+                "protection > Real-time protection and Controlled folder "
+                "access, or exclude Inkscape's temp folder from scanning.",
+                category=UserWarning,
+            )
+        raise
+
+
+def crop_and_fix_images(img, imgref, keep_ref=False):
+    """crop_images followed by Set_Alpha0_RGB, done in memory so each PNG is
+    encoded once: crops both images to the content of the transparent one
+    (img), gives its fully transparent pixels the RGB of the opaque one
+    (imgref) and writes it back. The cropped opaque image is only written
+    back when keep_ref is set (it is needed on disk for JPEG output).
+    Returns (normalized bbox or None, whether any pixel was transparent)."""
+    import numpy as np
+
+    with _open_image(img) as im1, _open_image(imgref) as im2:
+        bbox = im1.getbbox()
+        nsz = im1.size
+        nbbox = None
+        if bbox is not None:
+            nbbox = [bbox[0] / nsz[0], bbox[1] / nsz[1], bbox[2] / nsz[0], bbox[3] / nsz[1]]
+            im1, im2 = im1.crop(bbox), im2.crop(bbox)
+        d1 = np.asarray(im1.convert("RGBA"))
+        d2 = np.asarray(im2.convert("RGBA"))
+        a = d1[:, :, 3]
+        nd = np.stack(
+            (
+                np.where(a == 0, d2[:, :, 0], d1[:, :, 0]),
+                np.where(a == 0, d2[:, :, 1], d1[:, :, 1]),
+                np.where(a == 0, d2[:, :, 2], d1[:, :, 2]),
+                np.where(a == 0, 1 * np.ones_like(a), a),
+            ),
+            2,
+        )
+        ImagePIL.fromarray(nd).save(img)
+        if keep_ref and bbox is not None:
+            im2.save(imgref)
+    return nbbox, bool((a == 0).any())
+
+
 # Crop a list of images based on the transparency of the first one
 # Returns the normalized bounding box, which we need later
 def crop_images(ims_in):
     bbox = None
-    with ImagePIL.open(ims_in[0]) as ref_im:
+    with _open_image(ims_in[0]) as ref_im:
         bbox = ref_im.getbbox()
         nsz = ref_im.size
 
@@ -597,7 +657,7 @@ def crop_images(ims_in):
             bbox[3] / nsz[1],
         ]  # normalize to original size
         for imf in ims_in:
-            with ImagePIL.open(imf) as im:
+            with _open_image(imf) as im:
                 im.crop(bbox).save(imf)
         return nbbox
     else:

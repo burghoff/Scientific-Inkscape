@@ -90,6 +90,7 @@ poly_tags = {inkex.Polygon.ctag, inkex.Polyline.ctag}
 round_tags = {inkex.Ellipse.ctag, inkex.Circle.ctag}
 line_tag = inkex.Line.ctag
 rect_tag = inkex.Rectangle.ctag
+pattern_tag = inkex.addNS("pattern", "svg")
 
 
 def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
@@ -98,6 +99,17 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
     # Without it, it is applied to the points only
 
     if el.tag in BaseElementCache.otp_support_tags:  # supported types
+        sty = el.cspecified_style
+        for sf in ["fill", "stroke"]:
+            if "url(" in (sty.get(sf) or ""):
+                sfel = sty.get_link(sf, svg=el.croot)
+                if sfel is not None and sfel.tag == pattern_tag:
+                    # A pattern lies in the coordinate system of the element
+                    # it paints, as does the element's clip, so the
+                    # transform stays on the element
+                    el.ctransform = Transform(transf) @ el.ctransform
+                    return
+
         # Since transforms apply to an object's clips, before applying the transform
         # we will need to duplicate the clip path and transform it
         transform_clipmask(el, mask=False)
@@ -189,30 +201,36 @@ def fuseTransform(el, transf=Itr, irange=None, trange=None, applytostroke=True):
                 el.set("height", str(max(ys) - min(ys)))
             else:
                 if "d" in el.attrib:
-                    # inkex.utils.debug(el.get('d'))
                     d = el.get("d")
-                    try:
-                        p = CubicSuperPath(d)
-                    except ZeroDivisionError:
-                        p = Path(d)
-                    if irange is None:
-                        p = Path(p).to_absolute().transform(transf, True)
-                    if irange is not None:
-                        p = Path(p).to_absolute()
-                        pnew = []
-                        for ii in range(len(irange)):
-                            xf = (
-                                trange[ii] @ el.ctransform
-                            )  # Transform(el.get("transform", None))
-                            pnew += Path(p[irange[ii][0] : irange[ii][1]]).transform(
-                                xf, True
-                            )
-                        p = pnew
+                    p2 = None
+                    if irange is None and len(d) >= 2000:  # the round trip below is slow on long paths
+                        try:
+                            p2 = dh.DAttr(d).fused(transf)
+                        except ValueError:
+                            pass
+                    if p2 is None:
+                        try:
+                            p = CubicSuperPath(d)
+                        except ZeroDivisionError:
+                            p = Path(d)
+                        if irange is None:
+                            p = Path(p).to_absolute().transform(transf, True)
+                        if irange is not None:
+                            p = Path(p).to_absolute()
+                            pnew = []
+                            for ii in range(len(irange)):
+                                xf = (
+                                    trange[ii] @ el.ctransform
+                                )  # Transform(el.get("transform", None))
+                                pnew += Path(p[irange[ii][0] : irange[ii][1]]).transform(
+                                    xf, True
+                                )
+                            p = pnew
 
-                    try:
-                        p2 = str(Path(CubicSuperPath(p).to_path()))
-                    except ZeroDivisionError:
-                        p2 = str(Path(p))
+                        try:
+                            p2 = str(Path(CubicSuperPath(p).to_path()))
+                        except ZeroDivisionError:
+                            p2 = str(Path(p))
                     el.set("d", p2)
 
             el.cpath = None

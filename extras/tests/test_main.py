@@ -1,0 +1,348 @@
+# coding=utf-8
+
+# Font-related tests require the following fonts be installed to pass:
+# DejaVu Sans, Roboto, Roboto Light,
+# Franklin Gothic Book, Cambria, Cambria Math, Calibri, Arial, Verdana, Tahoma,
+# Avenir, Avenir Next, Helvetica
+
+STORE_REFS = False
+PROFILE = False      
+OPEN_COMPARISON = True
+fname = 'Other_tests.svg'
+fname2 = 'Other_tests_nonuniform.svg'
+aename = 'Autoexporter_tests.svg'
+aepages = 'Multipage_nonuniform.svg'
+
+MAXPAPERS = 0
+flattentext = 'Text_tests.svg'
+flattentextdx = 'Text_tests_dx.svg'
+flattenrest = 'Acid_tests.svg';
+flattenflow = 'Flow_tests.svg';
+flattenfonts = 'Font_variants_all.svg'
+priority_flatten = ['']
+exclude_flatten = ['Ohtani_SA_2019_Deep_group.svg',flattentext,flattenrest,fname,aename]
+
+flattenerargs = ("--id=layer1","--testmode=True")
+aeargs = ("--testmode=True",)
+
+version = '1.4'
+usepango = True
+lprofile = False
+
+testflattentext,testflattentextdebug, testflattenrest,testflattenflow,testflattenpapers,testscalecorrection,testscalecorrection2,\
+testscalematching,testscalefixed,testghoster,testcbc,testfm,testhomogenizer,testhomogenizer2, testae,testaemp, testflattenfonts, testflattentextdx = (False,)*18
+
+testflattentext     = True;
+testflattentextdx   = True;
+testflattentextdebug = True;
+testflattenflow     = True; 
+testflattenrest     = True; 
+testflattenpapers   = True; 
+testscalecorrection = True;
+testscalecorrection2= True;
+testscalematching   = True;
+testghoster         = True;
+testcbc             = True;
+testfm              = True;
+testhomogenizer     = True;
+testhomogenizer2    = True;
+testaemp            = True;
+testae              = True;
+
+# testflattenfonts     = True; 
+
+import os, sys, re, warnings
+INKSCAPES_LOCATION = "C:\\Inkscapes"
+vpaths = {'1.0' : 'inkscape-1.0.2-2-x64',
+          '1.1' : 'inkscape-1.1.2_2022-02-05_b8e25be833-x64',
+          '1.2' : 'inkscape-1.2.2_2022-12-09_732a01da63-x64', 
+          '1.3' : 'inkscape-1.3.1_2023-11-16_91b66b0783-x64',
+          '1.3e': 'inkscape-1.3_2023-07-21_0e150ed6c4-x64_extensions',
+          '1.4' : 'inkscape-1.4.4_2026-05-05_dcaf3e7-x64',
+          }
+vpaths = {k: os.path.join(INKSCAPES_LOCATION, v) for k,v in vpaths.items()}
+
+if 'TESTMAINVERSION' in os.environ:
+    version = os.environ['TESTMAINVERSION']
+if version=='1.0':
+    os.environ["SI_FC_DIR"] = os.path.join(vpaths['1.1'],'bin')
+    # Font selection changed after 1.0, use 1.1's fc for consistency
+
+sys.path += [os.path.join(vpaths[version],'share\\inkscape\\extensions')]
+sys.path += [os.path.join(vpaths[version],'bin')]
+sys.path += [os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),'scientific_inkscape')]
+sys.path += [os.path.join(vpaths[version],'lib\\python3.10')]
+os.environ['LINEPROFILE'] = str(lprofile)
+os.environ['USEPANGO']=str(usepango)
+if 'pytest' in sys.modules:  # not when a runner script imports this file for vpaths
+    # Printed once pytest has released its capture, for the Pango column of version_test.py
+    import atexit
+    atexit.register(lambda: print('HASPANGO=' + os.environ.get('HASPANGO', 'N/A')))
+if PROFILE:
+    os.environ['SI_PROFILE'] = '1'
+
+# numpy's C-extension links mingw runtime DLLs (libopenblas, libgfortran, etc.).
+# If another tool on PATH (conda, MSYS2, Strawberry Perl, R...) has loaded a
+# same-named but ABI-incompatible copy first, Windows reuses it and numpy import
+# dies with fatal error 0xc0000139. Force this Inkscape version's own copies to
+# load first, by full path, so they win.
+if sys.platform == 'win32':
+    import ctypes
+    _vbin = os.path.join(vpaths[version], 'bin')
+    if os.path.isdir(_vbin):
+        os.add_dll_directory(_vbin)
+        for _dll in ('libwinpthread-1.dll', 'libgcc_s_seh-1.dll',
+                     'libquadmath-0.dll', 'libgfortran-5.dll', 'libopenblas.dll'):
+            try:
+                ctypes.WinDLL(os.path.join(_vbin, _dll))
+            except OSError:
+                pass
+
+
+from flatten_plots import FlattenPlots
+from scale_plots import ScalePlots
+from text_ghoster import TextGhoster
+from combine_by_color import CombineByColor
+from favorite_markers import FavoriteMarkers
+from homogenizer import Homogenizer
+from autoexporter import AutoExporter
+from inkex.tester import ComparisonMixin, TestCase
+# from inkex.tester.filters import CompareWithoutIds
+os.environ['SI_TESTING_VERSION'] = version   # needed to avoid circular imports
+import tester_mods  # noqa
+from tester_mods import CompareNumericFuzzy2, CompareImages, CompareAEMarker
+
+if testflattentext:
+    class TestFlattenerText(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        comparisons = [flattenerargs]
+        compare_file = ['svg/'+flattentext]
+
+if testflattentextdx:
+    class TestFlattenerTextDx(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        comparisons = [flattenerargs]
+        compare_file = ['svg/'+flattentextdx]
+        
+
+if testflattentextdebug:
+    class TestFlattenerTextDebug(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        comparisons = [flattenerargs+("--debugparser=True",)]
+        compare_file = ['svg/'+flattentext]
+        
+if testflattenflow:
+    class TestFlattenerFlow(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        comparisons = [flattenerargs+("--debugparser=True",)]
+        compare_file = ['svg/'+flattenflow]
+
+if testflattenrest:
+    class TestFlattenerRest(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        comparisons = [flattenerargs]
+        compare_file = ['svg/'+flattenrest]
+        
+if testflattenfonts:
+    class TestFlattenerFonts(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        comparisons = [flattenerargs]
+        compare_file = ['svg/'+flattenfonts]
+
+    
+if testflattenpapers:
+    def get_files(dirin):
+        return [os.path.join(os.path.abspath(dirin), f.name) for f in os.scandir(dirin) if f.name.endswith('.svg')]
+    class TestFlattenerPapers(ComparisonMixin, TestCase):
+        effect_class = FlattenPlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        comparisons = [flattenerargs]
+        allfs = get_files(os.getcwd()+'/data/svg');
+        badfs = [v for v in allfs if any([es in v for es in exclude_flatten])];
+        for b in badfs:
+            allfs.remove(b)
+        fonly = [os.path.split(f)[1] for f in allfs];
+        for p in reversed(priority_flatten):
+            if p in fonly:
+                myi = fonly.index(p);
+                myv = allfs[myi];
+                allfs.remove(myv);
+                allfs=[myv]+allfs
+                myv = fonly[myi];
+                fonly.remove(myv);
+                fonly=[myv]+fonly
+        compare_file = []
+        for f in allfs:
+            spl=os.path.split(f);
+            compare_file.append('svg/'+spl[1])
+        compare_file = compare_file[0:MAXPAPERS]
+    
+if testscalecorrection:
+    class TestScaleCorrection(ComparisonMixin, TestCase):  
+        effect_class = ScalePlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=g5224","--tab=correction")
+        ]
+if testscalecorrection2:
+    class TestScaleCorrection2(ComparisonMixin, TestCase):  
+        effect_class = ScalePlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        compare_file = ['svg/'+fname2]
+        comparisons = [
+            ("--id=g109153","--id=g109019","--tab=correction")
+        ]
+
+if testscalematching:
+    class TestScaleMatching(ComparisonMixin, TestCase):
+        effect_class = ScalePlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=rect5248","--id=g4982","--tab=matching","--hmatchopts=2","--vmatchopts=3")
+        ]
+if testscalefixed:
+    class TestScaleFixed(ComparisonMixin, TestCase):
+        effect_class = ScalePlots
+        compare_filters = [CompareNumericFuzzy2(),]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=g4982","--tab=scaling",'--hscale=120','--vscale=80')
+        ]
+    
+if testghoster:
+    class TestGhoster(ComparisonMixin, TestCase):
+        effect_class = TextGhoster
+        compare_filters = [CompareNumericFuzzy2(),]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=text28136",)
+        ]
+  
+if testcbc:
+    class TestCBC(ComparisonMixin, TestCase):
+        effect_class = CombineByColor
+        compare_filters = [CompareNumericFuzzy2(),]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=layer1",)
+        ]
+    
+if testfm:
+    class TestFM(ComparisonMixin, TestCase):
+        effect_class = FavoriteMarkers
+        compare_filters = [CompareNumericFuzzy2(),]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=path6928","--id=path6952","--smarker=True","--tab=markers")
+        ]
+
+if testhomogenizer:
+    class TestHomogenizer(ComparisonMixin, TestCase):
+        effect_class = Homogenizer
+        compare_filters = [CompareNumericFuzzy2(),]
+        compare_file = ['svg/'+fname]
+        comparisons = [
+            ("--id=layer1","--fontsize=7","--setfontsize=True","--fixtextdistortion=True","--fontmodes=2", \
+              "--setfontfamily=True","--fontfamily=Avenir",\
+              "--setstroke=True","--setstrokew=0.75","--strokemodes=2","--fusetransforms=True")
+        ]
+
+if testhomogenizer2:
+    class TestHomogenizer2(ComparisonMixin, TestCase):
+        effect_class = Homogenizer
+        compare_filters = [CompareNumericFuzzy2(),]
+        compare_file = ['svg/'+fname2]
+        comparisons = [
+            ("--id=layer1","--fontsize=7","--setfontsize=True","--fixtextdistortion=True","--fontmodes=2", \
+              "--setfontfamily=True","--fontfamily=Avenir",\
+              "--setstroke=True","--setstrokew=0.75","--strokemodes=2","--fusetransforms=True")
+        ] 
+        
+if testaemp:
+    class TestAutoExporterMP1(ComparisonMixin, TestCase):
+        effect_class = AutoExporter
+        compare_filters = [CompareNumericFuzzy2(),
+                           CompareImages(), CompareAEMarker()]
+        compare_file = ['svg/'+aepages]
+        comparisons = [aeargs+("--testpage=1",)]
+    class TestAutoExporterMP2(ComparisonMixin, TestCase):
+        effect_class = AutoExporter
+        compare_filters = [CompareNumericFuzzy2(),
+                           CompareImages(), CompareAEMarker()]
+        compare_file = ['svg/'+aepages]
+        comparisons = [aeargs+("--testpage=2",)]  
+ 
+       
+if testae:
+    class TestAutoExporter(ComparisonMixin, TestCase):
+        effect_class = AutoExporter
+        compare_filters = [CompareNumericFuzzy2(),
+                           CompareImages(), CompareAEMarker()]
+        compare_file = ['svg/'+aename]
+        comparisons = [aeargs]  
+        
+
+
+if __name__ == "__main__":
+    import sys, inspect
+    mywd = os.getcwd();
+    for name, obj in inspect.getmembers(sys.modules[__name__]):
+        if inspect.isclass(obj) and issubclass(obj, (ComparisonMixin)) and issubclass(obj, (TestCase)):
+            fs = obj.compare_file
+            cs = obj.comparisons
+            for f in fs:
+                for c in cs:
+                    fpath = os.path.abspath('data/'+f);
+                    args = list(c)+[fpath]
+                    
+                    try:
+                        cmpfile = os.path.split(obj().get_compare_cmpfile(list(c) + [str(f)[4:]]))[1]
+                    except:
+                        # Modified get_compare_outfile from v1.0 and 1.1
+                        import hashlib
+                        myobj = obj();
+                        myargs = list(c) + [str(f)[4:]];
+                       
+                        opstr = '__'.join(myargs)\
+                                    .replace(myobj.tempdir, 'TMP_DIR')\
+                                    .replace(myobj.datadir(), 'DAT_DIR')
+                        opstr = re.sub(r'[^\w-]', '__', opstr)
+                        if opstr:
+                            if len(opstr) > 127:
+                                # avoid filename-too-long error
+                                opstr = hashlib.md5(opstr.encode('latin1')).hexdigest()
+                            opstr = '__' + opstr
+                        cmpfile = os.path.split(f"{myobj.effect_name}{opstr}.out")[1] 
+                        
+                    
+                    pout = 'data/refs/'+cmpfile
+                    pout2 = 'data/svg/outputs/'+cmpfile.replace('.out','.svg')
+                    fout = os.path.abspath(pout2)
+                    print(pout2)
+                    obj.effect_class().run(args,fout);
+
+                    if OPEN_COMPARISON and not STORE_REFS:
+                        with warnings.catch_warnings():
+                            warnings.filterwarnings(
+                                "ignore",
+                                category=ResourceWarning,
+                                message=r"subprocess .* is still running"
+                            )
+                            binloc = os.path.join(vpaths[version],'bin','inkscape.exe')
+                            import subprocess
+                            process = subprocess.Popen([binloc, fout], text=True)
+                            process = subprocess.Popen([binloc, os.path.abspath(pout)], text=True)
+
+                    if STORE_REFS:
+                        import shutil
+                        os.chdir(mywd)
+                        shutil.copyfile(os.path.abspath(pout2),os.path.abspath(pout))
+                        print(pout)

@@ -24,27 +24,6 @@ EMU_PER_INCH = 914400  # Office EMUs
 import sys
 import dhelpers as dh
 
-bfn = dh.inkex.inkscape_system_info.binary_location
-
-
-def overwrite_output(filein, fileout):
-    if os.path.exists(fileout):
-        os.remove(fileout)
-    args = [
-        bfn,
-        "--export-background",
-        "#ffffff",
-        "--export-background-opacity",
-        "0.0",
-        "--export-dpi",
-        str(600),
-        "--export-filename",
-        fileout,
-        filein,
-    ]
-    dh.subprocess_repeat(args)
-
-
 import os
 import shutil
 from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo, BadZipFile
@@ -123,6 +102,136 @@ def _find_srcrect_crop(node):
     return (l, t, r, b), src_rect
 
 
+# Relative tolerance (fraction) used when comparing aspect ratios to decide
+# whether a picture frame still matches the SVG's insertion-time aspect. 2%
+# swallows PNG-pixel rounding and EMU quantization while ignoring only
+# imperceptible manual stretches.
+OFFICE_ASPECT_TOL = 0.02
+
+
+def _png_pixel_size(png_path):
+    """Return (width_px, height_px) from a PNG's IHDR, or None."""
+    try:
+        with open(png_path, "rb") as f:
+            if f.read(8) != b"\x89PNG\r\n\x1a\n":
+                return None
+            struct.unpack(">I", f.read(4))[0]  # IHDR length (unused)
+            if f.read(4) != b"IHDR":
+                return None
+            data = f.read(8)
+            if len(data) < 8:
+                return None
+            w, h = struct.unpack(">II", data)
+            return (w, h) if w > 0 and h > 0 else None
+    except Exception:
+        return None
+
+
+def _leading_float(s):
+    """Parse the leading numeric part of a length string (e.g. '100mm')."""
+    m = re.match(r"\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)", s or "")
+    if not m:
+        return None
+    try:
+        return float(m.group(1))
+    except ValueError:
+        return None
+
+
+def _svg_intrinsic_aspect(svg_path):
+    """Return the current width/height aspect ratio of an SVG's content.
+
+    Prefers the viewBox (this is what an Inkscape edit changes); falls back to
+    the width/height attributes when there is no viewBox. Returns None if the
+    aspect cannot be determined.
+    """
+    try:
+        root = ET.parse(svg_path, ET.XMLParser(huge_tree=True)).getroot()
+    except Exception:
+        return None
+    vbx = root.get("viewBox")
+    if vbx:
+        try:
+            parts = [float(v) for v in re.split(r"[ ,]+", vbx.strip()) if v != ""]
+            if len(parts) == 4 and parts[2] > 0 and parts[3] > 0:
+                return parts[2] / parts[3]
+        except (ValueError, TypeError):
+            pass
+    wv, hv = _leading_float(root.get("width")), _leading_float(root.get("height"))
+    if wv and hv and wv > 0 and hv > 0:
+        return wv / hv
+    return None
+
+
+def _scale_length(attr_val, factor):
+    """Scale the numeric part of a length string by ``factor``, keeping any
+    unit suffix (e.g. '100mm' * 2 -> '200mm'). Returns None if unparseable."""
+    m = re.match(r"\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*(.*)$", attr_val or "")
+    if not m:
+        return None
+    return f"{float(m.group(1)) * factor:g}{m.group(2) or ''}"
+
+
+def _write_padded_svg(svg_path, target_aspect, out_path):
+    """Write a copy of ``svg_path`` whose viewBox aspect equals
+    ``target_aspect`` (width/height), achieved by padding the deficient
+    dimension with centered margin — never by moving or scaling content. When
+    a renderer later stretches this SVG to fill a frame of that same aspect the
+    mapping is uniform, so the content is shown undistorted (letterboxed).
+
+    Returns True if a padded copy was written, False otherwise (no viewBox,
+    already the right aspect, or a parse error).
+    """
+    try:
+        tree = ET.parse(svg_path, ET.XMLParser(huge_tree=True))
+    except Exception:
+        return False
+    root = tree.getroot()
+    vbx = root.get("viewBox")
+    if not vbx:
+        return False
+    try:
+        parts = [float(v) for v in re.split(r"[ ,]+", vbx.strip()) if v != ""]
+    except (ValueError, TypeError):
+        return False
+    if len(parts) != 4 or parts[2] <= 0 or parts[3] <= 0:
+        return False
+    minx, miny, w, h = parts
+    av = w / h
+    if abs(av - target_aspect) <= OFFICE_ASPECT_TOL * target_aspect:
+        return False
+
+    old_w, old_h = w, h
+    if av < target_aspect:
+        # Too narrow: widen the viewBox, centering the content horizontally.
+        new_w = h * target_aspect
+        minx -= (new_w - w) / 2.0
+        w = new_w
+    else:
+        # Too wide: heighten the viewBox, centering the content vertically.
+        new_h = w / target_aspect
+        miny -= (new_h - h) / 2.0
+        h = new_h
+    root.set("viewBox", f"{minx:g} {miny:g} {w:g} {h:g}")
+
+    # Keep width/height attributes (if any) consistent with the grown viewBox
+    # so the intrinsic aspect matches for renderers that read them.
+    if w != old_w and root.get("width") is not None:
+        nv = _scale_length(root.get("width"), w / old_w)
+        if nv is not None:
+            root.set("width", nv)
+    if h != old_h and root.get("height") is not None:
+        nv = _scale_length(root.get("height"), h / old_h)
+        if nv is not None:
+            root.set("height", nv)
+
+    try:
+        tree.write(out_path, xml_declaration=True, encoding="UTF-8")
+    except Exception:
+        return False
+    return True
+
+
 def normalize_and_copy(source_path, media_dir):
     os.makedirs(media_dir, exist_ok=True)
     basename = os.path.basename(source_path)
@@ -172,6 +281,50 @@ def safe_extract_zip(file, temp_dir=None, retries=5, delay=0.5):
             if attempt == retries - 1:
                 raise  # re-raise after last attempt
             time.sleep(delay * (2**attempt))  # exponential backoff
+
+
+def get_linked_images(doc_path):
+    """Return the set of absolute paths of images that a docx/pptx references
+    as *links* (TargetMode="External" or file: targets — the same criteria
+    Slide_and_Rels.embed_linked uses), reading the rels straight out of the
+    zip without extracting it. Returns an empty set if the archive cannot be
+    read (e.g. Office holds it mid-save); callers should retry later.
+    """
+    linked = set()
+    try:
+        with ZipFile(doc_path, "r") as z:
+            for name in z.namelist():
+                parts = name.split("/")
+                if (
+                    len(parts) < 2
+                    or parts[-2] != "_rels"
+                    or not name.endswith(".rels")
+                ):
+                    continue
+                try:
+                    root = ET.fromstring(z.read(name))
+                except Exception:
+                    continue
+                for rel in root:
+                    if not str(rel.tag).endswith("Relationship"):
+                        continue
+                    if not rel.get("Type", "").endswith("/image"):
+                        continue
+                    target = unquote(rel.get("Target", ""))
+                    mode = rel.get("TargetMode", "")
+                    if mode != "External" and not target.lower().startswith("file:"):
+                        continue
+                    if target.startswith("file:///"):
+                        target = target[8:]
+                    elif target.startswith("file://"):
+                        target = target[7:]
+                    elif target.startswith("file:"):
+                        target = target[5:]
+                    if target:
+                        linked.add(os.path.normpath(os.path.abspath(target)))
+    except Exception:
+        return set()
+    return linked
 
 
 class Unzipped_Office:
@@ -251,6 +404,10 @@ class Unzipped_Office:
         for slide in self.slides:
             slide.embed_linked()
 
+    def fix_viewbox_stretch(self):
+        for slide in self.slides:
+            slide.fix_viewbox_stretch()
+
     def delete_fallback_png(self):
         for slide in self.slides:
             slide.delete_fallback_png()
@@ -258,10 +415,27 @@ class Unzipped_Office:
     def svg_to_png(self, svg_path, png_path):
         print(f"Exporting {svg_path}")
 
+        def export_png(filein, fileout):
+            if os.path.exists(fileout):
+                os.remove(fileout)
+            args = [
+                dh.inkex.inkscape_system_info.binary_location,
+                "--export-background",
+                "#ffffff",
+                "--export-background-opacity",
+                "0.0",
+                "--export-dpi",
+                str(600),
+                "--export-filename",
+                fileout,
+                filein,
+            ]
+            dh.inkscape_cli(args, priority=1)  # SVG exports go first
+
         if self.aecaller is not None:
-            self.aecaller.check(overwrite_output, svg_path, png_path,finalization=True)
+            self.aecaller.check(export_png, svg_path, png_path)
         else:
-            overwrite_output(svg_path, png_path)
+            export_png(svg_path, png_path)
 
     def queue_svg_to_png(self, svg_path, png_path):
         key = os.path.normcase(os.path.abspath(os.path.normpath(png_path)))
@@ -801,6 +975,12 @@ class Slide_and_Rels:
                 abs_path = os.path.normpath(target[7:])
             elif target.startswith("file:"):
                 abs_path = os.path.normpath(target[5:])
+            elif target.startswith("/") or target.startswith("\\"):
+                # Target beginning with '/' is package-root-relative
+                # ("/media/image.png"), not relative to the part's folder
+                abs_path = os.path.normpath(
+                    os.path.join(self.uzo.temp_dir, target.lstrip("/\\"))
+                )
             else:
                 rel_base = os.path.dirname(self.slide_path)
                 abs_path = os.path.normpath(os.path.join(rel_base, target))
@@ -893,6 +1073,198 @@ class Slide_and_Rels:
         if changed_slide:
             self.slide_tree.write(
                 self.slide_path,
+                xml_declaration=True,
+                encoding="UTF-8",
+                pretty_print=False,
+            )
+
+    def fix_viewbox_stretch(self):
+        """Un-stretch *linked* SVG pictures whose frame no longer matches the
+        SVG's current aspect ratio *because the SVG's viewBox changed after it
+        was inserted* — while leaving deliberately-resized pictures untouched.
+
+        Only linked (externally-referenced) SVGs are considered: an embedded
+        SVG is frozen inside the document, so its viewBox cannot change after
+        insertion and the "stretched by a later edit" bug can't arise. The
+        linked-vs-embedded distinction is only visible before embed_linked()
+        runs (afterwards every reference looks embedded), so this MUST run
+        before embed_linked() — and before leave_fallback_png()/
+        delete_fallback_png(), which regenerate or remove the fallback PNG.
+
+        OOXML has no flag recording whether a frame was hand-resized. We
+        reconstruct that intent from the fallback raster Office renders for the
+        picture: its pixel aspect encodes the SVG aspect *when linked*.
+
+          * frame aspect == fallback aspect -> user never resized the frame;
+            any mismatch with the SVG's *current* viewBox is an implicit
+            stretch we correct.
+          * frame aspect != fallback aspect -> user hand-resized; leave alone.
+
+        The correction leaves the Word frame exactly as placed and instead pads
+        the linked SVG's viewBox (centered margin, deficient dimension) until
+        its aspect matches the frame, so the frame's stretch-to-fill becomes
+        uniform and the content is shown undistorted, letterboxed. The padded
+        copy is written to a temp file the relationship is repointed at; the
+        user's original SVG on disk is never modified. Cropped pictures
+        (srcRect) are skipped, since padding would shift what the crop cuts.
+        """
+        ns = {
+            "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+            "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+            "asvg": "http://schemas.microsoft.com/office/drawing/2016/SVG/main",
+        }
+        # Id -> (target, mode); mode == "External" marks a linked relationship.
+        rel_id_to = {
+            rel.attrib["Id"]: (
+                unquote(rel.attrib.get("Target", "")),
+                rel.attrib.get("TargetMode", ""),
+            )
+            for rel in self.rels_root
+            if rel.tag.endswith("Relationship")
+        }
+        source_part_path = (
+            self.rels_path.replace("\\_rels\\", "\\")
+            .replace("/_rels/", "/")
+            .rsplit(".rels", 1)[0]
+        )
+        part_dir = os.path.dirname(source_part_path)
+
+        def _abs(target, mode):
+            """Resolve a rel target to an absolute path, handling external
+            file: URIs and part-relative embedded targets alike."""
+            if not target:
+                return None
+            if mode == "External" or target.lower().startswith("file:"):
+                t = target
+                if t.startswith("file:///"):
+                    t = t[8:]
+                elif t.startswith("file://"):
+                    t = t[7:]
+                elif t.startswith("file:"):
+                    t = t[5:]
+                return os.path.normpath(t)
+            return os.path.normpath(os.path.join(part_dir, target))
+
+        rels_changed = False
+        for svgblip in list(self.slide_root.iter(f"{{{ns['asvg']}}}svgBlip")):
+            # The SVG lives in an extension inside the outer <a:blip> that owns
+            # the fallback raster: <a:blip>/<a:extLst>/<a:ext>/<asvg:svgBlip>.
+            ext = svgblip.getparent()
+            extLst = ext.getparent() if ext is not None else None
+            blip = extLst.getparent() if extLst is not None else None
+            if blip is None or blip.tag != f"{{{ns['a']}}}blip":
+                continue
+
+            # A linked SVG is referenced by r:link (external); an embedded one
+            # by r:embed. Restrict to linked.
+            svg_rid = svgblip.attrib.get(f"{{{ns['r']}}}link")
+            if svg_rid is None:
+                continue
+            svg_target, svg_mode = rel_id_to.get(svg_rid, ("", ""))
+            if svg_mode != "External":
+                continue
+            png_rid = blip.attrib.get(f"{{{ns['r']}}}embed") or blip.attrib.get(
+                f"{{{ns['r']}}}link"
+            )
+            png_target, png_mode = rel_id_to.get(png_rid, ("", ""))
+            # Need a PNG fallback (its pixels encode the insertion aspect) and
+            # the linked SVG (for its current aspect). An EMF fallback carries
+            # the aspect in its header but we can't read that here, so skip it.
+            if not png_target.lower().endswith(".png"):
+                continue
+            if not svg_target.lower().endswith(".svg"):
+                continue
+            png_abs, svg_abs = _abs(png_target, png_mode), _abs(svg_target, svg_mode)
+            if not (png_abs and svg_abs):
+                continue
+            if not (os.path.exists(png_abs) and os.path.exists(svg_abs)):
+                continue
+
+            px = _png_pixel_size(png_abs)
+            vb_aspect = _svg_intrinsic_aspect(svg_abs)
+            if not px or not vb_aspect:
+                continue
+
+            # Locate the picture frame's display box <a:xfrm><a:ext cx cy>.
+            pic = blip
+            while pic is not None and not pic.tag.endswith("}pic"):
+                pic = pic.getparent()
+            if pic is None:
+                continue
+            a_ext = pic.find(".//a:xfrm/a:ext", namespaces=ns)
+            if a_ext is None:
+                continue
+            try:
+                cx, cy = int(a_ext.get("cx")), int(a_ext.get("cy"))
+            except (TypeError, ValueError):
+                continue
+            if cx <= 0 or cy <= 0:
+                continue
+
+            # A srcRect crops the same source content for both the PNG and the
+            # SVG, so it scales both source aspects equally; fold it in so the
+            # comparisons (and the fix) are in terms of the visible box.
+            crop, _sr = _find_srcrect_crop(svgblip)
+            if crop:
+                l, t, r, b = crop
+                denom = 1.0 - t - b
+                cf = (1.0 - l - r) / denom if denom > 0 else 1.0
+            else:
+                cf = 1.0
+
+            insertion_aspect = (px[0] / px[1]) * cf  # aspect when linked
+            current_aspect = vb_aspect * cf          # aspect the frame should be
+            frame_aspect = cx / cy
+
+            # Frame deviates from the insertion aspect -> user hand-resized it.
+            if abs(frame_aspect - insertion_aspect) > OFFICE_ASPECT_TOL * insertion_aspect:
+                continue
+            # Frame still matches the current viewBox -> nothing to correct.
+            if abs(current_aspect - insertion_aspect) <= OFFICE_ASPECT_TOL * insertion_aspect:
+                continue
+
+            # Implicit stretch confirmed. Leave the Word frame exactly as the
+            # user placed it; instead pre-distort the SVG so Word's stretch to
+            # fill the frame becomes uniform. Pad the viewBox with centered
+            # margin until its aspect matches the frame: content keeps its true
+            # proportions, letterboxed inside the untouched frame.
+            if crop:
+                # Padding the viewBox moves what a srcRect crop cuts, so we
+                # can't pad a cropped picture safely -- leave it alone.
+                print(
+                    f"Skipping {os.path.basename(svg_abs)}: implicit stretch but "
+                    f"picture is cropped (srcRect); not safe to pad."
+                )
+                continue
+
+            svg_rel = next(
+                (r for r in self.rels_root if r.get("Id") == svg_rid), None
+            )
+            if svg_rel is None:
+                continue
+
+            self.uzo.nfiles += 1
+            out_svg = os.path.join(
+                self.uzo.temp_dir, f"_unstretched_{self.uzo.nfiles}.svg"
+            )
+            if not _write_padded_svg(svg_abs, frame_aspect, out_svg):
+                continue
+
+            # Repoint the (external) relationship at our padded copy; the user's
+            # original SVG on disk is never modified. embed_linked() then copies
+            # this into the document's media.
+            svg_rel.set("Target", "file:///" + out_svg.replace(os.sep, "/"))
+            svg_rel.set("TargetMode", "External")
+            rels_changed = True
+            print(
+                f"Un-stretched {os.path.basename(svg_abs)}: padded viewBox "
+                f"{vb_aspect:.4f} -> frame aspect {frame_aspect:.4f} "
+                f"(frame left unchanged)"
+            )
+
+        if rels_changed:
+            self.rels_tree.write(
+                self.rels_path,
                 xml_declaration=True,
                 encoding="UTF-8",
                 pretty_print=False,
@@ -1273,6 +1645,9 @@ class Slide_and_Rels:
             if elem.tag == f"{{{ns['asvg']}}}svgBlip":
                 svgblips.append(elem)
             elif elem.tag == f"{{{ns['a']}}}blip":
+                # The SVG extension takes precedence over the fallback, as in Word.
+                if elem.find(".//asvg:svgBlip", namespaces=ns) is not None:
+                    continue
                 rid = elem.attrib.get(f"{{{ns['r']}}}embed")
                 target = rel_id_to_target.get(rid, "").lower() if rid else ""
                 if target.endswith(".svg"):
@@ -1473,7 +1848,7 @@ class Slide_and_Rels:
             changed_rels = True
 
             # If this is an <asvg:svgBlip> nested in <a:blip>/<a:extLst>/<a:ext>
-            # whose outer <a:blip> has no r:embed, promote the new PNG rid onto
+            # promote the new PNG rid onto
             # the outer blip and drop the extLst. A plain parent.replace here
             # would leave the PNG reference buried inside the SVG-extension slot
             # and the outer blip still with no primary image, so PowerPoint
@@ -1485,8 +1860,7 @@ class Slide_and_Rels:
                 outer_blip = extLst.getparent() if extLst is not None else None
                 if (ext is not None and ext.tag == f"{{{ns['a']}}}ext"
                         and extLst is not None and extLst.tag == f"{{{ns['a']}}}extLst"
-                        and outer_blip is not None and outer_blip.tag == f"{{{ns['a']}}}blip"
-                        and not outer_blip.attrib.get(f"{{{ns['r']}}}embed")):
+                        and outer_blip is not None and outer_blip.tag == f"{{{ns['a']}}}blip"):
                     outer_blip.attrib[f"{{{ns['r']}}}embed"] = new_rid
                     outer_blip.remove(extLst)
                     promoted = True
@@ -1733,3 +2107,714 @@ def get_images_onenote(target_file, outputdir):
         print(f"Writing extracted file to: {target_path}")
         with target_path.open("wb") as outf:
             outf.write(file_data)
+
+# ---------------------------------------------------------------------------
+# OneNote (.one) finalization: page dump, marker injection, and publishing
+# ---------------------------------------------------------------------------
+#
+# The .one analogue of leave_fallback_png_simple + make_pdf_word. All OneNote
+# interaction goes through the supported COM API, driven through PowerShell
+# (no pywin32 dependency). Patching image blobs directly inside the .one
+# revision store does not work: OneNote refuses to load a section whose
+# FileDataStoreObject bytes were modified out-of-band (Publish fails with
+# 0x80042006 even for a single flipped byte), so images are swapped through
+# the page-XML route (GetPageContent piBinaryData -> edit base64 <one:Data>
+# -> UpdatePageContent).
+#
+# The section is opened inside a scratch *notebook* (OpenHierarchy with
+# cftNotebook on a temp folder) rather than standalone, because
+# CloseNotebook cannot close a standalone section (0x80042015) and every
+# run would otherwise leave a dead entry in OneNote's "Open Sections" list.
+
+import base64
+import glob
+import hashlib
+import subprocess
+import tempfile
+
+ONENOTE_NS = "http://schemas.microsoft.com/office/onenote/2013/onenote"
+
+# Raster formats that pdf._make_raster_marker_pdf can re-embed losslessly
+# (JPEG passthrough / PNG native / PIL fallback).
+ONENOTE_RASTER_EXTS = {".png", ".jpg", ".gif", ".tif", ".bmp"}
+# Metafile formats, replaced via a Word COM -> PDF conversion (OneNote's own
+# EMF rendering is poor, and Inkscape's EMF importer ignores EMF+ records).
+ONENOTE_METAFILE_EXTS = {".emf", ".wmf"}
+ONENOTE_REPLACEABLE_EXTS = ONENOTE_RASTER_EXTS | ONENOTE_METAFILE_EXTS
+
+# ---- page-merge ruler ----
+# OneNote's Publish splits each (infinitely tall) OneNote page into multiple
+# PDF pages. To let pdf.merge_onenote_pages recombine them into one tall
+# page per OneNote page, a "ruler" of numbered text lines is injected at the
+# left margin of every page before publishing: line k of page p reads
+# RULER_TEXT_FMT % (p, k). The published PDF is scanned for those strings;
+# the page index groups the PDF pages, and the line numbers give each PDF
+# page's vertical offset in the original canvas (line numbers OneNote
+# duplicates at a break reveal the overlap exactly). The text is set in a
+# color unused anywhere else in the document, chosen nearly white; the merge
+# strips it from the output by that color.
+RULER_FONT = "Calibri"
+RULER_FONT_PT = 10.0
+# OneNote lays these 10pt lines out at ~6.5-7.1pt pitch; the count uses an
+# even lower estimate so the ruler always reaches the bottom of the content
+# (a too-long ruler is only cosmetic and gets trimmed; a too-short one
+# breaks page grouping). The declared item extents the count is based on
+# can themselves be inflated (ink bounding boxes use a different scale).
+RULER_NLINES_PITCH = 6.0
+RULER_FALLBACK_PITCH = 7.0
+RULER_TEXT_FMT = "sipg{:02d}l{:04d}"
+RULER_RE = re.compile(r"sipg(\d\d)l(\d{4})")
+ONENOTE_FOOTER_RE = re.compile(r"[Pp]age \d+$")
+# Fallback printable width for _pin_outline_widths: Letter (612pt) minus the
+# 36pt margins OneNote uses on either side. The real value is derived from
+# the default printer's paper size when available.
+ONENOTE_PRINTABLE_WIDTH = 540.0
+
+
+def _onenote_marker_png(rgb):
+    """Minimal 9x9 solid-color RGB PNG (same as the docx/pptx markers)."""
+    w, h = 9, 9
+    r, g, b = rgb
+
+    def _chunk(typ, data=b""):
+        crc = binascii.crc32(typ)
+        crc = binascii.crc32(data, crc) & 0xFFFFFFFF
+        return struct.pack(">I", len(data)) + typ + data + struct.pack(">I", crc)
+
+    sig = b"\x89PNG\r\n\x1a\n"
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+    one_row = bytes([0]) + bytes((r, g, b)) * w
+    comp = zlib.compress(one_row * h, level=9)
+    return sig + _chunk(b"IHDR", ihdr) + _chunk(b"IDAT", comp) + _chunk(b"IEND", b"")
+
+
+def _alloc_marker_color(n):
+    """Sequential marker color n (1-based) -> ('rrggbb', (r, g, b))."""
+    return ("{:06x}".format(n),
+            ((n >> 16) & 0xFF, (n >> 8) & 0xFF, n & 0xFF))
+
+
+def _detect_media_extension(file_data):
+    if file_data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if file_data.startswith(b"\xFF\xD8\xFF"):
+        return ".jpg"
+    if file_data.startswith(b"GIF87a") or file_data.startswith(b"GIF89a"):
+        return ".gif"
+    if file_data.startswith(b"II*\x00") or file_data.startswith(b"MM\x00*"):
+        return ".tif"
+    if file_data.startswith(b"BM"):
+        return ".bmp"
+    if len(file_data) >= 88:
+        (rt,) = struct.unpack("<I", file_data[0:4])
+        (sg,) = struct.unpack("<I", file_data[40:44])
+        if rt == 0x00000001 and sg == 0x464D4520:
+            return ".emf"
+    if len(file_data) >= 4:
+        if file_data.startswith(b"\xD7\xCD\xC6\x9A"):
+            return ".wmf"
+        if len(file_data) >= 18:
+            try:
+                type_, hsz, ver = struct.unpack("<HHH", file_data[0:6])
+                if type_ in (1, 2) and hsz == 9 and ver in (0x0300, 0x0100):
+                    return ".wmf"
+            except struct.error:
+                pass
+    return ".bin"
+
+
+# Phase A: create/open the scratch notebook, copy the section in, wait for
+# its pages to load, and dump each page's XML (with inline base64 image
+# data) to PagesDir. The notebook is left open for the publish phase.
+# Every GetHierarchy call is guarded by a non-empty ID check: with an empty
+# ID, GetHierarchy silently returns the user's ENTIRE hierarchy, which must
+# never be operated on.
+PS_ONENOTE_DUMP = r"""
+param(
+    [Parameter(Mandatory=$true)][string]$NotebookDir,
+    [Parameter(Mandatory=$true)][string]$SectionSource,
+    [Parameter(Mandatory=$true)][string]$PagesDir
+)
+$nbdir = [System.IO.Path]::GetFullPath($NotebookDir)
+$src = [System.IO.Path]::GetFullPath($SectionSource)
+if (-not (Test-Path -LiteralPath $PagesDir)) {
+    New-Item -ItemType Directory -Force $PagesDir | Out-Null
+}
+if (-not (Test-Path -LiteralPath $nbdir)) {
+    New-Item -ItemType Directory -Force $nbdir | Out-Null
+}
+try {
+    $on = New-Object -ComObject OneNote.Application
+} catch {
+    Write-Error "OneNote COM automation is unavailable: $_"
+    exit 3
+}
+
+$nbID = ""
+$on.OpenHierarchy($nbdir, "", [ref]$nbID, 1)   # cftNotebook = 1
+if ([string]::IsNullOrEmpty($nbID)) {
+    Write-Error "Failed to open scratch notebook."
+    exit 2
+}
+Write-Host "Notebook ID: $nbID"
+
+# Drop the section into the (empty) notebook folder and let OneNote find it
+Copy-Item -LiteralPath $src -Destination (Join-Path $nbdir ([System.IO.Path]::GetFileName($src))) -Force
+try { $on.SyncHierarchy($nbID) } catch {}
+
+# Page loading is asynchronous AND incremental: the hierarchy can report a
+# partial page list while the section is still loading. Wait until the
+# section stops saying areAllPagesAvailable="false" (the attribute is
+# omitted once everything is loaded) plus one stable confirmation, with a
+# long stability fallback in case the flag sticks.
+$pages = $null
+$h = $null
+$ns = $null
+$lastCount = -1
+$stable = 0
+for ($try = 0; $try -lt 300; $try++) {
+    $xml = ""
+    $on.GetHierarchy($nbID, 4, [ref]$xml)   # hsPages = 4
+    [xml]$h = $xml
+    $ns = New-Object Xml.XmlNamespaceManager($h.NameTable)
+    $ns.AddNamespace("one", $h.DocumentElement.NamespaceURI)
+    $pages = $h.SelectNodes("//one:Page", $ns)
+    $sec = $h.SelectSingleNode("//one:Section", $ns)
+    $allAvail = ($sec -ne $null) -and ($sec.GetAttribute("areAllPagesAvailable") -ne "false")
+    if ($pages.Count -gt 0) {
+        if ($pages.Count -eq $lastCount) { $stable++ } else { $stable = 0 }
+        if (($allAvail -and $stable -ge 1) -or ($stable -ge 15)) {
+            if (-not $allAvail) {
+                Write-Host "areAllPagesAvailable stayed false; page count stable at $($pages.Count)"
+            }
+            break
+        }
+    }
+    $lastCount = $pages.Count
+    try { $on.SyncHierarchy($nbID) } catch {}
+    Start-Sleep -Seconds 2
+}
+if ($pages.Count -eq 0) {
+    Write-Error "Section reported no pages (failed to load)."
+    try { $on.CloseNotebook($nbID) } catch {}
+    exit 2
+}
+Write-Host "Pages: $($pages.Count)"
+
+$i = 0
+foreach ($pg in $pages) {
+    $pxml = ""
+    $on.GetPageContent($pg.ID, [ref]$pxml, 1)   # piBinaryData = 1
+    $path = Join-Path $PagesDir ("page_{0:d3}.xml" -f $i)
+    [System.IO.File]::WriteAllText($path, $pxml,
+        (New-Object System.Text.UTF8Encoding $false))
+    Write-Host ("page {0}: '{1}' ({2} chars)" -f $i, $pg.name, $pxml.Length)
+    $i++
+}
+exit 0
+"""
+
+# Phase B: push edited pages back, publish the section to PDF, and close
+# the scratch notebook. Publish is retried because a freshly-updated
+# section may briefly report 0x80042006 until its content synchronizes.
+PS_ONENOTE_PUBLISH = r"""
+param(
+    [Parameter(Mandatory=$true)][string]$NotebookDir,
+    [Parameter(Mandatory=$true)][string]$PagesDir,
+    [Parameter(Mandatory=$true)][string]$OutputPath
+)
+$nbdir = [System.IO.Path]::GetFullPath($NotebookDir)
+$out = [System.IO.Path]::GetFullPath($OutputPath)
+$pfPDF = 3
+$on = New-Object -ComObject OneNote.Application
+
+$nbID = ""
+$on.OpenHierarchy($nbdir, "", [ref]$nbID, 1)   # cftNotebook = 1
+if ([string]::IsNullOrEmpty($nbID)) {
+    Write-Error "Failed to open scratch notebook."
+    exit 2
+}
+
+$exitcode = 0
+try {
+    # Some pages cannot round-trip through UpdatePageContent at all (e.g.
+    # 0x80042022 on certain table-heavy pages, even pushing their own
+    # GetPageContent output back verbatim). A failed page just keeps its
+    # original content -- OneNote's own rendering, no markers, no merge
+    # ruler (merge_onenote_pages passes ruler-less pages through) -- so
+    # warn and publish anyway. Only abort when every update failed, which
+    # indicates a systemic problem rather than a quirky page.
+    $failed = 0
+    $total = 0
+    foreach ($f in Get-ChildItem -LiteralPath $PagesDir -Filter "*_marked.xml") {
+        $total++
+        $xml = [System.IO.File]::ReadAllText($f.FullName)
+        try {
+            $on.UpdatePageContent($xml, [DateTime]::MinValue)
+            Write-Host "Updated page from $($f.Name)"
+        } catch {
+            Write-Host "WARNING: UpdatePageContent failed for $($f.Name): $($_.Exception.InnerException.Message); page keeps its original content"
+            $failed++
+        }
+    }
+    if ($failed -gt 0 -and $failed -eq $total) {
+        Write-Error "Every page update failed."
+        $exitcode = 2
+    } else {
+        try { $on.SyncHierarchy($nbID) } catch {}
+
+        # The scratch notebook contains exactly the one section we copied in
+        $xml = ""
+        $on.GetHierarchy($nbID, 1, [ref]$xml)   # hsChildren = 1
+        [xml]$h = $xml
+        $ns = New-Object Xml.XmlNamespaceManager($h.NameTable)
+        $ns.AddNamespace("one", $h.DocumentElement.NamespaceURI)
+        $sec = $h.SelectSingleNode("//one:Section", $ns)
+        if ($sec -eq $null) {
+            Write-Error "Scratch notebook has no section."
+            $exitcode = 2
+        } else {
+            if (Test-Path -LiteralPath $out) {
+                Remove-Item -LiteralPath $out -Force
+            }
+            $published = $false
+            for ($i = 1; $i -le 10; $i++) {
+                try {
+                    $on.Publish($sec.ID, $out, $pfPDF, "")
+                    $published = $true
+                    break
+                } catch {
+                    Write-Host "Publish attempt ${i} failed: $($_.Exception.InnerException.Message)"
+                    Start-Sleep -Seconds 3
+                }
+            }
+            if ($published -and (Test-Path -LiteralPath $out)) {
+                Write-Host "SUCCESS: PDF written to $out"
+            } else {
+                Write-Error "Publish failed."
+                $exitcode = 2
+            }
+        }
+    }
+} finally {
+    try { $on.CloseNotebook($nbID); Write-Host "Notebook closed" }
+    catch { Write-Host "CloseNotebook failed: $($_.Exception.InnerException.Message)" }
+}
+exit $exitcode
+"""
+
+# Best-effort close for cleanup paths where the publish phase never ran.
+PS_ONENOTE_CLOSE = r"""
+param([Parameter(Mandatory=$true)][string]$NotebookDir)
+$nbdir = [System.IO.Path]::GetFullPath($NotebookDir)
+try {
+    $on = New-Object -ComObject OneNote.Application
+    $nbID = ""
+    $on.OpenHierarchy($nbdir, "", [ref]$nbID, 1)
+    if (-not [string]::IsNullOrEmpty($nbID)) {
+        try { $on.CloseNotebook($nbID) } catch {}
+    }
+} catch {}
+exit 0
+"""
+
+# Convert metafiles (EMF/WMF) to single-image PDFs with Word COM. One Word
+# session converts every file in the list; each line of ListFile is
+# "source|destination". Word is the native renderer for Office metafiles
+# (including the EMF+ records Inkscape ignores), and its PDF export keeps
+# them vector. The page is sized to the picture's natural dimensions with
+# zero margins so the PDF page IS the image; a stray trailing-paragraph
+# overflow page is harmless because the replacement engine only reads
+# page 1.
+PS_ONENOTE_WORD_METAFILES = r"""
+param([Parameter(Mandatory=$true)][string]$ListFile)
+try {
+    $word = New-Object -ComObject Word.Application
+} catch {
+    Write-Error "Word COM automation is unavailable: $_"
+    exit 3
+}
+$word.Visible = $false
+$word.DisplayAlerts = 0   # wdAlertsNone (zero margins trigger a warning)
+$maxdim = 1584.0          # Word page-size ceiling, points (22 in)
+try {
+    foreach ($line in Get-Content -LiteralPath $ListFile) {
+        if (-not $line.Trim()) { continue }
+        $parts = $line -split '\|'
+        $src = $parts[0]; $dst = $parts[1]
+        $doc = $null
+        try {
+            $doc = $word.Documents.Add()
+            $ps = $doc.PageSetup
+            $ps.TopMargin = 0; $ps.BottomMargin = 0
+            $ps.LeftMargin = 0; $ps.RightMargin = 0
+            $rng = $doc.Range(0, 0)
+            $rng.ParagraphFormat.SpaceBefore = 0
+            $rng.ParagraphFormat.SpaceAfter = 0
+            $shape = $doc.InlineShapes.AddPicture($src, $false, $true, $rng)
+            $shape.LockAspectRatio = 0
+            $w = [double]$shape.Width; $h = [double]$shape.Height
+            if ($w -le 0 -or $h -le 0) { throw "picture has no size" }
+            $scale = [Math]::Min(1.0, [Math]::Min($maxdim / $w, $maxdim / $h))
+            $w = $w * $scale; $h = $h * $scale
+            $ps.PageWidth = $w; $ps.PageHeight = $h
+            $shape.Width = $w; $shape.Height = $h
+            if (Test-Path -LiteralPath $dst) {
+                Remove-Item -LiteralPath $dst -Force
+            }
+            $doc.ExportAsFixedFormat($dst, 17)   # wdExportFormatPDF
+            Write-Host "converted: $src"
+        } catch {
+            Write-Host "FAILED: ${src}: $($_.Exception.Message)"
+        } finally {
+            if ($doc -ne $null) { try { $doc.Close(0) } catch {} }
+        }
+    }
+} finally {
+    try { $word.Quit() } catch {}
+}
+exit 0
+"""
+
+
+# PowerShell params that name a filesystem path. The PS scripts resolve
+# these with [System.IO.Path]::GetFullPath, which anchors a relative path to
+# the PowerShell process's cwd (inherited, unset) -- not to the notebook or
+# script. Normalize to absolute here so a relative caller can never land the
+# scratch notebook / output PDF in the wrong directory (mirrors the
+# Path.resolve() guard make_pdf_office applies before its own GetFullPath).
+_ONENOTE_PATH_PARAMS = {"NotebookDir", "SectionSource", "PagesDir",
+                        "OutputPath", "ListFile"}
+
+
+def _run_onenote_powershell(script, args, timeout=1800, prints=None):
+    """Run an inline PowerShell script with named -Key Value arguments,
+    serialized through pdf.sema_office (Office COM is single-instance)."""
+    from pdf import sema_office  # lazy: office.py must not import pdf at load
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".ps1", delete=False) as f:
+        f.write(script)
+        ps1_path = f.name
+    cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+           "-File", ps1_path]
+    for key, val in args.items():
+        if key in _ONENOTE_PATH_PARAMS:
+            val = os.path.abspath(val)
+        cmd += ["-" + key, val]
+    try:
+        with sema_office:
+            result = subprocess.run(
+                cmd,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+    finally:
+        os.unlink(ps1_path)
+    if prints and result.stdout:
+        for ln in result.stdout.splitlines():
+            prints("  onenote: " + ln)
+    return result
+
+
+def dump_onenote_pages(notebook_dir, section_source, pages_dir, prints=None):
+    """Open section_source inside the scratch notebook at notebook_dir and
+    dump each page's XML into pages_dir.
+
+    Leaves the notebook open in OneNote (the publish step closes it).
+    Returns the list of page XML paths.
+    """
+    result = _run_onenote_powershell(
+        PS_ONENOTE_DUMP,
+        {"NotebookDir": notebook_dir, "SectionSource": section_source,
+         "PagesDir": pages_dir},
+        prints=prints)
+    if result.returncode != 0:
+        raise RuntimeError(
+            "OneNote page dump failed (rc={}).\nstdout:\n{}\nstderr:\n{}".format(
+                result.returncode, result.stdout, result.stderr))
+    pages = sorted(glob.glob(os.path.join(pages_dir, "page_[0-9]*.xml")))
+    if not pages:
+        raise RuntimeError("OneNote page dump produced no pages")
+    return pages
+
+
+def _pick_ruler_color(page_files):
+    """A near-white color not used anywhere in the dumped page XMLs."""
+    used = set()
+    for page_file in page_files:
+        with open(page_file, "r", encoding="utf-8", errors="replace") as fh:
+            used.update(c.lower() for c in re.findall(r"#([0-9a-fA-F]{6})", fh.read()))
+    for r in range(0xFD, 0xF0, -1):
+        for g in range(0xFE, 0xF0, -1):
+            cand = "{:02x}fe{:02x}".format(r, g)
+            if cand not in used:
+                return "#" + cand.upper()
+    return "#FDFEFC"  # unreachable in practice
+
+
+def _add_page_ruler(root, page_idx, color):
+    """Append the merge ruler to a page: an absolutely-positioned outline of
+    numbered single-line paragraphs spanning from the top of the content to
+    the bottom of the bottommost bounding box. Returns the line count."""
+    tops, bottoms = [], []
+    for child in root:
+        pos = child.find("{{{}}}Position".format(ONENOTE_NS))
+        size = child.find("{{{}}}Size".format(ONENOTE_NS))
+        if pos is None or size is None:
+            continue
+        try:
+            y = float(pos.get("y"))
+            hgt = float(size.get("height"))
+        except (TypeError, ValueError):
+            continue
+        tops.append(y)
+        bottoms.append(y + hgt)
+
+    y0 = min(tops) if tops else 36.0
+    ybot = max(bottoms) if bottoms else y0
+    nlines = max(3, min(9999, int((ybot - y0) / RULER_NLINES_PITCH) + 3))
+
+    outline = ET.SubElement(root, "{{{}}}Outline".format(ONENOTE_NS))
+    pos = ET.SubElement(outline, "{{{}}}Position".format(ONENOTE_NS))
+    pos.set("x", "36.0")
+    pos.set("y", "{:.2f}".format(y0))
+    size = ET.SubElement(outline, "{{{}}}Size".format(ONENOTE_NS))
+    size.set("width", "60.0")
+    size.set("height", "{:.2f}".format(max(ybot - y0, RULER_NLINES_PITCH)))
+    children = ET.SubElement(outline, "{{{}}}OEChildren".format(ONENOTE_NS))
+    style = "font-family:{};font-size:{:.1f}pt;color:{}".format(
+        RULER_FONT, RULER_FONT_PT, color)
+    for i in range(1, nlines + 1):
+        oe = ET.SubElement(children, "{{{}}}OE".format(ONENOTE_NS))
+        oe.set("style", style)
+        oe.set("spaceBefore", "0")
+        oe.set("spaceAfter", "0")
+        t = ET.SubElement(oe, "{{{}}}T".format(ONENOTE_NS))
+        t.text = ET.CDATA(RULER_TEXT_FMT.format(page_idx, i))
+    return nlines
+
+
+def _default_printable_width(prints=None):
+    """Printable width in points of the default printer's paper (width minus
+    OneNote's 72pt of combined margins), or ONENOTE_PRINTABLE_WIDTH when
+    there is no default printer or the query fails. OneNote publishes
+    <one:PageSize><one:Automatic/> pages onto this paper, so it is the width
+    its print engine re-wraps auto-width outlines to."""
+    from pdf import sema_office  # lazy: office.py must not import pdf at load
+
+    try:
+        with sema_office:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "Add-Type -AssemblyName System.Drawing; "
+                 "(New-Object System.Drawing.Printing.PrintDocument)"
+                 ".DefaultPageSettings.PaperSize.Width"],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                capture_output=True, text=True, timeout=60)
+        # PaperSize.Width is in hundredths of an inch
+        printable = float(result.stdout.strip()) * 72.0 / 100.0 - 72.0
+        if not 200.0 <= printable <= 2000.0:
+            raise ValueError(printable)
+    except (ValueError, OSError, subprocess.SubprocessError):
+        return ONENOTE_PRINTABLE_WIDTH
+    if prints and abs(printable - ONENOTE_PRINTABLE_WIDTH) > 1.0:
+        prints("  printable width from default printer: {:.1f}pt".format(
+            printable))
+    return printable
+
+
+def _pin_outline_widths(root, printable):
+    """Stamp isSetByUser="true" on every outline's Size, widening auto-width
+    outlines to the printable width first.
+
+    Publish-time workaround: when a page holds an image and any outline is
+    added to it (the merge ruler), OneNote's print engine re-wraps every
+    auto-width outline into a pathologically narrow column. User-set widths
+    are honored, so pin them all; widening auto outlines to the printable
+    width first reproduces what OneNote's own print does to them anyway
+    (their stored widths can be stale canvas artifacts far narrower than
+    any print would use)."""
+    for outline in root.iter("{{{}}}Outline".format(ONENOTE_NS)):
+        size = outline.find("{{{}}}Size".format(ONENOTE_NS))
+        if size is None:
+            continue
+        if size.get("isSetByUser") != "true":
+            try:
+                width = float(size.get("width"))
+            except (TypeError, ValueError):
+                width = printable
+            if width < printable:
+                size.set("width", "{:g}".format(printable))
+            size.set("isSetByUser", "true")
+
+
+def mark_onenote_images(page_files, media_dir, add_rulers=False, prints=None):
+    """Replace every raster/metafile image in the dumped page XMLs with a
+    9x9 solid-color marker PNG.
+
+    Original image bytes are written to media_dir; duplicate images (same
+    bytes) share one marker color. Pages containing at least one replacement
+    are written next to the originals as *_marked.xml (the publish phase
+    only pushes those). With add_rulers, every page also gets the page-merge
+    ruler injected and is always written out as *_marked.xml.
+
+    Returns:
+        image_color_map : 'rrggbb' -> path of the saved original image
+        color_locations : 'rrggbb' -> list of (marked_xml_path, objectID),
+                          used to revert markers whose replacement content
+                          cannot be produced (e.g. a metafile Word fails on)
+        ruler_color     : the '#RRGGBB' used for the merge ruler (None when
+                          add_rulers is off); pdf.merge_onenote_pages strips
+                          text of this color from the published PDF
+    """
+    os.makedirs(media_dir, exist_ok=True)
+    image_color_map = {}
+    color_locations = {}
+    hash_to_color = {}
+    next_color = 1
+    ruler_color = _pick_ruler_color(page_files) if add_rulers else None
+    printable = _default_printable_width(prints) if add_rulers else None
+    if add_rulers and prints:
+        prints("  merge-ruler color: {}".format(ruler_color))
+
+    for page_idx, page_file in enumerate(page_files):
+        tree = ET.parse(page_file, ET.XMLParser(huge_tree=True))
+        root = tree.getroot()
+        marked = os.path.splitext(page_file)[0] + "_marked.xml"
+        n_replaced = 0
+
+        for img in root.iter("{{{}}}Image".format(ONENOTE_NS)):
+            data_el = img.find("{{{}}}Data".format(ONENOTE_NS))
+            if data_el is None or not data_el.text:
+                cb = img.find("{{{}}}CallbackID".format(ONENOTE_NS))
+                if cb is not None and prints:
+                    prints("  {}: image with CallbackID and no inline data; "
+                           "leaving as-is".format(os.path.basename(page_file)))
+                continue
+            try:
+                blob = base64.b64decode(data_el.text)
+            except (ValueError, binascii.Error):
+                continue
+            ext = _detect_media_extension(blob)
+            if ext not in ONENOTE_REPLACEABLE_EXTS:
+                continue
+
+            digest = hashlib.md5(blob).hexdigest()
+            if digest in hash_to_color:
+                color_hex = hash_to_color[digest]
+            else:
+                color_hex, _rgb = _alloc_marker_color(next_color)
+                next_color += 1
+                hash_to_color[digest] = color_hex
+                orig_path = os.path.join(
+                    media_dir, "img_{}{}".format(color_hex, ext))
+                with open(orig_path, "wb") as fh:
+                    fh.write(blob)
+                image_color_map[color_hex] = orig_path
+            n = int(color_hex, 16)
+            rgb = ((n >> 16) & 0xFF, (n >> 8) & 0xFF, n & 0xFF)
+            data_el.text = base64.b64encode(
+                _onenote_marker_png(rgb)).decode("ascii")
+            color_locations.setdefault(color_hex, []).append(
+                (marked, img.get("objectID")))
+            n_replaced += 1
+            if prints:
+                prints("  {}: {} ({}B) -> marker #{}".format(
+                    os.path.basename(page_file), ext, len(blob), color_hex))
+
+        if add_rulers:
+            _add_page_ruler(root, page_idx, ruler_color)
+            _pin_outline_widths(root, printable)
+        if n_replaced or add_rulers:
+            tree.write(marked, xml_declaration=True, encoding="utf-8")
+
+    return image_color_map, color_locations, ruler_color
+
+
+def _revert_onenote_marker(color_hex, orig_path, locations):
+    """Restore the original image data for one marker color in the marked
+    page XMLs (used when a metafile's PDF conversion fails, so the page
+    falls back to OneNote's own rendering instead of a colored square)."""
+    with open(orig_path, "rb") as fh:
+        orig_b64 = base64.b64encode(fh.read()).decode("ascii")
+    for marked_xml, object_id in locations:
+        if not os.path.exists(marked_xml):
+            continue
+        tree = ET.parse(marked_xml, ET.XMLParser(huge_tree=True))
+        for img in tree.getroot().iter("{{{}}}Image".format(ONENOTE_NS)):
+            if object_id is not None and img.get("objectID") != object_id:
+                continue
+            data_el = img.find("{{{}}}Data".format(ONENOTE_NS))
+            if data_el is not None:
+                data_el.text = orig_b64
+        tree.write(marked_xml, xml_declaration=True, encoding="utf-8")
+
+
+def convert_onenote_metafiles(image_color_map, color_locations,
+                              timeout=1800, prints=None):
+    """Convert every EMF/WMF in image_color_map to a sibling .pdf via Word.
+
+    pdf.replace_color_markers_with_svgs picks up a sibling PDF that is
+    newer than its source automatically (its per-source cache), so nothing
+    else needs to know about the conversion. Colors whose conversion fails
+    are reverted in the marked page XMLs and dropped from the map.
+    """
+    metafiles = {hexcolor: path for hexcolor, path in image_color_map.items()
+                 if os.path.splitext(path)[1].lower() in ONENOTE_METAFILE_EXTS}
+    if not metafiles:
+        return
+
+    if prints:
+        prints("  converting {} metafile(s) to PDF with Word".format(
+            len(metafiles)))
+    listfile = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False)
+    with listfile as f:
+        for path in metafiles.values():
+            # Absolute src|dst so Word's AddPicture / ExportAsFixedFormat
+            # (whose cwd is unset) resolve them correctly.
+            src = os.path.abspath(path)
+            f.write("{}|{}.pdf\n".format(src, os.path.splitext(src)[0]))
+    try:
+        _run_onenote_powershell(PS_ONENOTE_WORD_METAFILES,
+                                {"ListFile": listfile.name},
+                                timeout=timeout, prints=prints)
+    finally:
+        os.unlink(listfile.name)
+
+    for hexcolor, path in metafiles.items():
+        pdf_path = os.path.splitext(path)[0] + ".pdf"
+        if os.path.isfile(pdf_path):
+            continue
+        if prints:
+            prints("  Word could not convert {}; reverting marker #{}".format(
+                os.path.basename(path), hexcolor))
+        _revert_onenote_marker(hexcolor, path, color_locations.get(hexcolor, []))
+        del image_color_map[hexcolor]
+
+
+def publish_onenote_pdf(notebook_dir, pages_dir, output_pdf,
+                        timeout=1800, prints=None):
+    """Push the *_marked.xml pages back into the section, publish the
+    section to PDF, and close the scratch notebook."""
+    result = _run_onenote_powershell(
+        PS_ONENOTE_PUBLISH,
+        {"NotebookDir": notebook_dir, "PagesDir": pages_dir,
+         "OutputPath": output_pdf},
+        timeout=timeout, prints=prints)
+    if result.returncode != 0 or not os.path.isfile(output_pdf):
+        raise RuntimeError(
+            "OneNote update/publish failed (rc={}).\nstdout:\n{}\nstderr:\n{}".format(
+                result.returncode, result.stdout, result.stderr))
+    return output_pdf
+
+
+def close_onenote_notebook(notebook_dir):
+    """Best-effort close of the scratch notebook (cleanup after failures)."""
+    try:
+        _run_onenote_powershell(PS_ONENOTE_CLOSE,
+                                {"NotebookDir": notebook_dir}, timeout=120)
+    except Exception:
+        pass

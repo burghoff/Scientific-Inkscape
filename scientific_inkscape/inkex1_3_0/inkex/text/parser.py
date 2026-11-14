@@ -82,6 +82,7 @@ from inkex.utils import debug
 
 DIFF_ADVANCES = True  # generate a differential advances table for each font?
 TEXTSIZE = 100  # size of rendered text
+AVG_SAMPLE = "The quick brown fox jumps over the lazy dog."  # for avg char width (tab fallback)
 DEPATHOLOGIZE = True  # clean up pathological atts not normally made by Inkscape
 XY_TOL = 1e-6
 
@@ -1812,6 +1813,14 @@ class ParsedText:
         lines are drawn (this is imported conditionally).
         """
         self.lns = []
+
+        # Empty (non-displayed) flows have no characters to lay out. Bail out
+        # before trying to locate a flow region or line source, both of which
+        # assume there is text present (e.g. parse_lines(srcsonly=True) returns
+        # None for an empty element, which would otherwise raise downstream).
+        if not any(txt for _, _, _, _, txt in self.tree.dgenerator()):
+            return
+
         sty = self.textel.cspecified_style
         isflowroot = self.textel.tag == FRtag
         isshapeins = (
@@ -1821,6 +1830,10 @@ class ParsedText:
         isz = ipx(sty.get("inline-size"))
         isinlinesz = self.textel.tag == TEtag and isz
         # Inkscape ignores 0 and invalid inline-size
+        isjust = sty.get("text-align") == "justify"
+        # Justified text has per-character dx values that spread each line out
+        # to fill its width. Inkscape decides line breaks using the natural
+        # (un-spread) text width, so the dx must be excluded when wrapping.
 
         # Determine the flow region
         otp_support = self.textel.otp_support_prop
@@ -1966,9 +1979,15 @@ class ParsedText:
                     algn = sty.get("text-align", "start")
                     anch = sty.get("text-anchor", "start")
                     if not algn == "start" and anch == "start":
-                        anch = {"start": "start", "center": "middle", "end": "end"}[
-                            algn
-                        ]
+                        # Justified text is left-anchored; the per-character
+                        # justification spacing is already encoded as dx values,
+                        # which fill out each line.
+                        anch = {
+                            "start": "start",
+                            "center": "middle",
+                            "end": "end",
+                            "justify": "start",
+                        }[algn]
                     cln = TLine(
                         self,
                         [0],
@@ -2232,14 +2251,20 @@ class ParsedText:
                         hardbreak = False
                         strt = 0 if len(breaks) == 0 else breaks[-1] + 1
                         csleft = lncs[i][strt:]
+                        cumdx = 0.0  # justify dx accumulated since fcrun
                         for j, c in enumerate(csleft):
                             if j == 0:
                                 fcrun = c
+                            elif isjust:
+                                cumdx += c.dx
                             if not isflowroot and c.c == "\n":
                                 breakaft = j
                                 hardbreak = True
                                 break
-                            if c.pts_ut[3][0] - fcrun.pts_ut[0][0] > xlim[1]:
+                            if (
+                                c.pts_ut[3][0] - fcrun.pts_ut[0][0] - cumdx
+                                > xlim[1]
+                            ):
                                 spcs = [cv for cv in csleft[:j] if cv.c in breakcs]
                                 # inkex.utils.debug('Break on '+str((c.c,j)))
                                 if c.c == " ":
@@ -2343,6 +2368,32 @@ class ParsedText:
                             c.loc,
                             cln, c._dx, c._dy
                         )
+
+                    if isjust:
+                        # The justification spacing (dx) cached in the file can be
+                        # stale relative to the current layout. Redistribute the
+                        # remaining space so the line fills the flow region, the
+                        # way Inkscape re-justifies on load. Only lines that
+                        # already carry justification dx (filled, non-last lines)
+                        # are touched; lines that already fill exactly are left
+                        # unchanged.
+                        jc = cln.chrs
+                        gaps = [k for k in range(len(jc)) if jc[k].dx > 0.001]
+                        if gaps:
+                            wsum = 0.0
+                            for k, ch in enumerate(jc):
+                                wsum += ch.cwd + ch.dx
+                                if k > 0:
+                                    wsum += ch.lsp
+                                    if ch.dx == 0:
+                                        wsum += ch.dadvs(jc[k - 1], ch)
+                            if len(jc) > 1 and jc[-1].c in (" ", " "):
+                                wsum -= jc[-1].cwd  # trailing space is not rendered
+                            deficit = xlims[j][1] - wsum
+                            if abs(deficit) > 0.01:
+                                add = deficit / len(gaps)
+                                for k in gaps:
+                                    jc[k]._dx += add
 
                     if len(chrs) > 0:
                         anfr = cln.anchfrac
@@ -4169,6 +4220,7 @@ class TChar:
             self.tfs = tfsz
             self.cwd = self.prop.charw * self.utfs
             self.chk.cwd[self.windex] = self.cwd
+            self.spw = self.prop.spacew * self.utfs
             self.caph = self.prop.caph * self.utfs
             self.chk.caph[self.windex] = self.caph
             self.chk.charpos = None
@@ -4346,8 +4398,25 @@ class CharacterTable:
             # the characters 'b' and 'y' in the Noto Sans font
             self.ctable = self.extract_characters()
 
+        self.fix_tab_widths()
         self.mults = dict()
         self._ftable = None
+
+    def fix_tab_widths(self):
+        """
+        Set the tab width to the font's average char width (mean advance over the
+        measured AVG_SAMPLE), matching how PangoFT2/Inkscape render a glyphless tab.
+        Backend-independent: runs after either measurement path.
+        """
+        for cps in self.ctable.values():
+            if "\t" not in cps:
+                continue
+            ws = [cps[c].charw for c in AVG_SAMPLE if c in cps and cps[c].charw is not None]
+            if ws:
+                tab = cps["\t"]
+                cps["\t"] = CProp(
+                    "\t", sum(ws) / len(ws), tab.spacew, tab.caph, tab.dadvs, tab.inkbb
+                )
 
     def collect_characters(self):
         """Finds all the characters in a list of elements."""
@@ -4361,6 +4430,12 @@ class CharacterTable:
                     fsty = font_style(sty)
                     fstyset.setdefault(fsty, set()).update(txt + " ")
                     txtfsty.append((txt, fsty))
+
+        # A glyphless tab renders at the font's average char width; where a tab
+        # occurs, measure a representative sample so fix_tab_widths can use it.
+        for chrs in fstyset.values():
+            if "\t" in chrs:
+                chrs.update(AVG_SAMPLE)
 
         cstys = dict()  # cstys[fsty][c] looks up a character's true style
         tstyset = dict()  # set of characters in a given true style
@@ -4402,7 +4477,7 @@ class CharacterTable:
         Direct extraction of character metrics from the font file using fonttools
         fonttools is pure Python, so this usually works
         """
-        badchars = {"\n", "\r"}
+        badchars = {"\n", "\r", "\t"}  # tab is set by fix_tab_widths; rest stay zero-width
         ret = dict()
         for sty, chrs in self.tstyset.items():
             if sty is not None:
@@ -4512,18 +4587,18 @@ class CharacterTable:
         for sty, chrs in validtstyset.items():
             prefix, suffix, empty, pistr = ixes[sty]
             ctbl[sty] = dict()
+            # Characters that precede each character in this style, looked up
+            # once per style (hashing a style walks its items)
+            stypchrs = self.pchrset.get(sty, dict()) if DIFF_ADVANCES else dict()
             for myc in chrs:
                 t = make_string(prefix + effc(myc) + suffix, sty)
                 tbare = make_string(effc(myc), sty)
                 bareids.append(tbare)
                 dadv = dict()
-                if DIFF_ADVANCES:
+                mypchrs = stypchrs.get(myc)
+                if mypchrs:
                     for pchr in chrs:
-                        if (
-                            sty in self.pchrset
-                            and myc in self.pchrset[sty]
-                            and pchr in self.pchrset[sty][myc]
-                        ):
+                        if pchr in mypchrs:
                             tpc = make_string(
                                 prefix + effc(pchr) + effc(myc) + suffix, sty
                             )

@@ -24,6 +24,7 @@
                        <option value="7">Min selected</option>
                        <option value="8">Max selected</option>
                        <option value="4">Scale max to (pt)</option>
+                       <option value="9">Floor (pt)</option>
             </param>            
             <param name="fontsize" type="float" precision="1" min="0" max="10000"
                     gui-text="Font size value (if applicable)">8</param>
@@ -51,7 +52,7 @@
              
              
             <spacer/>
-            <label>Scientific Inkscape v1.4.25</label>
+            <label>Scientific Inkscape v1.4.26</label>
             <label appearance="url">https://github.com/burghoff/Scientific-Inkscape</label>
             <label>David Burghoff, University of Texas at Austin</label>
         </page>

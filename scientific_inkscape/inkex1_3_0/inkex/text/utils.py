@@ -253,7 +253,6 @@ class InkscapeSystemInfo:
         self._language = self._UNSET
         self._preferences = self._UNSET
         self._binary_location = self._UNSET
-        self._binary_version = self._UNSET
         self._gtk_version = self._UNSET
 
     @property
@@ -277,20 +276,6 @@ class InkscapeSystemInfo:
             self._binary_location = self.get_binary_location()
         return self._binary_location
 
-    @property
-    def binary_version(self):
-        """Get the Inkscape binary version."""
-        if self._binary_version is self._UNSET:
-            self._binary_version = self.get_binary_version()
-        return self._binary_version
-
-    def get_binary_version(self):
-        """Gets the binary location by calling with --version (slow)"""
-        proc = subprocess_repeat([self.binary_location, "--version"])
-
-        match = re.search(r"Inkscape\s+(\S+)\s+\(", str(proc.stdout))
-        return match.group(1) if match else None
-
     @staticmethod
     def get_binary_location():
         """
@@ -299,6 +284,11 @@ class InkscapeSystemInfo:
         """
 
         program = inkex.command.INKSCAPE_EXECUTABLE_NAME
+        # Inkscape's bundled Python lives next to the binary, so check there
+        # before paying for a PATH search
+        sibling = os.path.join(os.path.dirname(sys.executable), program)
+        if not os.path.isabs(program) and os.path.isfile(sibling):
+            return sibling
         try:
             return inkex.command.which(program)
         except inkex.command.CommandNotFound as excp:
@@ -491,51 +481,6 @@ class InkscapeSystemInfo:
         
 
 inkex.inkscape_system_info = InkscapeSystemInfo()  # type: ignore
-
-
-def subprocess_repeat(argin,cwd=None):
-    """
-    In the event of a timeout, repeats a subprocess call several times.
-
-    Parameters:
-        argin (list): The command and arguments to run in the subprocess.
-
-    Returns:
-        CompletedProcess: The result from the subprocess call.
-    """
-    base_timeout = 60
-    nattempts = 6
-    import subprocess
-
-    nfails = 0
-    ntime = 0
-    for i in range(nattempts):
-        timeout = base_timeout * 2**i
-        try:
-            os.environ["SELF_CALL"] = "true"  # seems to be needed for 1.3
-            proc = subprocess.run(
-                argin,
-                shell=False,
-                timeout=timeout,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                check=True, cwd=cwd
-            )
-            break
-        except subprocess.TimeoutExpired:
-            nfails += 1
-            ntime += timeout
-    if nfails == nattempts:
-        raise TimeoutError(
-            "\nThe call to the Inkscape binary timed out "
-            + str(nattempts)
-            + " times in "
-            + str(ntime)
-            + " seconds.\n\n"
-            + "This may be a temporary issue; try running the extension again."
-        )
-    else:
-        return proc
 
 
 # Get default style attributes

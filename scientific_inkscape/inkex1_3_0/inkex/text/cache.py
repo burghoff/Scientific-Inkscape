@@ -43,7 +43,7 @@ from typing import Optional, List
 import inkex
 from inkex import Style
 from inkex import BaseElement, SvgDocumentElement
-from text.utils import shapetags, tags, ipx, list2, default_style_atts  # pylint: disable=import-error
+from inkex.text.utils import shapetags, tags, ipx, list2, default_style_atts  # pylint: disable=import-error
 import lxml
 
 EBget = lxml.etree.ElementBase.get
@@ -92,6 +92,10 @@ class BaseElementCache(BaseElement):
             # fine for 'clip-path' & 'mask'
         else:
             urlv = self.get(typestr)
+            if urlv is None and typestr in hrefs:
+                # SVG2 allows plain 'href' in place of 'xlink:href'
+                for alt in hrefs - {typestr}:
+                    urlv = self.get(alt)
         if urlv is not None:
             if svg is None:
                 svg = self.croot  # need to specify svg for Styles but not BaseElements
@@ -425,6 +429,8 @@ class BaseElementCache(BaseElement):
                 ret = inkex.Path(self.get("d"))
             elif self.tag == BaseElementCache.rect_tag:
                 left, top, width, height = self.xywh()
+                if not (width > 0 and height > 0):
+                    return inkex.Path()   # Inkscape doesn't render zero-dim
                 rx = ipx(self.get("rx", self.get("ry", "0")))
                 ry = ipx(self.get("ry", self.get("rx", "0")))
                 right = left + width
@@ -531,7 +537,7 @@ class BaseElementCache(BaseElement):
             )
         val = self.get(att, "0")
         try:
-            return ipx(val)
+            return ipx(val) or 0
         except KeyError:
             if "%" in val and att in ["x", "width"]:
                 return self.croot.cdocsize.rawvb[2] * float(val.strip("%")) / 100
@@ -695,13 +701,13 @@ class BaseElementCache(BaseElement):
                 svg.iddict.remove(ddv)
 
                 # Remove any clips/masks that refer to this element so as not
-                # to leave behind orphan references
-                if did in svg.iddict.clips:
-                    for el in svg.iddict.clips[did]:
-                        el.set_link("clip-path", None)
-                if did in svg.iddict.masks:
-                    for el in svg.iddict.masks[did]:
-                        el.set_link("mask", None)
+                # to leave behind orphan references. set_link() mutates the
+                # linkdict sets (and deletes the key when emptied), so iterate
+                # over a snapshot rather than the live set.
+                for el in list(svg.iddict.clips.get(did, ())):
+                    el.set_link("clip-path", None)
+                for el in list(svg.iddict.masks.get(did, ())):
+                    el.set_link("mask", None)
 
             ddv.croot = None
         if hasattr(svg, "_cd2"):
@@ -711,7 +717,7 @@ class BaseElementCache(BaseElement):
             # If set, remove empty ancestor groups
             myp = self.getparent()
             BaseElementCache.BE_delete(self)
-            if myp is not None and len(myp) == 0:
+            if myp is not None and next(iter(myp), None) is None:  # len() walks every child
                 BaseElementCache.delete(myp, True)
         else:
             BaseElementCache.BE_delete(self)
@@ -984,7 +990,12 @@ class SvgDocumentElementCache(SvgDocumentElement):
                 elem.croot = svg  # do now to speed up later
                 if '{' not in elem.tag:
                     # Make sure tags have a namespace
-                    elem.tag = elem.ctag
+                    # (default-classed elements, e.g. undeclared-prefix tags from
+                    #  recover-mode parses, have no ctag and lxml rejects
+                    #  assignment of prefixed tag strings; leave them as-is)
+                    ctag = getattr(elem, 'ctag', None)
+                    if ctag is not None:
+                        elem.tag = ctag
 
                 # While we're iterating, we gather clips/masks/links
                 self.add_to_linkdict(elem, "clip-path")
@@ -1201,6 +1212,13 @@ class SvgDocumentElementCache(SvgDocumentElement):
             hvl, hun = (
                 inkex.units.parse_unit(hstr) if hstr is not None else (vbx[3], "px")
             )
+            # A zero width/height would make the uu<->px scale (uuw/uuh) zero and
+            # break pxtouu/uutopx (ZeroDivisionError). Treat it like an unset
+            # dimension and fall back to the viewBox size.
+            if not wvl and vbx[2]:
+                wvl, wun = vbx[2], "px"
+            if not hvl and vbx[3]:
+                hvl, hun = vbx[3], "px"
 
             def parse_preserve_aspect_ratio(par_str):
                 align, meet_or_slice = "xMidYMid", "meet"  # defaults
@@ -1279,19 +1297,23 @@ class SvgDocumentElementCache(SvgDocumentElement):
 
             # Get Pages
             nvs = [elem for elem in list(self) if isinstance(elem, inkex.NamedView)]
-            pgs = [
+            vtag = inkex.addNS("view", "svg")
+            pgs = [elem for elem in self.iter(vtag) if elem.get("viewBox")] + [
                 elem
                 for nv in nvs
                 for elem in list(nv)
                 if elem.tag == inkex.addNS("page", "inkscape")
             ]
             for pgv in pgs:
-                pgv.bbuu = [
-                    ipx(pgv.get("x")),
-                    ipx(pgv.get("y")),
-                    ipx(pgv.get("width")),
-                    ipx(pgv.get("height")),
-                ]
+                if pgv.tag == vtag:
+                    pgv.bbuu = [float(v) for v in pgv.get("viewBox").replace(",", " ").split()]
+                else:
+                    pgv.bbuu = [
+                        ipx(pgv.get("x")),
+                        ipx(pgv.get("y")),
+                        ipx(pgv.get("width")),
+                        ipx(pgv.get("height")),
+                    ]
                 pgv.bbpx = [
                     pgv.bbuu[0] * xfr,
                     pgv.bbuu[1] * yfr,
@@ -1367,14 +1389,21 @@ class SvgDocumentElementCache(SvgDocumentElement):
                         x[3] * self.rawyf,
                     ]
 
-                def pxtouupgs(self, x):
-                    """Version that applies to Pages"""
-                    return [
+                def pxtouupgs(self, x, page=None):
+                    """Version that applies to Pages. Given a page, also makes
+                    the result that page's box, in the form the page keeps it"""
+                    ret = [
                         x[0] / self.rawxf,
                         x[1] / self.rawyf,
                         x[2] / self.rawxf,
                         x[3] / self.rawyf,
                     ]
+                    if page is not None and page.get("viewBox") is not None:
+                        page.set("viewBox", " ".join(str(v) for v in ret))
+                    elif page is not None:
+                        for k, v in zip(["x", "y", "width", "height"], ret):
+                            page.set(k, str(v))
+                    return ret
 
                 def __repr__(self):
                     return (
@@ -1425,11 +1454,7 @@ class SvgDocumentElementCache(SvgDocumentElement):
         # Update Pages appropriately
         self.cdocsize = None
         for i, pgv in enumerate(self.cdocsize.pgs):
-            newbbuu = self.cdocsize.pxtouupgs(pgbbs[i])
-            pgv.set("x", str(newbbuu[0]))
-            pgv.set("y", str(newbbuu[1]))
-            pgv.set("width", str(newbbuu[2]))
-            pgv.set("height", str(newbbuu[3]))
+            self.cdocsize.pxtouupgs(pgbbs[i], pgv)
 
     # Add char_table property to SVGs, which are used to collect all of the
     # properties of fonts in the document. Alternatively, calling make_char_table

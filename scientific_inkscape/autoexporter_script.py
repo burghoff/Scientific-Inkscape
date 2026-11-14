@@ -8,15 +8,46 @@ WINDOW_WIDTH = 450
 MARGIN = 10
 LABEL_WIDTH = 16
 
-import sys, platform, os, threading, copy, pickle, re, tempfile
+import sys, platform, os, threading, copy, pickle, re, tempfile, time
+import base64
 
-systmpdir = os.path.abspath(tempfile.gettempdir())
-aes = os.path.join(systmpdir, "si_ae_settings.p")
+# numpy's C-extension links mingw runtime DLLs that ship in Inkscape's bin. When
+# this script is launched from a shell whose PATH has a conflicting copy (conda,
+# MSYS2, Strawberry Perl, ...), Windows can load the wrong one and numpy import
+# dies with a fatal error 0xc0000139. Force Inkscape's own copies to load first.
+if sys.platform == "win32":
+    import ctypes
+    _bindir = os.path.dirname(sys.executable)
+    if os.path.isdir(_bindir):
+        try:
+            os.add_dll_directory(_bindir)
+        except (OSError, AttributeError):
+            pass
+        for _dll in ("libwinpthread-1.dll", "libgcc_s_seh-1.dll",
+                     "libquadmath-0.dll", "libgfortran-5.dll", "libopenblas.dll"):
+            try:
+                ctypes.WinDLL(os.path.join(_bindir, _dll))
+            except OSError:
+                pass
+
 SI_AE_BATCH = os.environ.get("SI_AE_BATCH")
+SI_AE_READY = os.environ.get("SI_AE_READY")
 
-with open(aes, "rb") as f:
-    input_options = pickle.load(f)
-os.remove(aes)
+def signal_gui_ready():
+    """Touch the ready-flag file so the launcher bat can close its loading window
+    once the GUI is visible. Returns False so GLib.idle_add fires it only once."""
+    if SI_AE_READY:
+        try:
+            open(SI_AE_READY, "w").close()
+        except OSError:
+            pass
+    return False
+
+# Settings are passed as a urlsafe-base64 pickle in argv[1]
+if len(sys.argv) < 2:
+    sys.exit("This Autoexporter launcher is out of date. Re-run the Autoexporter "
+             "from Inkscape (Extensions > Scientific) to regenerate the .bat file.")
+input_options = pickle.loads(base64.urlsafe_b64decode(sys.argv[1]))
 bfn = input_options.inkscape_bfn
 sys.path.extend([p for p in input_options.syspath if p not in sys.path])
 bfn_dir = os.path.dirname(bfn)
@@ -24,7 +55,11 @@ if bfn_dir not in sys.path:
     sys.path.append(bfn_dir)
 guitype = input_options.guitype
 if sys.stderr is None:
-    sys.stdout = open(input_options.logfile, "w", encoding="utf-8", buffering=1)
+    # si_tmp is dependency-free and importable before the heavy dhelpers/inkex imports.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import si_tmp
+    sys.stdout = open(si_tmp.path("si_ae_output.txt"), "w",
+                      encoding="utf-8", buffering=1)
     sys.stderr = sys.stdout
 
 import dhelpers as dh  # noqa
@@ -53,26 +88,101 @@ def get_files(dirin):
             for name in files:
                 if is_target_file(name):
                     result.append(os.path.join(os.path.abspath(root), name))
+            if not watch_subdirs():
+                break  # top level only
         return result
     except: # (FileNotFoundError, OSError):
         return None
 
 
+LINK_ICON_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}"'
+    ' viewBox="0 0 12 28"><g fill="none" stroke="{color}" stroke-width="2.4"'
+    ' stroke-linecap="round" stroke-linejoin="round">'
+    '<rect x="3.05" y="1.2" width="5.9" height="10.8" rx="2.95"/>'
+    '<rect x="3.05" y="16" width="5.9" height="10.8" rx="2.95"/>'
+    '</g></svg>'
+)
+
+
+def link_icon_pixbuf(height=28, color='#000000'):
+    """
+    Render the vertical chain-link icon (two stacked links) `height` px tall.
+    Built in memory so no icon file has to ship with the extension; returns
+    None if the SVG pixbuf loader is unavailable, so callers can fall back.
+    """
+    try:
+        from gi.repository import GdkPixbuf
+        svg = LINK_ICON_SVG.format(w=int(round(height * 3 / 7.0)), h=height,
+                                   color=color)
+        loader = GdkPixbuf.PixbufLoader.new_with_type('svg')
+        loader.write(svg.encode('utf-8'))
+        loader.close()
+        return loader.get_pixbuf()
+    except Exception:
+        return None
+
+
+def watch_subdirs():
+    """Whether the watch directory's subfolders are watched too; blobs
+    written before this option existed default to the old behavior"""
+    return getattr(input_options, "watchsubdirs", True)
+
+
+def subdirs_icon_pixbuf(base, stacked):
+    """Glyph for the subfolder toggle from the theme's 16 px folder icon:
+    stacked when on, single and dimmed when off, on a 20 px square so the
+    two states share a center"""
+    from gi.repository import GdkPixbuf
+
+    out = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 20, 20)
+    out.fill(0)
+    interp = GdkPixbuf.InterpType.NEAREST
+    if stacked:
+        base.composite(out, 4, 0, 16, 16, 4, 0, 1, 1, interp, 165)
+        base.composite(out, 0, 4, 16, 16, 0, 4, 1, 1, interp, 255)
+    else:
+        base.composite(out, 2, 2, 16, 16, 2, 2, 1, 1, interp, 110)
+    return out
+
+
+def dir_display_name(folder):
+    """
+    The folder's own name, which is all the buttons show; the full path goes
+    in their tooltip. Drive roots have no basename, so they show as-is.
+    """
+    if not folder:
+        return ""
+    return os.path.basename(os.path.normpath(folder)) or folder
+
+
+def dirs_initially_linked():
+    """
+    The watch/write chain link starts on when the two directories agree,
+    or when the blob does not specify them, and off when they differ.
+    """
+    watchdir = getattr(input_options, "watchdir", None)
+    writedir = getattr(input_options, "writedir", None)
+    if not watchdir or not writedir:
+        return True
+    try:
+        return (os.path.normcase(os.path.abspath(watchdir))
+                == os.path.normcase(os.path.abspath(writedir)))
+    except (TypeError, ValueError):
+        return True
+
+
 def update_batch_from_options():
     """
-    Recreate the settings pickle from current input_options and
-    regenerate Autoexporter.bat (Windows only).
+    Re-encode the current input_options and regenerate Autoexporter.bat so a later
+    double-click relaunches with the updated settings (Windows only).
     """
     if not sys.platform.startswith("win"):
         return
-
-    # Write current options back to the temporary settings file
-    with open(aes, "wb") as f:
-        pickle.dump(input_options, f)
-
+    opts_blob = base64.urlsafe_b64encode(pickle.dumps(input_options)).decode()
     aepy = os.path.abspath(__file__)
     guitype_local = getattr(input_options, "guitype", "terminal")
-    write_autoexporter_bat(aes, aepy, guitype_local, batch_path=SI_AE_BATCH)    
+    write_autoexporter_bat(opts_blob, aepy, guitype_local, batch_path=SI_AE_BATCH)
 
 def is_target_file(file_name):
     flower = os.path.split(file_name)[1].lower()
@@ -89,7 +199,13 @@ def is_target_file(file_name):
         or flower.startswith('~$')
     ):
         return False
-    if input_options.finalizermode>1 and  (flower.endswith(".pptx") or flower.endswith(".docx")):
+    if input_options.finalizermode>1 and (flower.endswith(".pptx")
+            or flower.endswith(".docx")):
+        return True
+    # .one can only become a PDF (via OneNote+Word), so it is a target only
+    # for the Microsoft Office PDF mode -- not the embed-only modes (2-4) or
+    # LibreOffice (6, which cannot open .one).
+    if input_options.finalizermode==5 and flower.endswith(".one"):
         return True
     pattern = r"\.(\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.\d{1,6})\.svg$"
     if re.search(pattern, file_name):
@@ -160,6 +276,11 @@ def get_expected_exports(src_path, watchdir, writedir):
             # Finalized Office doc: "base finalized.ext"
             outputs.add(f"{base} finalized{ext}")
 
+    # OneNote sections: mirror Exporter.finalize_onenote (PDF, mode 5 only)
+    elif lower_ext == ".one":
+        if getattr(input_options, "finalizermode", 1) == 5:
+            outputs.add(base + ".pdf")
+
     return outputs
 
 import warnings
@@ -178,13 +299,16 @@ from watchdog.events import FileSystemEventHandler
 class Watcher(FileSystemEventHandler):
     """Class that watches a folder for changes to SVGs"""
 
-    def __init__(self, directory_to_watch, createfcn=None, modfcn=None, deletefcn=None):
+    def __init__(self, directory_to_watch, createfcn=None, modfcn=None, deletefcn=None,
+                 filterfcn=None, recursive=True):
         super().__init__()
 
         self.directory_to_watch = directory_to_watch
         self.createfcn = createfcn
         self.modfcn = modfcn
         self.deletefcn = deletefcn
+        self.filterfcn = filterfcn if filterfcn is not None else is_target_file
+        self.recursive = recursive
         self.debounce_timers = {}
         self.file_mod_times = {}
         self.observer = PollingObserver(timeout=0.5)
@@ -192,7 +316,7 @@ class Watcher(FileSystemEventHandler):
 
     def start(self):
         self.initialize_mod_times(self.directory_to_watch)
-        self.observer.schedule(self, self.directory_to_watch, recursive=True)
+        self.observer.schedule(self, self.directory_to_watch, recursive=self.recursive)
         self.observer.start()
 
     def stop(self):
@@ -207,13 +331,22 @@ class Watcher(FileSystemEventHandler):
             return None
 
     def initialize_mod_times(self, directory):
-        for root, dirs, files in os.walk(directory):
-            for file in files:
-                file_path = os.path.join(root, file)
-                if os.path.isfile(file_path) and is_target_file(file_path):
-                    mod_time = self.get_mod_time(file_path)
-                    if mod_time is not None:
-                        self.file_mod_times[file_path] = mod_time
+        if self.recursive:
+            listing = (
+                os.path.join(root, file)
+                for root, dirs, files in os.walk(directory)
+                for file in files
+            )
+        else:
+            try:
+                listing = (os.path.join(directory, f) for f in os.listdir(directory))
+            except (FileNotFoundError, PermissionError):
+                listing = ()
+        for file_path in listing:
+            if os.path.isfile(file_path) and self.filterfcn(file_path):
+                mod_time = self.get_mod_time(file_path)
+                if mod_time is not None:
+                    self.file_mod_times[file_path] = mod_time
 
     def debounce(self, file_path):
         # mprint('Debounce '+file_path)
@@ -230,6 +363,27 @@ class Watcher(FileSystemEventHandler):
             return
 
         # From here, new_mod_time is numeric
+        # If it changed but is still locked (open elsewhere / held by a cloud-sync
+        # client), retry later without recording the mtime, so it isn't lost.
+        if old_mod_time != new_mod_time:
+            try:
+                with open(file_path, "rb") as _f:
+                    _f.read(1)
+            except OSError:
+                # Plain reads are denied for as long as a document is open in
+                # Word from OneDrive (AutoSave holds a deny-read lock), but
+                # the export pipeline ingests files via shutil's kernel-level
+                # copy, which that lock permits. Only keep waiting if even a
+                # copy is impossible.
+                try:
+                    import si_tmp, uuid, shutil
+                    probe = si_tmp.path("ae_probe_" + uuid.uuid4().hex)
+                    shutil.copy2(file_path, probe)
+                    si_tmp.remove(probe)
+                except OSError:
+                    self.debounce_timers[file_path] = Timer(1.0, self.debounce, [file_path])
+                    self.debounce_timers[file_path].start()
+                    return
         if old_mod_time is None:
             # Created: not seen before, now exists
             if self.createfcn:
@@ -248,7 +402,7 @@ class Watcher(FileSystemEventHandler):
         if event.is_directory:
             return
         file_path = event.src_path
-        if not is_target_file(file_path):
+        if not self.filterfcn(file_path):
             return
 
         if file_path in self.debounce_timers:
@@ -300,9 +454,24 @@ class FileCheckerThread(threading.Thread):
         self.thread_queue = []
         self.running_threads = []
         self.finished_threads = []
+        # Linked-image finalization triggers: docs with linked images get
+        # re-finalized when a linked image changes.
+        self.doc_links = {}        # norm doc key -> (doc path, linked paths)
+        self.linked_to_docs = {}   # norm linked path -> set of doc paths
+        self.linked_watchers = {}  # dir -> non-recursive Watcher
+        self._linked_lock = threading.Lock()
+        self._linked_checked = 0.0
+        self._linked_fm = getattr(input_options, "finalizermode", 1)
 
     def queue_thread(self, f):
-        for t in self.thread_queue + self.running_threads:
+        if self._is_office_doc(f):
+            # The doc changed (or is about to be re-finalized): its linked
+            # images may have changed too, so refresh its map entry.
+            self.update_doc_links(f)
+        # Supersede any pending conversion of this file. Slice-assign so the
+        # run loop's reference to the list stays valid.
+        self.thread_queue[:] = [t for t in self.thread_queue if t.file != f]
+        for t in self.running_threads:
             if t.file == f:
                 t.stopped = True
         fthr = AutoExporterThread()
@@ -333,55 +502,134 @@ class FileCheckerThread(threading.Thread):
     def delete_exports_for(self, f):
         """
         Delete any exports that correspond to the given source file path,
-        including per-page variants with the AutoExporter page suffix.
+        including per-page variants, LaTeX sidecars, and " (N)" copies.
         """
         for out in get_expected_exports(f, self.watchdir, self.writedir):
-            base, ext = os.path.splitext(out)
-            dir_name = os.path.dirname(out)
-            base_name = os.path.basename(base)
-
-            # Also remove any page-suffixed outputs in the same directory
-            candidates = [out]
-            if dir_name and os.path.isdir(dir_name):
+            for _, path in autoexporter.output_cognates(out):
                 try:
-                    for fname in os.listdir(dir_name):
-                        if fname == os.path.basename(out):
-                            continue
-
-                        # Plain SVG case: foo_plain.svg → foo_page_1_plain.svg
-                        if base_name.endswith("_plain") and ext.lower() == ".svg":
-                            core = base_name[:-6]  # strip "_plain"
-                            if (
-                                fname.startswith(core + "_page_")
-                                and fname.endswith("_plain" + ext)
-                            ):
-                                candidates.append(os.path.join(dir_name, fname))
-
-                        # General case: foo.ext → foo_page_1.ext
-                        else:
-                            if (
-                                fname.startswith(base_name + "_page_")
-                                and fname.endswith(ext)
-                            ):
-                                candidates.append(os.path.join(dir_name, fname))
-                except (PermissionError, FileNotFoundError):
-                    # Directory may have disappeared; ignore
+                    os.remove(path)
+                except OSError:
                     pass
 
-            # Delete all candidates, ignoring failures
-            for path in set(candidates):
-                try:
-                    if os.path.exists(path):
-                        os.remove(path)
-                except (PermissionError, FileNotFoundError):
-                    pass
+    # --- Linked-image watching ------------------------------------------
+    # Office docs that link images (typically the AE's own *_plain.svg
+    # exports) are re-finalized when a linked image changes. Each directory
+    # containing linked images gets its own non-recursive Watcher — linked
+    # SVGs usually share a common directory, so the pool stays small. The
+    # pool watchers filter on exact membership in the linked set, so files
+    # the main watcher excludes (like *_plain.svg) are seen here without
+    # loosening the main watcher's exclusions.
+
+    @staticmethod
+    def _norm_key(p):
+        return os.path.normcase(os.path.normpath(os.path.abspath(p)))
+
+    @staticmethod
+    def _is_office_doc(f):
+        return f.lower().endswith((".docx", ".pptx"))
+
+    def refresh_all_links(self):
+        """Rebuild the linked-image map from every office doc in the watch
+        directory and sync the watcher pool."""
+        docs = []
+        if getattr(input_options, "finalizermode", 1) > 1:
+            docs = [
+                f for f in (get_files(self.watchdir) or [])
+                if self._is_office_doc(f)
+            ]
+        from office import get_linked_images
+        with self._linked_lock:
+            self.doc_links = {
+                self._norm_key(doc): (os.path.abspath(doc), get_linked_images(doc))
+                for doc in docs
+            }
+            self._sync_linked_watchers()
+
+    def update_doc_links(self, doc, removed=False):
+        """Refresh (or drop) the linked-image map entry for one office doc."""
+        if getattr(input_options, "finalizermode", 1) <= 1:
+            return
+        with self._linked_lock:
+            if removed:
+                self.doc_links.pop(self._norm_key(doc), None)
+            else:
+                from office import get_linked_images
+                self.doc_links[self._norm_key(doc)] = (
+                    os.path.abspath(doc),
+                    get_linked_images(doc),
+                )
+            self._sync_linked_watchers()
+
+    def _sync_linked_watchers(self):
+        """Recompute linked_to_docs from doc_links, then start/stop pool
+        watchers to match (also replacing dead ones). Caller must hold
+        _linked_lock."""
+        self.linked_to_docs = {}
+        for doc, links in self.doc_links.values():
+            for lnk in links:
+                self.linked_to_docs.setdefault(self._norm_key(lnk), set()).add(doc)
+        needed = {
+            os.path.dirname(lnk)
+            for lnk in self.linked_to_docs
+            if os.path.isdir(os.path.dirname(lnk))
+        }
+        for d in list(self.linked_watchers):
+            if d not in needed:
+                self.linked_watchers.pop(d).stop()
+        lfcn = lambda x: self.linked_changed(os.path.abspath(x))
+        for d in needed:
+            existing = self.linked_watchers.get(d)
+            if existing is not None:
+                if existing.observer.is_alive():
+                    continue
+                self.linked_watchers.pop(d).stop()
+            self.linked_watchers[d] = Watcher(
+                d,
+                createfcn=lfcn,
+                modfcn=lfcn,
+                filterfcn=self._linked_filter,
+                recursive=False,
+            )
+
+    def _linked_filter(self, file_path):
+        return self._norm_key(file_path) in self.linked_to_docs
+
+    def linked_changed(self, file_path):
+        for doc in sorted(self.linked_to_docs.get(self._norm_key(file_path), ())):
+            if os.path.exists(doc):
+                self.queue_thread(doc)
+
+    def stop_linked_watchers(self):
+        with self._linked_lock:
+            for d in list(self.linked_watchers):
+                self.linked_watchers.pop(d).stop()
+
+    def file_deleted(self, f):
+        self.delete_exports_for(f)
+        if self._is_office_doc(f):
+            self.update_doc_links(f, removed=True)
 
     def start_watcher(self):
         if self.watcher is not None:  # Stop existing watcher
             self.watcher.stop()
-        mfcn = lambda x: self.queue_thread(os.path.abspath(x))
-        dfcn = lambda x: self.delete_exports_for(os.path.abspath(x))
-        self.watcher = Watcher(self.watchdir, createfcn=mfcn, modfcn=mfcn, deletefcn=dfcn)
+            self.watcher = None
+        # Only watch a directory that actually exists, and never let a
+        # watcher failure (invalid/unmounted/cloud-crashed watchdir) escape:
+        # it would kill run() before the loop -- which already tolerates a
+        # missing watchdir -- ever executes, leaving the whole UI inert
+        # (Export File/All included, since those just set flags this thread
+        # consumes). The run loop retries once the directory reappears.
+        if os.path.exists(self.watchdir):
+            mfcn = lambda x: self.queue_thread(os.path.abspath(x))
+            dfcn = lambda x: self.file_deleted(os.path.abspath(x))
+            try:
+                self.watcher = Watcher(
+                    self.watchdir, createfcn=mfcn, modfcn=mfcn, deletefcn=dfcn,
+                    recursive=watch_subdirs(),
+                )
+            except Exception:
+                self.watcher = None
+        self.refresh_all_links()
 
     def run(self):
         self.start_watcher()
@@ -402,9 +650,25 @@ class FileCheckerThread(threading.Thread):
                 # Deleted, cloud drive crash, etc.
                 self.watcher.stop()
                 self.watcher = None
-            restart_needed = (self.watcher is None) or (not self.watcher.observer.is_alive()) or (self.watcher.directory_to_watch != self.watchdir)
+            restart_needed = (self.watcher is None) or (not self.watcher.observer.is_alive()) or (self.watcher.directory_to_watch != self.watchdir) or (self.watcher.recursive != watch_subdirs())
             if restart_needed and os.path.exists(self.watchdir):
                 self.start_watcher()
+
+            # Periodic health check on the linked-image watcher pool: revive
+            # dead watchers, pick up dirs that (re)appeared, and rebuild the
+            # map if the finalizer mode was toggled in the GUI.
+            if time.time() - self._linked_checked > 5:
+                self._linked_checked = time.time()
+                try:
+                    fm = getattr(input_options, "finalizermode", 1)
+                    if fm != self._linked_fm:
+                        self._linked_fm = fm
+                        self.refresh_all_links()
+                    else:
+                        with self._linked_lock:
+                            self._sync_linked_watchers()
+                except Exception:
+                    pass
 
             if self.ea:  # export all
                 self.ea = False
@@ -423,16 +687,36 @@ class FileCheckerThread(threading.Thread):
                 for f in sorted(updatefiles):
                     self.queue_thread(f)
 
-                while len(self.thread_queue) > 0 and not self.stopped:
-                    self.thread_queue[0].start()
-                    self.running_threads.append(self.thread_queue[0])
-                    self.thread_queue.remove(self.thread_queue[0])
+                # Start queued threads, but never run on the same file twice
+                for fthr in list(self.thread_queue):
+                    if self.stopped:
+                        break
+                    if any(r.file == fthr.file and r.is_alive()
+                           for r in self.running_threads):
+                        continue
+                    # Claim the queue slot before starting: a superseding
+                    # event may have already removed this entry, in which
+                    # case its replacement is queued and this one is moot.
+                    try:
+                        self.thread_queue.remove(fthr)
+                    except ValueError:
+                        continue
+                    fthr.start()
+                    self.running_threads.append(fthr)
 
                 for thr in reversed(self.running_threads):
                     if not thr.is_alive():
                         self.running_threads.remove(thr)
                         self.finished_threads.append(thr)
                         self.promptpending = True
+                        # The source vanished while the conversion ran
+                        if not os.path.exists(thr.file):
+                            self.delete_exports_for(thr.file)
+                        # If cancelled and there is no output, redo it
+                        elif getattr(thr, "stopped", False) and not any(
+                                t.file == thr.file for t in
+                                self.thread_queue + self.running_threads):
+                            self.queue_thread(thr.file)
                 loopme = self.dm
 
             if self.promptpending and len(self.running_threads) + len(self.thread_queue) == 0:
@@ -440,7 +724,11 @@ class FileCheckerThread(threading.Thread):
                     mprint(promptstring)
                 self.promptpending = False
 
-        self.watcher.stop()
+            time.sleep(0.05)  # sleep, not spin, so other threads aren't starved
+
+        if self.watcher is not None:
+            self.watcher.stop()
+        self.stop_linked_watchers()
         for t in self.running_threads:
             t.stopped = True
         for thr in reversed(self.running_threads):
@@ -497,7 +785,7 @@ class AutoExporterThread(threading.Thread):
             else: # non-svg: finalizing
                 Exporter(self.file, opts).finalize()
         except SystemExit:
-            pass
+            mprint(fname + ": Conversion canceled")
         except FileNotFoundError:
             import traceback
             error_message = f"Exception in {fname}\n"
@@ -526,7 +814,7 @@ if guitype == 'gtk3.0':
         import gi
 
         gi.require_version("Gtk", "3.0")
-        from gi.repository import Gtk, GLib, Gdk
+        from gi.repository import Gtk, GLib, Gdk, Pango
 
     class AutoexporterWindow(Gtk.Window):
         def __init__(self, ct):
@@ -594,31 +882,85 @@ if guitype == 'gtk3.0':
             separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
             tab1_box.pack_start(separator, False, True, 0)
         
-            # Watch directory
-            watch_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            # Watch/write directories, in a grid so the chain-link button
+            # can sit between their labels and span both rows
+            dir_grid = Gtk.Grid(column_spacing=6, row_spacing=10)
             watch_file_chooser_label = Gtk.Label(label="Watch directory", xalign=0.5)  # Center text
             watch_file_chooser_label.set_width_chars(LABEL_WIDTH)  # Set fixed width
-            self.watch_file_chooser_button = Gtk.FileChooserButton(title="Choose watch directory", action=Gtk.FileChooserAction.SELECT_FOLDER)
-            self.watch_file_chooser_button.set_filename(input_options.watchdir)  # Set the initial folder here
-            self.watch_file_chooser_button.connect("file-set", self.watch_folder_button_clicked)
-            self.watch_file_chooser_button.set_hexpand(True)
-            self.watch_file_chooser_button.set_halign(Gtk.Align.FILL)
-            watch_file_chooser_box.pack_start(watch_file_chooser_label, False, False, 0)
-            watch_file_chooser_box.pack_start(self.watch_file_chooser_button, True, True, 0)
-            tab1_box.pack_start(watch_file_chooser_box, False, False, 0)
-            
+            watch_file_chooser_label.set_margin_end(4)
+            self.watch_dir_button = Gtk.Button()
+            self.watch_dir_button.set_hexpand(True)
+            self.watch_dir_button.set_halign(Gtk.Align.FILL)
+            self.watch_dir_button.get_style_context().add_class("path-button")
+            self._watch_dir_lbl = Gtk.Label(xalign=0.0)
+            self._watch_dir_lbl.set_single_line_mode(True)
+            self._watch_dir_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+            watch_dir_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            watch_dir_box.pack_start(
+                Gtk.Image.new_from_icon_name("folder", Gtk.IconSize.BUTTON),
+                False, False, 0)
+            watch_dir_box.pack_start(self._watch_dir_lbl, True, True, 0)
+            self.watch_dir_button.add(watch_dir_box)
+            self.watch_dir_path = input_options.watchdir
+            self._watch_dir_lbl.set_text(dir_display_name(self.watch_dir_path)
+                                       or "Choose watch directory")
+            self.watch_dir_button.set_tooltip_text(self.watch_dir_path or "")
+            self.watch_dir_button.connect("clicked", self.watch_dir_clicked)
+            dir_grid.attach(watch_file_chooser_label, 0, 0, 1, 1)
+            # Fused toggle for watching the directory's subfolders too
+            watch_row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+            watch_row_box.get_style_context().add_class("linked")
+            watch_row_box.set_hexpand(True)
+            watch_row_box.pack_start(self.watch_dir_button, True, True, 0)
+            self.subdirs_button = Gtk.ToggleButton()
+            self.subdirs_button.set_tooltip_text("Also watch subfolders")
+            self.subdirs_button.set_active(watch_subdirs())
+            self.set_subdirs_icon()
+            self.subdirs_button.connect("toggled", self.subdirs_toggled)
+            watch_row_box.pack_start(self.subdirs_button, False, False, 0)
+            dir_grid.attach(watch_row_box, 1, 0, 1, 1)
+
             # Write directory
-            write_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
             write_file_chooser_label = Gtk.Label(label="Write directory", xalign=0.5)  # Center text
             write_file_chooser_label.set_width_chars(LABEL_WIDTH)  # Set fixed width
-            self.write_file_chooser_button = Gtk.FileChooserButton(title="Choose write directory", action=Gtk.FileChooserAction.SELECT_FOLDER)
-            self.write_file_chooser_button.set_filename(input_options.writedir)  # Set the initial folder here
-            self.write_file_chooser_button.connect("file-set", self.write_folder_button_clicked)
-            self.write_file_chooser_button.set_hexpand(True)
-            self.write_file_chooser_button.set_halign(Gtk.Align.FILL)
-            write_file_chooser_box.pack_start(write_file_chooser_label, False, False, 0)
-            write_file_chooser_box.pack_start(self.write_file_chooser_button, True, True, 0)
-            tab1_box.pack_start(write_file_chooser_box, False, False, 0)
+            write_file_chooser_label.set_margin_end(4)
+            self.write_dir_button = Gtk.Button()
+            self.write_dir_button.set_hexpand(True)
+            self.write_dir_button.set_halign(Gtk.Align.FILL)
+            self.write_dir_button.get_style_context().add_class("path-button")
+            self._write_dir_lbl = Gtk.Label(xalign=0.0)
+            self._write_dir_lbl.set_single_line_mode(True)
+            self._write_dir_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+            write_dir_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            write_dir_box.pack_start(
+                Gtk.Image.new_from_icon_name("folder", Gtk.IconSize.BUTTON),
+                False, False, 0)
+            write_dir_box.pack_start(self._write_dir_lbl, True, True, 0)
+            self.write_dir_button.add(write_dir_box)
+            self.write_dir_path = input_options.writedir
+            self._write_dir_lbl.set_text(dir_display_name(self.write_dir_path)
+                                       or "Choose write directory")
+            self.write_dir_button.set_tooltip_text(self.write_dir_path or "")
+            self.write_dir_button.connect("clicked", self.write_dir_clicked)
+            dir_grid.attach(write_file_chooser_label, 0, 1, 1, 1)
+            dir_grid.attach(self.write_dir_button, 1, 1, 1, 1)
+
+            # Chain link: while active, changing either directory changes both
+            self.link_dirs_button = Gtk.ToggleButton()
+            _linkpb = link_icon_pixbuf(28)
+            if _linkpb is not None:
+                self.link_dirs_button.set_image(Gtk.Image.new_from_pixbuf(_linkpb))
+            else:
+                self.link_dirs_button.set_image(Gtk.Image.new_from_icon_name("insert-link-symbolic", Gtk.IconSize.BUTTON))
+            self.link_dirs_button.set_tooltip_text("Keep the watch and write directories the same")
+            self.link_dirs_button.set_relief(Gtk.ReliefStyle.NONE)
+            self.link_dirs_button.set_valign(Gtk.Align.CENTER)
+            self.link_dirs_button.set_active(dirs_initially_linked())
+            self.link_dirs_button.connect("toggled", self.link_dirs_toggled)
+            self.link_dirs_button.get_style_context().add_class("link-button")
+            self.link_dirs_button.set_margin_end(6)
+            dir_grid.attach(self.link_dirs_button, 2, 0, 1, 2)
+            tab1_box.pack_start(dir_grid, False, False, 0)
         
             # Export all button
             self.ea_button = Gtk.Button(label="Export all")
@@ -646,7 +988,9 @@ if guitype == 'gtk3.0':
             self.notebook.append_page(tab2_box, Gtk.Label(label="Options"))
         
             css_provider = Gtk.CssProvider()
-            css_provider.load_from_data(b".label-bold { font-weight: bold; }")
+            css_provider.load_from_data(b".label-bold { font-weight: bold; } "
+                                        b".link-button { padding: 3px; min-width: 0px; min-height: 0px; } "
+                                        b".path-button { min-width: 0px; }")
             Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         
             # Formats to export
@@ -733,7 +1077,7 @@ if guitype == 'gtk3.0':
             tab2_box.pack_start(self.omit_text_check, False, False, 5)
             
             # Finalizer options
-            finalizer_label = Gtk.Label(label="Document finalizer", xalign=0)
+            finalizer_label = Gtk.Label(label="Office document finalizer", xalign=0)
             finalizer_label.get_style_context().add_class("label-bold")
             tab2_box.pack_start(finalizer_label, False, False, 0)
             self.finalizer_combo = Gtk.ComboBoxText()
@@ -856,23 +1200,79 @@ if guitype == 'gtk3.0':
         def exit_clicked(self, widget):
             self.destroy()
             
-        def watch_folder_button_clicked(self, widget):
-            selected_file = self.watch_file_chooser_button.get_filename()
-            # Check if selected_file is None, which indicates the user clicked 'Cancel'
-            if selected_file is not None:
-                self.ct.watchdir = selected_file
+        def set_subdirs_icon(self):
+            on = self.subdirs_button.get_active()
+            try:
+                base = Gtk.IconTheme.get_default().load_icon("folder", 16, 0)
+                img = Gtk.Image.new_from_pixbuf(subdirs_icon_pixbuf(base, on))
+            except Exception:
+                img = Gtk.Image.new_from_icon_name("folder", Gtk.IconSize.BUTTON)
+            self.subdirs_button.set_image(img)
+
+        def subdirs_toggled(self, widget):
+            # The watcher thread restarts itself when this changes
+            input_options.watchsubdirs = widget.get_active()
+            self.set_subdirs_icon()
+            update_batch_from_options()
+
+        def set_watch_dir(self, folder):
+            self.watch_dir_path = folder
+            if getattr(self, "_watch_dir_lbl", None):
+                self._watch_dir_lbl.set_text(dir_display_name(folder)
+                                           or "Choose watch directory")
+                self.watch_dir_button.set_tooltip_text(folder or "")
+            self.ct.watchdir = folder
+            input_options.watchdir = folder
+
+        def set_write_dir(self, folder):
+            self.write_dir_path = folder
+            if getattr(self, "_write_dir_lbl", None):
+                self._write_dir_lbl.set_text(dir_display_name(folder)
+                                           or "Choose write directory")
+                self.write_dir_button.set_tooltip_text(folder or "")
+            self.ct.writedir = folder
+            input_options.writedir = folder
+
+        def link_dirs_toggled(self, widget):
+            """Turning the link on makes the write directory adopt the watch one."""
+            if not widget.get_active():
+                return
+            if self.watch_dir_path and self.watch_dir_path != self.write_dir_path:
+                self.set_write_dir(self.watch_dir_path)
                 self.ct.nf = True
-                input_options.watchdir = selected_file
                 update_batch_from_options()
-            
-        def write_folder_button_clicked(self, widget):
-            selected_file = self.write_file_chooser_button.get_filename()
-            # Check if selected_file is None, which indicates the user clicked 'Cancel'
-            if selected_file is not None:
-                self.ct.writedir = selected_file
-                self.ct.nf = True
-                input_options.writedir = selected_file
-                update_batch_from_options()
+
+        def choose_dir(self, title, current):
+            """Browse for a folder in one click, using the platform dialog."""
+            native = Gtk.FileChooserNative.new(
+                title, self, Gtk.FileChooserAction.SELECT_FOLDER, None, None
+            )
+            if current:
+                native.set_current_folder(current)
+            accepted = native.run() == Gtk.ResponseType.ACCEPT
+            folder = native.get_filename() if accepted else None
+            native.destroy()
+            return folder
+
+        def watch_dir_clicked(self, _btn):
+            folder = self.choose_dir("Choose watch directory", self.watch_dir_path)
+            if folder is None:
+                return
+            self.set_watch_dir(folder)
+            self.ct.nf = True
+            if self.link_dirs_button.get_active():
+                self.set_write_dir(folder)
+            update_batch_from_options()
+
+        def write_dir_clicked(self, _btn):
+            folder = self.choose_dir("Choose write directory", self.write_dir_path)
+            if folder is None:
+                return
+            self.set_write_dir(folder)
+            self.ct.nf = True
+            if self.link_dirs_button.get_active():
+                self.set_watch_dir(folder)
+            update_batch_from_options()
 
         def export_all_clicked(self, widget):
             self.ct.ea = True
@@ -887,6 +1287,7 @@ if guitype == 'gtk3.0':
             filter_ppt.add_pattern("*.svg")
             filter_ppt.add_pattern("*.docx")
             filter_ppt.add_pattern("*.pptx")
+            filter_ppt.add_pattern("*.one")
             native.add_filter(filter_ppt)
             response = native.run()
             if response == Gtk.ResponseType.ACCEPT:
@@ -904,8 +1305,9 @@ if guitype == 'gtk3.0':
     fc.start()
     win.show_all()
     win.set_keep_above(False)
+    GLib.idle_add(signal_gui_ready)  # closes the launcher's loading window
     Gtk.main()
-    
+
 elif guitype=='gtk4.0':
     import gi
     gi.require_version("Gtk", "4.0") # Lock to GTK 4
@@ -922,6 +1324,7 @@ elif guitype=='gtk4.0':
         def do_activate(self):
             if not self._win:
                 self.make_win()
+                GLib.idle_add(signal_gui_ready)  # closes the launcher's loading window
             self._win.present()
             
         def make_win(self):
@@ -1019,8 +1422,9 @@ elif guitype=='gtk4.0':
             separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
             tab1_box.append(separator)
             
-            # Watch directory
-            watch_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+            # Watch/write directories, in a grid so the chain-link button
+            # can sit between their labels and span both rows
+            dir_grid = Gtk.Grid(column_spacing=0, row_spacing=10)
             watch_file_chooser_label = Gtk.Label(label="Watch directory", xalign=10)
             watch_file_chooser_label.set_width_chars(LABEL_WIDTH)
             self.watch_dir_button = Gtk.Button()
@@ -1029,40 +1433,72 @@ elif guitype=='gtk4.0':
             self.watch_dir_button.add_css_class("path-button")  # CSS class for min-width override
             self._watch_dir_lbl = Gtk.Label(xalign=0.0)
             self._watch_dir_lbl.set_single_line_mode(True)
-            self._watch_dir_lbl.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
-            self._watch_dir_lbl.set_wrap(False)
-            self._watch_dir_lbl.set_width_chars(12)       # minimum hint
-            self._watch_dir_lbl.set_max_width_chars(60)   # natural width cap
-            self.watch_dir_button.set_child(self._watch_dir_lbl)
+            self._watch_dir_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+            self._watch_dir_lbl.set_hexpand(True)
+            watch_dir_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            watch_dir_box.append(Gtk.Image.new_from_icon_name("folder"))
+            watch_dir_box.append(self._watch_dir_lbl)
+            self.watch_dir_button.set_child(watch_dir_box)
             self.watch_dir_path = input_options.watchdir
-            self._watch_dir_lbl.set_text(self.watch_dir_path or "Choose watch directory")
+            self._watch_dir_lbl.set_text(dir_display_name(self.watch_dir_path)
+                                       or "Choose watch directory")
+            self.watch_dir_button.set_tooltip_text(self.watch_dir_path or "")
             self.watch_dir_button.connect("clicked", self.watch_dir_clicked)
-            watch_file_chooser_box.append(watch_file_chooser_label)
-            watch_file_chooser_box.append(self.watch_dir_button)
-            tab1_box.append(watch_file_chooser_box)
-
+            dir_grid.attach(watch_file_chooser_label, 0, 0, 1, 1)
+            # Fused toggle for watching the directory's subfolders too
+            watch_row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+            watch_row_box.add_css_class("linked")
+            watch_row_box.set_hexpand(True)
+            watch_row_box.append(self.watch_dir_button)
+            self.subdirs_button = Gtk.ToggleButton()
+            self.subdirs_button.set_tooltip_text("Also watch subfolders")
+            self.subdirs_button.set_active(watch_subdirs())
+            self.set_subdirs_icon()
+            self.subdirs_button.connect("toggled", self.subdirs_toggled)
+            watch_row_box.append(self.subdirs_button)
+            dir_grid.attach(watch_row_box, 1, 0, 1, 1)
 
             # Write directory
-            write_file_chooser_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
             write_file_chooser_label = Gtk.Label(label="Write directory", xalign=10.0)
             write_file_chooser_label.set_width_chars(LABEL_WIDTH)
             self.write_dir_button = Gtk.Button()               # no 'label=' here
             self.write_dir_button.set_hexpand(True)
             self.write_dir_button.set_halign(Gtk.Align.FILL)
-            self.write_dir_button.add_css_class("path-button") # we'll use CSS below
+            self.write_dir_button.add_css_class("path-button") # we will use CSS below
             self._write_dir_lbl = Gtk.Label(xalign=0.0)
             self._write_dir_lbl.set_single_line_mode(True)
-            self._write_dir_lbl.set_ellipsize(Pango.EllipsizeMode.MIDDLE)  # better for long paths
-            self._write_dir_lbl.set_wrap(False)
-            self._write_dir_lbl.set_width_chars(12)    # minimum it should try to keep
-            self._write_dir_lbl.set_max_width_chars(60) # cap natural width
-            self.write_dir_button.set_child(self._write_dir_lbl)
+            self._write_dir_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+            self._write_dir_lbl.set_hexpand(True)
+            write_dir_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            write_dir_box.append(Gtk.Image.new_from_icon_name("folder"))
+            write_dir_box.append(self._write_dir_lbl)
+            self.write_dir_button.set_child(write_dir_box)
             self.write_dir_path = input_options.writedir
-            self._write_dir_lbl.set_text(self.write_dir_path or "Choose write directory")
+            self._write_dir_lbl.set_text(dir_display_name(self.write_dir_path)
+                                       or "Choose write directory")
+            self.write_dir_button.set_tooltip_text(self.write_dir_path or "")
             self.write_dir_button.connect("clicked", self.write_dir_clicked)
-            write_file_chooser_box.append(write_file_chooser_label)
-            write_file_chooser_box.append(self.write_dir_button)
-            tab1_box.append(write_file_chooser_box)
+            dir_grid.attach(write_file_chooser_label, 0, 1, 1, 1)
+            dir_grid.attach(self.write_dir_button, 1, 1, 1, 1)
+
+            # Chain link: while active, changing either directory changes both
+            self.link_dirs_button = Gtk.ToggleButton()
+            _linkpb = link_icon_pixbuf(28)
+            if _linkpb is not None:
+                _linkimg = Gtk.Picture.new_for_paintable(Gdk.Texture.new_for_pixbuf(_linkpb))
+                self.link_dirs_button.set_child(_linkimg)
+            else:
+                self.link_dirs_button.set_icon_name("insert-link-symbolic")
+            self.link_dirs_button.set_tooltip_text("Keep the watch and write directories the same")
+            self.link_dirs_button.set_has_frame(False)
+            self.link_dirs_button.set_valign(Gtk.Align.CENTER)
+            self.link_dirs_button.set_active(dirs_initially_linked())
+            self.link_dirs_button.connect("toggled", self.link_dirs_toggled)
+            self.link_dirs_button.add_css_class("link-button")
+            self.link_dirs_button.set_margin_start(4)
+            self.link_dirs_button.set_margin_end(4)
+            dir_grid.attach(self.link_dirs_button, 2, 0, 1, 2)
+            tab1_box.append(dir_grid)
             
             # Export all button
             self.ea_button = Gtk.Button(label="Export all")
@@ -1105,6 +1541,54 @@ elif guitype=='gtk4.0':
             self.ct.stopped = True
             return False
 
+        def set_subdirs_icon(self):
+            on = self.subdirs_button.get_active()
+            try:
+                from gi.repository import GdkPixbuf
+                theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+                ipath = theme.lookup_icon("folder", None, 16, 1,
+                                          Gtk.TextDirection.NONE, 0).get_file().get_path()
+                base = GdkPixbuf.Pixbuf.new_from_file_at_size(ipath, 16, 16)
+                img = Gtk.Image.new_from_paintable(
+                    Gdk.Texture.new_for_pixbuf(subdirs_icon_pixbuf(base, on)))
+                img.set_pixel_size(20)
+                self.subdirs_button.set_child(img)
+            except Exception:
+                self.subdirs_button.set_icon_name("folder")
+
+        def subdirs_toggled(self, widget):
+            # The watcher thread restarts itself when this changes
+            input_options.watchsubdirs = widget.get_active()
+            self.set_subdirs_icon()
+            update_batch_from_options()
+
+        def set_watch_dir(self, folder):
+            self.watch_dir_path = folder
+            if getattr(self, "_watch_dir_lbl", None):
+                self._watch_dir_lbl.set_text(dir_display_name(folder)
+                                           or "Choose watch directory")
+                self.watch_dir_button.set_tooltip_text(folder or "")
+            self.ct.watchdir = folder
+            input_options.watchdir = folder
+
+        def set_write_dir(self, folder):
+            self.write_dir_path = folder
+            if getattr(self, "_write_dir_lbl", None):
+                self._write_dir_lbl.set_text(dir_display_name(folder)
+                                           or "Choose write directory")
+                self.write_dir_button.set_tooltip_text(folder or "")
+            self.ct.writedir = folder
+            input_options.writedir = folder
+
+        def link_dirs_toggled(self, widget):
+            """Turning the link on makes the write directory adopt the watch one."""
+            if not widget.get_active():
+                return
+            if self.watch_dir_path and self.watch_dir_path != self.write_dir_path:
+                self.set_write_dir(self.watch_dir_path)
+                self.ct.nf = True
+                update_batch_from_options()
+
         def watch_dir_clicked(self, _btn):
             dlg = Gtk.FileDialog(title="Choose watch directory")
             if self.watch_dir_path:
@@ -1119,13 +1603,10 @@ elif guitype=='gtk4.0':
                     return
                 if not folder:
                     return
-                self.watch_dir_path = folder.get_path()
-                if getattr(self, "_watch_dir_lbl", None):
-                    self._watch_dir_lbl.set_text(self.watch_dir_path or "Choose watch directory")
-                # inline apply
-                self.ct.watchdir = self.watch_dir_path
+                self.set_watch_dir(folder.get_path())
                 self.ct.nf = True
-                input_options.watchdir = self.ct.watchdir
+                if self.link_dirs_button.get_active():
+                    self.set_write_dir(self.watch_dir_path)
                 update_batch_from_options()
             dlg.select_folder(self._win, None, _done)
     
@@ -1143,12 +1624,10 @@ elif guitype=='gtk4.0':
                     return
                 if not folder:
                     return
-                self.write_dir_path = folder.get_path()
-                if getattr(self, "_write_dir_lbl", None):
-                    self._write_dir_lbl.set_text(self.write_dir_path or "Choose write directory")
-                self.ct.writedir = self.write_dir_path
+                self.set_write_dir(folder.get_path())
                 self.ct.nf = True
-                input_options.writedir = self.ct.writedir
+                if self.link_dirs_button.get_active():
+                    self.set_watch_dir(self.write_dir_path)
                 update_batch_from_options()
             dlg.select_folder(self._win, None, _done)
         
@@ -1174,7 +1653,7 @@ elif guitype=='gtk4.0':
                 path = gfile.get_path()
                 if not path:
                     return
-                if path.lower().endswith(".svg") or path.lower().endswith(".docx") or path.lower().endswith(".pptx"):
+                if path.lower().endswith((".svg", ".docx", ".pptx", ".one")):
                     self.ct.selectedfile = path
                     self.ct.es = True
                 else:
@@ -1208,7 +1687,9 @@ elif guitype=='gtk4.0':
             
         def _build_options_tab(self, parent: Gtk.Box):
             css = Gtk.CssProvider()
-            css.load_from_data(b".label-bold { font-weight: bold; }")
+            css.load_from_data(b".label-bold { font-weight: bold; } "
+                               b".link-button { padding: 3px; min-width: 0px; min-height: 0px; } "
+                               b".path-button { min-width: 0px; }")
             Gtk.StyleContext.add_provider_for_display(
                 Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
             )
@@ -1340,7 +1821,7 @@ elif guitype=='gtk4.0':
             _bind_check(self.omit_text_check, "latexpdf")
         
             # --- Finalizer options ---
-            parent.append(_hdr("Document finalizer"))
+            parent.append(_hdr("Office document finalizer"))
             self.finalizer_combo = Gtk.ComboBoxText()
             # IDs match stored int values for simple binding
             self.finalizer_combo.append("1", "Do not finalize")
@@ -1359,6 +1840,7 @@ elif guitype=='gtk4.0':
 else:
     try:
         import tkinter
+        import tkinter.filedialog  # submodule isn't pulled in by 'import tkinter'
 
         promptstring = ("\nEnter D to change directories, R to change DPI, F to"
         " export a file, A to export all now, and Q to quit: ")
@@ -1447,7 +1929,7 @@ else:
         fc.watchdir, fc.writedir = Get_Directories()
     fc.start()
     while fc.nf:  # wait until it's done initializing
-        pass
+        time.sleep(0.05)  # sleep, not spin: a busy-wait starves fc's thread
     t2 = PromptThread()
     t2.start()
     keeprunning = True
@@ -1484,6 +1966,7 @@ else:
                 t2 = PromptThread()
                 t2.start()
                 fc.promptpending = True
+        time.sleep(0.05)  # sleep, not spin, so the input() thread can run
 
     # On macOS close the terminal we opened
     # https://superuser.com/questions/158375/

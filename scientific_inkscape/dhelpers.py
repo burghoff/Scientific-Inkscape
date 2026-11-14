@@ -25,24 +25,26 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 # Locate the installed Inkex so we can assess the version. Do not import!
-import pkgutil
-installed_inkex = None
-for finder in pkgutil.iter_importers():
-    if hasattr(finder, "find_spec"):
-        try:
-            spec = finder.find_spec("inkex")
-            if spec and spec.origin:
-                installed_inkex = spec.origin
-        except TypeError:
-            continue
-
-# Import the packaged version of Inkex (currently v1.3.0)
+# (Last entry on sys.path wins, same as pkgutil.iter_importers would give.)
 import sys, os
 
+installed_inkex = None
+for p in sys.path:
+    cand = os.path.join(p or os.getcwd(), "inkex", "__init__.py")
+    if os.path.isfile(cand):
+        installed_inkex = cand
+
+# Import the packaged version of Inkex (currently v1.3.0)
 inkex_to_use = "inkex1_3_0"
 si_dir = os.path.dirname(os.path.realpath(__file__))  # my install location
 sys.path.insert(0, os.path.join(si_dir, inkex_to_use))
 sys.path.insert(1, os.path.join(si_dir, inkex_to_use, "site-packages"))
+
+# Serve everything below from a bytecode cache and defer numpy, cssselect and
+# traceback until first use (see fastimport)
+import fastimport
+
+fastimport.install(si_dir)
 import inkex
 
 # For SI we override Inkex's Style with a modified version, Style0
@@ -64,7 +66,6 @@ from inkex.text.utils import (
     composed_width,
     unique,
     isrectangle,
-    subprocess_repeat,
     tags,
     bbox,
     ipx,
@@ -99,10 +100,9 @@ def list2(el):
 EBget = lxml.etree.ElementBase.get
 EBset = lxml.etree.ElementBase.set
 
-import inspect
-
-
 def count_callers():
+    import inspect
+
     caller_frame = inspect.stack()[2]
     filename = caller_frame.filename
     line_number = caller_frame.lineno
@@ -138,10 +138,8 @@ inkex.installed_ivp = inkex.vparse(vstr)  # type: ignore
 inkex.installed_haspages = inkex.installed_ivp[0] >= 1 and inkex.installed_ivp[1] >= 2
 
 # On v1.1-1.2.1 gi produces an error for some reason that is actually fine
-import platform
-
 if (
-    platform.system().lower() == "windows"
+    sys.platform == "win32"
     and inkex.installed_ivp[0:2] == [1, 1]
     or (inkex.installed_ivp[0:2] == [1, 2] and inkex.installed_ivp[2] < 2)
 ):
@@ -154,6 +152,42 @@ if (
 
         GLib.log_set_writer_func(custom_log_writer, None)
 
+
+# Patch macOS bug on Inkscape 1.4.3 and 1.4.4
+# https://gitlab.com/inkscape/inkscape/-/work_items/6250
+if sys.platform == "darwin":
+    import importlib.machinery
+
+    class _PatchedSourceLoader:
+        def __init__(self, src, origin):
+            self.src, self.origin = src, origin
+
+        def create_module(self, spec):
+            return None  # default module creation
+
+        def exec_module(self, module):
+            exec(compile(self.src, self.origin, "exec"), module.__dict__)
+
+    class _GioUnixOverrideFinder:
+        NAME = "gi.overrides.GioUnix"
+        OLD = "< (2, 86):"
+        NEW = '< (2, 86) and hasattr(GioUnix, "DesktopAppInfo"):'
+
+        def find_spec(self, fullname, path, target=None):
+            if fullname != self.NAME:
+                return None
+            real = importlib.machinery.PathFinder.find_spec(fullname, path)
+            try:
+                with open(real.origin, encoding="utf-8") as f:
+                    src = f.read()
+            except (AttributeError, TypeError, OSError):
+                return None  # not found or unreadable: leave it to the normal import
+            if self.OLD not in src:
+                return None  # already fixed upstream: use the real file as-is
+            loader = _PatchedSourceLoader(src.replace(self.OLD, self.NEW, 1), real.origin)
+            return importlib.machinery.ModuleSpec(fullname, loader, origin=real.origin)
+
+    sys.meta_path.insert(0, _GioUnixOverrideFinder())
 
 # Replace an element with another one
 # Puts it in the same location, update the cache dicts
@@ -293,16 +327,16 @@ def ungroup(g, removetextclip=False):
     # Ungroup a group, preserving style, clipping, and masking
     # Remove any comments
     if g.croot is not None:
+        # The group's properties
+        gtransform = g.ctransform
+        gclip = g.get_link("clip-path", llget=True)
+        gmask = g.get_link("mask", llget=True)
+        gstyle = g.ccascaded_style
+        gxmlspace = EBget(g,xmlspace)
         for el in reversed(list(g)):
             if el.tag == ctag:  # remove comments
                 g.remove(el)
             if el.tag not in unungroupable:
-                gtransform = g.ctransform
-                gclip = g.get_link("clip-path", llget=True)
-                gmask = g.get_link("mask", llget=True)
-                gstyle = g.ccascaded_style
-                gxmlspace = EBget(g,xmlspace)
-                
                 clippedout = compose_all(
                     el, gclip, gmask, gtransform, gstyle, removetextclip=removetextclip
                 )
@@ -321,7 +355,7 @@ def group(el_list, moveTCM=False):
     g = inkex.Group()
     if not el_list:
         return g
-    myi = list(el_list[0].getparent()).index(el_list[0])
+    myi = el_list[0].getparent().index(el_list[0])
     el_list[0].getparent().insert(myi + 1, g)
     for el in el_list:
         g.append(el)
@@ -335,6 +369,10 @@ def group(el_list, moveTCM=False):
         el.set_link("clip-path", None)
         g.set_link("mask", el.get("mask"))
         el.set_link("mask", None)
+        # A clip/mask the element gets from a CSS class would still apply;
+        # override it with an id rule (see fix_css_clipmask)
+        fix_css_clipmask(el)
+        fix_css_clipmask(el, mask=True)
     return g
 
 
@@ -399,16 +437,13 @@ def fix_css_clipmask(el, mask=False):
     svg = el.croot
     if svg is not None:
         mycss = svg.cssdict.get(el.get_id())
-        if (
-            mycss is not None
-            and mycss.get(cm) is not None
-            and mycss.get(cm) != el.get(cm)
-        ):
+        val = el.get(cm) or "none"  # no attribute means no clip/mask
+        if mycss is not None and mycss.get(cm) is not None and mycss.get(cm) != val:
             sty = el.croot.crootsty
             sty.text = (sty.text or "") + "\n#{0}{{{1}:{2}}}".format(
-                el.get_id(), cm, el.get(cm)
+                el.get_id(), cm, val
             )
-            mycss[cm] = el.get(cm)
+            mycss[cm] = val
     if el.cstyle.get(cm) is not None:  # also clear local style
         el.cstyle[cm] = None
 
@@ -575,12 +610,468 @@ unrendered = tags(
 unrendered.update(
     {
         masktag,
+        inkex.addNS("title", "svg"),  # one of these otherwise sends the whole
+        inkex.addNS("desc", "svg"),  # document to the Inkscape binary in BB2
         inkex.addNS("RDF", "rdf"),
         inkex.addNS("Work", "cc"),
         inkex.addNS("format", "dc"),
         inkex.addNS("type", "dc"),
     }
 )
+
+
+# the Inkscape binary
+import threading
+
+# Inkscape processes we run at once: resident shells (InkscapeShell) and
+# one-shot launches (subprocess_repeat) each keep to this many
+MAX_THREADS = 1 if sys.platform == "darwin" else 3
+
+
+class _Slots:
+    """Admission for up to n concurrent Inkscape launches. priority 0 is the
+    default and the most urgent; a waiter only takes a free slot when no
+    waiter with a smaller priority number is queued, so the Autoexporter's
+    SVG exports go ahead of the finalizer's PNG conversions."""
+
+    def __init__(self, n):
+        self.n, self.busy, self.waiting = n, 0, []
+        self.cv = threading.Condition()
+
+    def acquire(self, priority=0):
+        with self.cv:
+            self.waiting.append(priority)
+            try:
+                while self.busy >= self.n or min(self.waiting) < priority:
+                    self.cv.wait()
+            finally:
+                self.waiting.remove(priority)
+            self.busy += 1
+            self.cv.notify_all()  # others re-check now that the queue changed
+
+    def release(self):
+        with self.cv:
+            self.busy -= 1
+            self.cv.notify_all()
+
+
+inkscape_slots = _Slots(MAX_THREADS)
+
+
+def subprocess_repeat(argin, cwd=None, priority=0):
+    """
+    In the event of a timeout, repeats a subprocess call several times.
+
+    Parameters:
+        argin (list): The command and arguments to run in the subprocess.
+        priority (int): 0 (default) goes ahead of any queued call with a
+            larger number; see _Slots.
+
+    Returns:
+        CompletedProcess: The result from the subprocess call.
+    """
+    base_timeout = 60
+    nattempts = 6
+    import subprocess
+
+    nfails = 0
+    ntime = 0
+    inkscape_slots.acquire(priority)  # held across the retries: one slot per call
+    try:
+        for i in range(nattempts):
+            timeout = base_timeout * 2**i
+            try:
+                os.environ["SELF_CALL"] = "true"  # seems to be needed for 1.3
+                proc = subprocess.run(
+                    argin,
+                    shell=False,
+                    timeout=timeout,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    check=True, cwd=cwd
+                )
+                break
+            except subprocess.TimeoutExpired:
+                nfails += 1
+                ntime += timeout
+    finally:
+        inkscape_slots.release()
+    if nfails == nattempts:
+        raise TimeoutError(
+            "\nThe call to the Inkscape binary timed out "
+            + str(nattempts)
+            + " times in "
+            + str(ntime)
+            + " seconds.\n\n"
+            + "This may be a temporary issue; try running the extension again."
+        )
+    else:
+        return proc
+
+
+# Sizes of a few files that change between Inkscape releases, used to read the
+# installed release off its files instead of running the binary (inkex's
+# __version__ only tracks the minor series, and is absent before 1.1.1). Text
+# files are measured with CRLF folded to LF, since Windows builds from 1.3.2
+# on ship them CRLF while macOS and Linux ship LF; binary files use their raw
+# size. Generated from every official release from 1.0 to 1.4.4 and checked
+# against the macOS builds.
+INKSCAPE_RELEASE_PROBES = (
+    'screens/start-welcome.png',
+    'extensions/inkex/elements/_base.py',
+    'ui/menus.xml',
+)
+INKSCAPE_RELEASE_TABLE = {
+    (1, 0, 0): {'screens/start-welcome.png': None, 'extensions/inkex/elements/_base.py': 17487, 'ui/menus.xml': 12918},
+    (1, 0, 1): {'screens/start-welcome.png': None, 'extensions/inkex/elements/_base.py': 20018, 'ui/menus.xml': 12895},
+    (1, 0, 2): {'screens/start-welcome.png': None, 'extensions/inkex/elements/_base.py': 20018, 'ui/menus.xml': 12954},
+    (1, 1, 0): {'screens/start-welcome.png': 64600, 'extensions/inkex/elements/_base.py': 21612, 'ui/menus.xml': 13570},
+    (1, 1, 1): {'screens/start-welcome.png': 64600, 'extensions/inkex/elements/_base.py': 21612, 'ui/menus.xml': 13610},
+    (1, 1, 2): {'screens/start-welcome.png': 64600, 'extensions/inkex/elements/_base.py': 21408, 'ui/menus.xml': 13610},
+    (1, 2, 0): {'screens/start-welcome.png': 111618, 'extensions/inkex/elements/_base.py': 24770, 'ui/menus.xml': None},
+    (1, 2, 1): {'screens/start-welcome.png': 111618, 'extensions/inkex/elements/_base.py': 26897, 'ui/menus.xml': None},
+    (1, 2, 2): {'screens/start-welcome.png': 111618, 'extensions/inkex/elements/_base.py': 26917, 'ui/menus.xml': None},
+    (1, 3, 0): {'screens/start-welcome.png': 147598, 'extensions/inkex/elements/_base.py': 29053, 'ui/menus.xml': None},
+    (1, 3, 1): {'screens/start-welcome.png': 150356, 'extensions/inkex/elements/_base.py': 29053, 'ui/menus.xml': None},
+    (1, 3, 2): {'screens/start-welcome.png': 147977, 'extensions/inkex/elements/_base.py': 29053, 'ui/menus.xml': None},
+    (1, 4, 0): {'screens/start-welcome.png': 173863, 'extensions/inkex/elements/_base.py': 33264, 'ui/menus.xml': None},
+    (1, 4, 1): {'screens/start-welcome.png': 173863, 'extensions/inkex/elements/_base.py': 33472, 'ui/menus.xml': None},
+    (1, 4, 2): {'screens/start-welcome.png': 172776, 'extensions/inkex/elements/_base.py': 33472, 'ui/menus.xml': None},
+    (1, 4, 3): {'screens/start-welcome.png': 174042, 'extensions/inkex/elements/_base.py': 33472, 'ui/menus.xml': None},
+    (1, 4, 4): {'screens/start-welcome.png': 173867, 'extensions/inkex/elements/_base.py': 33472, 'ui/menus.xml': None},
+}
+
+
+
+@lru_cache(maxsize=None)
+def inkscape_binary_version():
+    """
+    The installed Inkscape's version, read from the sizes of a few files in
+    its share folder (INKSCAPE_RELEASE_TABLE, fast) or, when nothing matches
+    (a development build, a release newer than the table, a Snap/AppImage
+    launcher with no share folder nearby), by running it with --version
+    """
+    binary = inkex.inkscape_system_info.binary_location
+    prefix = os.path.dirname(os.path.dirname(os.path.abspath(binary)))
+    for share_dir in (
+        os.path.join(prefix, "share", "inkscape"),
+        os.path.join(prefix, "Resources", "share", "inkscape"),  # macOS app
+    ):
+        if os.path.isdir(share_dir):
+            observed = dict()
+            for rel in INKSCAPE_RELEASE_PROBES:
+                path = os.path.join(share_dir, *rel.split("/"))
+                try:
+                    if rel.endswith((".png", ".svgz")):
+                        observed[rel] = os.path.getsize(path)
+                    else:
+                        with open(path, "rb") as f:
+                            observed[rel] = len(f.read().replace(b"\r\n", b"\n"))
+                except OSError:
+                    observed[rel] = None
+            hits = [v for v, row in INKSCAPE_RELEASE_TABLE.items() if row == observed]
+            if len(hits) == 1:
+                return ".".join(str(v) for v in hits[0])
+            break
+
+    proc = subprocess_repeat([binary, "--version"])
+
+    match = re.search(r"Inkscape\s+(\S+)\s+\(", str(proc.stdout))
+    return match.group(1) if match else None
+
+
+class InkscapeShell:
+    """
+    A small pool of persistent `inkscape --shell` processes.
+
+    Starting Inkscape costs a few seconds whatever the document, so
+    inkscape_cli() hands each binary call to an idle shell from the pool (up
+    to MAX_THREADS of them, so concurrent exports still overlap) instead of
+    launching the binary; a caller that wants a one-shot launch calls
+    subprocess_repeat directly. Shells are
+    closed after IDLE seconds unused and at exit, and anything that goes
+    wrong falls back to a one-shot launch of that call.
+
+    Export settings persist for the life of a shell, so commands() starts
+    every call from the state a fresh launch would have. The export area is
+    the subtle one. On 1.3 and later, whole-document exports need the page
+    area, export-id exports need the drawing area (which any id export also
+    leaves behind), and both are switched explicitly. Before 1.3 the page
+    area is sticky once set and the drawing area cannot undo it, while with
+    neither ever sent every export already gets the right area, so there the
+    area actions are simply omitted. Shells before 1.3 are closed by killing
+    them (1.1 hangs on quit), and COLUMNS keeps 1.2's readline from wrapping
+    its echo of long lines into the output. Before 1.2 the shell is not
+    safe: after a stroke-to-path its selection outlives the objects the
+    conversion replaced and the next selection action crashes it, and even
+    plain select/unselect lines sometimes crash or hang (1.1 less often than
+    1.0). The fallback keeps the output right, but a hang first costs the
+    whole TIMEOUT, so those versions stay one-shot.
+    """
+
+    IDLE = 3600  # seconds unused after which a shell is closed
+    TIMEOUT = 600  # seconds to wait for one call
+    MIN_VERSION = (1, 2)  # see the docstring for why not lower
+    PROMPT = b"> "
+
+    _cv = None  # threading.Condition guarding the pool
+    _free = []  # idle shells
+    _slots = _Slots(MAX_THREADS)  # admission to the pool, by priority
+    _timer = None  # idle timer
+
+    # one shell
+    def __init__(self, binary, cwd):
+        import subprocess, threading, queue, time
+
+        self.cwd = cwd
+        self.proc = subprocess.Popen(
+            [binary, "--shell"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            cwd=cwd,
+            env=dict(os.environ, SELF_CALL="true", COLUMNS="100000"),
+        )
+        self.q = queue.Queue()
+        threading.Thread(target=self._reader, daemon=True).start()
+        self._wait(120)  # banner
+        self.last_used = time.monotonic()
+
+    def _reader(self):
+        while True:
+            b = self.proc.stdout.read1(65536)
+            if not b:
+                return
+            self.q.put(b)
+
+    def _wait(self, timeout):
+        """Collect output until the next prompt"""
+        import queue, time
+
+        buf = b""
+        end = time.monotonic() + timeout
+        while not buf.endswith(self.PROMPT):
+            if self.proc.poll() is not None and self.q.empty():
+                raise RuntimeError("Inkscape shell exited")
+            try:
+                buf += self.q.get(timeout=min(1.0, max(0.0, end - time.monotonic())))
+            except queue.Empty:
+                if time.monotonic() > end:
+                    raise TimeoutError("Inkscape shell timed out")
+        return buf
+
+    def run(self, cmds, timeout=None):
+        """Run a list of actions as one shell line; returns their output"""
+        line = "; ".join(c.strip() for c in cmds if c.strip())
+        self.proc.stdin.write((line + "\n").encode("utf-8"))
+        self.proc.stdin.flush()
+        out = self._wait(timeout or self.TIMEOUT).decode("utf-8", "replace")
+        out = out[: -len(self.PROMPT)]
+        if out.startswith(line):  # the shell echoes the command
+            out = out[len(line):]
+        return out.lstrip("\r\n")
+
+    def close(self):
+        try:
+            if self.version() < (1, 3):
+                raise RuntimeError("old shells hang on quit")
+            self.proc.stdin.write(b"quit\n")
+            self.proc.stdin.flush()
+            self.proc.wait(timeout=5)
+        except Exception:
+            self.proc.kill()
+            self.proc.wait(timeout=5)
+        for f in (self.proc.stdin, self.proc.stdout):
+            try:
+                f.close()
+            except Exception:
+                pass
+
+    # the pool
+    @classmethod
+    def version(cls):
+        """(major, minor) of the binary; a development build falls back to
+        the inkex version"""
+        try:
+            ver = inkex.vparse(inkscape_binary_version())
+        except (TypeError, ValueError):  # unknown or development build
+            ver = inkex.installed_ivp
+        return tuple(ver[:2])
+
+    @classmethod
+    def usable(cls):
+        return cls.version() >= cls.MIN_VERSION
+
+    @classmethod
+    def commands(cls, opts):
+        """Translate command-line options (input file last) into shell actions"""
+        area = cls.version() >= (1, 3)  # see the class docstring
+        cmds = [
+            "file-open:" + opts[-1],
+            "export-id:",
+            "export-id-only:false",
+            "export-plain-svg:false",
+            "export-latex:false",
+        ]
+        if area:
+            cmds.insert(3, "export-area-page")
+        nprefix = len(cmds)
+        export = False
+        opts = list(opts[:-1])
+        while opts:
+            o = opts.pop(0)
+            if not o.startswith("--"):
+                continue
+            name, _, val = o[2:].partition("=")
+            if not val and opts and not opts[0].startswith("--"):
+                val = opts.pop(0)
+            if name == "actions":
+                cmds += [c for c in val.split(";") if c.strip()]
+            else:
+                cmds.append(name + ":" + val if val else name)
+                export = export or name.startswith("export-")
+        if export and not any(c.strip() == "export-do" for c in cmds):
+            cmds.append("export-do")
+        for i in range(nprefix, len(cmds)):
+            if area and cmds[i].strip().startswith("export-id"):
+                cmds.insert(i, "export-area-drawing")
+                break
+        return cmds + ["file-close"]
+
+    @classmethod
+    def call(cls, args, cwd=None, priority=0):
+        """Run command-line style arguments (binary first, input file last)
+        through the pool, or one-shot if that is not possible. priority as
+        in subprocess_repeat. Returns an object with .stdout, like
+        subprocess_repeat."""
+        if not cls.usable():
+            return subprocess_repeat(args, cwd=cwd, priority=priority)
+        import types
+
+        shell = None
+        try:
+            shell = cls._acquire(args[0], cwd, priority)
+            out = shell.run(cls.commands(args[1:]))
+            cls._release(shell)
+            return types.SimpleNamespace(stdout=out, returncode=0)
+        except Exception:
+            if shell is not None:
+                cls._release(shell, discard=True)
+            return subprocess_repeat(args, cwd=cwd, priority=priority)
+
+    @classmethod
+    def _acquire(cls, binary, cwd, priority=0):
+        """A slot in the pool (urgent calls get free slots first), then an
+        idle shell (any cwd if none is asked for) or a new one"""
+        import threading, atexit
+
+        if cls._cv is None:
+            cls._cv = threading.Condition()
+            atexit.register(cls.close_all)
+        cls._slots.acquire(priority)
+        with cls._cv:
+            for s in cls._free:
+                if s.proc.poll() is None and (cwd is None or s.cwd == cwd):
+                    cls._free.remove(s)
+                    return s
+            for s in [s for s in cls._free if s.proc.poll() is not None]:
+                cls._free.remove(s)  # died while idle
+            if cls._free and len(cls._free) + cls._slots.busy > MAX_THREADS:
+                cls._free.pop().close()  # idle ones are in the wrong cwd: replace one
+        try:
+            return cls(binary, cwd)  # started outside the lock: takes seconds
+        except Exception:
+            cls._slots.release()
+            raise
+
+    @classmethod
+    def _release(cls, shell, discard=False):
+        import time
+
+        with cls._cv:
+            if discard or shell.proc.poll() is not None:
+                shell.close()
+            else:
+                shell.last_used = time.monotonic()
+                cls._free.append(shell)
+                if cls._timer is None:
+                    cls._arm_timer(cls.IDLE)
+        cls._slots.release()
+
+    @classmethod
+    def _arm_timer(cls, delay):
+        import threading
+
+        cls._timer = threading.Timer(delay, cls._idle_check)
+        cls._timer.daemon = True  # never keeps the process alive
+        cls._timer.start()
+
+    @classmethod
+    def _idle_check(cls):
+        """Timer callback: close shells idle for IDLE seconds, then come back
+        when the next one would be due"""
+        import time
+
+        with cls._cv:
+            cls._timer = None
+            now = time.monotonic()
+            for s in list(cls._free):
+                if now - s.last_used >= cls.IDLE:
+                    cls._free.remove(s)
+                    s.close()
+            if cls._free:
+                cls._arm_timer(max(1.0, min(cls.IDLE - (now - s.last_used) for s in cls._free)))
+
+    @classmethod
+    def close_all(cls):
+        if cls._cv is None:
+            return
+        with cls._cv:
+            for s in cls._free:
+                s.close()
+            cls._free.clear()
+
+
+def inkscape_cli(args, cwd=None, priority=0):
+    """Run the Inkscape binary with command-line style arguments (binary
+    first, input file last), through the shell pool when the binary supports
+    it. priority as in subprocess_repeat. Returns an object with .stdout,
+    like subprocess_repeat."""
+    return InkscapeShell.call(args, cwd=cwd, priority=priority)
+
+
+def vacuum_defs(svg):
+    """Remove <defs> children nothing refers to, like Inkscape's --vacuum-defs
+    (which has no shell-mode equivalent). Repeats until nothing changes,
+    since definitions can refer to each other."""
+    import re
+
+    refre = re.compile(r"url\(\s*#([^)\s'\"]+)\s*\)|^#(\S+)$")
+    deftag = inkex.Defs.ctag
+    keep = {inkex.addNS(t, "svg") for t in ("font", "font-face", "style", "script")}
+    # Like Inkscape, only the direct children of outermost <defs> are
+    # candidates, and one stays if it or anything inside it is referenced
+    topdefs = [
+        d for d in svg.iter(deftag)
+        if not any(a.tag == deftag for a in d.iterancestors())
+    ]
+    while True:
+        used = set()
+        for el in svg.iter("*"):
+            for v in el.attrib.values():
+                for m in refre.finditer(v):
+                    used.add(m.group(1) or m.group(2))
+        gone = [
+            d
+            for defs in topdefs
+            for d in defs
+            if isinstance(d.tag, str) and d.tag not in keep
+            and not any(e.get("id") in used for e in d.iter("*"))
+        ]
+        if not gone:
+            return
+        for d in gone:
+            d.getparent().remove(d)
 
 
 def wrapped_binary(
@@ -606,10 +1097,10 @@ def wrapped_binary(
 
     if get_bbs:
         arg2 = [inkscape_binary, "--query-all"] + extra_args + [filename]
-        proc = subprocess_repeat(arg2, cwd=cwd)
+        proc = inkscape_cli(arg2, cwd=cwd)
     else:
         arg2 = [inkscape_binary] + extra_args + [filename]
-        proc = subprocess_repeat(arg2, cwd=cwd)
+        proc = inkscape_cli(arg2, cwd=cwd)
         return None
     tfstr = proc.stdout
 
@@ -620,10 +1111,14 @@ def wrapped_binary(
         keyv = str(line).split(",", maxsplit=1)[0]
         if keyv[0:2] == "b'":  # pre version 1.1
             keyv = keyv[2:]
-        if str(line)[2:52] == "WARNING: Requested update while update in progress":
-            continue
-            # skip warnings (version 1.0 only?)
-        data = [float(x.strip("'")) for x in str(line).split(",")[1:]]
+        try:
+            data = [float(x.strip("'")) for x in str(line).split(",")[1:]]
+        except ValueError:
+            continue  # not a bounding-box line, e.g. a console/status message
+            # such as v1.0's "WARNING: Requested update while update in
+            # progress, counter = %d" or "Unable to find: %s"
+        if len(data) < 4:
+            continue  # likewise; a short entry would break pxtouu downstream
         if keyv != "'":  # sometimes happens in v1.3
             bbs[keyv] = data
 
@@ -640,23 +1135,31 @@ def wrapped_binary(
 
 
 # Determine if object has a bbox
-@lru_cache(maxsize=None)
+# Memoized on the element itself (like cspecified_style) so the record dies
+# with its document
 def hasbbox(el):
-    myp = el.getparent()
-    if myp is None:
-        return el.tag == svgtag
-    else:
-        return el.tag not in unrendered if hasbbox(myp) else False
+    ret = el.__dict__.get("_hasbbox")
+    if ret is None:
+        myp = el.getparent()
+        if myp is None:
+            ret = el.tag == svgtag
+        else:
+            ret = el.tag not in unrendered if hasbbox(myp) else False
+        el._hasbbox = ret
+    return ret
 
 
 # Determine if object itself is drawn
-@lru_cache(maxsize=None)
 def isdrawn(el):
-    return (
-        el.tag not in grouplike_tags
-        and hasbbox(el)
-        and el.cspecified_style.get("display") != "none"
-    )
+    ret = el.__dict__.get("_isdrawn")
+    if ret is None:
+        ret = (
+            el.tag not in grouplike_tags
+            and hasbbox(el)
+            and el.cspecified_style.get("display") != "none"
+        )
+        el._isdrawn = ret
+    return ret
 
 
 # A wrapper that replaces get_bounding_boxes with Pythonic calls only if possible
@@ -681,9 +1184,12 @@ def BB2(svg, els=None, forceupdate=False, roughpath=False, parsed=False):
                 for d in els:
                     d.cbbox = None
                     d.parsed_text = None
-            if not hasattr(svg, "_char_table"):
+            ctable = getattr(svg, "_char_table", None)
+            if ctable is None or not set(tels) <= set(ctable.els):
+                # No table yet, or text was added since it was built
                 from inkex.text import parser  # noqa
 
+                svg.char_table = None
                 svg.make_char_table(els=tels)
                 # pts = [el.parsed_text for el in tels]
                 ptl = parser.ParsedTextList(tels)
@@ -773,9 +1279,10 @@ def bb_intersects(bbs, bb2s=None):
 
 
 # Return list of objects on top of other objects
-def overlapping_els(svg, tocheck):
+def overlapping_els(svg, tocheck, bbs=None):
     els = [el for el in svg.iter('*') if isdrawn(el)]
-    bbs = BB2(svg, els, roughpath=True, parsed=True)
+    if bbs is None:
+        bbs = BB2(svg, els, roughpath=True, parsed=True)
     bbs = [bbox(bbs.get(el.get_id())) for el in els]
 
     chki = [i for i, el in enumerate(els) if el in tocheck]
@@ -785,9 +1292,9 @@ def overlapping_els(svg, tocheck):
     ret = {el: [] for el in tocheck}
     for j, ci in enumerate(chki):
         elj = els[ci]
+        ds = set(elj.descendants2())
         for i in range(ci + 1, len(els)):
             eli = els[i]
-            ds = elj.descendants2()
             if intrscts[i, j] and eli not in ds:
                 ret[elj].append(eli)
 
@@ -830,7 +1337,16 @@ def overwrite_svg(svg, fileout):
     # idebug(inkex)
     import inkex.command  # needed for a weird bug in v1.1
 
-    inkex.command.write_svg(svg, fileout)
+    for attempt in range(3):
+        try:
+            inkex.command.write_svg(svg, fileout)
+            return
+        except PermissionError:
+            # Windows only: a file written moments ago (by Inkscape, say)
+            # can still be held briefly by real-time scanning or indexing
+            if attempt == 2:
+                raise
+            time.sleep(0.5)
 
 
 global debugs
@@ -1109,28 +1625,40 @@ def global_transform(el, trnsfrm, irange=None, trange=None, preserveStroke=True)
 
 # Combines a group of path-like elements
 def combine_paths(els, mergeii=0):
-    pnew = Path()
-    si = []
-    # start indices
-    for el in els:
-        pth = el.cpath.to_absolute().transform(el.ccomposed_transform)
-        if el.get("inkscape-scientific-combined-by-color") is None:
-            si.append(len(pnew))
-        else:
-            cbc = el.get(
-                "inkscape-scientific-combined-by-color"
-            )  # take existing ones and weld them
-            cbc = [int(v) for v in cbc.split()]
-            si += [v + len(pnew) for v in cbc[0:-1]]
-        for p in pth:
-            pnew.append(p)
-    si.append(len(pnew))
+    import numpy as np
+
+    mel = els[mergeii]
+    ds = [el.get("d") for el in els]
+    parts = None  # each element's segments, absolute and transformed
+    if None not in ds and sum(map(len, ds)) >= 2000:  # the segment walk below is slow on long paths
+        try:
+            parts = [DAttr(d).absolute(el.ccomposed_transform) for d, el in zip(ds, els)]
+        except ValueError:
+            pass
+    if parts is None:
+        parts = [el.cpath.to_absolute().transform(el.ccomposed_transform) for el in els]
+    si = []  # start indices
+    n = 0  # segments so far
+    for el, p in zip(els, parts):
+        cbc = el.get("inkscape-scientific-combined-by-color")
+        if cbc is None:
+            si.append(n)
+        else:  # take existing ones and weld them
+            si += [int(v) + n for v in cbc.split()[0:-1]]
+        n += len(p)
+    si.append(n)
 
     # Set the path on the mergeiith element
-    mel = els[mergeii]
     if mel.get("d") is None:  # Polylines and lines have to be converted to a path
         mel.object_to_path()
-    mel.set("d", str(pnew.transform(-mel.ccomposed_transform)))
+    if isinstance(parts[0], Path):
+        pnew = Path()
+        for p in parts:
+            pnew.extend(p)
+        dnew = str(pnew.transform(-mel.ccomposed_transform))
+    else:
+        dnew = DAttr.to_d(DAttr.transformed(np.concatenate(parts), -mel.ccomposed_transform))
+    mel.set("d", dnew)
 
     # Release clips/masks
     mel.set_link("clip-path", "none")
@@ -1329,7 +1857,12 @@ class SI_Config:
         return self._dmc
 
     def get_option(self, section, key, default=None):
-        return self.data.get(section, {}).get(key, default)
+        if not self.loaded:
+            self._load()
+        sec = self.data.get(section, {})
+        if not isinstance(sec, dict):
+            return default
+        return sec.get(key, default)
     
     def find_missing_links(self,missing_file):
         '''
@@ -1361,6 +1894,67 @@ class SI_Config:
 
 si_config = SI_Config()
 
+def si_bat_discovery(script_name, console=False):
+    """Batch-file preamble that discovers everything a launcher needs on a
+    machine it has never run on: Inkscape (PATH, then the App Paths registry,
+    then Program Files), its bundled Python, and the folder holding
+    script_name (next to the bat itself, else under Inkscape's user
+    extensions directory -- asking Inkscape for its profile location so
+    relocated profiles work). Sets INK, INKBIN, SIPY, and SIDIR; prepends
+    INKBIN to PATH and exports SI_INKSCAPE_BFN so the launched script can
+    correct a stale pickled binary path. Errors pause so they can be read.
+
+    console=True prefers python.exe (attached console UI); otherwise
+    pythonw.exe (detached GUI)."""
+    py_a, py_b = (("python.exe", "pythonw.exe") if console
+                  else ("pythonw.exe", "python.exe"))
+    return (
+        'REM ---- locate Inkscape ------------------------------------------\n'
+        'set "INK="\n'
+        'for /f "delims=" %%I in (\'where inkscape.exe 2^>nul\') do if not defined INK set "INK=%%I"\n'
+        'if not defined INK for /f "tokens=2*" %%A in (\'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\inkscape.exe" /ve 2^>nul ^| findstr /i "REG_SZ"\') do set "INK=%%B"\n'
+        'if not defined INK for /f "tokens=2*" %%A in (\'reg query "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\inkscape.exe" /ve 2^>nul ^| findstr /i "REG_SZ"\') do set "INK=%%B"\n'
+        'if not defined INK if exist "%ProgramFiles%\\Inkscape\\bin\\inkscape.exe" set "INK=%ProgramFiles%\\Inkscape\\bin\\inkscape.exe"\n'
+        'if not defined INK if exist "%ProgramFiles(x86)%\\Inkscape\\bin\\inkscape.exe" set "INK=%ProgramFiles(x86)%\\Inkscape\\bin\\inkscape.exe"\n'
+        'if defined INK goto si_ink_found\n'
+        'echo ERROR: could not locate inkscape.exe ^(PATH, App Paths registry, or Program Files^).\n'
+        'pause\n'
+        'exit /b 1\n'
+        ':si_ink_found\n'
+        'for %%I in ("%INK%") do set "INKBIN=%%~dpI"\n'
+        '\n'
+        'REM ---- locate Inkscape\'s Python --------------------------------\n'
+        f'set "SIPY=%INKBIN%{py_a}"\n'
+        f'if not exist "%SIPY%" set "SIPY=%INKBIN%{py_b}"\n'
+        'if exist "%SIPY%" goto si_py_found\n'
+        'echo ERROR: no python under "%INKBIN%".\n'
+        'pause\n'
+        'exit /b 1\n'
+        ':si_py_found\n'
+        '\n'
+        'REM ---- locate the Scientific Inkscape scripts -------------------\n'
+        'set "SIDIR="\n'
+        f'if exist "%~dp0{script_name}" set "SIDIR=%~dp0"\n'
+        'if defined SIDIR goto si_dir_found\n'
+        'set "PROFDIR=%INKSCAPE_PROFILE_DIR%"\n'
+        'if not defined PROFDIR for /f "usebackq delims=" %%I in (`"%INKBIN%inkscape.com" --user-data-directory 2^>nul`) do set "PROFDIR=%%I"\n'
+        'if not defined PROFDIR set "PROFDIR=%APPDATA%\\inkscape"\n'
+        'set "EXTDIR=%PROFDIR%\\extensions"\n'
+        'if not exist "%EXTDIR%" set "EXTDIR=%APPDATA%\\inkscape\\extensions"\n'
+        f'if exist "%EXTDIR%\\{script_name}" set "SIDIR=%EXTDIR%"\n'
+        f'if not defined SIDIR for /d %%D in ("%EXTDIR%\\*") do if not defined SIDIR if exist "%%D\\{script_name}" set "SIDIR=%%D"\n'
+        'if defined SIDIR goto si_dir_found\n'
+        f'echo ERROR: could not find {script_name} next to this file or under "%EXTDIR%".\n'
+        'pause\n'
+        'exit /b 1\n'
+        ':si_dir_found\n'
+        '\n'
+        'set "PATH=%INKBIN%;%PATH%"\n'
+        'set "SI_INKSCAPE_BFN=%INK%"\n'
+        'cd /d "%SIDIR%"\n'
+    )
+
+
 def shared_temp(headprefix=None, filename=None):
     """
     Generate a temporary file in the system temp folder or SI's location
@@ -1372,21 +1966,8 @@ def shared_temp(headprefix=None, filename=None):
     paths must be done here.
 
     """
-    if sys.executable[0:4] == "/tmp" or sys.executable[0:5] == "/snap":
-        si_dir = os.path.dirname(
-            os.path.realpath(__file__)
-        )  # in case si_dir is not loaded
-        system_temp = si_dir
-    else:
-        import tempfile
-
-        system_temp = tempfile.gettempdir()
-    if not os.path.exists(system_temp):
-        os.mkdir(system_temp)
-
-    tempdir = os.path.join(os.path.abspath(system_temp), "si_temp")
-    if not os.path.exists(tempdir):
-        os.mkdir(tempdir)
+    import si_tmp
+    tempdir = si_tmp.root()  # single source of truth for the si_temp location
 
     if headprefix is not None:
         if not hasattr(shared_temp, "_sema"):
@@ -1423,6 +2004,397 @@ grouplike_tags = tags(
 grouplike_tags.add(mask_tag)
 
 
+class DAttr:
+    """
+    The d attribute of a path made only of M, L, H, V, C and Z commands
+    (what the PDF importer and most drawing programs write), parsed into
+    numpy arrays without building segment objects. Raises ValueError for
+    anything it cannot read: other commands, numbers after a Z, an
+    incomplete command, or no commands at all. Every coordinate is formed
+    with the same float operations as inkex's segment walk, so results
+    agree with it exactly.
+    """
+
+    nargs = (2, 2, 1, 1, 6, 0)  # M L H V C Z
+    info = {L: (k, L.islower()) for k, LL in enumerate("MLHVCZ") for L in (LL, LL.lower())}
+
+    def __init__(self, d):
+        import numpy as np
+
+        rk, rr, rn, toks = [], [], [], []  # per run: kind, relative, segments
+        for L, chunk in speedups.LEX_REX.findall(d):
+            try:
+                k, rel = self.info[L]
+            except KeyError:
+                raise ValueError(L)
+            nums = speedups.NUMBER_REX.findall(chunk)
+            n = len(nums)
+            if k == 5:
+                if n:
+                    raise ValueError("numbers after Z")
+                rk.append(5)
+                rr.append(False)
+                rn.append(1)
+                continue
+            if n == 0:
+                continue
+            if n % self.nargs[k]:
+                raise ValueError("incomplete command")
+            toks += nums
+            if k == 0:  # a move, then implicit lines
+                rk += [0, 1]
+                rr += [rel, rel]
+                rn += [1, n // 2 - 1]
+            else:
+                rk.append(k)
+                rr.append(rel)
+                rn.append(n // self.nargs[k])
+        if not rk:
+            raise ValueError("no commands")
+        rk, rr, rn = np.array(rk), np.array(rr, dtype=bool), np.array(rn)
+        self.kind, self.rel = kind, rel = np.repeat(rk, rn), np.repeat(rr, rn)
+        T = len(kind)
+        na = np.array(self.nargs)[rk]
+        nv = rn * na
+        N = int(nv.sum())
+        self.A = A = np.zeros((T, 6))  # each segment's arguments
+        if N:
+            run = np.repeat(np.arange(len(rk)), nv)
+            pos = np.arange(N) - np.repeat(np.cumsum(nv) - nv, nv)
+            kk = na[run]
+            A[(np.cumsum(rn) - rn)[run] + pos // kk, pos % kk] = np.array(toks, dtype=float)
+        isM, isH, isV, isC, isZ = (kind == i for i in (0, 2, 3, 4, 5))
+        ex = np.where(isC, A[:, 4], A[:, 0])
+        ey = np.where(isC, A[:, 5], np.where(isV, A[:, 0], A[:, 1]))
+        # the current point after each segment (the subpath start after a Z)
+        self.cx = self.coord(rel, ex, ~isV & ~isZ, isM, isZ)
+        self.cy = self.coord(rel, ey, ~isH & ~isZ, isM, isZ)
+
+    @staticmethod
+    def coord(rel, e, chg, isM, isZ):
+        """
+        One coordinate of the current point after each segment of a d
+        attribute. e: that coordinate of the segment's end argument; chg:
+        whether the segment sets it (H leaves y alone, V leaves x alone).
+        Absolute segments reset it to 0.0 + e, Z to the subpath start, and
+        relative segments add to it in sequence, each run of additions a
+        single cumulative sum so the float operations match the segment walk
+        """
+        import numpy as np
+
+        T = len(e)
+        c = np.zeros(T)
+        absset = chg & ~rel
+        c[absset] = 0.0 + e[absset]
+        known = absset.copy()
+        relchg = rel & chg
+        if relchg.any() or isZ.any():
+            reset = absset | isZ
+            starts = np.flatnonzero(reset)
+            if len(starts) == 0 or starts[0] != 0:
+                starts = np.concatenate(([0], starts))  # the path starts at 0.0
+            ends = np.concatenate((starts[1:], [T]))
+            mstart = np.flatnonzero(isM)
+            todo = np.add.reduceat(relchg.astype(int), starts) > 0
+            for g in np.flatnonzero(todo | isZ[starts]):
+                b, nb = starts[g], ends[g]
+                if isZ[b]:
+                    i = np.searchsorted(mstart, b) - 1
+                    c[b] = c[mstart[i]] if i >= 0 else 0.0
+                    known[b] = True
+                    v0, first = c[b], b + 1
+                elif reset[b]:
+                    v0, first = c[b], b + 1
+                else:
+                    v0, first = 0.0, b
+                idx = np.flatnonzero(relchg[first:nb]) + first
+                if len(idx):
+                    c[idx] = np.cumsum(np.concatenate(([v0], e[idx])))[1:]
+                    known[idx] = True
+        if not known.all():  # segments that leave this coordinate as it was
+            last = np.maximum.accumulate(np.where(known, np.arange(T), -1))
+            c = np.where(last >= 0, c[np.maximum(last, 0)], 0.0)
+        return c
+
+    def bbox(self, rough=False):
+        """
+        (x1, y1, x2, y2) of the path, or None for a curved path with
+        rough=False, where the segment walk finds the exact extrema.
+        rough=True returns the control-point hull, an upper bound
+        """
+        import numpy as np
+
+        kind, rel, A, cx, cy = self.kind, self.rel, self.A, self.cx, self.cy
+        isH, isV, isC, isZ = (kind == i for i in (2, 3, 4, 5))
+        if isC.any() and not rough:
+            return None
+        xs, ys = [cx[~isV & ~isZ]], [cy[~isH & ~isZ]]
+        if isC.any():  # control points, relative to the segment's start
+            bx = np.where(rel[isC], np.concatenate(([0.0], cx[:-1]))[isC], 0.0)
+            by = np.where(rel[isC], np.concatenate(([0.0], cy[:-1]))[isC], 0.0)
+            xs += [bx + A[isC, 0], bx + A[isC, 2]]
+            ys += [by + A[isC, 1], by + A[isC, 3]]
+        if kind[0] != 0:  # the segment walk starts at the origin
+            xs.append(np.zeros(1))
+            ys.append(np.zeros(1))
+        xs, ys = np.concatenate(xs), np.concatenate(ys)
+        return (float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()))
+
+    def fused(self, transf):
+        """
+        The d attribute that fuseTransform's round trip through
+        CubicSuperPath writes after applying transf: absolute M, L, C and Z.
+        The round trip writes a curve as a line when its handles are
+        retracted or lie on the chord (CubicSuperPath.is_line), and a
+        subpath's last line as Z when it returns to the start within
+        tolerance; it tests both before and after the transform, so both are
+        reproduced here. None for a path that does not start with M, or a Z
+        followed by anything but M: there the round trip drops or merges
+        segments in ways the arrays do not reproduce
+        """
+        import numpy as np
+
+        kind = self.kind
+        T = len(kind)
+        isM, isC, isZ = kind == 0, kind == 4, kind == 5
+        after_z = np.flatnonzero(isZ) + 1
+        if kind[0] != 0 or not isM[after_z[after_z < T]].all():
+            return None
+        first = np.flatnonzero(isM)  # each subpath's M
+        last = np.concatenate((first[1:], [T])) - 1  # and its final segment
+        m = transf.matrix
+
+        def tf(x, y):
+            return m[0][0] * x + m[0][1] * y + m[0][2], m[1][0] * x + m[1][1] * y + m[1][2]
+
+        def closes(px, py, qx, qy):  # Vector2d.is_close(p, q) with its default tolerances
+            dx, dy = px - qx, py - qy
+            return np.sqrt(dx * dx + dy * dy) < 1e-8 + 1e-5 * np.sqrt(qx * qx + qy * qy)
+
+        def on(ax, ay, bx, by, cx, cy):  # CubicSuperPath.is_on: a on the chord from b to c
+            col = np.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) < 1e-8
+            wx = ((bx <= ax) & (ax <= cx)) | ((cx <= ax) & (ax <= bx))
+            wy = ((by <= ay) & (ay <= cy)) | ((cy <= ay) & (ay <= by))
+            return col & np.where(ax != bx, wx, wy)
+
+        def is_line(px, py, h1x, h1y, h2x, h2y, nx, ny):  # CubicSuperPath.is_line, curve p to n
+            retracted = closes(px, py, h1x, h1y) & closes(h2x, h2y, nx, ny)
+            return retracted | (on(h2x, h2y, nx, ny, h1x, h1y) & on(h1x, h1y, px, py, h2x, h2y))
+
+        x, y = self.cx, self.cy
+        X, Y = tf(x, y)
+        lpre = ~isM & ~isZ  # written as a line before the transform (L, H, V always)
+        lpost = lpre.copy()  # and after it
+        ci = np.flatnonzero(isC)
+        if len(ci):
+            A, rel = self.A[ci], self.rel[ci]
+            px, py = x[ci - 1], y[ci - 1]  # the curve's start
+            h1x, h1y = np.where(rel, px + A[:, 0], A[:, 0]), np.where(rel, py + A[:, 1], A[:, 1])
+            h2x, h2y = np.where(rel, px + A[:, 2], A[:, 2]), np.where(rel, py + A[:, 3], A[:, 3])
+            lpre[ci] = is_line(px, py, h1x, h1y, h2x, h2y, x[ci], y[ci])
+            H1X, H1Y = tf(h1x, h1y)
+            H2X, H2Y = tf(h2x, h2y)
+            lpost[ci] = is_line(X[ci - 1], Y[ci - 1], H1X, H1Y, H2X, H2Y, X[ci], Y[ci])
+        line = lpre | lpost
+        # a subpath's last segment closes it when it is a line back to the start:
+        # a line before the transform is tested at both stages, a curve that
+        # became a line only after it is tested after
+        fi = first[last > first]
+        la = last[last > first]
+        cpre = closes(x[la], y[la], x[fi], y[fi])
+        cpost = closes(X[la], Y[la], X[fi], Y[fi])
+        isZ = isZ.copy()
+        isZ[la[np.where(lpre[la], cpre | cpost, lpost[la] & cpost)]] = True
+        rows = np.zeros((T, 7))
+        rows[:, 0] = np.where(isM, 0, np.where(isZ, 5, np.where(isC & ~line, 4, 1)))
+        rows[:, 5], rows[:, 6] = X, Y
+        if len(ci):
+            rows[ci, 1], rows[ci, 2], rows[ci, 3], rows[ci, 4] = H1X, H1Y, H2X, H2Y
+        return self.to_d(rows)
+
+    def absolute(self, transf):
+        """
+        One row per segment, (kind, x1, y1, x2, y2, x, y), as
+        el.cpath.to_absolute().transform(transf) leaves it: kind 0 for M,
+        1 for L (H and V become lines), 4 for C with its handles in x1..y2,
+        5 for Z; x, y the end point
+        """
+        import numpy as np
+
+        kind, A, rel = self.kind, self.A, self.rel
+        rows = np.zeros((len(kind), 7))
+        rows[:, 0] = np.where((kind == 2) | (kind == 3), 1, kind)
+        rows[:, 5], rows[:, 6] = self.cx, self.cy
+        ci = np.flatnonzero(kind == 4)
+        if len(ci):
+            # the start of each curve, (0, 0) before the first segment
+            start = np.where((ci > 0)[:, None], np.column_stack((self.cx, self.cy, self.cx, self.cy))[ci - 1], 0.0)
+            rows[ci, 1:5] = np.where(rel[ci, None], start + A[ci, :4], A[ci, :4])
+        return self.transformed(rows, transf)
+
+    @staticmethod
+    def transformed(rows, transf):
+        """
+        Rows from absolute() with transf applied to every point, in the
+        float operations of Transform.apply_to_point
+        """
+        m = transf.matrix
+        X, Y = rows[:, 1::2], rows[:, 2::2]
+        out = rows.copy()
+        out[:, 1::2] = m[0][0] * X + m[0][1] * Y + m[0][2]
+        out[:, 2::2] = m[1][0] * X + m[1][1] * Y + m[1][2]
+        return out
+
+    @staticmethod
+    def to_d(rows):
+        """
+        The d attribute for rows from absolute(), as str(Path) writes it
+        """
+        import numpy as np
+
+        kind = rows[:, 0]
+        segs = [
+            f"{L} {x:.6g} {y:.6g}"
+            for L, x, y in zip(np.where(kind == 0, "M", "L").tolist(), rows[:, 5].tolist(), rows[:, 6].tolist())
+        ]
+        for i, (a, b, c, d, e, f) in zip(np.flatnonzero(kind == 4).tolist(), rows[kind == 4, 1:].tolist()):
+            segs[i] = f"C {a:.6g} {b:.6g} {c:.6g} {d:.6g} {e:.6g} {f:.6g}"
+        for i in np.flatnonzero(kind == 5).tolist():
+            segs[i] = "Z"
+        return " ".join(segs)
+
+
+def path_bbox(el, rough=False):
+    """
+    Bounding box (x1, y1, x2, y2) of a path-like element, or None if it has
+    no points. A long path element whose d DAttr can read is measured from
+    its arrays, without building segment objects. Anything else goes
+    through el.cpath: every segment becomes four cubic control points in
+    one flat list and the extrema are taken with numpy. rough=True returns
+    the control-point hull, an upper bound that skips the extrema.
+    """
+    import numpy as np
+
+    def from_path(pth):
+        """
+        The segment walk over el.cpath, for every path
+        """
+        cp = []  # x0,y0, x1,y1, x2,y2, x3,y3 for each cubic piece
+        cx = cy = sx = sy = 0.0
+        kx = ky = qx = qy = None  # last cubic / quadratic control, for S and T
+        curved = False  # lines only: the hull is already exact
+        for seg in pth:
+            L = seg.letter
+            a = seg.args
+            l = L.upper()
+            ox, oy = (cx, cy) if L.islower() else (0.0, 0.0)
+            if l == "M":
+                cx, cy = ox + a[0], oy + a[1]
+                sx, sy = cx, cy
+                cp += [cx, cy] * 4
+                kx = qx = None
+            elif l == "Z":
+                cp += [cx, cy, cx, cy, sx, sy, sx, sy]
+                cx, cy = sx, sy
+                kx = qx = None
+            elif l in "LHV":
+                nx, ny = cx, cy
+                if l == "L":
+                    nx, ny = ox + a[0], oy + a[1]
+                elif l == "H":
+                    nx = ox + a[0]
+                else:
+                    ny = oy + a[0]
+                cp += [cx, cy, cx, cy, nx, ny, nx, ny]
+                cx, cy = nx, ny
+                kx = qx = None
+            elif l in "CS":
+                if l == "C":
+                    x1, y1, x2, y2, nx, ny = (ox + a[0], oy + a[1], ox + a[2],
+                                              oy + a[3], ox + a[4], oy + a[5])
+                else:
+                    x1, y1 = (2 * cx - kx, 2 * cy - ky) if kx is not None else (cx, cy)
+                    x2, y2, nx, ny = ox + a[0], oy + a[1], ox + a[2], oy + a[3]
+                cp += [cx, cy, x1, y1, x2, y2, nx, ny]
+                curved = True
+                kx, ky = x2, y2
+                cx, cy = nx, ny
+                qx = None
+            elif l in "QT":
+                if l == "Q":
+                    x1, y1, nx, ny = ox + a[0], oy + a[1], ox + a[2], oy + a[3]
+                else:
+                    x1, y1 = (2 * cx - qx, 2 * cy - qy) if qx is not None else (cx, cy)
+                    nx, ny = ox + a[0], oy + a[1]
+                cp += [cx, cy, cx + (x1 - cx) * 2 / 3, cy + (y1 - cy) * 2 / 3,
+                       nx + (x1 - nx) * 2 / 3, ny + (y1 - ny) * 2 / 3, nx, ny]
+                curved = True
+                qx, qy = x1, y1
+                cx, cy = nx, ny
+                kx = None
+            elif l == "A":
+                nx, ny = ox + a[5], oy + a[6]
+                nodes = inkex.paths.arc_to_path([cx, cy], (a[0], a[1], a[2], a[3], a[4], nx, ny))
+                for n0, n1 in zip(nodes, nodes[1:]):
+                    cp += [n0[1][0], n0[1][1], n0[2][0], n0[2][1],
+                           n1[0][0], n1[0][1], n1[1][0], n1[1][1]]
+                curved = True
+                cx, cy = nx, ny
+                kx = qx = None
+        if not cp:
+            return None
+        if len(cp) < 400:  # small paths: plain Python beats numpy's call overhead
+            if rough or not curved:
+                xs, ys = cp[0::2], cp[1::2]
+                return (min(xs), min(ys), max(xs), max(ys))
+            xs, ys = cp[0::8] + cp[6::8], cp[1::8] + cp[7::8]  # endpoints
+            for i in range(0, len(cp), 8):
+                for p0, p1, p2, p3, out in ((cp[i], cp[i + 2], cp[i + 4], cp[i + 6], xs),
+                                            (cp[i + 1], cp[i + 3], cp[i + 5], cp[i + 7], ys)):
+                    a, b, c = 3 * (p3 - p0 + 3 * (p1 - p2)), 6 * (p0 - 2 * p1 + p2), 3 * (p1 - p0)
+                    if abs(a) > 1e-12:
+                        d = b * b - 4 * a * c
+                        ts = [(-b + d ** 0.5) / (2 * a), (-b - d ** 0.5) / (2 * a)] if d >= 0 else []
+                    else:
+                        ts = [-c / b] if abs(b) > 1e-12 else []
+                    for t in ts:
+                        if 0 < t < 1:
+                            u = 1 - t
+                            out.append(u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3)
+            return (min(xs), min(ys), max(xs), max(ys))
+        P = np.array(cp).reshape(-1, 4, 2)
+        if rough or not curved:
+            lo, hi = P.min(axis=(0, 1)), P.max(axis=(0, 1))
+        else:
+            p0, p1, p2, p3 = P[:, 0], P[:, 1], P[:, 2], P[:, 3]
+            lo, hi = np.minimum(p0, p3).min(axis=0), np.maximum(p0, p3).max(axis=0)
+            # interior extrema: roots of the derivative a t^2 + b t + c in (0, 1)
+            a, b, c = 3 * (p3 - p0 + 3 * (p1 - p2)), 6 * (p0 - 2 * p1 + p2), 3 * (p1 - p0)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                disc = np.sqrt(np.maximum(b * b - 4 * a * c, 0))
+                roots = [(-b + disc) / (2 * a), (-b - disc) / (2 * a), -c / b]
+            for t in roots:
+                ok = (t > 0) & (t < 1)
+                t = np.where(ok, t, 0.5)
+                v = ((1 - t) ** 3 * p0 + 3 * (1 - t) ** 2 * t * p1
+                     + 3 * (1 - t) * t ** 2 * p2 + t ** 3 * p3)
+                lo = np.minimum(lo, np.where(ok, v, np.inf).min(axis=0))
+                hi = np.maximum(hi, np.where(ok, v, -np.inf).max(axis=0))
+        return (float(lo[0]), float(lo[1]), float(hi[0]), float(hi[1]))
+
+    bb = None
+    if el.tag == BaseElementCache.path_tag:
+        d = el.get("d", "")
+        if len(d) >= 2000:  # numpy's call overhead outweighs the parse on short paths
+            try:
+                bb = DAttr(d).bbox(rough)
+            except ValueError:
+                pass
+    if bb is None:
+        bb = from_path(el.cpath)
+    return bb
+
+
 def bounding_box2(
     self,
     dotransform=True,
@@ -1447,51 +2419,37 @@ def bounding_box2(
         try:
             ret = bbox(None)
             if self.tag in ttags:
-                ret = self.parsed_text.get_full_extent(parsed=parsed)
+                # The character walk depends only on parsed; share it across
+                # the transform/stroke/rough/clip variants of the key
+                tkey = ("text", parsed)
+                if tkey not in self._cbbox:
+                    self._cbbox[tkey] = self.parsed_text.get_full_extent(
+                        parsed=parsed
+                    )
+                ret = self._cbbox[tkey]
             elif self.tag in cpath_support_tags:
-                pth = self.cpath
-                if len(pth) > 0:
+                if self.tag == line_tag:
+                    bb = None
+                    if len(self.cpath) > 0:
+                        x = [ipx(self.get("x1", "0")), ipx(self.get("x2", "0"))]
+                        y = [ipx(self.get("y1", "0")), ipx(self.get("y2", "0"))]
+                        bb = (min(x), min(y), max(x), max(y))
+                else:
+                    bb = path_bbox(self, rough=roughpath)
+                if bb is not None:
                     swd = ipx(self.cspecified_style.get("stroke-width", "0px"))
                     if self.cspecified_style.get("stroke") in NONES or not (
                         includestroke
                     ):
                         swd = 0
-
-                    if self.tag == line_tag:
-                        x = [ipx(self.get("x1", "0")), ipx(self.get("x2", "0"))]
-                        y = [ipx(self.get("y1", "0")), ipx(self.get("y2", "0"))]
-                        ret = bbox(
-                            [
-                                min(x) - swd / 2,
-                                min(y) - swd / 2,
-                                max(x) - min(x) + swd,
-                                max(y) - min(y) + swd,
-                            ]
-                        )
-                    elif not roughpath:
-                        bbx = pth.bounding_box()
-                        ret = bbox(
-                            [
-                                bbx.left - swd / 2,
-                                bbx.top - swd / 2,
-                                bbx.width + swd,
-                                bbx.height + swd,
-                            ]
-                        )
-                    else:
-                        anyarc = any(s.letter in ["a", "A"] for s in pth)
-                        pth = inkex.Path(inkex.CubicSuperPath(pth)) if anyarc else pth
-                        pts = list(pth.control_points)
-                        x = [p.x for p in pts]
-                        y = [p.y for p in pts]
-                        ret = bbox(
-                            [
-                                min(x) - swd / 2,
-                                min(y) - swd / 2,
-                                max(x) - min(x) + swd,
-                                max(y) - min(y) + swd,
-                            ]
-                        )
+                    ret = bbox(
+                        [
+                            bb[0] - swd / 2,
+                            bb[1] - swd / 2,
+                            bb[2] - bb[0] + swd,
+                            bb[3] - bb[1] + swd,
+                        ]
+                    )
 
             elif self.tag in grouplike_tags:
                 for kid in list2(self):
@@ -1626,10 +2584,7 @@ def Run_SI_Extension(effext, name):
 
     alreadyran = False
     lprofile = os.getenv("LINEPROFILE") == "True"
-    batexists = os.path.exists(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "cprofile open.bat")
-    )
-    cprofile = batexists if not lprofile else False
+    cprofile = os.getenv("SI_PROFILE") == "1" and not lprofile
     if cprofile or lprofile:
         profiledir = get_script_path()
         if cprofile:
@@ -2047,7 +3002,7 @@ def split_text(elem):
 
 
 def Version_Check(caller):
-    siv = "v1.4.25"  # Scientific Inkscape version
+    siv = "v1.4.26"  # Scientific Inkscape version
     maxsupport = "1.5.0"
     minsupport = "1.1.0"
 

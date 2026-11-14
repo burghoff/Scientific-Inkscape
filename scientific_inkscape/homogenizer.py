@@ -39,6 +39,58 @@ badels = (
 )
 
 dispprofile = False
+matchfontwidths = True  # adjust font sizes on font change to preserve widths
+
+PANGRAM = "The quick brown fox jumped over the lazy dog"
+
+
+def pangram_widths(svg, stys):
+    """Advance width of PANGRAM per unit font size in each font style,
+    measured with the text parser via temporary elements"""
+    temps = []
+    for sty in stys:
+        tel = TextElement()
+        svg.append(tel)
+        tel.text = PANGRAM
+        csty = inkex.Style(sty)
+        csty["font-size"] = "10px"
+        tel.cstyle = csty
+        temps.append(tel)
+    svg.make_char_table(els=temps)
+    wds = []
+    for tel in temps:
+        chs = [c for ln in tel.parsed_text.lns for c in ln.chrs]
+        wdv = sum(c.cwd for c in chs) + sum(
+            chs[i].dadvs(chs[i - 1], chs[i]) for i in range(1, len(chs))
+        )
+        wds.append(wdv / 10)
+        tel.delete()
+    svg.char_table = None  # don't leave the temps-only table behind
+    return wds
+
+
+def set_el_font_size(el, fontsize, fixedscale, onept):
+    """Set (fixedscale False, size in pts) or scale (fixedscale True, in %)
+    the font sizes of a text element and its descendants"""
+    from inkex.text import parser
+
+    for d in reversed(el.descendants2()):
+        sty = d.cspecified_style
+        if el == d or "font-size" in sty:
+            dfs, sf, utdfs = dh.composed_width(d, "font-size")
+            if dfs == 0:
+                continue
+            bshift = parser.TChar.bshftfunc(sty, d)
+            if bshift != 0 or "%" in sty.get("font-size", ""):
+                # Convert sub/superscripts into relative size
+                pfs, sf, _ = dh.composed_width(d.getparent(), "font-size")
+                d.cstyle["font-size"] = f"{dfs / pfs * 100:.2f}%"
+            else:
+                # Set absolute size
+                scl = fontsize * onept / dfs if not fixedscale else fontsize / 100
+                nfs = utdfs * scl
+                nfs = f"{nfs:.2f}" if abs(nfs) > 1 else "{:.3g}".format(nfs)
+                d.cstyle["font-size"] = nfs.rstrip("0").rstrip(".") + "px"
 
 
 class Homogenizer(inkex.EffectExtension):
@@ -182,30 +234,10 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             except ValueError:
                 fontsize = 12
 
-            from inkex.text import parser
-
             for el in szs:
-                for d in reversed(el.descendants2()):
-                    sty = d.cspecified_style
-                    if el == d or "font-size" in sty:
-                        dfs, sf, utdfs = dh.composed_width(d, "font-size")
-                        if dfs==0:
-                            continue
-                        bshift = parser.TChar.bshftfunc(sty, d)
-                        if bshift != 0 or "%" in sty.get("font-size", ""):
-                            # Convert sub/superscripts into relative size
-                            pfs, sf, _ = dh.composed_width(d.getparent(), "font-size")
-                            d.cstyle["font-size"] = f"{dfs / pfs * 100:.2f}%"
-                        else:
-                            # Set absolute size
-                            scl = (
-                                fontsize * onept / dfs
-                                if not fixedscale
-                                else fontsize / 100
-                            )
-                            nfs = utdfs * scl
-                            nfs = f"{nfs:.2f}" if abs(nfs) > 1 else "{:.3g}".format(nfs)
-                            d.cstyle["font-size"] = nfs.rstrip("0").rstrip(".") + "px"
+                if self.options.fontmodes == 9 and szs[el] >= fontsize:
+                    continue  # Floor: only raise sizes below it
+                set_el_font_size(el, fontsize, fixedscale, onept)
 
         if fixtextdistortion:
             # make a new transform that removes bad scaling and shearing (see General_affine_transformation.nb)
@@ -222,7 +254,15 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                             [ct.b * sqrtdet / magv, ct.a * sqrtdet * signdet / magv, ct.f],
                         ]
                     )
-                    dh.global_transform(el, (ctnew @ (-ct)))
+                    tfm = ctnew @ (-ct)
+                    lns = el.parsed_text.lns if el in tels else []
+                    if lns and lns[0].x and lns[0].y:
+                        # About the anchor of the first line, so that it stays
+                        # where it is, as it does when the font size changes
+                        ax, ay = ct.apply_to_point((lns[0].x[0], lns[0].y[0]))
+                        px, py = tfm.apply_to_point((ax, ay))
+                        tfm = Transform("translate({0}, {1})".format(ax - px, ay - py)) @ tfm
+                    dh.global_transform(el, tfm)
 
         if setfontfamily:
             from inkex.text.font_properties import inkscape_spec_to_css
@@ -236,6 +276,19 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                 for k in ["font-weight", "font-style", "font-stretch"]:
                     sty.setdefault(k, default_style_atts[k])
 
+            # An explicit font size setting overrides width matching
+            matchwidths = matchfontwidths and not setfontsize
+            if matchwidths:
+                from collections import Counter
+
+                srcstys = dict()
+                for el in tels:
+                    cnt = Counter(
+                        c.tsty for ln in el.parsed_text.lns for c in ln.chrs
+                    )
+                    if len(cnt) > 0:
+                        srcstys[el] = cnt.most_common(1)[0][0]
+
             for el in reversed(sel):
                 for k,v in sty.items():
                     el.cstyle[k] = v
@@ -244,6 +297,16 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
             from inkex.text import parser
 
             dh.character_fixer(tels)
+
+            if matchwidths:
+                # Scale sizes by the ratio of the pangram's width in the
+                # source and destination fonts so text widths are unchanged
+                ustys = list(dict.fromkeys(srcstys.values()))
+                wds = pangram_widths(self.svg, ustys + [inkex.Style(sty)])
+                for el, ssty in srcstys.items():
+                    wsrc, wdst = wds[ustys.index(ssty)], wds[-1]
+                    if wsrc > 0 and wdst > 0:
+                        set_el_font_size(el, wsrc / wdst * 100, True, 1)
 
         if setfontfamily or setfontsize or fixtextdistortion:
             bbs2 = dh.BB2(self.svg, tels, True)
@@ -259,6 +322,15 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                         bb2 = bbs2[el.get_id()]
                         tx = (bb2[0] + bb2[2] / 2) - (bb[0] + bb[2] / 2)
                         ty = (bb2[1] + bb2[3] / 2) - (bb[1] + bb[3] / 2)
+                        # Only correct perpendicular to the baseline. Along the
+                        # baseline, text already rescales about its anchor
+                        # (start/middle/end), which recentering would undo.
+                        ct = el.ccomposed_transform
+                        n = math.hypot(ct.a, ct.b)
+                        if n > 0:
+                            ux, uy = ct.a / n, ct.b / n
+                            d = tx * ux + ty * uy
+                            tx, ty = tx - d * ux, ty - d * uy
                         trl = Transform("translate({0}, {1})".format(-tx, -ty))
                         dh.global_transform(el, trl)
 
@@ -270,7 +342,13 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                     warn_non_plot,
                 )
 
-                gbbs = {self.svg.getElementById(elid): geometric_bbox(el, fbb).sbb for elid, fbb in bbs.items()}
+                # Keyed by element (find_plot_area indexes gbbs[el]), and the
+                # geometric bbox must be computed from that same element.
+                gbbs = dict()
+                for elid, fbb in bbs.items():
+                    gel = self.svg.getElementById(elid)
+                    if gel is not None:
+                        gbbs[gel] = geometric_bbox(gel, fbb).sbb
                 for i0, g in enumerate(sel0):
                     pels = [k for k in g if k.get_id() in bbs]  # plot elements list
                     vl, hl, lvel, lhel = find_plot_area(pels, gbbs)
@@ -283,7 +361,7 @@ Unfortunately, this means that there is not much the Homogenizer can do to edit 
                     bbp = dh.bbox(None)
                     # plot area
                     for el in pels:
-                        if el.get_id() in [lvel, lhel]:
+                        if el in [lvel, lhel]:
                             bbp = bbp.union(gbbs[el])
                     for el in g.descendants2():
                         if el in tels:

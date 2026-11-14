@@ -21,7 +21,7 @@
 import dhelpers as dh
 import inkex
 from inkex import NamedView, Defs, Metadata, ForeignObject, Group, MissingGlyph
-import math
+import numpy as np
 
 class CombineByColor(inkex.EffectExtension):
     #    def document_path(self):
@@ -59,70 +59,54 @@ class CombineByColor(inkex.EffectExtension):
             )
         ]
 
-        merged = [False for el in els]
-        # stys = [(el.cspecified_style) for el in els]
         sfs = [dh.get_strokefill(els[ii]) for ii in range(len(els))]
-        # dh.debug(lightness_threshold)
-        for ii in reversed(range(len(els))):  # reversed so that order is preserved
-            sf1 = sfs[ii]
-            # if (
-            #     sf1.stroke is not None
-            #     and sf1.stroke.efflightness >= lightness_threshold
-            # ):
-            if (
-                sf1.stroke is None or sf1.stroke.efflightness >= lightness_threshold
-            ) and (sf1.fill is None or sf1.fill.efflightness >= lightness_threshold):
-                merges = [ii]
-                merged[ii] = True
-                for jj in range(ii):
-                    if not (merged[jj]):
-                        sf2 = sfs[jj]
-                        samesw = (
-                            sf1.strokewidth is None and sf2.strokewidth is None
-                        ) or (
-                            sf1.strokewidth is not None
-                            and sf2.strokewidth is not None
-                            and abs(sf1.strokewidth - sf2.strokewidth) < 0.001
-                        )
-                        samestrk = (sf1.stroke is None and sf2.stroke is None) or (
-                            sf1.stroke is not None
-                            and sf2.stroke is not None
-                            and sf1.stroke.red == sf2.stroke.red
-                            and sf1.stroke.blue == sf2.stroke.blue
-                            and sf1.stroke.green == sf2.stroke.green
-                            and abs(sf1.stroke.alpha - sf2.stroke.alpha) < 0.001
-                        )
-                        # RGB are 0-255, alpha are 0-1
-                        samefill = (sf1.fill is None and sf2.fill is None) or (
-                            sf1.fill is not None
-                            and sf2.fill is not None
-                            and sf1.fill.red == sf2.fill.red
-                            and sf1.fill.blue == sf2.fill.blue
-                            and sf1.fill.green == sf2.fill.green
-                            and abs(sf1.fill.alpha - sf2.fill.alpha) < 0.001
-                        )
-                        if (
-                            samestrk
-                            and samefill
-                            and samesw
-                            and sf1.strokedasharray == sf2.strokedasharray
-                            and sf1.markerstart == sf2.markerstart
-                            and sf1.markermid == sf2.markermid
-                            and sf1.markerend == sf2.markerend
-                        ):
-                            merges.append(jj)
-                            merged[jj] = True
-                if len(merges) > 1:
-                    ords = [elord[kk] for kk in merges]
-                    ords.sort()
-                    medord = ords[math.floor((len(ords) - 1) / 2)]
-                    topord = ords[-1]
-                    mergeii = [
-                        kk for kk in range(len(merges)) if elord[merges[kk]] == topord
-                    ][
-                        0
-                    ]  # use the median
-                    dh.combine_paths([els[kk] for kk in merges], mergeii)
+        # Candidates grouped by what must match exactly: stroke and fill
+        # colors, dash array and markers. Paths painted with a gradient or
+        # pattern are left alone. Stroke width and alphas are compared
+        # within a tolerance inside each group.
+        groups = {}
+        for ii, sf in enumerate(sfs):
+            if sf.strk_isurl or sf.fill_isurl:
+                continue
+            key = (
+                None if sf.stroke is None else (sf.stroke.red, sf.stroke.green, sf.stroke.blue),
+                None if sf.fill is None else (sf.fill.red, sf.fill.green, sf.fill.blue),
+                tuple(sf.strokedasharray) if isinstance(sf.strokedasharray, list) else sf.strokedasharray,
+                sf.markerstart,
+                sf.markermid,
+                sf.markerend,
+            )
+            groups.setdefault(key, []).append(ii)
+        # RGB are 0-255, alpha are 0-1
+        for idx in groups.values():
+            gsf = [sfs[ii] for ii in idx]
+            sw = np.array([0.0 if sf.strokewidth is None else sf.strokewidth for sf in gsf])
+            sa = np.array([0.0 if sf.stroke is None else sf.stroke.alpha for sf in gsf])
+            fa = np.array([0.0 if sf.fill is None else sf.fill.alpha for sf in gsf])
+            merged = np.zeros(len(idx), dtype=bool)
+            for kk in reversed(range(len(idx))):  # reversed so that order is preserved
+                sf1 = gsf[kk]
+                if (
+                    sf1.stroke is None or sf1.stroke.efflightness >= lightness_threshold
+                ) and (sf1.fill is None or sf1.fill.efflightness >= lightness_threshold):
+                    merged[kk] = True
+                    same = (
+                        ~merged[:kk]
+                        & (np.abs(sw[:kk] - sw[kk]) < 0.001)
+                        & (np.abs(sa[:kk] - sa[kk]) < 0.001)
+                        & (np.abs(fa[:kk] - fa[kk]) < 0.001)
+                    )
+                    js = np.flatnonzero(same)
+                    merged[js] = True
+                    merges = [idx[kk]] + [idx[jj] for jj in js.tolist()]
+                    if len(merges) > 1:
+                        ords = [elord[kk] for kk in merges]
+                        ords.sort()
+                        topord = ords[-1]
+                        mergeii = [
+                            kk for kk in range(len(merges)) if elord[merges[kk]] == topord
+                        ][0]
+                        dh.combine_paths([els[kk] for kk in merges], mergeii)
         # dh.flush_stylesheet_entries(self.svg)  # since we removed clips
 
 

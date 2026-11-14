@@ -763,7 +763,10 @@ def cached_removeNS(*args, **kwargs):
 
 @lru_cache(maxsize=None)
 def cached_splitNS(*args, **kwargs):
-    return orig_splitNS(*args, **kwargs)
+    try:
+        return orig_splitNS(*args, **kwargs)
+    except KeyError:  # undeclared prefix in recover-mode parse; mirror removeNS's svg default
+        return ("http://www.w3.org/2000/svg", args[0].rsplit(":", 1)[-1])
 
 
 def clear_caches():

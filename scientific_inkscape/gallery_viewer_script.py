@@ -2,13 +2,42 @@
 # Copyright (c) 2023 David Burghoff <burghoff@utexas.edu>
 # Prints written to [temp]/si_gv_output.txt
 
-# Load the settings file
-import tempfile, os, pickle, sys
-settings = os.path.join(
-    os.path.abspath(tempfile.gettempdir()), "si_gv_settings.p"
-)
-with open(settings, "rb") as f:
-    input_options = pickle.load(f)
+# Settings are passed as a urlsafe-base64 pickle in argv[1]
+import tempfile, os, pickle, sys, base64
+
+# Force Inkscape's own mingw DLLs (libopenblas, etc.) to load before numpy so a
+# conflicting copy on PATH can't cause a fatal 0xc0000139. See autoexporter_script.
+if sys.platform == "win32":
+    import ctypes
+    _bindir = os.path.dirname(sys.executable)
+    if os.path.isdir(_bindir):
+        try:
+            os.add_dll_directory(_bindir)
+        except (OSError, AttributeError):
+            pass
+        for _dll in ("libwinpthread-1.dll", "libgcc_s_seh-1.dll",
+                     "libquadmath-0.dll", "libgfortran-5.dll", "libopenblas.dll"):
+            try:
+                ctypes.WinDLL(os.path.join(_bindir, _dll))
+            except OSError:
+                pass
+
+if len(sys.argv) < 2:
+    sys.exit("This Gallery Viewer launcher is out of date. Re-run the Gallery "
+             "Viewer from Inkscape (Extensions > Scientific) to regenerate the .bat.")
+input_options = pickle.loads(base64.urlsafe_b64decode(sys.argv[1]))
+
+SI_GV_READY = os.environ.get("SI_GV_READY")
+
+def signal_gui_ready():
+    """Touch the ready-flag file so the launcher bat can close its loading window
+    once the GUI is visible. Returns False so GLib.idle_add fires it only once."""
+    if SI_GV_READY:
+        try:
+            open(SI_GV_READY, "w").close()
+        except OSError:
+            pass
+    return False
 
 bfn = input_options.inkscape_bfn
 sys.path.extend([p for p in input_options.syspath if p not in sys.path])
@@ -16,10 +45,14 @@ bfn_dir = os.path.dirname(bfn)
 if bfn_dir not in sys.path:
     sys.path.append(bfn_dir)
 PORTNUMBER = input_options.portnum
-sys.stdout = open(input_options.logfile, "w", encoding="utf-8", errors="replace")
+# si_tmp is dependency-free and importable this early.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import si_tmp
+sys.stdout = open(si_tmp.path("si_gv_output.txt"), "w",
+                  encoding="utf-8", errors="replace")
 sys.stderr = sys.stdout
 
-import sys, subprocess, threading, time, chardet
+import sys, subprocess, threading, time, chardet, socket
 import random
 import webbrowser, pathlib
 from urllib import parse
@@ -37,6 +70,7 @@ import inkex
 from autoexporter import ORIG_KEY
 from autoexporter import DUP_KEY
 from autoexporter import hash_file
+from autoexporter import Exporter
 
 WHILESLEEP = 0.25
 IMAGE_WIDTH = 175
@@ -104,6 +138,16 @@ def trigger_refresh():
     global refreshapp
     refreshapp = True
     
+def open_in_default_app(path):
+    """Open a file with the system's default application (double-click semantics)"""
+    if sys.platform == "win32":
+        os.startfile(path)
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", path])
+    else:
+        subprocess.Popen(["xdg-open", path])
+
+
 def show_in_file_browser(path):
     if not os.path.exists(path):
         raise FileNotFoundError(f"The path {path} does not exist.")
@@ -169,12 +213,13 @@ truepath_lock = threading.Lock();
 
 app = None
 app_lock = threading.Lock();
+app_started = None  # when the server was launched
 def Make_Flask_App():
     warnings.simplefilter("ignore", DeprecationWarning)
     # prevent warning that process is open
     from flask import Flask, request, url_for, jsonify, send_from_directory, render_template, abort
 
-    global app
+    global app, app_started
     app = Flask(__name__, template_folder='.')
 
     @app.route("/images/<folder>/<path:path>")
@@ -255,6 +300,7 @@ def Make_Flask_App():
             processing = not fp.run_on_fof_done or any(not t.done for t in fp.cthreads)
             gallery_data.append({
                 "header": fp.header,
+                "header_uri": (None if fp.isdir else pathlib.Path(fp.fof).as_uri()),
                 "files": files_data,
                 "processing": processing
             })
@@ -280,8 +326,53 @@ def Make_Flask_App():
         if svg_file is not None:
             print("Opening " + str(svg_file))
             warnings.simplefilter("ignore", ResourceWarning) # prevent process open warning
-            if str(svg_file).endswith(".emf") or str(svg_file).endswith(".wmf"):
-                subprocess.Popen([bfn,svg_file])
+            if str(svg_file).lower().endswith((".png", ".gif", ".jpg", ".jpeg")):
+                # Rasters: Inkscape can't usefully open these; use the system
+                # default viewer (same double-click semantics per platform)
+                open_in_default_app(str(svg_file))
+            elif str(svg_file).endswith(".emf") or str(svg_file).endswith(".wmf"):
+                im = (_emfplus_bitmap(str(svg_file))
+                      if str(svg_file).endswith(".emf") else None)
+                if im is not None:
+                    # Inkscape cannot open EMF+-only files at all (its
+                    # importer reads only classic GDI records), so wrap the
+                    # embedded bitmap losslessly in a temp SVG (same
+                    # location/naming as the deembeds flow below) and open
+                    # that instead.
+                    import io
+                    deembedsmade = False
+                    while not (deembedsmade):
+                        deembeds = os.path.join(temp_dir, "deembeds")
+                        deembedsmade = os.path.exists(deembeds)
+                        if not (deembedsmade):
+                            os.mkdir(deembeds)
+                    tsvg = os.path.join(
+                        deembeds, "tmp_" + str(len(os.listdir(deembeds))) + ".svg"
+                    )
+                    buf = io.BytesIO()
+                    im.save(buf, format="PNG")
+                    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+                    w, h = im.size
+                    note = (os.path.basename(str(svg_file))
+                            .replace("&", "&amp;").replace("<", "&lt;")
+                            + " is a bitmap in an EMF wrapper. This is its "
+                              "embedded image (extracted losslessly).")
+                    with open(tsvg, "w", encoding="utf-8") as f:
+                        # The note sits above the page (negative y, outside
+                        # the viewBox) so it is visible on the Inkscape
+                        # canvas but excluded from any page export.
+                        f.write(
+                            '<svg xmlns="http://www.w3.org/2000/svg" '
+                            'xmlns:xlink="http://www.w3.org/1999/xlink" '
+                            'width="{0}" height="{1}" viewBox="0 0 {0} {1}">'
+                            '<text x="0" y="-12" font-family="sans-serif" '
+                            'font-size="14" fill="#808080">{3}</text>'
+                            '<image width="{0}" height="{1}" '
+                            'xlink:href="data:image/png;base64,{2}"/>'
+                            '</svg>'.format(w, h, b64, note))
+                    subprocess.Popen([bfn, tsvg])
+                else:
+                    subprocess.Popen([bfn, svg_file])
                 return f"The parameter received is: {param}"
 
             with OpenWithEncoding(svg_file) as f:
@@ -325,6 +416,16 @@ def Make_Flask_App():
 
         return f"The parameter received is: {param}"
     
+    @app.route("/open_default", methods=["GET"])
+    def open_default():
+        param = request.args.get("param")
+        the_file = file_uri_to_path(param)
+        if the_file is not None:
+            print("Opening in default app: " + str(the_file))
+            warnings.simplefilter("ignore", ResourceWarning)
+            open_in_default_app(str(the_file))
+        return f"The parameter received is: {param}"
+
     @app.route("/show_file", methods=["GET"])
     def show_file():
         param = request.args.get("param")
@@ -344,15 +445,25 @@ def Make_Flask_App():
         return jsonify(lastupdate=lastupdate)
 
     def run_flask():
+        # HTTP/1.1 enables keep-alive; the dev server otherwise answers HTTP/1.0
+        # and closes the socket after every response, so each thumbnail request
+        # pays a fresh TCP handshake.
+        from werkzeug.serving import WSGIRequestHandler
+        WSGIRequestHandler.protocol_version = "HTTP/1.1"
         app.run(port=PORTNUMBER)
 
     thread = Thread(target=run_flask)
     thread.start()
+    app_started = time.monotonic()
+
+def start_server():
+    """Builds the Flask app and starts serving, once; safe to call from any thread"""
+    with app_lock:
+        if app is None:
+            Make_Flask_App()
 
 temp_dir, temp_head = dh.shared_temp("gv")
 temp_base = os.path.join(temp_dir,temp_head)
-MAXTHREADS = 10
-conv_sema = threading.Semaphore(MAXTHREADS)
 
 # Opens a file with unknown encoding, trying utf-8 first
 # chardet can be slow
@@ -379,6 +490,153 @@ class OpenWithEncoding:
         if self.file is not None:
             self.file.close()
         return False  # Don't suppress exceptions
+
+def _emfplus_bitmap(fname):
+    """If fname is an EMF+-only metafile (all content in GDI+ comment
+    records, no classic GDI drawing records) whose content is embedded
+    bitmap(s), return the largest bitmap as a PIL image; else None.
+
+    PowerPoint produces such files when pasting GDI+ content as an
+    Enhanced Metafile. Nothing else can thumbnail them: Inkscape's EMF
+    importer fails to open them outright (it reads only GDI records),
+    and PIL's GDI playback "succeeds" but draws nothing (all-white),
+    because GDI skips the comment records. The original pixels are
+    sitting in EmfPlusObject records, so just pull them out.
+
+    Also returns the image when fname is not a metafile at all but a plain
+    raster stored under an .emf name (some documents declare a PNG/JPEG part
+    as image/x-emf). Inkscape picks its importer by extension, so it fails on
+    those too; the caller wraps whatever comes back the same way."""
+    import struct, io
+    from PIL import Image
+
+    try:
+        with open(fname, "rb") as fh:
+            data = fh.read()
+        if len(data) < 88 or data[40:44] != b" EMF":
+            # Not an EMF. If it's a raster that PIL recognizes, hand it back.
+            try:
+                img = Image.open(io.BytesIO(data))
+                img.load()
+                if img.mode not in ("RGB", "RGBA", "L", "LA", "P"):
+                    img = img.convert("RGB")  # e.g. CMYK: not PNG-encodable
+                return img
+            except Exception:
+                return None
+
+        # Pass 1 over EMF records: bail if any classic GDI drawing record
+        # exists (GDI renders those files fine already); collect the EMF+
+        # payload carried in comment records (ident "EMF+").
+        NONDRAWING = {1, 14, 70}  # HEADER, EOF, COMMENT
+        payload = b""
+        off = 0
+        while off + 8 <= len(data):
+            itype, size = struct.unpack_from("<II", data, off)
+            if size < 8 or off + size > len(data):
+                return None
+            if itype not in NONDRAWING:
+                return None
+            if itype == 70 and size >= 16:
+                datasize, ident = struct.unpack_from("<II", data, off + 8)
+                if ident == 0x2B464D45:  # "EMF+"
+                    payload += data[off + 16: off + 12 + datasize]
+            if itype == 14:
+                break
+            off += size
+        if not payload:
+            return None
+
+        # Pass 2 over EMF+ records: reassemble EmfPlusObject (0x4008)
+        # image objects. Objects too big for one record are split across
+        # records with the continue flag (0x8000); object id is the low
+        # byte of flags, and continued chains start with a 4-byte
+        # TotalObjectSize prefix that the plain form lacks (try both).
+        objects, order = {}, []
+        off = 0
+        while off + 12 <= len(payload):
+            rtype, flags, size = struct.unpack_from("<HHI", payload, off)
+            if size < 12 or off + size > len(payload):
+                break
+            if rtype == 0x4008:
+                objid = flags & 0xFF
+                dat = payload[off + 12: off + size]
+                if (flags & 0x8000) and objid in objects:
+                    objects[objid] += dat
+                else:
+                    objects[objid] = dat
+                    order.append(objid)
+            off += size
+
+        best = None
+        for objid in order:
+            dat = objects[objid]
+            for skip in (0, 4):
+                d = dat[skip:]
+                if len(d) < 28:
+                    continue
+                version, imgtype = struct.unpack_from("<II", d, 0)
+                if (version & 0xFFFF0000) != 0xDBC00000 or imgtype != 1:
+                    continue  # not an EmfPlusImage bitmap
+                w, h, stride, pixfmt, btype = struct.unpack_from(
+                    "<iiiII", d, 8)
+                bits = d[28:]
+                try:
+                    if btype == 1:  # compressed: a PNG/JPEG stream
+                        im = Image.open(io.BytesIO(bits))
+                        im.load()
+                    else:  # raw pixels, GDI+ stores them BGR(A)-ordered
+                        h = abs(h)
+                        mode, rawmode = {
+                            0x00021808: ("RGB", "BGR"),    # 24bppRGB
+                            0x00022009: ("RGB", "BGRX"),   # 32bppRGB
+                        }.get(pixfmt, ("RGBA", "BGRA"))    # 32bpp(P)ARGB
+                        if w <= 0 or h <= 0 or len(bits) < stride * h:
+                            break
+                        im = Image.frombytes(mode, (w, h), bits[:stride * h],
+                                             "raw", rawmode, stride)
+                        if pixfmt == 0x000E200B:  # 32bppPARGB
+                            # Alpha-premultiplied: un-premultiply (the
+                            # exact inverse, rounding to nearest) so the
+                            # PNG representation is straight-alpha.
+                            try:
+                                import numpy as np
+                                arr = np.array(im, dtype=np.uint16)
+                                a = arr[..., 3]
+                                nz = a > 0
+                                for c in range(3):
+                                    ch = arr[..., c]
+                                    ch[nz] = np.minimum(
+                                        (ch[nz] * 255 + a[nz] // 2) // a[nz],
+                                        255)
+                                im = Image.fromarray(
+                                    arr.astype("uint8"), "RGBA")
+                            except ImportError:
+                                pass
+                    if best is None or im.size[0] * im.size[1] > \
+                            best.size[0] * best.size[1]:
+                        best = im
+                except Exception:
+                    pass
+                break
+        return best
+    except Exception:
+        return None
+
+
+def _emfplus_png(fname):
+    """_emfplus_bitmap saved losslessly to a temp PNG; its path, or None."""
+    im = _emfplus_bitmap(fname)
+    if im is None:
+        return None
+    try:
+        pfile = os.path.join(temp_dir, "{}_emfplus_{}.png".format(
+            temp_head,
+            hashlib.sha1(os.path.abspath(fname).encode("utf-8")).hexdigest()[:12]))
+        im.save(pfile)
+        return pfile
+    except Exception:
+        return None
+
 
 cthread_no = 0
 cthread_lock = threading.Lock()
@@ -418,7 +676,12 @@ class ConversionThread(threading.Thread):
                 
             try:
                 from PIL import Image
-                with open(fname, "rb") as file:
+                # EMF+-only metafiles must be special-cased: GDI playback
+                # (what PIL's open below does) draws them as all-white
+                # rather than failing, so thumbnail their embedded bitmap
+                # (extracted losslessly to a temp PNG) instead.
+                pfile = _emfplus_png(fname) if fname.endswith('.emf') else None
+                with open(pfile or fname, "rb") as file:
                     with Image.open(file) as im:
                         width, height = im.size
                         new_width = 400
@@ -451,19 +714,20 @@ class ConversionThread(threading.Thread):
                     conv_path,
                     fname,
                 ]
-                # Execute the conversion command
-                with conv_sema:
-                    print('Inkscape export of '+fname)
-                    try:
-                        dh.subprocess_repeat(args)
-                    except subprocess.CalledProcessError:
-                        ws = os.path.join(dh.si_dir,'pngs','cannot_display.png')
-                        shutil.copy(ws, conv_path)
+                # Execute the conversion command. inkscape_cli uses the shell
+                # pool when it can (EMF conversion is otherwise all startup);
+                # a metafile that crashes Inkscape still ends in CalledProcessError
+                print('Inkscape export of '+fname)
+                try:
+                    dh.inkscape_cli(args)
+                except subprocess.CalledProcessError:
+                    ws = os.path.join(dh.si_dir,'pngs','cannot_display.png')
+                    shutil.copy(ws, conv_path)
                     
-                    if not os.path.exists(conv_path):
-                        # Still no png, probably a blank file
-                        ws = os.path.join(dh.si_dir,'pngs','white_square.png')
-                        shutil.copy(ws, conv_path)
+                if not os.path.exists(conv_path):
+                    # Still no png, probably a blank file
+                    ws = os.path.join(dh.si_dir,'pngs','white_square.png')
+                    shutil.copy(ws, conv_path)
 
             # Move the converted file to the final destination
             shutil.move(conv_path, self.fileout)
@@ -674,9 +938,13 @@ class Processor(threading.Thread):
                         contents = f.read()
                     except OSError:
                         raise(f'Could not open {fn}')
-                    if re.search(r"<\s*inkscape:page[\s\S]*?>", contents):
+                    if re.search(r"<\s*(inkscape:page|view|svg:view)\b[\s\S]*?>", contents):
                         svg = dh.svg_from_file(fn)
+                        Exporter.add_viewbox_page(svg, False)  # a viewbox no page matches becomes page 0
                         pgs = svg.cdocsize.pgs
+                        pnames = [pg.get("inkscape:label") or str(i + 1) for i, pg in enumerate(pgs)]  # as the Autoexporter names them
+                        order = sorted(range(len(pgs)), key=lambda i: pnames[i] != "0")  # the viewbox page first
+                        pgs, pnames = [pgs[i] for i in order], [pnames[i] for i in order]
                         haspgs = inkex.installed_haspages
                         # If the file has multiple pages, split it
                         if haspgs and len(pgs) > 0:
@@ -693,7 +961,7 @@ class Processor(threading.Thread):
                 nfiles = [DisplayedFile(fn) for t in svg_pgs]
                 for i, n in enumerate(nfiles):
                     n.thumbnail = svg_pgs[i]
-                    n.pagenum = i+1
+                    n.pagenum = pnames[i]
                 self.files[ii:ii + 1] = nfiles
                 trigger_refresh()
                 ii += len(nfiles)
@@ -773,12 +1041,19 @@ class Processor(threading.Thread):
                 thread.start()                
 
     def run(self):
+        start_server()  # already running if the GUI started it early
+        global openedgallery
         with app_lock:
-            if app is None:
-                Make_Flask_App()
-                time.sleep(1)
-                # wait to see if check_for_refresh called
-                global openedgallery
+            if not (openedgallery):
+                # Wait until the server answers, and until a gallery page
+                # from an earlier run has had a second to check in
+                for _ in range(100):
+                    try:
+                        socket.create_connection(("127.0.0.1", PORTNUMBER), timeout=0.05).close()
+                        break
+                    except OSError:
+                        time.sleep(0.05)
+                time.sleep(max(0.0, 1 - (time.monotonic() - app_started)))
                 if not (openedgallery):
                     webbrowser.open("http://localhost:{}".format(str(PORTNUMBER)))
                     openedgallery = True
@@ -1118,7 +1393,7 @@ if guitype == "gtk":
                     process_selection(selected_file)
                     
                     if os.path.exists(selected_file):
-                        for fnm in os.listdir(selected_file):
+                        for fnm in sorted(os.listdir(selected_file), key=str.lower):
                             if fnm.endswith('.docx') or fnm.endswith('.pptx') or fnm.endswith('.one'):
                                 if not fnm.startswith('~$'): # temp files
                                     file_name = fnm
@@ -1135,6 +1410,7 @@ if guitype == "gtk":
                 processors.remove(fp)
                 watcher.remove_watch(fp)
             self.liststore.clear()
+            trigger_refresh()  # so the gallery page drops the cleared groups
 
     win = GalleryViewerServer()
     win.set_keep_above(True)
@@ -1147,6 +1423,9 @@ if guitype == "gtk":
     win.connect("destroy", quit_and_close)
     win.show_all()
     win.set_keep_above(False)
+    from gi.repository import GLib
+    GLib.idle_add(signal_gui_ready)  # closes the launcher's loading window
+    Thread(target=start_server).start()  # so the gallery opens at once when something is added
     Gtk.main()
 elif guitype == "tkinter":
     root = tk.Tk()
@@ -1171,6 +1450,7 @@ elif guitype == "tkinter":
     end_button = tk.Button(root, text="End Program", command=end_program)
     end_button.pack()
     root.protocol("WM_DELETE_WINDOW", end_program)
+    Thread(target=start_server).start()  # so the gallery opens at once when something is added
     root.mainloop()
 
 print("Finishing")
