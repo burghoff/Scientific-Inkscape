@@ -480,7 +480,7 @@ class Exporter():
         # Embed linked images into the SVG, before it is copied out of the
         # folder its relative links are relative to. This should also be done
         # prior to clone unlinking since some images may be cloned
-        if self.exportnow:
+        if self.exportnow and not self.testmode:  # tests take the watcher's route
             lls = self.linked_locations
         else:
             lls = ih.get_linked_locations_file(cfile, svg)
