@@ -1,4 +1,4 @@
-# Scientific Inkscape: Figure editing and exporting extensions
+# Scientific Inkscape: Figure editing and export extensions
 The Scientific Inkscape extensions help you craft beautiful scientific figures, and they allow you to export fully vector graphics that can be inserted into any document (including LaTeX, Word, and Powerpoint).
 <p align="center"><img src="extras/examples/Resize_Optica.gif" alt="drawing" width="70%"></img></p>
 
