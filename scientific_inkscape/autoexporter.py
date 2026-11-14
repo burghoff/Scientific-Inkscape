@@ -477,7 +477,17 @@ class Exporter():
         cfile = self.filein # current file we're working on
         svg = get_svg(cfile)
         vbpage = Exporter.add_viewbox_page(svg, self.testmode)
-        if self.margin != 0 or vbpage:
+        # Embed linked images into the SVG, before it is copied out of the
+        # folder its relative links are relative to. This should also be done
+        # prior to clone unlinking since some images may be cloned
+        if self.exportnow:
+            lls = self.linked_locations
+        else:
+            lls = ih.get_linked_locations_file(cfile, svg)
+        for k in lls:
+            elem = svg.getElementById(k)
+            ih.embed_external_image(elem, lls[k])
+        if self.margin != 0 or vbpage or lls:
             tmp = self.tempbase + "_marg.svg"
             if self.margin != 0:
                 Exporter.add_margin(svg, self.margin, self.testmode)
@@ -585,16 +595,6 @@ class Exporter():
                     elem.cstyle["visibility"] = None
                 if elem.get("visibility") is not None:
                     elem.set("visibility", None)
-
-        # Embed linked images into the SVG. This should be done prior to clone unlinking
-        # since some images may be cloned
-        if self.exportnow:
-            lls = self.linked_locations
-        else:
-            lls = ih.get_linked_locations_file(cfile, svg)
-        for k in lls:
-            elem = svg.getElementById(k)
-            ih.embed_external_image(elem, lls[k])
 
         vds = dh.visible_descendants(svg)
         tetag = inkex.TextElement.ctag
